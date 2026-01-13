@@ -1,0 +1,217 @@
+{% extends 'index.html' %} 
+{% load static %}
+{% block title %}Clientes{% endblock %} 
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/style_clientes.css' %}" />
+{% endblock %}
+
+{% block titlepage %}Clientes{% endblock %} 
+{% block container %}
+<div class="container01">
+  <div class="search-bar-container">
+    <form
+      method="get"
+      action="{%  url 'DM_CLIENTE' %}"
+      class="search-bar-container"
+    >
+      <input
+        type="text"
+        name="Buscar"
+        placeholder="Pesquisar..."
+        class="search-input"
+        value="{{ query }}"
+      />
+      <button type="submit" class="search-button">Buscar</button>
+    </form>
+  </div>
+</div>
+<div class="container02">
+  <button type="button" class="mini_btn" onclick="openModal_ins( )">
+    Cadastrar
+  </button>
+</div>
+<div class="container03">
+  <table>
+    <thead>
+      <tr>
+        <th>Codigo</th>
+        <th>Razão</th>
+        <th>Cnpj</th>
+        <th>Ativo</th>
+        <th>Data de Cadastro</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for clie in T_Clientes %}
+      <tr
+        onclick="openModal_upd('{{ clie.cod_cliente }}')">
+        <td>{{ clie.cod_cliente }}</td>
+        <td>{{ clie.razao }}</td>
+        <td>{{ clie.cnpj }}</td>
+        <td>{{ clie.is_active }}</td>
+        <td>{{ clie.date_joined|date:"d/m/Y" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="container02">
+<div class="pagination">
+    {% if page_obj.has_previous %}
+      <a href="?page=1{% if request.GET.Buscar %}&Buscar={{ request.GET.Buscar }}{% endif %}">&laquo; Primeiro</a>
+      <a href="?page={{ page_obj.previous_page_number }}{% if request.GET.Buscar %}&Buscar={{ request.GET.Buscar }}{% endif %}">Anterior</a>
+    {% endif %}
+
+    {% for num in page_obj.paginator.page_range %}
+      {% if num == page_obj.number %}
+        <a class="active">{{ num }}</a>
+      {% elif num >= page_obj.number|add:'-5' and num <= page_obj.number|add:'5' %}
+        <a href="?page={{ num }}{% if request.GET.Buscar %}&Buscar={{ request.GET.Buscar }}{% endif %}">{{ num }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+      <a href="?page={{ page_obj.next_page_number }}{% if request.GET.Buscar %}&Buscar={{ request.GET.Buscar }}{% endif %}">Próxima</a>
+      <a href="?page={{ page_obj.paginator.num_pages }}{% if request.GET.Buscar %}&Buscar={{ request.GET.Buscar }}{% endif %}">Última &raquo;</a>
+    {% endif %}
+  </div>  
+</div>
+<div id="myModal_upd" class="modal">
+  <div class="modal-content">
+    <div class="tab-header">
+      <button class="tab-btn active" onclick="openTab(this, 'tab-Cliente')">
+        Cliente
+      </button>
+      <button class="tab-btn" onclick="openTab(this, 'tab-Acesso')">
+        Direito de Acesso
+      </button>
+      <span class="close" onclick="closeModal()">&times;</span>
+    </div>
+    {% if messages %} {% for message in messages %}
+      {% if message.extra_tags == 'MODAL_UPD' %}
+        <label class="msg_return">{{ message }}</label>
+      {% endif %}
+    {% endfor %} {% endif %}
+    <form method="POST" action="{%  url 'cliente_upd' %}">
+      {% csrf_token %}
+      <div id="tab-Cliente" class="tab-content active-tab">
+        <div class="modal_field">
+          <label for="m_cliente_id" class="modal_label"
+            >Código do Cliente</label
+          >
+          <input
+            type="text"
+            id="m_cliente_id"
+            name="m_cliente_id"
+            class="modal_txt_edit"
+            placeholder=""
+            readonly
+          />
+        </div>
+        <div class="modal_field">
+          <label for="m_razao" class="modal_label">Razão</label>
+          <input
+            type="text"
+            id="m_razao"
+            name="m_razao"
+            class="modal_txt"
+            placeholder=""
+          />
+        </div>
+        <div class="modal_field">
+          <label for="m_cnpj" class="modal_label">CNPJ:</label>
+          <input
+            type="text"
+            id="m_cnpj"
+            name="m_cnpj"
+            class="modal_txt"
+            placeholder=""
+          />
+        </div>
+        <div class="modal_field">
+          <label for="m_active" class="modal_label">Ativo</label>
+          <label class="switch">
+            <input type="checkbox" name="m_active" id="m_active" />
+            <span class="slider round"></span>
+          </label>
+        </div>
+      </div>
+      <div id="tab-Acesso" class="tab-content">
+        <div class="modal_field">
+          <label for="m_name" id="m_razao" class="modal_label"></label>
+        </div>
+        {% for sol in T_Soluçoes %}
+        <div class="modal_field" data-cliente="{{ sol.cod_solucoes }}">
+          <label for="{{ sol.cod_solucoes }}">{{ sol.cod_solucoes }}</label>
+          <label class="switch">
+            <input
+              type="checkbox"
+              name="sol_{{ sol.cod_solucoes }}"
+              id="{{ sol.cod_solucoes }}"
+            />
+            <span class="slider round"></span>
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="submit" class="btn_modal">Salvar</button>
+    </form>
+  </div>
+</div>
+<div id="myModal_ins" class="modal">
+  <div class="modal-content">
+    <div class="tab-header">
+      <span class="close" onclick="closeModal()">&times;</span>
+      <h3>Cadastro de Cliente</h3>
+    </div>
+    <form method="POST" action="{%  url 'cliente_ins' %}">
+      {% csrf_token %}
+      <div class="modal_field">
+        <label for="m_cliente_id" class="modal_label">Código do Cliente</label>
+        <input
+          type="text"
+          id="m_cliente_id"
+          name="m_cliente_id"
+          class="modal_txt"
+          value="{{ request.POST.m_cliente_id }}"
+        />
+      </div>
+      <div class="modal_field">
+        <label for="m_razao" class="modal_label">Razão</label>
+        <input
+          type="text"
+          id="m_razao"
+          name="m_razao"
+          class="modal_txt"
+          value="{{ request.POST.m_razao }}"
+        />
+      </div>
+      <div class="modal_field">
+        <label for="m_cnpj" class="modal_label">CNPJ:</label>
+        <input
+          type="text"
+          id="m_cnpj"
+          name="m_cnpj"
+          class="modal_txt"
+          value="{{ request.POST.m_cnpj }}"
+        />
+      </div>
+      {% if messages %} {% for message in messages %}
+        {% if message.extra_tags == 'MODAL_INS' %}
+          <label class="msg_return">{{ message }}</label>
+        {% endif %}
+      {% endfor %} {% endif %}
+      <button type="submit" class="btn_modal">Cadastrar</button>
+    </form>
+  </div>
+</div>
+{% endblock %} 
+{% block scripts %} 
+<script>
+const csrfToken = '{{ csrf_token }}';
+const modalUpdId = '{{ request.session.modal_upd_id|default:"" }}';
+</script>
+{{ T_Clientes|json_script:"Clientes-data" }}
+<script src="{% static 'js/script_clientes.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,506 @@
+/* Geral */
+body {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  font-family: "Times New Roman", Times, serif;
+  border: none;
+  background: url("../img/fundo_mont.png") no-repeat center center fixed;
+  margin: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 100vh;
+  font-family: "Poppins", sans-serif;
+}
+
+h3 {
+  margin-bottom: 10px;
+  margin-left: 10px;
+  color: #6492cd;
+}
+
+.msg_return {
+  color: red;
+  font-size: 16px;
+  font-weight: bold;
+  margin-top: 10px;
+  text-align: center;
+}
+
+.head_title {
+  flex-grow: 1;
+  text-align: center;
+  font-size: 18px;
+  font-weight: bold;
+  color: white;
+}
+
+a {
+  text-decoration: none;
+  color: white;
+}
+
+/* Cabeçalho */
+.head_cont {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #6492cd;
+  border-bottom: 3px solid #6492cd;
+  box-shadow: 0 0px 10px #051f4d;
+  width: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 10vh;
+  padding: 0 20px;
+  z-index: 999;
+}
+
+.img_logo {
+  height: auto;
+  margin-left: auto;
+  margin-right: 10px;
+  margin-top: 10px;
+  padding: 10px 15px;
+  width: 45px;
+}
+
+/* Container Principal */
+.container {
+  width: 100%;
+  height: calc(100vh - 10vh);
+  margin-top: 10vh;
+  display: flex;
+  flex-direction: column;
+  font-weight: bold;
+}
+
+.content {
+  flex: 1;
+  margin-left: 10%;
+  padding: 20px;
+  background-color: #f4f4f4;
+}
+
+.pagination {
+  display: inline-block;
+  align-items: center;
+  justify-content: center;
+}
+
+.pagination a {
+  color: black;
+  float: left;
+  padding: 8px 16px;
+  text-decoration: none;
+  transition: background-color .3s;
+  border: 1px solid #ddd;
+  margin: 0 4px;
+}
+
+.pagination a.active {
+  background-color: #6492cd;
+  color: white;
+  border: 1px solid #6492cd;
+}
+
+/* -------------- menu lateral(Sidebar) ------------------------- */
+.sidebar {
+  width: 23%;
+  height: calc(100% - 10%); /* Ocupa toda a altura */
+  background-color: #6492cd;
+  box-shadow: 0 0px 10px #051f4d;
+  color: white;
+  position: fixed; /* Fixado na lateral */
+  top: 10%;
+  left: 0;
+  border-radius: 0px 10px 0px 10px;
+  border: 3px solid #6492cd;
+  transition: transform 0.3s ease;
+  transform: translateX(-100%); /* Oculto inicialmente */
+  z-index: 999;
+}
+
+.sidebar ul {
+  list-style-type: none;
+  padding: 0px;
+}
+
+.sidebar ul li {
+  padding: 0px 0px;
+  border-radius: 5px;
+}
+
+.sidebar ul li a {
+  text-decoration: none;
+}
+
+.sidebar ul li a:hover {
+  background-color: #ffad6d;
+  text-decoration: none;
+}
+.sidebar.hidden {
+  transform: translateX(-100%);
+}
+
+.sidebar.visible {
+  transform: translateX(0);
+}
+.sidebar ul li.selected {
+  color: #fff;
+}
+.sidebar ul:not(.clicked):hover {
+  color: #fff;
+}
+
+.btn_menu {
+  margin-left: 10px;
+  margin-right: 0;
+  background-color: #051f4d;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 10px 15px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: left 0.3s ease;
+  z-index: 1000; /* Fica acima de tudo */
+}
+
+.btn_menu:hover {
+  background-color: #ffad6d;
+}
+
+.menu-list {
+  margin-top: 10px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.menu-item {
+  margin-top: 3px;
+  display: block;
+  padding: 20px;
+  text-decoration: none;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+.submenu {
+  list-style: none;
+  padding-left: 20px;
+  display: none; /* Oculto inicialmente */
+  background-color: #6492cd;
+}
+.submenu.visible {
+  display: block; /* Mostra o submenu */
+}
+.submenu-item {
+  display: block;
+  padding: 20px 15px;
+  text-decoration: none;
+  color: #6492cd;
+  cursor: pointer;
+  border: white;
+  background-color: white;
+}
+.submenu-item:hover {
+  color: white;
+  background-color: #969393;
+}
+/* ------------------------------------------------------------- */
+/* ------------------ tabela padrão ---------------------------- */
+table {
+  max-width: 100%;
+  border: 2px solid #555151;
+  border-radius: 5px;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border: 2px solid #6492cd; /* Borda das células */
+  box-shadow: 0 3px 4px #051f4d;
+  padding: 10px; /* Espaçamento interno */
+  text-align: left; /* Alinhamento do texto */
+}
+
+td {
+  color: #888; /* Cor do texto das células */
+  background-color: white;
+  text-decoration: none;
+}
+
+th {
+  /* background-color: #555151;  Cor de fundo do cabeçalho */
+  color: white; /* Cor do texto no cabeçalho */
+  background-color: rgba(0, 0, 0, 0.6);
+  text-decoration: none;
+}
+
+tbody tr:hover td {
+  background-color: #ffad6d; /* Agora vai funcionar mesmo com fundo branco padrão */
+}
+/* -------------------------------------------------------------- */
+/* --------------------- modal padrão --------------------------- */
+.modal {
+  text-align: center;
+  justify-content: center;
+  align-items: center;
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+.modal-content {
+  background-color: #fefefe;
+  border: 1px solid #888;
+  width: 65%;
+  overflow-y: auto;
+  max-width: 600px;
+  max-height: 80vh;
+  height: auto;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+}
+
+.modal form {
+  flex: 1;
+  display: flex;
+  position: relative;
+  flex-direction: column;
+  padding: 20px;
+  max-width: 90%;
+  gap: 10px;
+  min-height: 0;
+}
+
+/* NOVO: Criação de um container flexível para alinhar os labels e inputs */
+.modal_field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 97%;
+  gap: 10px;
+  margin: 8px;
+}
+.modal_field2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 97%;
+  gap: 10px;
+  margin: 8px;
+}
+
+/* Labels agora terão um tamanho fixo e alinhamento adequado */
+.modal_label {
+  flex: 1;
+  text-align: left;
+  font-size: 16px;
+  font-weight: bold;
+  color: #6492cd;
+}
+
+/* Inputs agora ocupam um espaço fixo e ficam alinhados */
+.modal_txt,
+.modal_txt_edit {
+  flex: 3;
+  background-color: white;
+  width: 100%;
+  padding: 8px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+}
+
+/* Mantém o fundo branco ao editar */
+.modal_txt_edit {
+  background-color: #908d8d;
+}
+
+/* Botão de fechar modal */
+.close {
+  color: #6492cd;
+  top: 50%;
+  position: absolute;
+  transform: translateY(-50%);
+  right: 10px;
+  font-size: 36px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.close:hover,
+.close:focus {
+  color: #ffad6d;
+  text-decoration: none;
+}
+
+/* Botões do modal */
+.btn_modal {
+  padding: 10px 15px;
+  background-color: #6492cd;
+  text-decoration: none;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s ease;
+  margin-top: 20px;
+  margin-bottom: 20px;
+  width: 98%;
+}
+
+.btn_modal:hover {
+  background-color: #ffad6d;
+}
+.m_div_btn {
+  position: sticky;
+  display: inline;
+  float: inline-end;
+  z-index: 10;
+}
+
+/* ------------------------------------------------------------- */
+/* ------------------- tab de modal ---------------------------- */
+.tab-header {
+  background-color: #fefefe;
+  position: sticky;
+  display: flex;
+  gap: 10px;
+  top: 0;
+  justify-content: flex-start;
+  margin-bottom: 15px;
+  border-bottom: 2px solid #6492cd;
+  z-index: 1;
+}
+
+.tab-btn {
+  padding: 10px 20px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: #6492cd;
+  font-size: 16px;
+  font-weight: bold;
+  transition: all 0.3s ease;
+  border-bottom: 3px solid transparent;
+}
+
+.tab-btn.active {
+  border-bottom: 3px solid #ffad6d;
+  color: #ffad6d;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active-tab {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ------------------------------------------------------------- */
+/* ------------------- botões padrão --------------------------- */
+.mini_btn {
+  margin-top: none;
+  margin-right: 10px;
+  padding: 10px 10px;
+  float: inline-start;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s ease;
+  margin-bottom: 5px;
+  text-decoration: none;
+}
+.mini_btn:hover {
+  background-color: #ffad6d;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+/* trilho */
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: 0.4s;
+  border-radius: 24px;
+}
+
+/* botão */
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.4s;
+  border-radius: 50%;
+}
+
+/* ligado */
+input:checked + .slider {
+  background-color: #4caf50;
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+
+/* ------------------------------------------------------------- */
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 200px;
+  }
+  .content {
+    margin-left: 220px;
+  }
+}

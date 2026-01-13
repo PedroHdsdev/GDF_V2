@@ -1,0 +1,102 @@
+form {
+  align-items: flex-start;
+  text-align: center;
+  justify-items: center;
+  justify-content: space-evenly;
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+.btn_home {
+  border: none;
+  box-shadow: 0 3px 4px #051f4d;
+  border-radius: 10px;
+  margin-top: 10px;
+  padding: 30px 88px;
+  background-color: #6492cd;
+  color: white;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s ease;
+}
+.btn_home:hover {
+  background-color: #ffad6d;
+}
+.btn_home.active {
+  border-radius: 5px 5px 0px 0px;
+  border-bottom: 1px solid #ffad6d;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  border-radius: 0px 0px 5px 5px;
+  border: 1px solid #555151;
+  z-index: 1;
+  top: -2;
+}
+
+/* Quando a classe "active" é adicionada, o dropdown aparece */
+.dropdown-content.active {
+  display: block;
+}
+
+/* Estilo para os botões dentro do dropdown */
+.dropdown-content button {
+  width: 100%;
+  text-align: center;
+  padding-top: 10px;
+  padding-bottom: 12px;
+  padding-inline: 0px;
+  background-color: white;
+  color: #555151;
+  border: none;
+  border-bottom: 1px solid black;
+  cursor: pointer;
+}
+
+.dropdown-content button:hover {
+  background-color: #969393;
+}
+
+/* Estilo base para a seção */
+.container01 {
+  max-width: 100%;
+  width: 100%;
+  padding: 10% 20px;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+/* Título e parágrafo */
+.container01 h2 {
+  font-size: 2rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.container01 p {
+  font-size: 1rem;
+  max-width: 700px;
+  margin: 0 auto 40px auto;
+  line-height: 1.6;
+}
+
+/* Container das logos */
+.container01 > .logos-parceiros {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 30px;
+}
+
+/* Estilo das imagens */
+.logos-parceiros img {
+  max-width: 100px;
+  height: auto;
+  transition: transform 0.3s ease;
+}
+
+.logos-parceiros img:hover {
+  transform: scale(1.05);
+}

@@ -1,0 +1,44 @@
+{% extends 'Index_Base.html' %}
+{% load static %}
+
+{% block title %}Login{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/style_Login.css' %}">
+{% endblock %}
+
+{% block titlepage %}Login{% endblock %}
+
+{% block container %}
+    <div id="loading-overlay">
+      <div class="loader"></div>
+    </div>
+    <div class="container">
+      <form method="POST" class="form" action="{%  url 'login' %}">
+        {% csrf_token %}
+        <img src="{% static 'img/logo_Process.png' %}" alt="logo" class="img_logo" />
+        <label for="Username" class="lab">Nome:</label>
+        <input
+          type="text"
+          id="Username"
+          name="Username"
+          class="text"
+          required
+        />
+        <label for="password" class="lab">Senha:</label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          class="text"
+          required
+        />
+        <p class="login_aviso">{{ error_message }}</p>
+        <button type="submit" class="btn_Entrar">Entrar</button>
+      </form>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/script_Dashboard.js' %}"></script>
+{% endblock %}
