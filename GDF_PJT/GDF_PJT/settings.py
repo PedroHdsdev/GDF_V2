@@ -76,7 +76,7 @@ WSGI_APPLICATION = 'GDF_PJT.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'RFC_DEV',        #NOME DOP DATABASE
+        'NAME': 'GDF_DEV',        #NOME DOP DATABASE
         'USER': 'postgres',         #NOME DO USUARIO
         'PASSWORD': 'PrcIT@2023',       #SENHA
         'HOST': '10.0.1.19',         #HOST 

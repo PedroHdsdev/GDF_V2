@@ -7,7 +7,7 @@ from django.conf                    import settings
 from app.static.classes.gdf         import cl_Gdf
 
 cl_GdfBase = cl_Gdf()
-def login_view(request):
+def Login_view(request):
     if request.method == "POST":
         Username = request.POST.get('Username')
         password = request.POST.get('password')
@@ -30,14 +30,15 @@ def login_view(request):
 
     return render(request, 'Index_Login.html')
 
-#@login_required(login_url='Login')
-#@never_cache
+
 def Home_view(request):
     return render(request, "Index_Home.html")
 
+@login_required(login_url='Login')
 def Dashboard_View(request):
-    token = cl_GdfBase.gerar_(request.user)
-    return render(request, "Index_Dashboard.html", {"token": token})
+    #token = cl_GdfBase.gerar_(request.user)
+    #return render(request, "Index_Dashboard.html", {"token": token})
+    return render(request, "Index_Home.html")
 
 @login_required
 def Sair_View(request):   

@@ -7,10 +7,10 @@ urlpatterns = [
     path('admin/', admin.site.urls),
 
     # App views
-    path('Login/', views.login_view, name='Login'),
-    path('Home/',views.home_view, name='Home'),
-    path('Logout/', views.sair_view, name='Logout'),
-    path('Dashboard/', views.index_dashboard, name='Dashboard'),
+    path('Login/', views.Login_view, name='Login'),
+    path('Home/',views.Home_view, name='Home'),
+    path('Logout/', views.Sair_View, name='Logout'),
+    path('Dashboard/', views.Dashboard_View, name='Dashboard'),
     
-    path('',views.login_view),
+    path('',views.Login_view),
 ]

@@ -3,9 +3,9 @@ from django.db.models               import Prefetch
 from django.utils.timezone          import now
 from psycopg2                       import IntegrityError
 from django.conf                    import settings
-from app.models                     import empresas, clientes, GrpEmpresas, Cert
-from app.models                     import AuthUser, AuthGroup, AuthUserGroups, AuthGrupo_cliente
-from app.models                     import Solucoes, SubSolucoes, SolucoesAcesso, SubSolucoesAcesso
+from app.models                     import Empresas, Clientes, UserEmpresas,GrpEmpresas, Cert
+from app.models                     import AuthUser, AuthGroup, AuthUserGroups, GrupoCliente 
+from app.models                     import Solucoes, Subsolucoes, SolucoesAcesso, SubsolucoesAcesso
 from datetime                       import datetime
 from django.db.utils                import OperationalError
 from django.contrib.auth.hashers    import make_password
@@ -15,19 +15,19 @@ import json
 import jwt
 
 class cl_Gdf():
-    log_codes_path = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        'json',
-        'log_codes.json'
-    )
+    #log_codes_path = os.path.join(
+    #os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    #    'json',
+    #    'log_codes.json'
+    #)
     
-    with open(log_codes_path, encoding='utf-8') as f:
-        log_codes = json.load(f)
+    #with open(log_codes_path, encoding='utf-8') as f:
+    #    log_codes = json.load(f)
     
     def __init__(self):
         self.q_user             = None
         self.q_cleinte          = None
-        self.q_clie_empresas    = None
+        self.q_Empresas         = None
         self.q_grpempresa       = None
         self.q_Groups           = None
         self.q_subAcesso        = None
@@ -41,43 +41,77 @@ class cl_Gdf():
 #--------------------------------------------------------------------------------
 #           GET - Dados iniciais
 #--------------------------------------------------------------------------------
-    def get_dados(self, user):
+    def get_dados(self, I_User):
         self.Retorn = []
         try:
-            self.q_user           = user
-            self.q_clie_empresas  = user.user_e_empresas.all()
-            self.q_Groups         = user.groups.all()
-            self.q_cleinte        = clientes.objects.filter(clientes_empresa__in=self.q_clie_empresas).first()
-            self.q_grpempresa     = GrpEmpresas.objects.filter(cliente=self.q_cleinte)
+            self.q_user = AuthUser.objects.get(id=I_User.id, username=I_User.username, is_active=True)
             
-            self.solucoes_acesso = SolucoesAcesso.objects.filter(clientess=self.q_cleinte, is_active=True).select_related('solucoes')
-            self.subsolucoes_acesso = SubSolucoesAcesso.objects.filter(Group__in=self.q_Groups)
+            # Empresas do usuário
+            self.q_Empresas = Empresas.objects.filter(
+                userempresas__user=self.q_user
+            ).distinct()
+            
+            # Grupos do usuário
+            self.q_Groups = AuthGroup.objects.filter(
+                authusergroups__user=self.q_user
+            )
+
+            # Cliente associado às empresas do usuário
+            self.q_cleinte = Clientes.objects.filter(
+                empresas__in=self.q_Empresas
+            ).distinct().first()
+            
+            #self.q_grpempresa     = GrpEmpresas.objects.filter(cliente=self.q_cleinte)
+            # Soluções liberadas para o cliente
+            self.solucoes_acesso = SolucoesAcesso.objects.filter(
+                clientess=self.q_cleinte,
+                is_active=True
+            ).select_related('solucoes')
+            print(self.solucoes_acesso)
+
+            # Subsoluções liberadas via grupo
+            self.subsolucoes_acesso = SubsolucoesAcesso.objects.filter(
+                group__in=self.q_Groups
+            ).select_related('subsolucoes')
+            print(self.subsolucoes_acesso)
         
-        except clientes.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            #self.solucoes_acesso    = SolucoesAcesso.objects.filter(clientess=self.q_cleinte, is_active=True).select_related('solucoes')
+            #self.subsolucoes_acesso = SubsolucoesAcesso.objects.filter(Group__in=self.q_Groups)
+        
+        except Empresas.DoesNotExist as e:
+            #self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(str(e))
+        except Clientes.DoesNotExist as e:
+            #self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(str(e))
         except GrpEmpresas.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            #self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(str(e))
         except SolucoesAcesso.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
-        except SubSolucoesAcesso.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            #self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(str(e))
+        except SubsolucoesAcesso.DoesNotExist as e:
+            #self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(str(e))
         except OperationalError as e:
-            self._registrar_log(type='E', id='E002', msg=f"Erro: {str(e)}")
+            #self._registrar_log(type='E', id='E002', msg=f"Erro: {str(e)}")
+            print(str(e))
         except Exception as e:
-            self._registrar_log(type='E', id='E000')
+            #self._registrar_log(type='E', id='E000', msg=f"Erro: {str(e)}")
+            print(str(e))
 #--------------------------------------------------------------------------------
 #           Gerar - Token JWT (Dashboard) 
 #--------------------------------------------------------------------------------
-def Gerar_token(self, user): 
-    if not user.is_active:
-        return None 
-    else:
-        payload = {
-            "user_id": user.id,
-            "username": user.username,
-            "exp": datetime.utcnow() + timedelta(minutes=30)
-        }
-        return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+    def Gerar_token(self, user): 
+        if not user.is_active:
+            return None 
+        else:
+            payload = {
+                "user_id": user.id,
+                "username": user.username,
+                "exp": datetime.utcnow() + timedelta(minutes=30)
+            }
+            return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
 #--------------------------------------------------------------------------------
 #           GET - Soluções e Subsoluções
 #--------------------------------------------------------------------------------
@@ -87,17 +121,18 @@ def Gerar_token(self, user):
             solucoes_data = []
             # Cria um set de subsoluções permitidas com base nos grupos do usuário
             subsolucoes_permitidas_ids = set(
-                acesso.subsolucoes.cod_subSolucoes
+                acesso.subsolucoes.cod_subsolucoes
                 for acesso in self.subsolucoes_acesso
                 if acesso.subsolucoes is not None
             )
 
             
+            
             # Prefetch das subsoluções relacionadas a cada solução
             solucoes_com_subs = Solucoes.objects.prefetch_related(
             Prefetch(
                 'sub_e_solucoes',
-                queryset=SubSolucoes.objects.filter(
+                queryset=Subsolucoes.objects.filter(
                     cod_subSolucoes__in=subsolucoes_permitidas_ids
                 ),
                 to_attr='subsolucoes_filtradas'
@@ -126,13 +161,13 @@ def Gerar_token(self, user):
             solucoes_data = [s for s in solucoes_data if s['sub_solucoes']]
 
         except AttributeError as e:
-            self._registrar_log(type='E', id='E002', msg=f"Erro: {str(e)}")
+            #self._registrar_log(type='E', id='E002', msg=f"Erro: {str(e)}")
             return []
         except OperationalError as e:
-            self._registrar_log(type='E', id='E003', msg=f"Erro: {str(e)}")
+            #self._registrar_log(type='E', id='E003', msg=f"Erro: {str(e)}")
             return []
         except Exception as e:
-            self._registrar_log(type='E', id='E000')
+            #self._registrar_log(type='E', id='E000')
             return []
 
         return solucoes_data
@@ -645,7 +680,7 @@ def Gerar_token(self, user):
         self.Retorn = []
 
         # Verifica se há mensagem no JSON
-        msg_json = self.log_codes.get(id)
+        #msg_json = self.log_codes.get(id)
 
         # Prioridade: JSON > mensagem passada > fallback padrão
         mensagem = msg_json or "Erro não especificado."

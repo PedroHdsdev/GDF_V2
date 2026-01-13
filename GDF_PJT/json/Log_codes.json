@@ -1,0 +1,17 @@
+{
+  "E000": "Erro inesperado.",
+  "E001": "Registro não encontrado.",
+  "E002": "Erro de banco de dados.",
+  "E003": "Permissão negada.",
+  "E004": "Dados inválidos.",
+  "E005": "",
+  "E006": "",
+  "E007": "",
+  "E008": "",
+  "E009": "",
+  "E010": "",
+  "S001": "Cadastrado com sucesso.",
+  "S002": "Update realizado com sucesso.",
+  "S003": "Excluído com sucesso.",
+  "S004": "Operação concluída com sucesso."
+}
