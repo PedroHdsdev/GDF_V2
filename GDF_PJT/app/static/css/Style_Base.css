@@ -1,0 +1,109 @@
+/* ==========================
+   Sidebar Geral
+   ========================== */
+.sidebar {
+    background-color: #fff;
+    width: 250px;
+    height: 100%;
+    box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+    font-family: 'Poppins', sans-serif;
+}
+
+/* Header do Sidebar */
+.sidebar-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e0e0e0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #f8f9fa;
+}
+
+/* Lista Principal */
+.sidebar-list {
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+
+/* Item do Menu */
+.sidebar-item {
+    border: none;
+    padding: 0;
+}
+
+/* Link Principal */
+.sidebar-link {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1.5rem;
+    color: #333;
+    transition: all 0.3s ease;
+    border-radius: 0.25rem;
+}
+
+.sidebar-link:hover {
+    background-color: #f1f5f9;
+    color: #0d6efd;
+}
+
+/* Badge de seta */
+.sidebar-badge {
+    font-size: 0.8rem;
+    transition: transform 0.3s ease;
+}
+
+/* Girar a seta ao abrir o submenu */
+.collapse.show ~ .sidebar-badge,
+.sidebar-submenu.show + .sidebar-link .sidebar-badge {
+    transform: rotate(180deg);
+}
+
+/* Submenu */
+.sidebar-submenu {
+    padding-left: 1rem;
+    margin-top: 0.25rem;
+    transition: all 0.3s ease;
+    border-left: 2px solid #0d6efd22;
+    border-radius: 0 0.25rem 0.25rem 0;
+}
+
+/* Item do Submenu */
+.sidebar-subitem {
+    border: none;
+    padding: 0;
+}
+
+/* Link do Submenu */
+.sidebar-sublink {
+    display: block;
+    padding: 0.5rem 1.5rem;
+    color: #555;
+    border-radius: 0.25rem;
+    transition: all 0.3s ease;
+}
+
+.sidebar-sublink:hover {
+    background-color: #e9ecef;
+    color: #0d6efd;
+}
+
+/* Mensagens do Django ajustadas para sidebar */
+.alert {
+    border-radius: 0.25rem;
+}
+
+/* Scroll caso o sidebar ultrapasse altura */
+.offcanvas-body {
+    overflow-y: auto;
+    max-height: 100vh;
+    padding: 0;
+}
+
+/* Responsividade: botão do offcanvas */
+@media (max-width: 992px) {
+    .sidebar {
+        width: 100%;
+    }
+}

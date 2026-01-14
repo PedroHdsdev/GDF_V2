@@ -1,18 +1,16 @@
-from django.contrib.auth.models     import User, Group
+#from django.contrib.auth.models     import User, Group
 from django.db.models               import Prefetch
 from django.utils.timezone          import now
 from psycopg2                       import IntegrityError
 from django.conf                    import settings
-from app.models                     import Empresas, Clientes, UserEmpresas,GrpEmpresas, Cert
-from app.models                     import AuthUser, AuthGroup, AuthUserGroups, GrupoCliente 
+from app.models                     import AuthUser, Empresas, Clientes, Cert
+from app.models                     import AuthGroup, AuthUserGroups, GrupoCliente, GrpEmpresas 
 from app.models                     import Solucoes, Subsolucoes, SolucoesAcesso, SubsolucoesAcesso
 from datetime                       import datetime
 from django.db.utils                import OperationalError
 from django.contrib.auth.hashers    import make_password
-from datetime                       import datetime, timedelta
 import os
 import json
-import jwt
 
 class cl_Gdf():
     #log_codes_path = os.path.join(
@@ -60,8 +58,7 @@ class cl_Gdf():
             self.q_cleinte = Clientes.objects.filter(
                 empresas__in=self.q_Empresas
             ).distinct().first()
-            
-            #self.q_grpempresa     = GrpEmpresas.objects.filter(cliente=self.q_cleinte)
+
             # Soluções liberadas para o cliente
             self.solucoes_acesso = SolucoesAcesso.objects.filter(
                 clientess=self.q_cleinte,
@@ -74,9 +71,6 @@ class cl_Gdf():
                 group__in=self.q_Groups
             ).select_related('subsolucoes')
             print(self.subsolucoes_acesso)
-        
-            #self.solucoes_acesso    = SolucoesAcesso.objects.filter(clientess=self.q_cleinte, is_active=True).select_related('solucoes')
-            #self.subsolucoes_acesso = SubsolucoesAcesso.objects.filter(Group__in=self.q_Groups)
         
         except Empresas.DoesNotExist as e:
             #self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
@@ -102,63 +96,62 @@ class cl_Gdf():
 #--------------------------------------------------------------------------------
 #           Gerar - Token JWT (Dashboard) 
 #--------------------------------------------------------------------------------
-    def Gerar_token(self, user): 
-        if not user.is_active:
-            return None 
-        else:
-            payload = {
-                "user_id": user.id,
-                "username": user.username,
-                "exp": datetime.utcnow() + timedelta(minutes=30)
-            }
-            return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+
 #--------------------------------------------------------------------------------
 #           GET - Soluções e Subsoluções
 #--------------------------------------------------------------------------------
     def get_solucoes(self):
         self.Retorn = []
         try:
+            if not hasattr(self, 'subsolucoes_acesso') or not hasattr(self, 'solucoes_acesso'):
+                return []
+
             solucoes_data = []
-            # Cria um set de subsoluções permitidas com base nos grupos do usuário
-            subsolucoes_permitidas_ids = set(
+
+            # 🔹 Subsoluções permitidas via grupo
+            sub_ids = {
                 acesso.subsolucoes.cod_subsolucoes
                 for acesso in self.subsolucoes_acesso
-                if acesso.subsolucoes is not None
-            )
+                if acesso.subsolucoes
+            }
 
-            
-            
-            # Prefetch das subsoluções relacionadas a cada solução
-            solucoes_com_subs = Solucoes.objects.prefetch_related(
-            Prefetch(
-                'sub_e_solucoes',
-                queryset=Subsolucoes.objects.filter(
-                    cod_subSolucoes__in=subsolucoes_permitidas_ids
-                ),
-                to_attr='subsolucoes_filtradas'
-            )
-            ).filter(
-                solucoes_acesso__in=self.solucoes_acesso
+            if not sub_ids:
+                return []
+
+            # 🔹 Soluções liberadas para o cliente
+            solucoes = Solucoes.objects.filter(
+                solucoesacesso__in=self.solucoes_acesso
             ).distinct()
 
-            # Montagem dos dados
-            for solucao in solucoes_com_subs:
-                subsolucoes = [
-                    {
-                        "codigo": sub.cod_subSolucoes,
-                        "descricao": sub.descricao
-                    }
-                    for sub in getattr(solucao, 'subsolucoes_filtradas', [])
-            ]
+            for solucao in solucoes:
+                subsolucoes = Subsolucoes.objects.filter(
+                    solucoes=solucao,
+                    cod_subsolucoes__in=sub_ids
+                ).values(
+                    'cod_subsolucoes',
+                    'descricao'
+                )
+
+                if not subsolucoes:
+                    continue
 
                 solucoes_data.append({
                     "codigo": solucao.cod_solucoes,
                     "descricao": solucao.descricao,
-                    "sub_solucoes": subsolucoes
+                    "sub_solucoes": list(subsolucoes)
                 })
-                
-            # Filtra soluções que têm subsoluções
-            solucoes_data = [s for s in solucoes_data if s['sub_solucoes']]
+
+            #Ordenação customizada: "Soluções ADM" primeiro, "Dashboard" último
+            def sort_key(sol):
+                if sol["descricao"].lower() == "Adiministração":
+                    return -1  # menor que tudo → primeiro
+                elif sol["descricao"].lower() == "dashboard":
+                    return 9999  # maior que tudo → último
+                return 0  # o resto fica no meio
+
+            solucoes_data.sort(key=sort_key)
+
+            return solucoes_data
 
         except AttributeError as e:
             #self._registrar_log(type='E', id='E002', msg=f"Erro: {str(e)}")
@@ -169,8 +162,6 @@ class cl_Gdf():
         except Exception as e:
             #self._registrar_log(type='E', id='E000')
             return []
-
-        return solucoes_data
 
 #--------------------------------------------------------------------------------
 #           GET - Usuarios
@@ -187,11 +178,11 @@ class cl_Gdf():
                 return [], [], []
 
             # Buscar todas as empresas vinculadas aos clientes acessíveis
-            q_empresas = empresas.objects.filter(cliente=self.q_cleinte).distinct()
+            q_empresas = Empresas.objects.filter(cliente=self.q_cleinte).distinct()
             empresas_ids = list(q_empresas.values_list('cod_empresa', flat=True))
 
             # Filtra usuários vinculados às empresas
-            user_ids = empresas.user.through.objects.filter(
+            user_ids = Empresas.user.through.objects.filter(
                 empresas_id__in=empresas_ids
              ).values_list('user_id', flat=True)
 
@@ -199,13 +190,13 @@ class cl_Gdf():
 
             # Pega o primeiro cod_empresa por usuário
             user_emp_map = {}
-            vinculos = empresas.user.through.objects.filter(
+            vinculos = Empresas.user.through.objects.filter(
                 empresas_id__in=empresas_ids,
                 user_id__in=usuarios.values_list('id', flat=True)
             )
             
             # Mapeia nome dos grupos
-            grupo_map = {g.id: g.name for g in Group.objects.all()}
+            grupo_map = {g.id: g.name for g in AuthGroup.objects.all()}
 
             # Mapeia os grupos dos usuários
             user_group_map = {}
@@ -240,15 +231,15 @@ class cl_Gdf():
                 usuarios_data.append(user_dict)
             
             # Buscar todas empresas vinculadas ao cliente
-            empresa_data = empresas.objects.filter(cliente=self.q_cleinte).distinct()
+            empresa_data = Empresas.objects.filter(cliente=self.q_cleinte).distinct()
             
             # Buscar grupos de acesso vinculados aos usuários
-            grpacesso_data = AuthGrupo_cliente.objects.filter(cliente=self.q_cleinte).distinct()
+            grpacesso_data = GrupoCliente.objects.filter(cliente=self.q_cleinte).distinct()
         
-        except empresas.DoesNotExist as e:
+        except Empresas.DoesNotExist as e:
             self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
             return [], [], []
-        except Group.DoesNotExist as e:
+        except AuthGroup.DoesNotExist as e:
             self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
             return [], [], []
         except AuthUser.DoesNotExist as e:

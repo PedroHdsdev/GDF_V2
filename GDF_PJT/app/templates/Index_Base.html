@@ -10,6 +10,9 @@
 
     <link rel="icon" type="image/png" href="{% static 'img/logo.png' %}">
 
+    <!-- CSS BASE -->
+    <link rel="stylesheet" href="{% static 'css/style_Base.css' %}">
+
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Montserrat:wght@700&display=swap" rel="stylesheet">
 
@@ -39,30 +42,32 @@
     </div>
 </nav>
 <!-- SIDEBAR (Offcanvas) -->
-<div class="offcanvas offcanvas-start" tabindex="-1" id="sidebar">
-    <div class="offcanvas-header">
-        <h5 class="offcanvas-title">Menu</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+<div class="offcanvas offcanvas-start sidebar" tabindex="-1" id="sidebar">
+    <div class="offcanvas-header sidebar-header">
+        <h5 class="offcanvas-title fw-bold">Menu</h5>
+        <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas"></button>
     </div>
 
     <div class="offcanvas-body p-0">
-        <ul class="list-group list-group-flush">
-            {% for item in Solucoes %}
-                <li class="list-group-item">
-
-                    <a class="fw-semibold text-decoration-none d-block"
+        <ul class="list-group list-group-flush sidebar-list">
+            {% for solucoes in t_solucoes %}
+                <li class="list-group-item sidebar-item">
+                    <a class="sidebar-link d-flex justify-content-between align-items-center fw-semibold text-decoration-none"
                        data-bs-toggle="collapse"
                        href="#submenu{{ forloop.counter }}">
-                        {{ item.codigo }}
+                        <span>{{ solucoes.descricao }}</span>
+                        {% if solucoes.sub_solucoes %}
+                            <span class="sidebar-badge"></span>
+                        {% endif %}
                     </a>
 
-                    {% if item.sub_solucoes %}
-                        <div class="collapse mt-2" id="submenu{{ forloop.counter }}">
+                    {% if solucoes.sub_solucoes %}
+                        <div class="collapse sidebar-submenu mt-2" id="submenu{{ forloop.counter }}">
                             <ul class="list-group list-group-flush">
-                                {% for sub in item.sub_solucoes %}
-                                    <li class="list-group-item ps-4">
-                                        <a href="{% url 'buscar_subsolucao' sub.codigo %}"
-                                           class="text-decoration-none">
+                                {% for sub in solucoes.sub_solucoes %}
+                                    <li class="list-group-item sidebar-subitem">
+                                        <a href="{% url 'get_subsolucao' sub.cod_subsolucoes %}"
+                                           class="sidebar-sublink d-block text-decoration-none">
                                             {{ sub.descricao }}
                                         </a>
                                     </li>
@@ -70,14 +75,13 @@
                             </ul>
                         </div>
                     {% endif %}
-
                 </li>
             {% endfor %}
         </ul>
     </div>
 </div>
 <!-- CONTEÚDO -->
-<main class="container my-4">
+<main class="container-fluid p-0 m-0 ">
     {% block container %}{% endblock %}
 </main>
 <!-- DJANGO MESSAGES -->

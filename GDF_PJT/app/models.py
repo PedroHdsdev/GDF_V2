@@ -189,7 +189,7 @@ class Municipios(models.Model):
         db_table = 'municipios'
 
 class Solucoes(models.Model):
-    cod_solucoes = models.CharField(primary_key=True, max_length=10)
+    cod_solucoes = models.CharField(primary_key=True, max_length=15)
     descricao = models.CharField(max_length=50, blank=True, null=True)
     class Meta:
         managed = False
