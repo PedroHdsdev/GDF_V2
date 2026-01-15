@@ -29,4 +29,4 @@ class AppConfig(AppConfig):
                 cwd=project_root
             )
 
-        threading.Thread(target=run_streamlit, daemon=True).start()
+        #threading.Thread(target=run_streamlit, daemon=True).start()

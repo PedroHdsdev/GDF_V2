@@ -75,16 +75,34 @@ WSGI_APPLICATION = 'GDF_PJT.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': {
+    'default': { # GDF
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'GDF_DEV',        #NOME DOP DATABASE
-        'USER': 'postgres',         #NOME DO USUARIO
-        'PASSWORD': 'PrcIT@2023',       #SENHA
-        'HOST': '10.0.1.19',         #HOST 
-        'PORT': '5432',                               
+        'NAME': 'GDF_DEV',          
+        'USER': 'postgres',         
+        'PASSWORD': 'PrcIT@2023',   
+        'HOST': '10.0.1.19',        
+        'PORT': '5432',             
+        'OPTIONS': {                
+            'options': '-c search_path=public'                               
+        }
+    },
+    'reprocessamento': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'REPROCESSAMENTO_DEV',
+        'USER': 'postgres',
+        'PASSWORD': 'PrcIT@2023',
+        'HOST': '10.0.1.19',
+        'PORT': '5432',
+        'OPTIONS': {                
+            'options': '-c search_path=public'                               
+        }
     }                                    
 }
 
+DATABASE_ROUTERS = [
+    'GDF_PJT.routers.GDFRouter',
+    'GDF_PJT.routers.ReprocessamentoRouter',
+]
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
 
@@ -136,3 +154,4 @@ STATICFILES_DIRS = [
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+

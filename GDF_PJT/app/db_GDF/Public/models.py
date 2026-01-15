@@ -1,17 +1,10 @@
 from django.db import models
 
-class SiteImagem(models.Model):
-    id = models.BigAutoField(primary_key=True)
-    imagem = models.CharField(max_length=100)
-    class Meta:
-        managed = False
-        db_table = 'Site_imagem'
-
 class AuthGroup(models.Model):
     name = models.CharField(unique=True, max_length=150)
     class Meta:
         managed = False
-        db_table = 'auth_group'
+        db_table = 'public"."auth_group'
 
 class AuthGroupPermissions(models.Model):
     id = models.BigAutoField(primary_key=True)
@@ -19,7 +12,7 @@ class AuthGroupPermissions(models.Model):
     permission = models.ForeignKey('AuthPermission', models.DO_NOTHING)
     class Meta:
         managed = False
-        db_table = 'auth_group_permissions'
+        db_table = 'public"."auth_group_permissions'
         unique_together = (('group', 'permission'),)
 
 class AuthPermission(models.Model):
@@ -28,7 +21,7 @@ class AuthPermission(models.Model):
     codename = models.CharField(max_length=100)
     class Meta:
         managed = False
-        db_table = 'auth_permission'
+        db_table = 'public"."auth_permission'
         unique_together = (('content_type', 'codename'),)
 
 class AuthUser(models.Model):
@@ -44,7 +37,7 @@ class AuthUser(models.Model):
     date_joined = models.DateTimeField()
     class Meta:
         managed = False
-        db_table = 'auth_user'
+        db_table = 'public"."auth_user'
 
 class AuthUserGroups(models.Model):
     id = models.BigAutoField(primary_key=True)
@@ -52,7 +45,7 @@ class AuthUserGroups(models.Model):
     group = models.ForeignKey(AuthGroup, models.DO_NOTHING)
     class Meta:
         managed = False
-        db_table = 'auth_user_groups'
+        db_table = 'public"."auth_user_groups'
         unique_together = (('user', 'group'),)
 
 class AuthUserUserPermissions(models.Model):
@@ -61,7 +54,7 @@ class AuthUserUserPermissions(models.Model):
     permission = models.ForeignKey(AuthPermission, models.DO_NOTHING)
     class Meta:
         managed = False
-        db_table = 'auth_user_user_permissions'
+        db_table = 'public"."auth_user_user_permissions'
         unique_together = (('user', 'permission'),)
 
 class Cert(models.Model):
@@ -75,7 +68,7 @@ class Cert(models.Model):
     arquivo_cert = models.BinaryField(blank=True, null=True)
     class Meta:
         managed = False
-        db_table = 'cert'
+        db_table = 'public"."cert'
 
 class Clientes(models.Model):
     cod_cliente = models.CharField(primary_key=True, max_length=10)
@@ -85,7 +78,7 @@ class Clientes(models.Model):
     date_joined = models.DateTimeField()
     class Meta:
         managed = False
-        db_table = 'clientes'
+        db_table = 'public"."clientes'
 
 class DjangoAdminLog(models.Model):
     action_time = models.DateTimeField()
@@ -97,14 +90,14 @@ class DjangoAdminLog(models.Model):
     user = models.ForeignKey(AuthUser, models.DO_NOTHING)
     class Meta:
         managed = False
-        db_table = 'django_admin_log'
+        db_table = 'public"."django_admin_log'
 
 class DjangoContentType(models.Model):
     app_label = models.CharField(max_length=100)
     model = models.CharField(max_length=100)
     class Meta:
         managed = False
-        db_table = 'django_content_type'
+        db_table = 'public"."django_content_type'
         unique_together = (('app_label', 'model'),)
 
 class DjangoMigrations(models.Model):
@@ -114,7 +107,7 @@ class DjangoMigrations(models.Model):
     applied = models.DateTimeField()
     class Meta:
         managed = False
-        db_table = 'django_migrations'
+        db_table = 'public"."django_migrations'
 
 class DjangoSession(models.Model):
     session_key = models.CharField(primary_key=True, max_length=40)
@@ -122,7 +115,7 @@ class DjangoSession(models.Model):
     expire_date = models.DateTimeField()
     class Meta:
         managed = False
-        db_table = 'django_session'
+        db_table = 'public"."django_session'
 
 class Empresas(models.Model):
     cod_empresa = models.CharField(primary_key=True, max_length=10)
@@ -144,25 +137,7 @@ class Empresas(models.Model):
     cliente = models.ForeignKey(Clientes, models.DO_NOTHING, blank=True, null=True)
     class Meta:
         managed = False
-        db_table = 'empresas'
-
-class Enderecos(models.Model):
-    cod_empresa = models.IntegerField(blank=True, null=True)
-    seq = models.IntegerField(blank=True, null=True)
-    endereco = models.CharField(max_length=70, blank=True, null=True)
-    numero = models.CharField(max_length=10, blank=True, null=True)
-    complemento = models.CharField(max_length=20, blank=True, null=True)
-    cep = models.CharField(max_length=8, blank=True, null=True)
-    bairro = models.CharField(max_length=40, blank=True, null=True)
-    cod_municipio = models.IntegerField(blank=True, null=True)
-    uf = models.IntegerField(blank=True, null=True)
-    telefone = models.CharField(max_length=13, blank=True, null=True)
-    email = models.CharField(max_length=60, blank=True, null=True)
-    ie = models.CharField(max_length=18, blank=True, null=True)
-    im = models.CharField(max_length=18, blank=True, null=True)
-    class Meta:
-        managed = False
-        db_table = 'enderecos'
+        db_table = 'public"."empresas'
 
 class GrpEmpresas(models.Model):
     grp_empresa = models.CharField(primary_key=True, max_length=5)
@@ -170,7 +145,7 @@ class GrpEmpresas(models.Model):
     cliente = models.ForeignKey(Clientes, models.DO_NOTHING, blank=True, null=True)
     class Meta:
         managed = False
-        db_table = 'grp_empresas'
+        db_table = 'public"."grp_empresas'
 
 class GrupoCliente(models.Model):
     id = models.BigAutoField(primary_key=True)
@@ -178,22 +153,14 @@ class GrupoCliente(models.Model):
     cliente = models.ForeignKey(Clientes, models.DO_NOTHING, blank=True, null=True)
     class Meta:
         managed = False
-        db_table = 'grupo_cliente'
-
-class Municipios(models.Model):
-    cod_municipio = models.CharField(primary_key=True, max_length=7)
-    municipio = models.CharField(max_length=35, blank=True, null=True)
-    uf = models.ForeignKey('Uf', models.DO_NOTHING, db_column='uf', blank=True, null=True)
-    class Meta:
-        managed = False
-        db_table = 'municipios'
+        db_table = 'public"."grupo_cliente'
 
 class Solucoes(models.Model):
     cod_solucoes = models.CharField(primary_key=True, max_length=15)
     descricao = models.CharField(max_length=50, blank=True, null=True)
     class Meta:
         managed = False
-        db_table = 'solucoes'
+        db_table = 'public"."solucoes'
 
 class SolucoesAcesso(models.Model):
     id = models.BigAutoField(primary_key=True)
@@ -202,7 +169,7 @@ class SolucoesAcesso(models.Model):
     is_active = models.BooleanField(blank=True, null=True)
     class Meta:
         managed = False
-        db_table = 'solucoes_acesso'
+        db_table = 'public"."solucoes_acesso'
 
 class Subsolucoes(models.Model):
     id = models.BigAutoField(primary_key=True)
@@ -211,7 +178,7 @@ class Subsolucoes(models.Model):
     solucoes = models.ForeignKey(Solucoes, models.DO_NOTHING, blank=True, null=True)
     class Meta:
         managed = False
-        db_table = 'subsolucoes'
+        db_table = 'public"."subsolucoes'
 
 class SubsolucoesAcesso(models.Model):
     id = models.BigAutoField(primary_key=True)
@@ -219,15 +186,7 @@ class SubsolucoesAcesso(models.Model):
     subsolucoes = models.ForeignKey(Subsolucoes, models.DO_NOTHING, blank=True, null=True)
     class Meta:
         managed = False
-        db_table = 'subsolucoes_acesso'
-
-class Uf(models.Model):
-    uf = models.CharField(primary_key=True, max_length=2)
-    cod_ibge = models.CharField(max_length=2, blank=True, null=True)
-    nome = models.CharField(max_length=20, blank=True, null=True)
-    class Meta:
-        managed = False
-        db_table = 'uf'
+        db_table = 'public"."subsolucoes_acesso'
 
 class UserEmpresas(models.Model):
     id = models.BigAutoField(primary_key=True)
@@ -235,20 +194,6 @@ class UserEmpresas(models.Model):
     user = models.ForeignKey(AuthUser, models.DO_NOTHING)
     class Meta:
         managed = False
-        db_table = 'user_empresas'
+        db_table = 'public"."user_empresas'
         unique_together = (('empresas', 'user'),)
 
-class Usuario(models.Model):
-    pk = models.CompositePrimaryKey('cod_empresa', 'usuario')
-    cod_empresa = models.IntegerField()
-    usuario = models.IntegerField()
-    senha = models.CharField(max_length=20, blank=True, null=True)
-    nome = models.CharField(max_length=60, blank=True, null=True)
-    email = models.CharField(max_length=60, blank=True, null=True)
-    ativo = models.BooleanField(blank=True, null=True)
-    admin = models.BooleanField(blank=True, null=True)
-    data_cadastro = models.DateTimeField(blank=True, null=True)
-    class Meta:
-        managed = False
-        db_table = 'usuario'
-        db_table_comment = 'Tabela de Usußrios do sistema GDF'

@@ -1,27 +1,18 @@
-#from django.contrib.auth.models     import User, Group
 from django.db.models               import Prefetch
 from django.utils.timezone          import now
 from psycopg2                       import IntegrityError
 from django.conf                    import settings
-from app.models                     import AuthUser, Empresas, Clientes, Cert
-from app.models                     import AuthGroup, AuthUserGroups, GrupoCliente, GrpEmpresas 
-from app.models                     import Solucoes, Subsolucoes, SolucoesAcesso, SubsolucoesAcesso
+from app.db_GDF.Public.models       import AuthUser, Empresas, Clientes, Cert, UserEmpresas
+from app.db_GDF.Public.models       import AuthGroup, AuthUserGroups, GrupoCliente, GrpEmpresas 
+from app.db_GDF.Public.models       import Solucoes, Subsolucoes, SolucoesAcesso, SubsolucoesAcesso
 from datetime                       import datetime
 from django.db.utils                import OperationalError
 from django.contrib.auth.hashers    import make_password
-import os
-import json
+from datetime                       import timedelta
+from django.utils                   import timezone
+import jwt
 
-class cl_Gdf():
-    #log_codes_path = os.path.join(
-    #os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    #    'json',
-    #    'log_codes.json'
-    #)
-    
-    #with open(log_codes_path, encoding='utf-8') as f:
-    #    log_codes = json.load(f)
-    
+class Cl_Gdf():
     def __init__(self):
         self.q_user             = None
         self.q_cleinte          = None
@@ -32,6 +23,23 @@ class cl_Gdf():
         self.q_solucaoAcesso    = None
         self.Retorn             = []
 
+
+#--------------------------------------------------------------------------------
+#           Gerar - Token JWT (Dashboard) 
+#--------------------------------------------------------------------------------
+    def Gerar_token(request, user): 
+        if not user.is_active:
+            return None 
+        else:
+            payload = {
+                "user_id": user.id,
+                "username": user.username,
+                "iat": timezone.now(),
+                "exp": timezone.now() + timedelta(minutes=30),
+            }
+
+            return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+        
 #********************************************************************************
 #--------------------------------------------------------------------------------
 #           GET - consultas
@@ -93,9 +101,6 @@ class cl_Gdf():
         except Exception as e:
             #self._registrar_log(type='E', id='E000', msg=f"Erro: {str(e)}")
             print(str(e))
-#--------------------------------------------------------------------------------
-#           Gerar - Token JWT (Dashboard) 
-#--------------------------------------------------------------------------------
 
 #--------------------------------------------------------------------------------
 #           GET - Soluções e Subsoluções
@@ -169,88 +174,96 @@ class cl_Gdf():
     def get_usuarios(self):
         self.Retorn = []
         try:
-            usuarios_data  = []
-            empresa_data   = []
-            grpacesso_data = []
-
             if not self.q_cleinte:
                 self._registrar_log(type='E', id='E001', Values='Cliente')
                 return [], [], []
 
-            # Buscar todas as empresas vinculadas aos clientes acessíveis
-            q_empresas = Empresas.objects.filter(cliente=self.q_cleinte).distinct()
-            empresas_ids = list(q_empresas.values_list('cod_empresa', flat=True))
+            # -------------------------------------------------
+            # Empresas do cliente (para tabela e modal)
+            # -------------------------------------------------
+            empresas_qs = Empresas.objects.filter(
+                cliente=self.q_cleinte
+            ).distinct()
 
-            # Filtra usuários vinculados às empresas
-            user_ids = Empresas.user.through.objects.filter(
-                empresas_id__in=empresas_ids
-             ).values_list('user_id', flat=True)
+            # -------------------------------------------------
+            # Usuários vinculados às empresas do cliente
+            # -------------------------------------------------
+            user_ids = UserEmpresas.objects.filter(
+                empresas__in=empresas_qs
+            ).values_list('user_id', flat=True)
 
-            usuarios = AuthUser.objects.filter(id__in=user_ids).distinct()
+            usuarios_qs = AuthUser.objects.filter(
+                id__in=user_ids
+            ).distinct()
 
-            # Pega o primeiro cod_empresa por usuário
-            user_emp_map = {}
-            vinculos = Empresas.user.through.objects.filter(
-                empresas_id__in=empresas_ids,
-                user_id__in=usuarios.values_list('id', flat=True)
-            )
-            
-            # Mapeia nome dos grupos
-            grupo_map = {g.id: g.name for g in AuthGroup.objects.all()}
+            # -------------------------------------------------
+            # Empresa de referência do usuário (primeiro vínculo)
+            # -------------------------------------------------
+            user_empresa_map = {}
 
-            # Mapeia os grupos dos usuários
-            user_group_map = {}
-            user_grupos = AuthUserGroups.objects.filter(user_id__in=user_ids)
-            for ug in user_grupos:
-                nome_grupo = grupo_map.get(ug.group_id)
-                if nome_grupo:
-                    user_group_map.setdefault(ug.user_id, []).append(nome_grupo)
+            vinculos = UserEmpresas.objects.filter(
+                empresas__in=empresas_qs,
+                user__in=usuarios_qs
+            ).select_related('empresas')
 
             for v in vinculos:
-                if v.user_id not in user_emp_map:
-                    user_emp_map[v.user_id] = v.empresas_id  # primeiro cod_empresa
+                # pega a primeira empresa encontrada por usuário
+                user_empresa_map.setdefault(
+                    v.user_id,
+                    v.empresas.cod_empresa
+                )
 
-            for usuario in usuarios:
-                user_dict = {
-                    "id": usuario.id,
-                    "username": usuario.username,
-                    "first_name": usuario.first_name,
-                    "last_name": usuario.last_name,
-                    "email": usuario.email,
-                    "is_active": usuario.is_active,
-                    "date_joined": usuario.date_joined,
-                    "empresa_id": user_emp_map.get(usuario.id),
-                }
+            # -------------------------------------------------
+            # Grupos dos usuários
+            # -------------------------------------------------
+            grupo_map = {
+                g.id: g.name
+                for g in AuthGroup.objects.all()
+            }
 
-                # Adiciona grupos somente se houver
-                grupos_usuario = user_group_map.get(usuario.id)
-                if grupos_usuario:
-                    user_dict["groups"] = grupos_usuario
-                    
+            user_group_map = {}
 
-                usuarios_data.append(user_dict)
-            
-            # Buscar todas empresas vinculadas ao cliente
-            empresa_data = Empresas.objects.filter(cliente=self.q_cleinte).distinct()
-            
-            # Buscar grupos de acesso vinculados aos usuários
-            grpacesso_data = GrupoCliente.objects.filter(cliente=self.q_cleinte).distinct()
-        
-        except Empresas.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
-            return [], [], []
-        except AuthGroup.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
-            return [], [], []
-        except AuthUser.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
-            return [], [], []
+            grupos_user = AuthUserGroups.objects.filter(
+                user_id__in=user_ids
+            )
+
+            for ug in grupos_user:
+                nome = grupo_map.get(ug.group_id)
+                if nome:
+                    user_group_map.setdefault(
+                        ug.user_id, []
+                    ).append(nome)
+
+            # -------------------------------------------------
+            # Montagem da tabela de usuários
+            # -------------------------------------------------
+            usuarios_data = []
+
+            for u in usuarios_qs:
+                usuarios_data.append({
+                    "id": u.id,
+                    "username": u.username,
+                    "first_name": u.first_name,
+                    "last_name": u.last_name,
+                    "email": u.email,
+                    "is_active": u.is_active,
+                    "date_joined": u.date_joined,
+                    "empresa_id": user_empresa_map.get(u.id),
+                    "groups": user_group_map.get(u.id, []),
+                })
+
+            # -------------------------------------------------
+            # Grupos disponíveis do cliente (modal)
+            # -------------------------------------------------
+            grupos_cliente = GrupoCliente.objects.filter(
+                cliente=self.q_cleinte
+            ).distinct()
+
+            return usuarios_data, empresas_qs, grupos_cliente
+
         except Exception as e:
-            self._registrar_log(type='E', id='E000')
+            self._registrar_log(type='E', id='E000', msg=str(e))
             return [], [], []
-        
-        return usuarios_data, empresa_data, grpacesso_data
-
 #--------------------------------------------------------------------------------
 #           GET - Empresas
 #--------------------------------------------------------------------------------
