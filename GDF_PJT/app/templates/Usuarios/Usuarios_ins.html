@@ -1,86 +1,69 @@
-<div class="modal fade" id="myModal_ins" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+<div class="modal fade" id="modalUsuarioIns" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
-
-      <div class="modal-header">
-        <h5 class="modal-title">Cadastro de Usuário</h5>
-        <button type="button" class="btn-close" onclick="closeModal()"></button>
-      </div>
 
       <form method="POST" action="{% url 'usuario_ins' %}">
         {% csrf_token %}
 
+        <div class="modal-header">
+          <h5 class="modal-title">Cadastrar Usuário</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
         <div class="modal-body">
 
-          <input type="hidden" id="m_raiz" name="m_raiz">
+          {% for message in messages %}
+            {% if message.extra_tags == 'MODAL_INS' %}
+              <div class="alert alert-warning">{{ message }}</div>
+            {% endif %}
+          {% endfor %}
 
           <div class="row g-3">
 
             <div class="col-md-6">
-              <label class="form-label">Empresa</label>
-              <select id="m_codempresa" name="m_codempresa" class="form-select" required>
-                <option value="" disabled selected>Selecione</option>
-                {% for codemp in t_empresa_id %}
-                  <option value="{{ codemp.cod_empresa }}">{{ codemp.cod_empresa }}</option>
-                {% endfor %}
-              </select>
-            </div>
-
-            <div class="col-md-6">
-              <label class="form-label">Nível de Acesso</label>
-              <select id="m_grpacesso" name="m_grpacesso" class="form-select" required>
-                <option value="" disabled selected>Selecione</option>
-                {% for grp in t_grpacesso %}
-                  <option value="{{ grp.Group_id }}">{{ grp.Group.name }}</option>
-                {% endfor %}
-              </select>
-            </div>
-
-            <div class="col-md-6">
               <label class="form-label">Usuário</label>
-              <input type="text" id="m_nome" name="m_nome" class="form-control" required>
-            </div>
-
-            <div class="col-md-6">
-              <label class="form-label">Primeiro Nome</label>
-              <input type="text" id="m_firstname" name="m_firstname" class="form-control" required>
-            </div>
-
-            <div class="col-md-6">
-              <label class="form-label">Sobrenome</label>
-              <input type="text" id="m_lastname" name="m_lastname" class="form-control" required>
+              <input name="username" class="form-control" required>
             </div>
 
             <div class="col-md-6">
               <label class="form-label">E-mail</label>
-              <input type="email" id="m_email" name="m_email" class="form-control" required>
+              <input type="email" name="email" class="form-control" required>
             </div>
 
             <div class="col-md-6">
               <label class="form-label">Senha</label>
-              <input type="password" id="m_senha" name="m_senha" class="form-control" required>
+              <input type="password" name="password" class="form-control" required>
             </div>
 
             <div class="col-md-6">
               <label class="form-label">Confirmar Senha</label>
-              <input type="password" id="m_confsenha" name="m_confsenha" class="form-control" required>
+              <input type="password" name="password2" class="form-control" required>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Primeiro Nome</label>
+              <input name="first_name" class="form-control">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Sobrenome</label>
+              <input name="last_name" class="form-control">
             </div>
 
           </div>
-
-          {% for message in messages %}
-            {% if message.extra_tags == 'MODAL_INS' %}
-              <div class="alert alert-danger mt-3">{{ message }}</div>
-            {% endif %}
-          {% endfor %}
-
         </div>
 
         <div class="modal-footer">
-          <button type="submit" class="btn btn-success">Cadastrar</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            Cancelar
+          </button>
+          <button type="submit" class="btn btn-success">
+            Salvar
+          </button>
         </div>
 
       </form>
+
     </div>
   </div>
 </div>

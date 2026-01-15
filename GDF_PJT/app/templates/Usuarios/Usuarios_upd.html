@@ -1,22 +1,23 @@
-<div class="modal fade" id="myModal_upd" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="modalUsuarioUpd" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
 
       <div class="modal-header">
         <h5 class="modal-title">Editar Usuário</h5>
-        <button type="button" class="btn-close" onclick="closeModal()"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
       <div class="modal-body">
 
-        <ul class="nav nav-tabs mb-3">
+        <!-- TABS -->
+        <ul class="nav nav-tabs mb-3" role="tablist">
           <li class="nav-item">
-            <button class="nav-link active tab-btn" onclick="openTab(this,'tab-User')">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#upd-user">
               Usuário
             </button>
           </li>
           <li class="nav-item">
-            <button class="nav-link tab-btn" onclick="openTab(this,'tab-Grupoacesso')">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#upd-grupo">
               Grupo de Acesso
             </button>
           </li>
@@ -28,88 +29,101 @@
           {% endif %}
         {% endfor %}
 
-        <!-- TAB USUÁRIO -->
-        <div id="tab-User" class="tab-content active-tab">
-          <form method="POST" action="{% url 'usuario_upd' %}">
-            {% csrf_token %}
-            <input type="hidden" id="m_user_id" name="m_user_id">
+        <div class="tab-content">
 
-            <div class="row g-3">
+          <!-- TAB USUÁRIO -->
+          <div class="tab-pane fade show active" id="upd-user">
 
-              <div class="col-md-6">
-                <label class="form-label">Usuário</label>
-                <input id="m_username" name="m_username" class="form-control">
+            <form method="POST" action="{% url 'usuario_upd' %}">
+              {% csrf_token %}
+              <input type="hidden" id="m_user_id" name="m_user_id">
+
+              <div class="row g-3">
+
+                <div class="col-md-6">
+                  <label class="form-label">Usuário</label>
+                  <input id="m_username" name="m_username" class="form-control">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">E-mail</label>
+                  <input id="m_email_upd" name="m_email_upd" class="form-control" readonly>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Nova Senha</label>
+                  <input type="password" id="m_senhanew" name="m_senhanew" class="form-control">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Confirmar Senha</label>
+                  <input type="password" id="m_confsenhanew" name="m_confsenhanew" class="form-control">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Primeiro Nome</label>
+                  <input id="m_first_name" name="m_first_name" class="form-control">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Sobrenome</label>
+                  <input id="m_last_name" name="m_last_name" class="form-control">
+                </div>
+
+                <div class="col-md-3">
+                  <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" id="m_active" name="m_active">
+                    <label class="form-check-label">Ativo</label>
+                  </div>
+                </div>
+
               </div>
 
-              <div class="col-md-6">
-                <label class="form-label">E-mail</label>
-                <input id="m_email_upd" name="m_email_upd" class="form-control" readonly>
+              <div class="modal-footer px-0 mt-3">
+                <button type="submit" class="btn btn-primary">
+                  Salvar Alterações
+                </button>
               </div>
 
-              <div class="col-md-6">
-                <label class="form-label">Nova Senha</label>
-                <input type="password" id="m_senhanew" name="m_senhanew" class="form-control">
+            </form>
+          </div>
+
+          <!-- TAB GRUPO -->
+          <div class="tab-pane fade" id="upd-grupo">
+
+            <form method="POST" action="{% url 'usuario_upd' %}" class="row g-3">
+              {% csrf_token %}
+              <input type="hidden" id="m_grpUserid" name="m_grpUserid">
+
+              <div class="col-md-8">
+                <select id="m_grupo" name="m_grupo" class="form-select">
+                  {% for grp in t_grpacesso %}
+                    <option value="{{ grp.Group_id }}">{{ grp.Group.name }}</option>
+                  {% endfor %}
+                </select>
               </div>
 
-              <div class="col-md-6">
-                <label class="form-label">Confirmar Senha</label>
-                <input type="password" id="m_confsenhanew" name="m_confsenhanew" class="form-control">
+              <div class="col-md-4">
+                <button class="btn btn-success w-100">Adicionar</button>
               </div>
+            </form>
 
-              <div class="col-md-6">
-                <label class="form-label">Primeiro Nome</label>
-                <input id="m_first_name" name="m_first_name" class="form-control">
-              </div>
+            <table class="table table-sm mt-3">
+              <thead>
+                <tr>
+                  <th>Grupo</th>
+                </tr>
+              </thead>
+              <tbody id="grupo-usuario-tbody">
+                <!-- preenchido via JS -->
+              </tbody>
+            </table>
 
-              <div class="col-md-6">
-                <label class="form-label">Sobrenome</label>
-                <input id="m_last_name" name="m_last_name" class="form-control" readonly>
-              </div>
+          </div>
 
-              <div class="col-md-3">
-                <label class="form-label">Ativo</label><br>
-                <input type="checkbox" id="m_active" name="m_active" class="form-check-input" disabled>
-              </div>
-
-            </div>
-
-            <div class="mt-4 d-flex gap-2">
-              <button id="save-btn" type="submit" class="btn btn-primary d-none">Salvar</button>
-              <button id="edit-btn" type="button" class="btn btn-warning" onclick="makeEditable()">Editar</button>
-              <button id="cancel-btn" type="button" class="btn btn-secondary d-none" onclick="cancelChanges()">Cancelar</button>
-            </div>
-
-          </form>
         </div>
-
-        <!-- TAB GRUPO -->
-        <div id="tab-Grupoacesso" class="tab-content">
-          <form method="POST" action="{% url 'userGroup_ins' %}" class="row g-3">
-            {% csrf_token %}
-            <input type="hidden" id="m_grpUserid" name="m_grpUserid">
-
-            <div class="col-md-8">
-              <select id="m_grupo" name="m_grupo" class="form-select">
-                {% for grp in t_grpacesso %}
-                  <option value="{{ grp.Group_id }}">{{ grp.Group.name }}</option>
-                {% endfor %}
-              </select>
-            </div>
-
-            <div class="col-md-4">
-              <button class="btn btn-success w-100">Adicionar</button>
-            </div>
-          </form>
-
-          <table class="table table-sm mt-3">
-            <thead>
-              <tr><th>Grupo</th></tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-
       </div>
+
     </div>
   </div>
 </div>

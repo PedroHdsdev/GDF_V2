@@ -10,23 +10,22 @@ from django.db.utils                import OperationalError
 from django.contrib.auth.hashers    import make_password
 from datetime                       import timedelta
 from django.utils                   import timezone
+from dataclasses                    import dataclass
+from typing                         import List, Dict
 import jwt
 
 class Cl_Gdf():
     def __init__(self):
-        self.q_user             = None
-        self.q_cleinte          = None
-        self.q_Empresas         = None
-        self.q_grpempresa       = None
-        self.q_Groups           = None
-        self.q_subAcesso        = None
-        self.q_solucaoAcesso    = None
-        self.Retorn             = []
-
+        self.Cliente: int = None
+        self.Empresas: List[Dict] = []
+        self.AuthGroups: List[str] = []
+        self.solucoes_acesso: List[Dict] = []
+        self.subsolucoes_acesso: List[Dict] = []
 
 #--------------------------------------------------------------------------------
 #           Gerar - Token JWT (Dashboard) 
 #--------------------------------------------------------------------------------
+    @staticmethod
     def Gerar_token(request, user): 
         if not user.is_active:
             return None 
@@ -50,56 +49,39 @@ class Cl_Gdf():
     def get_dados(self, I_User):
         self.Retorn = []
         try:
-            self.q_user = AuthUser.objects.get(id=I_User.id, username=I_User.username, is_active=True)
-            
+            Q_user = AuthUser.objects.filter(id=I_User.id).first()
+
             # Empresas do usuário
-            self.q_Empresas = Empresas.objects.filter(
-                userempresas__user=self.q_user
+            self.Empresas = Empresas.objects.filter(
+                userempresas__user=Q_user
             ).distinct()
             
             # Grupos do usuário
-            self.q_Groups = AuthGroup.objects.filter(
-                authusergroups__user=self.q_user
+            self.AuthGroups = AuthGroup.objects.filter(
+                authusergroups__user=Q_user
             )
 
             # Cliente associado às empresas do usuário
-            self.q_cleinte = Clientes.objects.filter(
-                empresas__in=self.q_Empresas
+            self.Cliente = Clientes.objects.filter(
+                empresas__in=self.Empresas
             ).distinct().first()
 
             # Soluções liberadas para o cliente
             self.solucoes_acesso = SolucoesAcesso.objects.filter(
-                clientess=self.q_cleinte,
+                clientess=self.Cliente,
                 is_active=True
             ).select_related('solucoes')
             print(self.solucoes_acesso)
 
             # Subsoluções liberadas via grupo
             self.subsolucoes_acesso = SubsolucoesAcesso.objects.filter(
-                group__in=self.q_Groups
+                group__in=self.AuthGroups
             ).select_related('subsolucoes')
             print(self.subsolucoes_acesso)
         
-        except Empresas.DoesNotExist as e:
-            #self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
-            print(str(e))
-        except Clientes.DoesNotExist as e:
-            #self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
-            print(str(e))
-        except GrpEmpresas.DoesNotExist as e:
-            #self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
-            print(str(e))
-        except SolucoesAcesso.DoesNotExist as e:
-            #self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
-            print(str(e))
-        except SubsolucoesAcesso.DoesNotExist as e:
-            #self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
-            print(str(e))
         except OperationalError as e:
-            #self._registrar_log(type='E', id='E002', msg=f"Erro: {str(e)}")
             print(str(e))
         except Exception as e:
-            #self._registrar_log(type='E', id='E000', msg=f"Erro: {str(e)}")
             print(str(e))
 
 #--------------------------------------------------------------------------------
@@ -159,37 +141,36 @@ class Cl_Gdf():
             return solucoes_data
 
         except AttributeError as e:
-            #self._registrar_log(type='E', id='E002', msg=f"Erro: {str(e)}")
+            print(str(e))
             return []
         except OperationalError as e:
-            #self._registrar_log(type='E', id='E003', msg=f"Erro: {str(e)}")
+            print(str(e))
             return []
         except Exception as e:
-            #self._registrar_log(type='E', id='E000')
+            print(str(e))
             return []
 
 #--------------------------------------------------------------------------------
 #           GET - Usuarios
 #--------------------------------------------------------------------------------
-    def get_usuarios(self):
-        self.Retorn = []
+    def get_usuarios(self, i_cod_Cliente=None):
         try:
-            if not self.q_cleinte:
+            if not i_cod_Cliente:
                 self._registrar_log(type='E', id='E001', Values='Cliente')
                 return [], [], []
 
             # -------------------------------------------------
             # Empresas do cliente (para tabela e modal)
             # -------------------------------------------------
-            empresas_qs = Empresas.objects.filter(
-                cliente=self.q_cleinte
+            empresas_data = Empresas.objects.filter(
+                cliente_id=i_cod_Cliente
             ).distinct()
 
             # -------------------------------------------------
             # Usuários vinculados às empresas do cliente
             # -------------------------------------------------
             user_ids = UserEmpresas.objects.filter(
-                empresas__in=empresas_qs
+                empresas__in=empresas_data
             ).values_list('user_id', flat=True)
 
             usuarios_qs = AuthUser.objects.filter(
@@ -202,7 +183,7 @@ class Cl_Gdf():
             user_empresa_map = {}
 
             vinculos = UserEmpresas.objects.filter(
-                empresas__in=empresas_qs,
+                empresas__in=empresas_data,
                 user__in=usuarios_qs
             ).select_related('empresas')
 
@@ -255,15 +236,16 @@ class Cl_Gdf():
             # -------------------------------------------------
             # Grupos disponíveis do cliente (modal)
             # -------------------------------------------------
-            grupos_cliente = GrupoCliente.objects.filter(
-                cliente=self.q_cleinte
+            AuthGroups_data = GrupoCliente.objects.filter(
+                cliente_id=i_cod_Cliente
             ).distinct()
 
-            return usuarios_data, empresas_qs, grupos_cliente
+            return usuarios_data, empresas_data, AuthGroups_data
 
         except Exception as e:
-            self._registrar_log(type='E', id='E000', msg=str(e))
+            print(str(e))
             return [], [], []
+        
 #--------------------------------------------------------------------------------
 #           GET - Empresas
 #--------------------------------------------------------------------------------

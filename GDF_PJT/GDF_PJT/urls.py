@@ -21,18 +21,9 @@ urlpatterns = [
 #--------------------------------------------------------------------
     # modal path
 #--------------------------------------------------------------------
-
-    # modal path
+    # Usuarios
     path('usuario_ins/', views.Usuario_ins, name='usuario_ins'),
     path('usuario_upd/', views.Usuario_upd, name='usuario_upd'),
-    path('userGroup_ins/', views.UserGroup_ins, name='userGroup_ins'),
 
-    path('usuario_ins/', views.Usuario_ins, name='usuario_ins'),
-    path('usuario_upd/', views.Usuario_upd, name='usuario_upd'),
-    path('userGroup_ins/', views.UserGroup_ins, name='userGroup_ins'),
-
-    path('usuario_ins/', views.Usuario_ins, name='usuario_ins'),
-    path('usuario_upd/', views.Usuario_upd, name='usuario_upd'),
-    path('userGroup_ins/', views.UserGroup_ins, name='userGroup_ins'),
     path('',views.Login_view),
 ]

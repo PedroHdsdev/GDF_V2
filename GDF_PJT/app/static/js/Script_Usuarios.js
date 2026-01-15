@@ -1,133 +1,117 @@
-/* ===============================
-   UTIL
-================================ */
-async function fetchJSON(url) {
-  const resp = await fetch(url, {
-    headers: { "X-Requested-With": "XMLHttpRequest" }
-  });
-  if (!resp.ok) throw new Error("Erro ao buscar dados");
-  return await resp.json();
+// ================================
+// Dados vindos do Django
+// ================================
+const USERS = JSON.parse(
+  document.getElementById("user-data").textContent
+);
+
+// ================================
+// Bootstrap Modals
+// ================================
+const modalInsEl = document.getElementById("modalUsuarioIns");
+const modalUpdEl = document.getElementById("modalUsuarioUpd");
+
+const modalIns = modalInsEl ? new bootstrap.Modal(modalInsEl) : null;
+const modalUpd = modalUpdEl ? new bootstrap.Modal(modalUpdEl) : null;
+
+// ================================
+// Abrir modal INS
+// ================================
+function openModal_ins() {
+  if (modalIns) modalIns.show();
 }
 
-/* ===============================
-   MODAIS
-================================ */
-let modalIns, modalUpd;
+// ================================
+// Clique na linha da tabela
+// ================================
+function handleUserClick(userId) {
+  const user = USERS.find(u => String(u.id) === String(userId));
+  if (!user) {
+    alert("Usuário não encontrado.");
+    return;
+  }
+  fillUserModal(user);
+  modalUpd.show();
+}
 
+// ================================
+// Preencher modal de edição
+// ================================
+function fillUserModal(user) {
+
+  // Campos hidden
+  document.getElementById("m_user_id").value = user.id;
+  document.getElementById("m_grpUserid").value = user.id;
+
+  // Dados principais
+  setValue("m_username", user.username);
+  setValue("m_first_name", user.first_name);
+  setValue("m_last_name", user.last_name);
+  setValue("m_email_upd", user.email);
+
+  // Ativo
+  document.getElementById("m_active").checked = !!user.is_active;
+
+  // Limpa senha
+  setValue("m_senhanew", "");
+  setValue("m_confsenhanew", "");
+
+  // Grupos
+  renderUserGroups(user.groups || []);
+}
+
+// ================================
+// Renderizar grupos do usuário
+// ================================
+function renderUserGroups(groups) {
+  const tbody = document.getElementById("grupo-usuario-tbody");
+  tbody.innerHTML = "";
+
+  if (!groups.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td class="text-muted">Nenhum grupo atribuído</td>
+      </tr>
+    `;
+    return;
+  }
+
+  groups.forEach(grp => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="d-flex justify-content-between align-items-center">
+        ${grp}
+        <form method="POST" action="/userGroup_dlt/">
+          <input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}">
+          <input type="hidden" name="m_grpUser_id" value="${document.getElementById("m_user_id").value}">
+          <input type="hidden" name="m_name_grp" value="${grp}">
+          <button class="btn btn-sm btn-outline-danger">
+            Remover
+          </button>
+        </form>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ================================
+// Helpers
+// ================================
+function setValue(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.value = value ?? "";
+}
+
+// ================================
+// Reabrir modal via messages (Django)
+// ================================
 document.addEventListener("DOMContentLoaded", () => {
-  const insEl = document.getElementById("modalUsuarioIns");
-  const updEl = document.getElementById("modalUsuarioUpd");
+  if (!modalUpdId) return;
 
-  if (insEl) modalIns = new bootstrap.Modal(insEl);
-  if (updEl) modalUpd = new bootstrap.Modal(updEl);
-
-  if (modalUpdId) {
-    carregarUsuario(modalUpdId);
-  }
-});
-
-/* ===============================
-   ABRIR MODAL INS
-================================ */
-async function openModal_ins() {
-  try {
-    const data = await fetchJSON("/usuario_ins/?ajax=1");
-
-    preencherEmpresas("empresaSelectIns", data.empresas);
-    preencherGrupos("grupoSelectIns", data.grupos);
-
-    modalIns.show();
-  } catch (e) {
-    alert("Erro ao carregar dados do formulário");
-  }
-}
-
-/* ===============================
-   CLICK NA LINHA DA TABELA
-================================ */
-async function handleUserClick(userId) {
-  try {
-    const data = await fetchJSON(`/usuario_upd/?user_id=${userId}&ajax=1`);
-
-    document.getElementById("upd_user_id").value = data.id;
-    document.getElementById("upd_username").value = data.username;
-    document.getElementById("upd_email").value = data.email;
-    document.getElementById("upd_active").checked = data.is_active;
-
-    preencherEmpresas("empresaSelectUpd", data.empresas, data.empresa_id);
-    preencherGrupos("grupoSelectUpd", data.grupos, data.grupos_usuario);
-
+  const user = USERS.find(u => String(u.id) === String(modalUpdId));
+  if (user) {
+    fillUserModal(user);
     modalUpd.show();
-  } catch (e) {
-    alert("Erro ao carregar usuário");
   }
-}
-
-/* ===============================
-   PREENCHER SELECTS
-================================ */
-function preencherEmpresas(selectId, empresas, selected = null) {
-  const sel = document.getElementById(selectId);
-  sel.innerHTML = "";
-
-  empresas.forEach(e => {
-    const opt = document.createElement("option");
-    opt.value = e.cod_empresa;
-    opt.textContent = e.nome;
-    if (selected && selected === e.cod_empresa) opt.selected = true;
-    sel.appendChild(opt);
-  });
-}
-
-function preencherGrupos(selectId, grupos, selecionados = []) {
-  const sel = document.getElementById(selectId);
-  sel.innerHTML = "";
-
-  grupos.forEach(g => {
-    const opt = document.createElement("option");
-    opt.value = g.id;
-    opt.textContent = g.nome;
-    if (selecionados.includes(g.id)) opt.selected = true;
-    sel.appendChild(opt);
-  });
-}
-
-/* ===============================
-   SUBMIT CADASTRO
-================================ */
-document.getElementById("formUsuarioIns")?.addEventListener("submit", async e => {
-  e.preventDefault();
-
-  const form = e.target;
-  const resp = await fetch("/usuario_ins/", {
-    method: "POST",
-    headers: {
-      "X-CSRFToken": csrfToken
-    },
-    body: new FormData(form)
-  });
-
-  if (resp.ok) location.reload();
-  else alert("Erro ao cadastrar usuário");
-});
-
-/* ===============================
-   SUBMIT UPDATE
-================================ */
-document.getElementById("formUsuarioUpd")?.addEventListener("submit", async e => {
-  e.preventDefault();
-
-  const form = e.target;
-  const userId = document.getElementById("upd_user_id").value;
-
-  const resp = await fetch(`/usuario_upd/?user_id=${userId}`, {
-    method: "POST",
-    headers: {
-      "X-CSRFToken": csrfToken
-    },
-    body: new FormData(form)
-  });
-
-  if (resp.ok) location.reload();
-  else alert("Erro ao atualizar usuário");
 });

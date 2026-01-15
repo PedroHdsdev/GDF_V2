@@ -11,21 +11,22 @@ from pyexpat.errors import messages
 def Login_view(request):
     if request.method == "POST":
         Username = request.POST.get('Username')
-        password = request.POST.get('password')
+        password = request.POST.get('password') 
 
         user = authenticate(username=Username, password=password)
         
         if user is not None:
             login(request, user)
             ClPublic = Cl_Gdf()
-            #carregar dados do usuário
             ClPublic.get_dados(request.user) 
 
             if not ClPublic.Retorn:
                 #buscar solucoes que tem acessos 
                 solucoes = ClPublic.get_solucoes()
                 if solucoes:
-                    request.session['t_solucoes'] = solucoes
+                    request.session['t_solucoes']  = solucoes
+                    request.session['cod_cliente'] = ClPublic.Cliente.cod_cliente
+
                     return render(request, 'Index_Home.html')
                 else:
                     return render(request, 'Index_Login.html', {'error_message': 'Problema de Acesso.'})  
@@ -73,17 +74,31 @@ def Sair_View(request):
 @login_required(login_url='Login')
 def Dm_Usuarios_view(request):
     ClPublic = Cl_Gdf()
+    Cod_cliente = request.session.get('cod_cliente', None)
+
     # Busca de usuários com filtro
     Query = request.GET.get('Buscar', '').strip().lower()
 
-    t_User = ClPublic.get_usuarios(i_Query=Query)
 
-    if ClPublic.Retorn:
-        messages.error(
-            request,
-            ClPublic.Retorn[0] if ClPublic.Retorn else "Erro ao obter usuários."
-        )
-        return render(request, 'index_home.html')
+    t_User,t_Empresas,t_AuthGroups = ClPublic.get_usuarios(i_cod_Cliente=Cod_cliente)
+
+    if Query:
+        t_User = [
+            u for u in t_User
+            if Query in str(u.get('id', '')).lower()
+            or Query in str(u.get('username', '')).lower()
+            or Query in str(u.get('first_name', '')).lower()
+            or Query in str(u.get('last_name', '')).lower()
+            or Query in str(u.get('email', '')).lower()
+            or Query in str(u.get('empresa_id', '')).lower()
+        ]
+
+    #if ClPublic.Retorn:
+        #messages.error(
+        #    request,
+        #    ClPublic.Retorn[0] if ClPublic.Retorn else "Erro ao obter usuários."
+        #)
+        #return render(request, 'index_home.html')
 
     paginator = Paginator(t_User, 30)
     page_number = request.GET.get('page')
@@ -94,7 +109,9 @@ def Dm_Usuarios_view(request):
         'usuarios/Usuarios.html',
         {
             'page_obj': page_obj,        
-            't_user': t_User,            
+            't_user': t_User,
+            't_empresas': t_Empresas,
+            't_AuthGroup': t_AuthGroups,            
         }
     )
 
@@ -121,13 +138,20 @@ def Im_Projetos_view(request):
 #       Modais Views
 #--------------------------------------------------------------------
 def Usuario_ins(request):
-    return render(request, 'Index_Login.html')
+    if request.method == "POST":
+        # Processar os dados do formulário aqui
+        pass
+
+    return render(request, 'usuarios/Usuarios_ins.html')
 
 def Usuario_upd(request):
-    return render(request, 'Index_Login.html')
+    if request.method == "POST":
+        # Processar os dados do formulário aqui
+        pass
 
-def UserGroup_ins(request):
-    return render(request, 'Index_Login.html')
+    return render(request, 'usuarios/Usuarios_upd.html')
+
+
     
 #--------------------------------------------------------------------
 #       Sub-soluções Views (Dashboard)
