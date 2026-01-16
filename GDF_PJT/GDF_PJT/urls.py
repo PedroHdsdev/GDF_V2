@@ -22,8 +22,9 @@ urlpatterns = [
     # modal path
 #--------------------------------------------------------------------
     # Usuarios
-    path('usuario_ins/', views.Usuario_ins, name='usuario_ins'),
-    path('usuario_upd/', views.Usuario_upd, name='usuario_upd'),
+    path('usuario_ins/', views.Usuario_ins, name='Usuario_ins'),
+    path('usuario_upd/', views.Usuario_upd, name='Usuario_upd'),
+    #path('usuario_upd/<int:user_id>/', views.Usuario_upd, name='usuario_upd'),
 
     path('',views.Login_view),
 ]

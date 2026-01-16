@@ -1,7 +1,9 @@
-from django.shortcuts               import render
+from django.http import HttpResponseForbidden
+from django.shortcuts               import get_object_or_404, render
 from django.shortcuts               import render, redirect
 from django.contrib.auth            import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http   import require_http_methods
 from django.conf                    import settings
 from app.classes.Gdf                import Cl_Gdf
 from django.core.paginator          import Paginator
@@ -17,15 +19,15 @@ def Login_view(request):
         
         if user is not None:
             login(request, user)
-            ClPublic = Cl_Gdf()
-            ClPublic.get_dados(request.user) 
+            ClGdf = Cl_Gdf()
+            ClGdf.get_dados(request.user) 
 
-            if not ClPublic.Retorn:
+            if not ClGdf.Retorn:
                 #buscar solucoes que tem acessos 
-                solucoes = ClPublic.get_solucoes()
+                solucoes = ClGdf.get_solucoes()
                 if solucoes:
                     request.session['t_solucoes']  = solucoes
-                    request.session['cod_cliente'] = ClPublic.Cliente.cod_cliente
+                    request.session['cod_cliente'] = ClGdf.Cliente.cod_cliente
 
                     return render(request, 'Index_Home.html')
                 else:
@@ -73,14 +75,14 @@ def Sair_View(request):
 # Usuarios
 @login_required(login_url='Login')
 def Dm_Usuarios_view(request):
-    ClPublic = Cl_Gdf()
+    ClGdf = Cl_Gdf()
     Cod_cliente = request.session.get('cod_cliente', None)
 
     # Busca de usuários com filtro
     Query = request.GET.get('Buscar', '').strip().lower()
 
 
-    t_User,t_Empresas,t_AuthGroups = ClPublic.get_usuarios(i_cod_Cliente=Cod_cliente)
+    t_User,t_Empresas,t_AuthGroups = ClGdf.get_usuarios(i_cod_Cliente=Cod_cliente)
 
     if Query:
         t_User = [
@@ -93,13 +95,6 @@ def Dm_Usuarios_view(request):
             or Query in str(u.get('empresa_id', '')).lower()
         ]
 
-    #if ClPublic.Retorn:
-        #messages.error(
-        #    request,
-        #    ClPublic.Retorn[0] if ClPublic.Retorn else "Erro ao obter usuários."
-        #)
-        #return render(request, 'index_home.html')
-
     paginator = Paginator(t_User, 30)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
@@ -111,7 +106,7 @@ def Dm_Usuarios_view(request):
             'page_obj': page_obj,        
             't_user': t_User,
             't_empresas': t_Empresas,
-            't_AuthGroup': t_AuthGroups,            
+            't_AuthGroups': t_AuthGroups,            
         }
     )
 
@@ -137,20 +132,43 @@ def Im_Projetos_view(request):
 #--------------------------------------------------------------------
 #       Modais Views
 #--------------------------------------------------------------------
+@login_required
+@require_http_methods(["POST"])
 def Usuario_ins(request):
+    ClGdf = Cl_Gdf()
+    Cod_cliente = request.session.get('cod_cliente', None)
+
     if request.method == "POST":
-        # Processar os dados do formulário aqui
-        pass
+        username    = request.POST.get("username")
+        first_name  = request.POST.get("first_name")
+        last_name   = request.POST.get("last_name")
+        email       = request.POST.get("email")
+        password    = request.POST.get("password")
+        empresa_id  = request.POST.get("ls_empresas")
+        grupo_ids   = request.POST.getlist("ls_grupos")
 
-    return render(request, 'usuarios/Usuarios_ins.html')
 
+        ClGdf.ins_usuario(
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            password=password,
+            empresa_id=empresa_id,
+            grupo_ids=grupo_ids,
+            cod_cliente=Cod_cliente
+        )
+
+        return redirect('Dm_Usuarios')
+
+@login_required
+@require_http_methods(["GET", "POST"])
 def Usuario_upd(request):
-    if request.method == "POST":
-        # Processar os dados do formulário aqui
-        pass
-
-    return render(request, 'usuarios/Usuarios_upd.html')
-
+    if request.method == "GET":
+        return render(
+            request,
+            "usuarios/usuarios_upd.html"
+        )
 
     
 #--------------------------------------------------------------------

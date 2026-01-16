@@ -82,9 +82,6 @@ DATABASES = {
         'PASSWORD': 'PrcIT@2023',   
         'HOST': '10.0.1.19',        
         'PORT': '5432',             
-        'OPTIONS': {                
-            'options': '-c search_path=public'                               
-        }
     },
     'reprocessamento': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -93,9 +90,6 @@ DATABASES = {
         'PASSWORD': 'PrcIT@2023',
         'HOST': '10.0.1.19',
         'PORT': '5432',
-        'OPTIONS': {                
-            'options': '-c search_path=public'                               
-        }
     }                                    
 }
 
@@ -103,6 +97,7 @@ DATABASE_ROUTERS = [
     'GDF_PJT.routers.GDFRouter',
     'GDF_PJT.routers.ReprocessamentoRouter',
 ]
+
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
 

@@ -1,128 +1,95 @@
-<div class="modal fade" id="modalUsuarioUpd" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+<div class="modal fade" id="modalUsuarioUpd" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
 
-      <div class="modal-header">
-        <h5 class="modal-title">Editar Usuário</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
+      <form method="post" id="formUsuarioUpd">
+        {% csrf_token %}
+        <input type="hidden" name="user_id" id="upd_user_id">
 
-      <div class="modal-body">
+        <div class="modal-header">
+          <h5 class="modal-title">Editar Usuário</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
 
-        <!-- TABS -->
-        <ul class="nav nav-tabs mb-3" role="tablist">
-          <li class="nav-item">
-            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#upd-user">
-              Usuário
-            </button>
-          </li>
-          <li class="nav-item">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#upd-grupo">
-              Grupo de Acesso
-            </button>
-          </li>
-        </ul>
+        <div class="modal-body">
 
-        {% for message in messages %}
-          {% if message.extra_tags == 'MODAL_UPD' %}
-            <div class="alert alert-warning">{{ message }}</div>
-          {% endif %}
-        {% endfor %}
+          <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+              <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-upd-dados">
+                Dados
+              </button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-upd-empresas">
+                Empresas
+              </button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-upd-grupos">
+                Grupos
+              </button>
+            </li>
+          </ul>
 
-        <div class="tab-content">
+          <div class="tab-content">
 
-          <!-- TAB USUÁRIO -->
-          <div class="tab-pane fade show active" id="upd-user">
-
-            <form method="POST" action="{% url 'usuario_upd' %}">
-              {% csrf_token %}
-              <input type="hidden" id="m_user_id" name="m_user_id">
-
+            <!-- DADOS -->
+            <div class="tab-pane fade show active" id="tab-upd-dados">
               <div class="row g-3">
-
                 <div class="col-md-6">
                   <label class="form-label">Usuário</label>
-                  <input id="m_username" name="m_username" class="form-control">
+                  <input type="text" id="upd_username" class="form-control" readonly>
                 </div>
 
                 <div class="col-md-6">
                   <label class="form-label">E-mail</label>
-                  <input id="m_email_upd" name="m_email_upd" class="form-control" readonly>
+                  <input type="email" id="upd_email" class="form-control">
                 </div>
 
                 <div class="col-md-6">
-                  <label class="form-label">Nova Senha</label>
-                  <input type="password" id="m_senhanew" name="m_senhanew" class="form-control">
-                </div>
-
-                <div class="col-md-6">
-                  <label class="form-label">Confirmar Senha</label>
-                  <input type="password" id="m_confsenhanew" name="m_confsenhanew" class="form-control">
-                </div>
-
-                <div class="col-md-6">
-                  <label class="form-label">Primeiro Nome</label>
-                  <input id="m_first_name" name="m_first_name" class="form-control">
+                  <label class="form-label">Nome</label>
+                  <input type="text" id="upd_first_name" class="form-control">
                 </div>
 
                 <div class="col-md-6">
                   <label class="form-label">Sobrenome</label>
-                  <input id="m_last_name" name="m_last_name" class="form-control">
+                  <input type="text" id="upd_last_name" class="form-control">
                 </div>
 
-                <div class="col-md-3">
-                  <div class="form-check mt-4">
-                    <input class="form-check-input" type="checkbox" id="m_active" name="m_active">
-                    <label class="form-check-label">Ativo</label>
-                  </div>
+                <div class="form-check mt-3">
+                  <input class="form-check-input" type="checkbox" id="upd_is_active">
+                  <label class="form-check-label">Usuário ativo</label>
                 </div>
-
               </div>
+            </div>
 
-              <div class="modal-footer px-0 mt-3">
-                <button type="submit" class="btn btn-primary">
-                  Salvar Alterações
-                </button>
-              </div>
+            <!-- EMPRESAS -->
+            <div class="tab-pane fade" id="tab-upd-empresas">
+              <select id="upd_empresas" class="form-select" multiple size="8">
+                {% for emp in t_empresas %}
+                  <option value="{{ emp.id }}">{{ emp.nome }}</option>
+                {% endfor %}
+              </select>
+            </div>
 
-            </form>
-          </div>
-
-          <!-- TAB GRUPO -->
-          <div class="tab-pane fade" id="upd-grupo">
-
-            <form method="POST" action="{% url 'usuario_upd' %}" class="row g-3">
-              {% csrf_token %}
-              <input type="hidden" id="m_grpUserid" name="m_grpUserid">
-
-              <div class="col-md-8">
-                <select id="m_grupo" name="m_grupo" class="form-select">
-                  {% for grp in t_grpacesso %}
-                    <option value="{{ grp.Group_id }}">{{ grp.Group.name }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-
-              <div class="col-md-4">
-                <button class="btn btn-success w-100">Adicionar</button>
-              </div>
-            </form>
-
-            <table class="table table-sm mt-3">
-              <thead>
-                <tr>
-                  <th>Grupo</th>
-                </tr>
-              </thead>
-              <tbody id="grupo-usuario-tbody">
-                <!-- preenchido via JS -->
-              </tbody>
-            </table>
+            <!-- GRUPOS -->
+            <div class="tab-pane fade" id="tab-upd-grupos">
+              <select id="upd_grupos" class="form-select" multiple size="8">
+                {% for grp in t_AuthGroup %}
+                  <option value="{{ grp.id }}">{{ grp.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
 
           </div>
-
         </div>
-      </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar alterações</button>
+        </div>
+
+      </form>
 
     </div>
   </div>

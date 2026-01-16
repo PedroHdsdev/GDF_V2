@@ -58,7 +58,7 @@
             <td>{{ user.empresa_id }}</td>
             <td class="text-center">
               {% if user.is_active %}
-                <img src="{% static 'img/icon_correto2.png' %}" width="20">
+                <img src="{% static 'img/icon_ok.png' %}" width="20">
               {% else %}
                 <img src="{% static 'img/icon_x.png' %}" width="20">
               {% endif %}
@@ -120,9 +120,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-  const csrfToken = '{{ csrf_token }}';
-</script>
-
-<script src="{% static 'js/script_usuarios.js' %}"></script>
+<script src="{% static 'js/Script_Usuarios.js' %}"></script>
 {% endblock %}

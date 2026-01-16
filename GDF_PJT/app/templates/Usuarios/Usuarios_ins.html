@@ -1,8 +1,8 @@
-<div class="modal fade" id="modalUsuarioIns" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+<div class="modal fade" id="modalUsuarioIns" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
 
-      <form method="POST" action="{% url 'usuario_ins' %}">
+      <form method="post" action="{% url 'Usuario_ins' %}">
         {% csrf_token %}
 
         <div class="modal-header">
@@ -12,58 +12,83 @@
 
         <div class="modal-body">
 
-          {% for message in messages %}
-            {% if message.extra_tags == 'MODAL_INS' %}
-              <div class="alert alert-warning">{{ message }}</div>
-            {% endif %}
-          {% endfor %}
+          <!-- NAV TABS -->
+          <ul class="nav nav-tabs mb-3" role="tablist">
+            <li class="nav-item">
+              <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-ins-dados">
+                Dados do Usuário
+              </button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ins-permissoes">
+                Empresas & Grupos
+              </button>
+            </li>
+          </ul>
 
-          <div class="row g-3">
+          <div class="tab-content">
 
-            <div class="col-md-6">
-              <label class="form-label">Usuário</label>
-              <input name="username" class="form-control" required>
+            <!-- TAB 1 -->
+            <div class="tab-pane fade show active" id="tab-ins-dados">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label">Usuário</label>
+                  <input type="text" name="username" class="form-control" required>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">E-mail</label>
+                  <input type="email" name="email" class="form-control" required>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Nome</label>
+                  <input type="text" name="first_name" class="form-control">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Sobrenome</label>
+                  <input type="text" name="last_name" class="form-control">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Senha</label>
+                  <input type="password" name="password" class="form-control" required>
+                </div>
+              </div>
             </div>
 
-            <div class="col-md-6">
-              <label class="form-label">E-mail</label>
-              <input type="email" name="email" class="form-control" required>
-            </div>
+            <!-- TAB 2 -->
+            <div class="tab-pane fade" id="tab-ins-permissoes">
+              <div class="mb-3">
+                <label class="form-label">Empresa</label>
+                <select name="ls_empresas" class="form-select" required>
+                  <option value="">Selecione...</option>
+                  {% for emp in t_empresas %}
+                    <option value="{{ emp.id }}">{{ emp.nome }}</option>
+                  {% endfor %}
+                </select>
+              </div>
 
-            <div class="col-md-6">
-              <label class="form-label">Senha</label>
-              <input type="password" name="password" class="form-control" required>
-            </div>
-
-            <div class="col-md-6">
-              <label class="form-label">Confirmar Senha</label>
-              <input type="password" name="password2" class="form-control" required>
-            </div>
-
-            <div class="col-md-6">
-              <label class="form-label">Primeiro Nome</label>
-              <input name="first_name" class="form-control">
-            </div>
-
-            <div class="col-md-6">
-              <label class="form-label">Sobrenome</label>
-              <input name="last_name" class="form-control">
+              <div class="mb-3">
+                <label class="form-label">Grupos</label>
+                <select name="ls_grupos" class="form-select" multiple size="6">
+                  {% for grp in t_AuthGroup %}
+                    <option value="{{ grp.id }}">{{ grp.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
             </div>
 
           </div>
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-            Cancelar
-          </button>
-          <button type="submit" class="btn btn-success">
-            Salvar
-          </button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success">Salvar</button>
         </div>
 
       </form>
-
     </div>
   </div>
 </div>
