@@ -1,4 +1,4 @@
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts               import get_object_or_404, render
 from django.shortcuts               import render, redirect
 from django.contrib.auth            import authenticate, login, logout
@@ -75,38 +75,25 @@ def Sair_View(request):
 # Usuarios
 @login_required(login_url='Login')
 def Dm_Usuarios_view(request):
-    ClGdf = Cl_Gdf()
-    Cod_cliente = request.session.get('cod_cliente', None)
+    cod_cliente = request.session.get('cod_cliente', None)
+    
+    # Validar se usuário tem acesso a cliente
+    if not cod_cliente:
+        return render(request, 'Index_Login.html', {'error_message': 'Acesso negado: cliente não identificado'})
+    
+    # Buscar dados APENAS uma vez - carregamento inicial da página
+    cl_gdf = Cl_Gdf()
+    t_user, t_empresas, t_auth_groups = cl_gdf.get_usuarios(i_cod_Cliente=cod_cliente)
 
-    # Busca de usuários com filtro
-    Query = request.GET.get('Buscar', '').strip().lower()
-
-
-    t_User,t_Empresas,t_AuthGroups = ClGdf.get_usuarios(i_cod_Cliente=Cod_cliente)
-
-    if Query:
-        t_User = [
-            u for u in t_User
-            if Query in str(u.get('id', '')).lower()
-            or Query in str(u.get('username', '')).lower()
-            or Query in str(u.get('first_name', '')).lower()
-            or Query in str(u.get('last_name', '')).lower()
-            or Query in str(u.get('email', '')).lower()
-            or Query in str(u.get('empresa_id', '')).lower()
-        ]
-
-    paginator = Paginator(t_User, 30)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-
+    # ✅ Passar dados brutos para o template
+    # Paginação e busca serão feitas em JavaScript no cliente
     return render(
         request,
         'usuarios/Usuarios.html',
         {
-            'page_obj': page_obj,        
-            't_user': t_User,
-            't_empresas': t_Empresas,
-            't_AuthGroups': t_AuthGroups,            
+            't_user': t_user,
+            't_empresas': t_empresas,
+            't_auth_groups': t_auth_groups,            
         }
     )
 
@@ -132,12 +119,12 @@ def Im_Projetos_view(request):
 #--------------------------------------------------------------------
 #       Modais Views
 #--------------------------------------------------------------------
-@login_required
-@require_http_methods(["POST"])
+@login_required(login_url='Login')
 def Usuario_ins(request):
-    ClGdf = Cl_Gdf()
-    Cod_cliente = request.session.get('cod_cliente', None)
-
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+    
     if request.method == "POST":
         username    = request.POST.get("username")
         first_name  = request.POST.get("first_name")
@@ -147,8 +134,8 @@ def Usuario_ins(request):
         empresa_id  = request.POST.get("ls_empresas")
         grupo_ids   = request.POST.getlist("ls_grupos")
 
-
-        ClGdf.ins_usuario(
+        cl_gdf = Cl_Gdf()
+        cl_gdf.ins_usuario(
             username=username,
             first_name=first_name,
             last_name=last_name,
@@ -156,27 +143,58 @@ def Usuario_ins(request):
             password=password,
             empresa_id=empresa_id,
             grupo_ids=grupo_ids,
-            cod_cliente=Cod_cliente
+            cod_cliente=cod_cliente
         )
 
         return redirect('Dm_Usuarios')
 
-@login_required
+@login_required(login_url='Login')
 @require_http_methods(["GET", "POST"])
-def Usuario_upd(request):
+def Usuario_upd(request, user_id):
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+    
+    cl_gdf = Cl_Gdf()
+    
     if request.method == "GET":
-        return render(
-            request,
-            "usuarios/usuarios_upd.html"
+        # Retornar dados do usuário em JSON (para modal)
+        user = cl_gdf.get_usuario_id(user_id=user_id, cod_cliente=cod_cliente)
+        if not user or user.get('erro'):
+            return JsonResponse({"erro": "Usuário não encontrado"}, status=404)
+        return JsonResponse(user)
+    
+    elif request.method == "POST":
+        first_name  = request.POST.get("first_name")
+        last_name   = request.POST.get("last_name")
+        email       = request.POST.get("email")
+        is_active   = request.POST.get("is_active") == "on"
+        empresa_id  = request.POST.get("ls_empresas")
+        grupo_ids   = request.POST.getlist("ls_grupos")
+
+        cl_gdf.upd_usuario(
+            user_id=user_id,
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            is_active=is_active,
+            empresa_id=empresa_id,
+            grupo_ids=grupo_ids,
+            cod_cliente=cod_cliente
         )
 
+        return redirect('Dm_Usuarios')
+    
+    return JsonResponse({"erro": "Método não permitido"}, status=405)
     
 #--------------------------------------------------------------------
 #       Sub-soluções Views (Dashboard)
 #--------------------------------------------------------------------
 @login_required(login_url='Login')
 def Dashboard_view(request):   
-    #token = Gerar_token(request, request.user)
-    token = "teste12345"
+    token = Cl_Gdf.Gerar_token(request, request.user)
+    if not token:
+        return render(request, 'Index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
     return render(request, "Index_Dashboard.html", {"token": token})
+
 

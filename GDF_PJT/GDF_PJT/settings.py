@@ -74,29 +74,42 @@ WSGI_APPLICATION = 'GDF_PJT.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+# ============================================================================
+# CONFIGURAÇÃO POSTGRESQL (COMENTADA PARA TESTES COM SQLITE)
+# ============================================================================
 DATABASES = {
     'default': { # GDF
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'GDF_DEV',          
-        'USER': 'postgres',         
-        'PASSWORD': 'PrcIT@2023',   
-        'HOST': '10.0.1.19',        
-        'PORT': '5432',             
+         'ENGINE': 'django.db.backends.postgresql',
+         'NAME': 'GDF_DEV',          
+         'USER': 'postgres',         
+         'PASSWORD': 'PrcIT@2023',   
+         'HOST': '10.0.1.19',        
+         'PORT': '5432',             
     },
     'reprocessamento': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'REPROCESSAMENTO_DEV',
-        'USER': 'postgres',
-        'PASSWORD': 'PrcIT@2023',
-        'HOST': '10.0.1.19',
-        'PORT': '5432',
+         'ENGINE': 'django.db.backends.postgresql',
+         'NAME': 'REPROCESSAMENTO_DEV',
+         'USER': 'postgres',
+         'PASSWORD': 'PrcIT@2023',
+         'HOST': '10.0.1.19',
+         'PORT': '5432',
     }                                    
 }
-
+ 
 DATABASE_ROUTERS = [
     'GDF_PJT.routers.GDFRouter',
-    'GDF_PJT.routers.ReprocessamentoRouter',
+    #'GDF_PJT.routers.ReprocessamentoRouter',
 ]
+
+# ============================================================================
+# CONFIGURAÇÃO SQLITE (PARA TESTES)
+# ============================================================================
+#DATABASES = {
+#    'default': {
+#        'ENGINE': 'django.db.backends.sqlite3',
+#        'NAME': BASE_DIR.parent / 'Query' / 'db.sqlite3',
+#    }
+#}
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators

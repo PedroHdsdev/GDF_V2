@@ -13,18 +13,17 @@ urlpatterns = [
     path('Logout/', views.Sair_View, name='Logout'),
 
     #Sub-soluções paths
-    path('Usuarios/', views.Dm_Usuarios_view, name='Dm_Usuarios'),
-    path('Empresas/', views.Dm_Empresas_view, name='Dm_Empresas'),
-    path('Clientes/', views.Dm_Clientes_view, name='Dm_Clientes'),
-    path('Dashboard/',views.Dashboard_view,  name='Dashboard'),
+    path('usuarios/', views.Dm_Usuarios_view, name='Dm_Usuarios'),
+    path('empresas/', views.Dm_Empresas_view, name='Dm_Empresas'),
+    path('clientes/', views.Dm_Clientes_view, name='Dm_Clientes'),
+    path('dashboard/',views.Dashboard_view,  name='Dashboard'),
     
 #--------------------------------------------------------------------
     # modal path
 #--------------------------------------------------------------------
     # Usuarios
-    path('usuario_ins/', views.Usuario_ins, name='Usuario_ins'),
-    path('usuario_upd/', views.Usuario_upd, name='Usuario_upd'),
-    #path('usuario_upd/<int:user_id>/', views.Usuario_upd, name='usuario_upd'),
+    path('usuario/inserir/', views.Usuario_ins, name='Usuario_ins'),
+    path('usuario/<int:user_id>/', views.Usuario_upd, name='Usuario_upd'),
 
     path('',views.Login_view),
 ]

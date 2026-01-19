@@ -196,4 +196,3 @@ class UserEmpresas(models.Model):
         managed = False
         db_table = 'public"."user_empresas'
         unique_together = (('empresas', 'user'),)
-

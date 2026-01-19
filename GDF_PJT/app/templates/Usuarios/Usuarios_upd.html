@@ -15,17 +15,17 @@
 
           <ul class="nav nav-tabs mb-3">
             <li class="nav-item">
-              <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-upd-dados">
+              <button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-upd-dados">
                 Dados
               </button>
             </li>
             <li class="nav-item">
-              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-upd-empresas">
+              <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-upd-empresas">
                 Empresas
               </button>
             </li>
             <li class="nav-item">
-              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-upd-grupos">
+              <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-upd-grupos">
                 Grupos
               </button>
             </li>
@@ -75,7 +75,7 @@
             <!-- GRUPOS -->
             <div class="tab-pane fade" id="tab-upd-grupos">
               <select id="upd_grupos" class="form-select" multiple size="8">
-                {% for grp in t_AuthGroup %}
+                {% for grp in t_auth_groups %}
                   <option value="{{ grp.id }}">{{ grp.name }}</option>
                 {% endfor %}
               </select>

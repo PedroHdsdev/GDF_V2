@@ -3,8 +3,8 @@ from django.utils.timezone          import now
 from psycopg2                       import IntegrityError
 from django.conf                    import settings
 from app.db_GDF.Public.models       import AuthUser, Empresas, Clientes, Cert, UserEmpresas
-from app.db_GDF.Public.models       import AuthGroup, AuthUserGroups, GrupoCliente, GrpEmpresas 
-from app.db_GDF.Public.models       import Solucoes, Subsolucoes, SolucoesAcesso, SubsolucoesAcesso
+from app.db_GDF.models              import AuthGroup, AuthUserGroups, GrupoCliente, GrpEmpresas 
+from app.db_GDF.models              import Solucoes, Subsolucoes, SolucoesAcesso, SubsolucoesAcesso
 from datetime                       import datetime
 from django.db.utils                import OperationalError
 from django.contrib.auth.hashers    import make_password
@@ -259,7 +259,7 @@ class Cl_Gdf():
                 self._registrar_log(type='E', id='E001', Values='Cliente')
                 return [], []
             
-            q_empresas = empresas.objects.filter(cliente=self.q_cleinte).distinct()
+            q_empresas = Empresas.objects.filter(cliente=self.q_cleinte).distinct()
             for emp in q_empresas:
         
                 list_cert = Cert.objects.filter(raiz_cnpj=emp.cert_id)
@@ -301,7 +301,7 @@ class Cl_Gdf():
             
             Q_GrpEmpresas = GrpEmpresas.objects.filter(cliente=self.q_cleinte).distinct() 
          
-        except empresas.DoesNotExist as e:
+        except Empresas.DoesNotExist as e:
             self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
         except Cert.DoesNotExist as e:
             self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
@@ -323,7 +323,7 @@ class Cl_Gdf():
             clientes_data = []
             Solucoes_data = []
 
-            q_clientes = clientes.objects.all()
+            q_clientes = Clientes.objects.all()
             q_solucoes = SolucoesAcesso.objects.filter(clientess__in=q_clientes)
             Solucoes_data = Solucoes.objects.all()
             
@@ -344,7 +344,7 @@ class Cl_Gdf():
                 ]   
                 })
 
-        except clientes.DoesNotExist:
+        except Clientes.DoesNotExist:
             self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
             return [], []
         except SolucoesAcesso.DoesNotExist:
@@ -366,10 +366,64 @@ class Cl_Gdf():
 #--------------------------------------------------------------------------------
 #           SET - Usuarios
 #--------------------------------------------------------------------------------
-    def set_user(self, empresa, Usernome, firstname, lastname, email, senha, grpacesso):
+    def ins_usuario(self, username, first_name, last_name, email, password, empresa_id, grupo_ids, cod_cliente=None):
+        """Insere um novo usuário com empresa e grupos"""
         self.Retorn = []
         try:
-            user_instance = User.objects.create(
+            # Criar usuário
+            user_instance = AuthUser.objects.create(
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+                password=make_password(password),
+                email=email,
+                is_superuser=False,
+                is_staff=False,
+                is_active=True,
+                date_joined=now()
+            )
+            
+            user_instance.save()
+            
+            # Vincular empresa
+            if empresa_id:
+                cod_empresa = Empresas.objects.get(cod_empresa=empresa_id)
+                # Usar UserEmpresas para criar o relacionamento
+                UserEmpresas.objects.get_or_create(
+                    empresas=cod_empresa,
+                    user=user_instance
+                )
+            
+            # Vincular grupos
+            if grupo_ids:
+                for grupo_id in grupo_ids:
+                    if grupo_id:  # Verificar se não está vazio
+                        try:
+                            group = AuthGroup.objects.get(id=grupo_id)
+                            user_instance.groups.add(group)
+                        except AuthGroup.DoesNotExist:
+                            print(f"Grupo com ID {grupo_id} não encontrado")
+            
+            user_instance.save()
+            
+            print(f"Usuário '{username}' criado com sucesso")
+            return True
+        
+        except Empresas.DoesNotExist as e:
+            print(f"Erro: Empresa não encontrada - {str(e)}")
+            return False
+        except IntegrityError as e:
+            print(f"Erro de integridade: {str(e)}")
+            return False
+        except Exception as e:
+            print(f"Erro ao criar usuário: {str(e)}")
+            return False
+
+    def set_user(self, empresa, Usernome, firstname, lastname, email, senha, grpacesso):
+        """Método legado - manter para compatibilidade"""
+        self.Retorn = []
+        try:
+            user_instance = AuthUser.objects.create(
                 username=Usernome,
                 first_name=firstname,
                 last_name=lastname,
@@ -382,22 +436,20 @@ class Cl_Gdf():
             )
             
             user_instance.save()
-            cod_empresa = empresas.objects.get(cod_empresa=empresa)
+            cod_empresa = Empresas.objects.get(cod_empresa=empresa)
             cod_empresa.user.add(user_instance)
 
-            group = Group.objects.get(id=grpacesso)
+            group = AuthGroup.objects.get(id=grpacesso)
             user_instance.groups.add(group)
             
             self._registrar_log(type='S', id='S001', Values='Usuario: '+Usernome)
         
-        except empresas.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")   
-        except Group.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")   
+        except Empresas.DoesNotExist as e:
+            print(str(e))
         except IntegrityError as e:
-            self._registrar_log(type='E', id='E004',msg=f"Erro: {str(e)}", Values='Usuario : '+Usernome)
+            print(str(e))
         except Exception as e:
-            self._registrar_log(type='E', id='E000')      
+            print(str(e))
 
 
 #--------------------------------------------------------------------------------
@@ -406,8 +458,8 @@ class Cl_Gdf():
     def set_userGruop(self, user_id, Group_id):
         self.Retorn = []
         try:
-            user  = User.objects.get(id=user_id)
-            group = Group.objects.get(id=Group_id)
+            user  = AuthUser.objects.get(id=user_id)
+            group = AuthGroup.objects.get(id=Group_id)
 
             # Verifica se o usuário já está no grupo
             if not user.groups.filter(id=group.id).exists():
@@ -417,16 +469,12 @@ class Cl_Gdf():
                 self._registrar_log(type='S', id='S001', Values=f"Usuário: '{user.username}' Grupo: '{group.name}'.") 
             else:
                 self._registrar_log(type='E', id='E002', msg="Usuário já pertence a este grupo.")  
-
-        except User.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")   
-        except Group.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")   
+ 
         except IntegrityError as e:
-            self._registrar_log(type='E', id='E004',msg=f"Erro: {str(e)}")
+            print(str(e))
         except Exception as e:
-            self._registrar_log(type='E', id='E000')    
-    
+            print(str(e))
+
 #--------------------------------------------------------------------------------
 #           SET -  Empresa
 #--------------------------------------------------------------------------------
@@ -443,7 +491,7 @@ class Cl_Gdf():
                 cert_instance.save()
 
             Cert_obj = Cert.objects.get(raiz_cnpj=cnpj[:8])
-            empresas_instance = empresas.objects.create(
+            empresas_instance = Empresas.objects.create(
                 cod_empresa = cod_empresa,
                 razao       = razao,
                 cnpj        = cnpj,
@@ -454,15 +502,14 @@ class Cl_Gdf():
                 )
             empresas_instance.save()
 
-            self._registrar_log(type='S', id='S001', Values='Empresa: '+cod_empresa)
         except GrpEmpresas.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
-        except empresas.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(str(e))
+        except Empresas.DoesNotExist as e:
+            print(str(e))
         except Cert.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(str(e))
         except Exception as e:
-            self._registrar_log(type='E', id='E000')  
+            print(str(e))
 
 #--------------------------------------------------------------------------------
 #           SET - Cliente
@@ -470,7 +517,7 @@ class Cl_Gdf():
     def set_cliente(self, cod_cliente, razao, cnpj):
         self.Retorn = []
         try:
-            cliente_instance = clientes.objects.create(
+            cliente_instance = Clientes.objects.create(
                 cod_cliente=cod_cliente,
                 razao=razao,
                 cnpj=cnpj,
@@ -488,16 +535,15 @@ class Cl_Gdf():
                     is_active=False
                 )
                 
-            self._registrar_log(type='S', id='S001', Values='Cliente: '+cod_cliente)
-        except clientes.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+        except Clientes.DoesNotExist as e:
+            print(str(e))
         except Solucoes.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(str(e))
         except IntegrityError:
-            self._registrar_log(type='E', id='E004',msg=f"Erro: Cliente já existe.")
+            print("Erro: Cliente já existe.")
         except Exception as e:
-            self._registrar_log(type='E', id='E000')
-    
+            print(str(e))
+
 #********************************************************************************
 #--------------------------------------------------------------------------------
 #           ALTER - alterações
@@ -525,17 +571,16 @@ class Cl_Gdf():
                 }
             )
 
-            self._registrar_log(type='S', id='S002', Values='Certificado: '+raiz)
         except IntegrityError as e:
-            self._registrar_log(type='E', id='E004',msg=f"Erro: {str(e)}")
+            print(str(e))
         except Cert.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(str(e))
         except ValueError as e:
-            self._registrar_log(type='E', id='E003', msg=f"Erro: {str(e)}")
+            print(str(e))
         except OperationalError as e:
-            self._registrar_log(type='E', id='E002', msg=f"Erro: {str(e)}")
+            print(str(e))
         except Exception as e:
-            self._registrar_log(type='E', id='E000')
+            print(str(e))
         
 #--------------------------------------------------------------------------------
 #           ALTER - Usuario
@@ -544,7 +589,7 @@ class Cl_Gdf():
         self.Retorn = []
         try:
             if Senha == "" or Senha is None:
-                created = User.objects.update_or_create(
+                created = AuthUser.objects.update_or_create(
                     id=id,
                     defaults={
                         'first_name': firstName,
@@ -554,7 +599,7 @@ class Cl_Gdf():
                     }
                 )
             else:
-                created = User.objects.update_or_create(
+                created = AuthUser.objects.update_or_create(
                     id=id,
                     defaults={
                         'password': make_password(Senha),
@@ -564,11 +609,53 @@ class Cl_Gdf():
                         'is_active': is_active 
                     }
                 )
-            self._registrar_log(type='S', id='S002', Values='Usuario: '+firstName)
-        except User.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+
+        except AuthUser.DoesNotExist as e:
+            print(str(e))
         except Exception as e:
-            self._registrar_log(type='E', id='E000', msg=f"Erro: {str(e)}")
+            print(str(e))
+
+    def upd_usuario(self, user_id, first_name, last_name, email, is_active, empresa_id, grupo_ids, cod_cliente=None):
+        """Atualiza usuário, sua empresa e grupos (novo método com assinatura de view)"""
+        self.Retorn = []
+        try:
+            if not cod_cliente:
+                raise ValueError("Cliente não informado")
+            
+            q_user = AuthUser.objects.get(id=user_id)
+            
+            q_empresa = Empresas.objects.filter(
+                cod_empresa=empresa_id,
+                cliente_id=cod_cliente
+            ).first()
+            if not q_empresa:
+                raise ValueError(f"Empresa {empresa_id} não autorizada para cliente {cod_cliente}")
+            
+            q_user.first_name = first_name
+            q_user.last_name = last_name
+            q_user.email = email
+            q_user.is_active = is_active
+            q_user.save()
+            
+            UserEmpresas.objects.filter(user=q_user).delete()
+            UserEmpresas.objects.create(user=q_user, empresas=q_empresa)
+            
+            AuthUserGroups.objects.filter(user=q_user).delete()
+            for grupo_id in grupo_ids:
+                try:
+                    grupo = AuthGroup.objects.get(id=grupo_id)
+                    AuthUserGroups.objects.create(user=q_user, group=grupo)
+                except AuthGroup.DoesNotExist:
+                    continue
+        
+        except AuthUser.DoesNotExist:
+            self.Retorn = [{"erro": "Usuário não encontrado"}]
+        except Empresas.DoesNotExist:
+            self.Retorn = [{"erro": "Empresa não encontrada"}]
+        except IntegrityError as e:
+            self.Retorn = [{"erro": f"Erro de integridade: {str(e)}"}]
+        except Exception as e:
+            self.Retorn = [{"erro": str(e)}]
     
 #--------------------------------------------------------------------------------
 #           ALTER - Cliente
@@ -576,7 +663,7 @@ class Cl_Gdf():
     def alter_cliente(self, id_cliente, razao, cnpj):   
         self.Retorn = []
         try:
-            created = clientes.objects.update_or_create(
+            created = Clientes.objects.update_or_create(
                 cod_cliente=id_cliente,
                 defaults={
                     'razao': razao,
@@ -584,11 +671,10 @@ class Cl_Gdf():
                 }
             )
 
-            self._registrar_log(type='S', id='S002', Values='Cliente: '+id_cliente)
-        except clientes.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+        except Clientes.DoesNotExist as e:
+            print(str(e))
         except Exception as e:
-            self._registrar_log(type='E', id='E000')
+            print(str(e))
         
 #--------------------------------------------------------------------------------
 #           ALTER - Empresa
@@ -599,7 +685,7 @@ class Cl_Gdf():
         try:
             q_grpempresa = GrpEmpresas.objects.get(grp_empresa=grp_empresa)
 
-            created = empresas.objects.update_or_create(
+            created = Empresas.objects.update_or_create(
             cod_empresa=cod_empresa,
             defaults={
                 'cnpj': cnpj,
@@ -617,15 +703,14 @@ class Cl_Gdf():
                 'chave_acesso': chave_acesso,
             })
             
-            self._registrar_log(type='S', id='S002', Values='Cliente: '+cod_empresa)
         except GrpEmpresas.DoesNotExist:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
-        except empresas.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(str(e))
+        except Empresas.DoesNotExist as e:
+            print(str(e))
         except IntegrityError as e:
-            self._registrar_log(type='E', id='E004', msg=f"Erro: {str(e)}")
+            print(str(e))
         except Exception as e:
-            self._registrar_log(type='E', id='E000')
+            print(str(e))
 
         
         return self.Retorn
@@ -647,35 +732,39 @@ class Cl_Gdf():
             #delete the user from the group
             user_group.delete()
 
-            self._registrar_log(type='S', id='S003', Values='Grupo: '+grp_name)
         except AuthUserGroups.DoesNotExist:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(str(e))
         except AuthUser.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(str(e))
         except AuthGroup.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(str(e))
         except IntegrityError as e:
-            self._registrar_log(type='E', id='E004', msg=f"Erro: {str(e)}")
+            print(str(e))
         except Exception as e:
-            self._registrar_log(type='E', id='E000')
+            print(str(e))
 
-#--------------------------------------------------------------------------------
-#           registrar log interno
-#--------------------------------------------------------------------------------
-    def _registrar_log(self, type, id, msg=None, Values=None):
+    def get_usuario_id(self, user_id, cod_cliente):
         self.Retorn = []
+        try:
+            q_user = AuthUser.objects.get(id=user_id)
+            q_user_groups = AuthUserGroups.objects.filter(user_id=q_user.id)
+            q_groups = AuthGroup.objects.filter(id__in=q_user_groups.values_list('group_id', flat=True))
+            q_empresas = Empresas.objects.filter(cod_cliente=cod_cliente)
 
-        # Verifica se há mensagem no JSON
-        #msg_json = self.log_codes.get(id)
+            self.Retorn = {
+                "id": q_user.id,
+                "username": q_user.username,
+                "email": q_user.email,
+                "first_name": q_user.first_name,
+                "last_name": q_user.last_name,
+                "is_active": q_user.is_active,
+                "grupos": list(q_groups.values('id', 'name')),
+                "empresas": list(q_empresas.values('cod_empresa', 'fantasia'))
+            }
 
-        # Prioridade: JSON > mensagem passada > fallback padrão
-        mensagem = msg_json or "Erro não especificado."
+        except AuthUser.DoesNotExist as e:
+            print(str(e))
+        except Exception as e:
+            print(str(e))
 
-        self.Retorn.append({
-                        "type": type,
-                        "id": id,
-                        "msg": mensagem,
-                        "Values": Values or {}
-                        })
-        
         return self.Retorn
