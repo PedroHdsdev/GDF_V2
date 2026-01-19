@@ -370,7 +370,27 @@ class Cl_Gdf():
         """Insere um novo usuário com empresa e grupos"""
         self.Retorn = []
         try:
-            # Criar usuário
+            # ✅ Validações
+            if not all([username, email, password, empresa_id]):
+                raise ValueError("Username, email, senha e empresa são obrigatórios")
+            
+            if not cod_cliente:
+                raise ValueError("Cliente não informado")
+            
+            # ✅ Verificar se empresa existe e pertence ao cliente
+            empresa_obj = Empresas.objects.filter(
+                cod_empresa=empresa_id,
+                cliente_id=cod_cliente
+            ).first()
+            
+            if not empresa_obj:
+                raise Empresas.DoesNotExist(f"Empresa {empresa_id} não existe ou não pertence ao cliente")
+            
+            # ✅ Verificar se username já existe
+            if AuthUser.objects.filter(username=username).exists():
+                raise IntegrityError(f"Username '{username}' já existe")
+            
+            # ✅ Criar usuário
             user_instance = AuthUser.objects.create(
                 username=username,
                 first_name=first_name,
@@ -383,40 +403,36 @@ class Cl_Gdf():
                 date_joined=now()
             )
             
-            user_instance.save()
+            # ✅ Vincular empresa
+            UserEmpresas.objects.create(
+                empresas=empresa_obj,
+                user=user_instance
+            )
             
-            # Vincular empresa
-            if empresa_id:
-                cod_empresa = Empresas.objects.get(cod_empresa=empresa_id)
-                # Usar UserEmpresas para criar o relacionamento
-                UserEmpresas.objects.get_or_create(
-                    empresas=cod_empresa,
-                    user=user_instance
-                )
-            
-            # Vincular grupos
+            # ✅ Vincular grupos (apenas se houver)
             if grupo_ids:
                 for grupo_id in grupo_ids:
-                    if grupo_id:  # Verificar se não está vazio
-                        try:
-                            group = AuthGroup.objects.get(id=grupo_id)
-                            user_instance.groups.add(group)
-                        except AuthGroup.DoesNotExist:
-                            print(f"Grupo com ID {grupo_id} não encontrado")
+                    try:
+                        group = AuthGroup.objects.get(id=grupo_id)
+                        AuthUserGroups.objects.create(user=user_instance, group=group)
+                    except AuthGroup.DoesNotExist:
+                        print(f"[WARN] Grupo com ID {grupo_id} não encontrado")
+                        continue
             
-            user_instance.save()
-            
-            print(f"Usuário '{username}' criado com sucesso")
+            print(f"[OK] Usuário '{username}' criado com sucesso")
             return True
         
         except Empresas.DoesNotExist as e:
-            print(f"Erro: Empresa não encontrada - {str(e)}")
+            print(f"[ERROR] Empresa não encontrada: {str(e)}")
             return False
         except IntegrityError as e:
-            print(f"Erro de integridade: {str(e)}")
+            print(f"[ERROR] Erro de integridade: {str(e)}")
+            return False
+        except ValueError as e:
+            print(f"[ERROR] Validação falhou: {str(e)}")
             return False
         except Exception as e:
-            print(f"Erro ao criar usuário: {str(e)}")
+            print(f"[ERROR] Erro ao criar usuário: {str(e)}")
             return False
 
     def set_user(self, empresa, Usernome, firstname, lastname, email, senha, grpacesso):
@@ -619,42 +635,64 @@ class Cl_Gdf():
         """Atualiza usuário, sua empresa e grupos (novo método com assinatura de view)"""
         self.Retorn = []
         try:
+            # ✅ Validações
             if not cod_cliente:
                 raise ValueError("Cliente não informado")
             
+            if not user_id or not isinstance(user_id, int):
+                raise ValueError(f"ID de usuário inválido: {user_id}")
+            
+            if not email or not empresa_id:
+                raise ValueError("Email e empresa são obrigatórios")
+            
+            # ✅ Buscar usuário
             q_user = AuthUser.objects.get(id=user_id)
             
+            # ✅ Validar empresa
             q_empresa = Empresas.objects.filter(
                 cod_empresa=empresa_id,
                 cliente_id=cod_cliente
             ).first()
+            
             if not q_empresa:
                 raise ValueError(f"Empresa {empresa_id} não autorizada para cliente {cod_cliente}")
             
+            # ✅ Atualizar usuário
             q_user.first_name = first_name
             q_user.last_name = last_name
             q_user.email = email
             q_user.is_active = is_active
             q_user.save()
             
+            # ✅ Atualizar empresa (remover todas e adicionar nova)
             UserEmpresas.objects.filter(user=q_user).delete()
             UserEmpresas.objects.create(user=q_user, empresas=q_empresa)
             
+            # ✅ Atualizar grupos (remover todos e adicionar novos)
             AuthUserGroups.objects.filter(user=q_user).delete()
-            for grupo_id in grupo_ids:
-                try:
-                    grupo = AuthGroup.objects.get(id=grupo_id)
-                    AuthUserGroups.objects.create(user=q_user, group=grupo)
-                except AuthGroup.DoesNotExist:
-                    continue
+            
+            if grupo_ids:
+                for grupo_id in grupo_ids:
+                    try:
+                        grupo = AuthGroup.objects.get(id=grupo_id)
+                        AuthUserGroups.objects.create(user=q_user, group=grupo)
+                    except AuthGroup.DoesNotExist:
+                        print(f"[WARN] Grupo com ID {grupo_id} não encontrado")
+                        continue
+            
+            print(f"[OK] Usuário {user_id} atualizado com sucesso")
         
         except AuthUser.DoesNotExist:
+            print(f"[ERROR] Usuário {user_id} não encontrado")
             self.Retorn = [{"erro": "Usuário não encontrado"}]
-        except Empresas.DoesNotExist:
-            self.Retorn = [{"erro": "Empresa não encontrada"}]
+        except ValueError as e:
+            print(f"[ERROR] Validação falhou: {str(e)}")
+            self.Retorn = [{"erro": str(e)}]
         except IntegrityError as e:
+            print(f"[ERROR] Erro de integridade: {str(e)}")
             self.Retorn = [{"erro": f"Erro de integridade: {str(e)}"}]
         except Exception as e:
+            print(f"[ERROR] Erro ao atualizar usuário: {str(e)}")
             self.Retorn = [{"erro": str(e)}]
     
 #--------------------------------------------------------------------------------
@@ -744,18 +782,22 @@ class Cl_Gdf():
             print(str(e))
 
     def get_usuario_id(self, user_id, cod_cliente):
-        self.Retorn = []
+        """Retorna dados do usuário para edição no modal"""
+        self.Retorn = {}
         try:
+            # ✅ Validar user_id
+            if not user_id or not isinstance(user_id, int):
+                raise ValueError(f"ID de usuário inválido: {user_id}")
+            
             q_user = AuthUser.objects.get(id=user_id)
             q_user_groups = AuthUserGroups.objects.filter(user_id=q_user.id)
             q_groups = AuthGroup.objects.filter(id__in=q_user_groups.values_list('group_id', flat=True))
             
             # ✅ Buscar APENAS as empresas do usuário
-            q_user_empresas = UserEmpresas.objects.filter(user_id=q_user.id)
             q_empresas = Empresas.objects.filter(
-                id__in=q_user_empresas.values_list('empresas_id', flat=True),
-                cod_cliente=cod_cliente
-            )
+                userempresas__user_id=q_user.id,
+                cliente_id=cod_cliente
+            ).distinct()
 
             self.Retorn = {
                 "id": q_user.id,
@@ -765,12 +807,17 @@ class Cl_Gdf():
                 "last_name": q_user.last_name,
                 "is_active": q_user.is_active,
                 "grupos": list(q_groups.values('id', 'name')),
-                "empresas": list(q_empresas.values('cod_empresa', 'fantasia'))
+                "empresas": list(q_empresas.values('cod_empresa', 'fantasia', 'razao'))
             }
 
         except AuthUser.DoesNotExist as e:
-            print(str(e))
+            print(f"[ERROR] Usuário {user_id} não encontrado: {str(e)}")
+            self.Retorn = {"erro": "Usuário não encontrado"}
+        except ValueError as e:
+            print(f"[ERROR] Validação falhou: {str(e)}")
+            self.Retorn = {"erro": str(e)}
         except Exception as e:
-            print(str(e))
+            print(f"[ERROR] Erro ao buscar usuário: {str(e)}")
+            self.Retorn = {"erro": f"Erro ao buscar usuário: {str(e)}"}
 
         return self.Retorn

@@ -31,37 +31,58 @@ function extrairUsuariosDoHTML() {
     usuariosState.allUsers = [];
     
     rows.forEach(row => {
-        usuariosState.allUsers.push({
+        // ✅ Extrair dados estruturados da linha (seguindo ordem da tabela)
+        const cells = row.querySelectorAll("td");
+        const userData = {
             id: row.dataset.userId,
-            html: row.innerHTML  // ✅ Guardar HTML para reutilizar
-        });
+            html: row.innerHTML,
+            // Ordem: ID, Empresa, Status, Usuário, E-mail, Data, Admin
+            user_id: cells[0]?.textContent.trim() || '',
+            empresa_id: cells[1]?.textContent.trim() || '',
+            is_active: cells[2]?.textContent.trim() || '',
+            username: cells[3]?.textContent.trim() || '',
+            email: cells[4]?.textContent.trim() || '',
+            date_joined: cells[5]?.textContent.trim() || '',
+            is_superuser: cells[6]?.textContent.trim() || ''
+        };
+        usuariosState.allUsers.push(userData);
     });
     
     console.log(`✅ ${usuariosState.allUsers.length} usuários carregados em memória`);
+    console.log('📋 Primeiro usuário:', usuariosState.allUsers[0]);
 }
 
 /* ===============================
    BUSCA (Client-side, sem fazer requests HTTP)
 ================================ */
 function initBusca() {
-    const formBusca = document.querySelector("form[action*='Dm_Usuarios']");
-    if (!formBusca) return;
+    const formBusca = document.querySelector("form");
+    if (!formBusca) {
+        console.warn("⚠️ Formulário de busca não encontrado");
+        return;
+    }
     
     const inputBusca = formBusca.querySelector("input[name='Buscar']");
-    if (!inputBusca) return;
+    if (!inputBusca) {
+        console.warn("⚠️ Input de busca não encontrado");
+        return;
+    }
     
-    // ✅ Prevenir form submit tradicional, usar AJAX
+    console.log("✅ Busca inicializada");
+    
+    // ✅ Prevenir form submit tradicional, usar busca no cliente
     formBusca.addEventListener("submit", (e) => {
         e.preventDefault();
         
         const query = inputBusca.value.trim().toLowerCase();
+        console.log(`🔍 Buscando por: "${query}"`);
         usuariosState.searchQuery = query;
         usuariosState.currentPage = 1;  // Reset para página 1
         
         atualizarTabelaFiltrada();
     });
     
-    // ✅ Busca em tempo real enquanto digita (opcional)
+    // ✅ Busca em tempo real enquanto digita
     inputBusca.addEventListener("input", (e) => {
         const query = e.target.value.trim().toLowerCase();
         usuariosState.searchQuery = query;
@@ -79,13 +100,21 @@ function filtrarUsuarios() {
         return usuariosState.allUsers;  // Sem filtro, retorna todos
     }
     
-    const query = usuariosState.searchQuery;
+    const query = usuariosState.searchQuery.toLowerCase();
     
-    // ✅ Buscar nas propriedades do HTML renderizado
-    return usuariosState.allUsers.filter(user => {
-        const html = user.html.toLowerCase();
-        return html.includes(query);
+    // ✅ Buscar em múltiplos campos
+    const filtrados = usuariosState.allUsers.filter(user => {
+        return (
+            user.username.toLowerCase().includes(query) ||
+            user.email.toLowerCase().includes(query) ||
+            user.empresa_id.toLowerCase().includes(query) ||
+            user.user_id.toLowerCase().includes(query) ||
+            user.date_joined.toLowerCase().includes(query)
+        );
     });
+    
+    console.log(`🔎 Filtrados: ${filtrados.length} de ${usuariosState.allUsers.length}`);
+    return filtrados;
 }
 
 /* ===============================
@@ -131,7 +160,7 @@ function atualizarTabelaFiltrada() {
             </tr>
         `;
     } else {
-        // ✅ Renderizar apenas usuários da página atual
+        // ✅ Renderizar apenas usuários da página atual usando HTML guardado
         tbody.innerHTML = paginacao.itemsNoInterval
             .map(user => `<tr class="user-row" data-user-id="${user.id}">${user.html}</tr>`)
             .join('');

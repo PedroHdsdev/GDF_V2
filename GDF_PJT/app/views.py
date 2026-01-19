@@ -76,6 +76,7 @@ def Sair_View(request):
 @login_required(login_url='Login')
 def Dm_Usuarios_view(request):
     cod_cliente = request.session.get('cod_cliente', None)
+    query = request.GET.get('q', '').strip()
     
     # Validar se usuário tem acesso a cliente
     if not cod_cliente:
@@ -126,19 +127,31 @@ def Usuario_ins(request):
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
     if request.method == "POST":
-        username    = request.POST.get("username")
-        first_name  = request.POST.get("first_name")
-        last_name   = request.POST.get("last_name")
-        email       = request.POST.get("email")
-        password    = request.POST.get("password")
-        empresa_id  = request.POST.get("ls_empresas")
+        # ✅ Validações de campos obrigatórios
+        username    = request.POST.get("username", "").strip()
+        first_name  = request.POST.get("first_name", "").strip()
+        last_name   = request.POST.get("last_name", "").strip()
+        email       = request.POST.get("email", "").strip()
+        password    = request.POST.get("password", "").strip()
+        empresa_id  = request.POST.get("ls_empresas", "").strip()
+        
+        # ✅ Validar campos obrigatórios
+        if not all([username, email, password, empresa_id]):
+            cl_gdf = Cl_Gdf()
+            t_user, t_empresas, t_auth_groups = cl_gdf.get_usuarios(i_cod_Cliente=cod_cliente)
+            return render(request, 'usuarios/Usuarios.html', {
+                't_user': t_user,
+                't_empresas': t_empresas,
+                't_auth_groups': t_auth_groups,
+                'error_message': 'Username, email, senha e empresa são obrigatórios.'
+            })
         
         # ✅ Processar grupos: vêm como string separada por vírgula do hidden input
         grupos_str = request.POST.get("ls_grupos", "")
-        grupo_ids = [g.strip() for g in grupos_str.split(",") if g.strip()]
+        grupo_ids = [int(g.strip()) for g in grupos_str.split(",") if g.strip()]
 
         cl_gdf = Cl_Gdf()
-        cl_gdf.ins_usuario(
+        result = cl_gdf.ins_usuario(
             username=username,
             first_name=first_name,
             last_name=last_name,
@@ -148,8 +161,18 @@ def Usuario_ins(request):
             grupo_ids=grupo_ids,
             cod_cliente=cod_cliente
         )
-
-        return redirect('Dm_Usuarios')
+        
+        # ✅ Verificar resultado
+        if result is True:
+            return redirect('Dm_Usuarios')
+        else:
+            t_user, t_empresas, t_auth_groups = cl_gdf.get_usuarios(i_cod_Cliente=cod_cliente)
+            return render(request, 'usuarios/Usuarios.html', {
+                't_user': t_user,
+                't_empresas': t_empresas,
+                't_auth_groups': t_auth_groups,
+                'error_message': 'Erro ao criar usuário. Verifique os dados.'
+            })
 
 @login_required(login_url='Login')
 @require_http_methods(["GET", "POST"])
@@ -168,15 +191,20 @@ def Usuario_upd(request, user_id):
         return JsonResponse(user)
     
     elif request.method == "POST":
-        first_name  = request.POST.get("first_name")
-        last_name   = request.POST.get("last_name")
-        email       = request.POST.get("email")
+        # ✅ Validações de campos obrigatórios
+        first_name  = request.POST.get("first_name", "").strip()
+        last_name   = request.POST.get("last_name", "").strip()
+        email       = request.POST.get("email", "").strip()
         is_active   = request.POST.get("is_active") == "on"
-        empresa_id  = request.POST.get("ls_empresas")
+        empresa_id  = request.POST.get("ls_empresas", "").strip()
+        
+        # ✅ Validar campos obrigatórios
+        if not all([email, empresa_id]):
+            return JsonResponse({"erro": "Email e empresa são obrigatórios"}, status=400)
         
         # ✅ Processar grupos: podem vir como string separada por vírgula do hidden input
         grupos_str = request.POST.get("ls_grupos", "")
-        grupo_ids = [g.strip() for g in grupos_str.split(",") if g.strip()]
+        grupo_ids = [int(g.strip()) for g in grupos_str.split(",") if g.strip()]
 
         cl_gdf.upd_usuario(
             user_id=user_id,
@@ -188,6 +216,10 @@ def Usuario_upd(request, user_id):
             grupo_ids=grupo_ids,
             cod_cliente=cod_cliente
         )
+        
+        # ✅ Verificar se houve erro
+        if cl_gdf.Retorn and isinstance(cl_gdf.Retorn, list) and cl_gdf.Retorn[0].get('erro'):
+            return JsonResponse(cl_gdf.Retorn[0], status=400)
 
         return redirect('Dm_Usuarios')
     
