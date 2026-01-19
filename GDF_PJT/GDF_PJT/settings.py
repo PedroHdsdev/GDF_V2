@@ -80,13 +80,14 @@ WSGI_APPLICATION = 'GDF_PJT.wsgi.application'
 DATABASES = {
     'default': { # GDF
          'ENGINE': 'django.db.backends.postgresql',
-         'NAME': 'GDF_DEV',          
+         'NAME': 'GDF_V2_DEV',          
          'USER': 'postgres',         
          'PASSWORD': 'PrcIT@2023',   
          'HOST': '10.0.1.19',        
          'PORT': '5432', 
-         'options': {'-c search_path=Public,Reprocessamento'  # Define o schema padrão como 'Public'
-        }           
+        'OPTIONS': {
+            'options': '-c search_path=public,reprocessamento'
+        }         
     },                          
 }
  

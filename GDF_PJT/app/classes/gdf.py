@@ -2,8 +2,9 @@ from django.db.models               import Prefetch
 from django.utils.timezone          import now
 from psycopg2                       import IntegrityError
 from django.conf                    import settings
-from app.db_GDF.Public.models       import AuthUser, Empresas, Clientes, Cert, UserEmpresas
-from app.db_GDF.Public.models       import AuthGroup, AuthUserGroups, GrupoCliente, GrpEmpresas 
+from django.contrib.auth.models     import User, Group
+from app.db_GDF.Public.models       import Empresas, Clientes, Cert, UserEmpresas
+from app.db_GDF.Public.models       import GrupoCliente, GrpEmpresas 
 from app.db_GDF.Public.models       import Solucoes, Subsolucoes, SolucoesAcesso, SubsolucoesAcesso
 from datetime                       import datetime
 from django.db.utils                import OperationalError
@@ -18,7 +19,7 @@ class Cl_Gdf():
     def __init__(self):
         self.Cliente: int = None
         self.Empresas: List[Dict] = []
-        self.AuthGroups: List[str] = []
+        self.Groups: List[str] = []
         self.solucoes_acesso: List[Dict] = []
         self.subsolucoes_acesso: List[Dict] = []
 
@@ -49,16 +50,16 @@ class Cl_Gdf():
     def get_dados(self, I_User):
         self.Retorn = []
         try:
-            Q_user = AuthUser.objects.filter(id=I_User.id).first()
+            Q_user = User.objects.filter(id=I_User.id).first()
 
             # Empresas do usuário
             self.Empresas = Empresas.objects.filter(
                 userempresas__user=Q_user
             ).distinct()
-            
+
             # Grupos do usuário
-            self.AuthGroups = AuthGroup.objects.filter(
-                authusergroups__user=Q_user
+            self.Groups = Group.objects.filter(
+                user=Q_user
             )
 
             # Cliente associado às empresas do usuário
@@ -71,13 +72,11 @@ class Cl_Gdf():
                 clientess=self.Cliente,
                 is_active=True
             ).select_related('solucoes')
-            print(self.solucoes_acesso)
 
             # Subsoluções liberadas via grupo
             self.subsolucoes_acesso = SubsolucoesAcesso.objects.filter(
-                group__in=self.AuthGroups
+                group__in=self.Groups
             ).select_related('subsolucoes')
-            print(self.subsolucoes_acesso)
         
         except OperationalError as e:
             print(str(e))
@@ -157,7 +156,7 @@ class Cl_Gdf():
         try:
             if not i_cod_Cliente:
                 self._registrar_log(type='E', id='E001', Values='Cliente')
-                return [], [], []
+                return [], [], [], []
 
             # -------------------------------------------------
             # Empresas do cliente (para tabela e modal)
@@ -173,7 +172,7 @@ class Cl_Gdf():
                 empresas__in=empresas_data
             ).values_list('user_id', flat=True)
 
-            usuarios_qs = AuthUser.objects.filter(
+            usuarios_qs = User.objects.filter(
                 id__in=user_ids
             ).distinct()
 
@@ -197,23 +196,12 @@ class Cl_Gdf():
             # -------------------------------------------------
             # Grupos dos usuários
             # -------------------------------------------------
-            grupo_map = {
-                g.id: g.name
-                for g in AuthGroup.objects.all()
-            }
-
             user_group_map = {}
 
-            grupos_user = AuthUserGroups.objects.filter(
-                user_id__in=user_ids
-            )
-
-            for ug in grupos_user:
-                nome = grupo_map.get(ug.group_id)
-                if nome:
-                    user_group_map.setdefault(
-                        ug.user_id, []
-                    ).append(nome)
+            for u in usuarios_qs:
+                groups = u.groups.all().values_list('name', flat=True)
+                if groups:
+                    user_group_map[u.id] = list(groups)
 
             # -------------------------------------------------
             # Montagem da tabela de usuários
@@ -236,15 +224,41 @@ class Cl_Gdf():
             # -------------------------------------------------
             # Grupos disponíveis do cliente (modal)
             # -------------------------------------------------
-            AuthGroups_data = GrupoCliente.objects.filter(
-                cliente_id=i_cod_Cliente
+            Groups_data = GrupoCliente.objects.filter(
+                cliente__cod_cliente=i_cod_Cliente
             ).distinct()
+            
+            print(f"[DEBUG get_usuarios] Cliente: {i_cod_Cliente}")
+            print(f"[DEBUG get_usuarios] Query GrupoCliente.objects.filter(cliente__cod_cliente={i_cod_Cliente})")
+            print(f"[DEBUG get_usuarios] Grupos encontrados: {Groups_data.count()}")
+            for grp in Groups_data:
+                print(f"  - Grupo: {grp.group.name}, Cliente: {grp.cliente.cod_cliente}")
+            
+            # -------------------------------------------------
+            # Converter empresas e grupos para dicionários
+            # -------------------------------------------------
+            empresas_dict = []
+            for emp in empresas_data:
+                empresas_dict.append({
+                    'cod_empresa': emp.cod_empresa,
+                    'nome': emp.fantasia or emp.razao,
+                    'id': emp.cod_empresa
+                })
+            
+            grupos_dict = []
+            for grp in Groups_data:
+                grupos_dict.append({
+                    'id': grp.group.id,
+                    'name': grp.group.name
+                })
+            
+            print(f"[DEBUG get_usuarios] Grupos convertidos para dict: {grupos_dict}")
 
-            return usuarios_data, empresas_data, AuthGroups_data
+            return usuarios_data, empresas_dict, grupos_dict, Groups_data
 
         except Exception as e:
             print(str(e))
-            return [], [], []
+            return [], [], [], []
         
 #--------------------------------------------------------------------------------
 #           GET - Empresas
@@ -387,11 +401,11 @@ class Cl_Gdf():
                 raise Empresas.DoesNotExist(f"Empresa {empresa_id} não existe ou não pertence ao cliente")
             
             # ✅ Verificar se username já existe
-            if AuthUser.objects.filter(username=username).exists():
+            if User.objects.filter(username=username).exists():
                 raise IntegrityError(f"Username '{username}' já existe")
             
             # ✅ Criar usuário
-            user_instance = AuthUser.objects.create(
+            user_instance = User.objects.create(
                 username=username,
                 first_name=first_name,
                 last_name=last_name,
@@ -413,9 +427,9 @@ class Cl_Gdf():
             if grupo_ids:
                 for grupo_id in grupo_ids:
                     try:
-                        group = AuthGroup.objects.get(id=grupo_id)
-                        AuthUserGroups.objects.create(user=user_instance, group=group)
-                    except AuthGroup.DoesNotExist:
+                        group = Group.objects.get(id=grupo_id)
+                        user_instance.groups.add(group)
+                    except Group.DoesNotExist:
                         print(f"[WARN] Grupo com ID {grupo_id} não encontrado")
                         continue
             
@@ -439,7 +453,7 @@ class Cl_Gdf():
         """Método legado - manter para compatibilidade"""
         self.Retorn = []
         try:
-            user_instance = AuthUser.objects.create(
+            user_instance = User.objects.create(
                 username=Usernome,
                 first_name=firstname,
                 last_name=lastname,
@@ -455,7 +469,7 @@ class Cl_Gdf():
             cod_empresa = Empresas.objects.get(cod_empresa=empresa)
             cod_empresa.user.add(user_instance)
 
-            group = AuthGroup.objects.get(id=grpacesso)
+            group = Group.objects.get(id=grpacesso)
             user_instance.groups.add(group)
             
             self._registrar_log(type='S', id='S001', Values='Usuario: '+Usernome)
@@ -474,8 +488,8 @@ class Cl_Gdf():
     def set_userGruop(self, user_id, Group_id):
         self.Retorn = []
         try:
-            user  = AuthUser.objects.get(id=user_id)
-            group = AuthGroup.objects.get(id=Group_id)
+            user  = User.objects.get(id=user_id)
+            group = Group.objects.get(id=Group_id)
 
             # Verifica se o usuário já está no grupo
             if not user.groups.filter(id=group.id).exists():
@@ -605,7 +619,7 @@ class Cl_Gdf():
         self.Retorn = []
         try:
             if Senha == "" or Senha is None:
-                created = AuthUser.objects.update_or_create(
+                created = User.objects.update_or_create(
                     id=id,
                     defaults={
                         'first_name': firstName,
@@ -615,7 +629,7 @@ class Cl_Gdf():
                     }
                 )
             else:
-                created = AuthUser.objects.update_or_create(
+                created = User.objects.update_or_create(
                     id=id,
                     defaults={
                         'password': make_password(Senha),
@@ -626,7 +640,7 @@ class Cl_Gdf():
                     }
                 )
 
-        except AuthUser.DoesNotExist as e:
+        except User.DoesNotExist as e:
             print(str(e))
         except Exception as e:
             print(str(e))
@@ -646,7 +660,7 @@ class Cl_Gdf():
                 raise ValueError("Email e empresa são obrigatórios")
             
             # ✅ Buscar usuário
-            q_user = AuthUser.objects.get(id=user_id)
+            q_user = User.objects.get(id=user_id)
             
             # ✅ Validar empresa
             q_empresa = Empresas.objects.filter(
@@ -669,20 +683,20 @@ class Cl_Gdf():
             UserEmpresas.objects.create(user=q_user, empresas=q_empresa)
             
             # ✅ Atualizar grupos (remover todos e adicionar novos)
-            AuthUserGroups.objects.filter(user=q_user).delete()
+            q_user.groups.clear()
             
             if grupo_ids:
                 for grupo_id in grupo_ids:
                     try:
-                        grupo = AuthGroup.objects.get(id=grupo_id)
-                        AuthUserGroups.objects.create(user=q_user, group=grupo)
-                    except AuthGroup.DoesNotExist:
+                        grupo = Group.objects.get(id=grupo_id)
+                        q_user.groups.add(grupo)
+                    except Group.DoesNotExist:
                         print(f"[WARN] Grupo com ID {grupo_id} não encontrado")
                         continue
             
             print(f"[OK] Usuário {user_id} atualizado com sucesso")
         
-        except AuthUser.DoesNotExist:
+        except User.DoesNotExist:
             print(f"[ERROR] Usuário {user_id} não encontrado")
             self.Retorn = [{"erro": "Usuário não encontrado"}]
         except ValueError as e:
@@ -763,18 +777,15 @@ class Cl_Gdf():
     def del_userGruop(self, grp_name, User_id):
         self.Retorn = []
         try:
-            q_user = AuthUser.objects.get(id=User_id)
-            Q_group = AuthGroup.objects.filter(name=grp_name).first()
-            user_group = AuthUserGroups.objects.get(group_id=Q_group.id, user_id=q_user.id)
+            q_user = User.objects.get(id=User_id)
+            Q_group = Group.objects.filter(name=grp_name).first()
             
             #delete the user from the group
-            user_group.delete()
+            q_user.groups.remove(Q_group)
 
-        except AuthUserGroups.DoesNotExist:
+        except User.DoesNotExist as e:
             print(str(e))
-        except AuthUser.DoesNotExist as e:
-            print(str(e))
-        except AuthGroup.DoesNotExist as e:
+        except Group.DoesNotExist as e:
             print(str(e))
         except IntegrityError as e:
             print(str(e))
@@ -789,9 +800,8 @@ class Cl_Gdf():
             if not user_id or not isinstance(user_id, int):
                 raise ValueError(f"ID de usuário inválido: {user_id}")
             
-            q_user = AuthUser.objects.get(id=user_id)
-            q_user_groups = AuthUserGroups.objects.filter(user_id=q_user.id)
-            q_groups = AuthGroup.objects.filter(id__in=q_user_groups.values_list('group_id', flat=True))
+            q_user = User.objects.get(id=user_id)
+            q_groups = q_user.groups.all()
             
             # ✅ Buscar APENAS as empresas do usuário
             q_empresas = Empresas.objects.filter(
@@ -810,7 +820,7 @@ class Cl_Gdf():
                 "empresas": list(q_empresas.values('cod_empresa', 'fantasia', 'razao'))
             }
 
-        except AuthUser.DoesNotExist as e:
+        except User.DoesNotExist as e:
             print(f"[ERROR] Usuário {user_id} não encontrado: {str(e)}")
             self.Retorn = {"erro": "Usuário não encontrado"}
         except ValueError as e:
@@ -821,3 +831,58 @@ class Cl_Gdf():
             self.Retorn = {"erro": f"Erro ao buscar usuário: {str(e)}"}
 
         return self.Retorn
+    def get_disponibles_para_usuario(self, user_id, cod_cliente):
+        """Retorna empresas e grupos disponíveis para adicionar ao usuário"""
+        try:
+            q_user = User.objects.get(id=user_id)
+            
+            # ✅ Empresas do cliente
+            todas_empresas = Empresas.objects.filter(
+                cliente__cod_cliente=cod_cliente
+            ).distinct()
+            
+            # ✅ Empresas JÁ atribuídas ao usuário
+            empresas_atribuidas = Empresas.objects.filter(
+                userempresas__user_id=q_user.id,
+                cliente__cod_cliente=cod_cliente
+            ).distinct()
+            
+            # ✅ Empresas DISPONÍVEIS (não atribuídas)
+            empresas_disponiveis = todas_empresas.exclude(
+                id__in=empresas_atribuidas.values_list('id', flat=True)
+            )
+            
+            # ✅ Todos os grupos do cliente
+            todos_grupos = GrupoCliente.objects.filter(
+                cliente__cod_cliente=cod_cliente
+            ).distinct()
+            
+            # ✅ Grupos JÁ atribuídos ao usuário
+            grupos_atribuidos = q_user.groups.all().values_list('id', flat=True)
+            
+            # ✅ Grupos DISPONÍVEIS (não atribuídos)
+            grupos_disponiveis = todos_grupos.exclude(
+                group_id__in=grupos_atribuidos
+            )
+            
+            # ✅ Converter para dicionários
+            empresas_dict = []
+            for emp in empresas_disponiveis:
+                empresas_dict.append({
+                    'cod_empresa': emp.cod_empresa,
+                    'nome': emp.fantasia or emp.razao,
+                    'id': emp.cod_empresa
+                })
+            
+            grupos_dict = []
+            for grp in grupos_disponiveis:
+                grupos_dict.append({
+                    'id': grp.group.id,
+                    'name': grp.group.name
+                })
+            
+            return empresas_dict, grupos_dict
+        
+        except Exception as e:
+            print(f"[ERROR] Erro ao buscar disponíveis: {str(e)}")
+            return [], []

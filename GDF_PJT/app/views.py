@@ -84,8 +84,11 @@ def Dm_Usuarios_view(request):
     
     # Buscar dados APENAS uma vez - carregamento inicial da página
     cl_gdf = Cl_Gdf()
-    t_user, t_empresas, t_auth_groups = cl_gdf.get_usuarios(i_cod_Cliente=cod_cliente)
+    t_user, t_empresas, t_auth_groups, _ = cl_gdf.get_usuarios(i_cod_Cliente=cod_cliente)
 
+    print(t_user)
+    print(t_empresas)
+    print(t_auth_groups)
     # ✅ Passar dados brutos para o template
     # Paginação e busca serão feitas em JavaScript no cliente
     return render(
@@ -138,7 +141,7 @@ def Usuario_ins(request):
         # ✅ Validar campos obrigatórios
         if not all([username, email, password, empresa_id]):
             cl_gdf = Cl_Gdf()
-            t_user, t_empresas, t_auth_groups = cl_gdf.get_usuarios(i_cod_Cliente=cod_cliente)
+            t_user, t_empresas, t_auth_groups, _ = cl_gdf.get_usuarios(i_cod_Cliente=cod_cliente)
             return render(request, 'usuarios/Usuarios.html', {
                 't_user': t_user,
                 't_empresas': t_empresas,
@@ -166,7 +169,7 @@ def Usuario_ins(request):
         if result is True:
             return redirect('Dm_Usuarios')
         else:
-            t_user, t_empresas, t_auth_groups = cl_gdf.get_usuarios(i_cod_Cliente=cod_cliente)
+            t_user, t_empresas, t_auth_groups, _ = cl_gdf.get_usuarios(i_cod_Cliente=cod_cliente)
             return render(request, 'usuarios/Usuarios.html', {
                 't_user': t_user,
                 't_empresas': t_empresas,
@@ -188,6 +191,15 @@ def Usuario_upd(request, user_id):
         user = cl_gdf.get_usuario_id(user_id=user_id, cod_cliente=cod_cliente)
         if not user or user.get('erro'):
             return JsonResponse({"erro": "Usuário não encontrado"}, status=404)
+        
+        # ✅ Adicionar empresas e grupos disponíveis
+        empresas_disponiveis, grupos_disponiveis = cl_gdf.get_disponibles_para_usuario(
+            user_id=user_id, 
+            cod_cliente=cod_cliente
+        )
+        user['empresas_disponiveis'] = empresas_disponiveis
+        user['grupos_disponiveis'] = grupos_disponiveis
+        
         return JsonResponse(user)
     
     elif request.method == "POST":

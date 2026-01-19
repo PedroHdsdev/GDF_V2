@@ -378,6 +378,58 @@ function fillUserModal(user) {
         });
     });
     renderizarGruposSelecionados();
+    
+    // ✅ Preencher selects com dados disponíveis
+    if (user.empresas_disponiveis && user.empresas_disponiveis.length > 0) {
+        preencherSelectEmpresas(user.empresas_disponiveis);
+    }
+    
+    if (user.grupos_disponiveis && user.grupos_disponiveis.length > 0) {
+        preencherSelectGrupos(user.grupos_disponiveis);
+    }
+}
+
+/* ===============================
+   PREENCHER SELECT COM EMPRESAS DISPONÍVEIS
+================================ */
+function preencherSelectEmpresas(empresas) {
+    const select = document.getElementById("upd_empresas_select");
+    if (!select) return;
+    
+    // Limpar options existentes (mantendo o primeiro placeholder)
+    while (select.options.length > 1) {
+        select.removeChild(select.lastChild);
+    }
+    
+    // Adicionar opções disponíveis
+    empresas.forEach(emp => {
+        const option = document.createElement("option");
+        option.value = emp.id;
+        option.textContent = emp.nome;
+        option.dataset.nome = emp.nome;
+        select.appendChild(option);
+    });
+}
+
+/* ===============================
+   PREENCHER SELECT COM GRUPOS DISPONÍVEIS
+================================ */
+function preencherSelectGrupos(grupos) {
+    const select = document.getElementById("upd_grupos_select");
+    if (!select) return;
+    
+    // Limpar options existentes (mantendo o primeiro placeholder)
+    while (select.options.length > 1) {
+        select.removeChild(select.lastChild);
+    }
+    
+    // Adicionar opções disponíveis
+    grupos.forEach(grp => {
+        const option = document.createElement("option");
+        option.value = grp.id;
+        option.textContent = grp.name;
+        select.appendChild(option);
+    });
 }
 
 /* ===============================
