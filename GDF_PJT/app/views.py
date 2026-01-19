@@ -132,7 +132,10 @@ def Usuario_ins(request):
         email       = request.POST.get("email")
         password    = request.POST.get("password")
         empresa_id  = request.POST.get("ls_empresas")
-        grupo_ids   = request.POST.getlist("ls_grupos")
+        
+        # ✅ Processar grupos: vêm como string separada por vírgula do hidden input
+        grupos_str = request.POST.get("ls_grupos", "")
+        grupo_ids = [g.strip() for g in grupos_str.split(",") if g.strip()]
 
         cl_gdf = Cl_Gdf()
         cl_gdf.ins_usuario(
@@ -170,7 +173,10 @@ def Usuario_upd(request, user_id):
         email       = request.POST.get("email")
         is_active   = request.POST.get("is_active") == "on"
         empresa_id  = request.POST.get("ls_empresas")
-        grupo_ids   = request.POST.getlist("ls_grupos")
+        
+        # ✅ Processar grupos: podem vir como string separada por vírgula do hidden input
+        grupos_str = request.POST.get("ls_grupos", "")
+        grupo_ids = [g.strip() for g in grupos_str.split(",") if g.strip()]
 
         cl_gdf.upd_usuario(
             user_id=user_id,

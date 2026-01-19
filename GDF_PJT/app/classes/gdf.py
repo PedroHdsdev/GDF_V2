@@ -3,8 +3,8 @@ from django.utils.timezone          import now
 from psycopg2                       import IntegrityError
 from django.conf                    import settings
 from app.db_GDF.Public.models       import AuthUser, Empresas, Clientes, Cert, UserEmpresas
-from app.db_GDF.models              import AuthGroup, AuthUserGroups, GrupoCliente, GrpEmpresas 
-from app.db_GDF.models              import Solucoes, Subsolucoes, SolucoesAcesso, SubsolucoesAcesso
+from app.db_GDF.Public.models       import AuthGroup, AuthUserGroups, GrupoCliente, GrpEmpresas 
+from app.db_GDF.Public.models       import Solucoes, Subsolucoes, SolucoesAcesso, SubsolucoesAcesso
 from datetime                       import datetime
 from django.db.utils                import OperationalError
 from django.contrib.auth.hashers    import make_password
@@ -749,7 +749,13 @@ class Cl_Gdf():
             q_user = AuthUser.objects.get(id=user_id)
             q_user_groups = AuthUserGroups.objects.filter(user_id=q_user.id)
             q_groups = AuthGroup.objects.filter(id__in=q_user_groups.values_list('group_id', flat=True))
-            q_empresas = Empresas.objects.filter(cod_cliente=cod_cliente)
+            
+            # ✅ Buscar APENAS as empresas do usuário
+            q_user_empresas = UserEmpresas.objects.filter(user_id=q_user.id)
+            q_empresas = Empresas.objects.filter(
+                id__in=q_user_empresas.values_list('empresas_id', flat=True),
+                cod_cliente=cod_cliente
+            )
 
             self.Retorn = {
                 "id": q_user.id,

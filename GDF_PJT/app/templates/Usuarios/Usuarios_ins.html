@@ -66,28 +66,73 @@
             <!-- TAB 2: EMPRESAS -->
             <div class="tab-pane fade" id="tab-ins-empresas">
               <div class="mb-3">
-                <label class="form-label">Empresa</label>
-                <select name="ls_empresas" class="form-select" required>
-                  <option value="">Selecione uma empresa...</option>
-                  {% for emp in t_empresas %}
-                    <option value="{{ emp.cod_empresa }}">{{ emp.razao }} ({{ emp.cnpj }})</option>
-                  {% endfor %}
-                </select>
-                <small class="form-text text-muted">Selecione a empresa vinculada ao usuário</small>
+                <label class="form-label">Selecionar Empresa</label>
+                <div class="input-group">
+                  <select id="ins_empresas_select" class="form-select">
+                    <option value="">-- Selecione uma empresa --</option>
+                    {% for emp in t_empresas %}
+                      <option value="{{ emp.cod_empresa }}" data-nome="{{ emp.nome }}">{{ emp.nome }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="button" class="btn btn-success" onclick="adicionarEmpresaIns()">
+                    <i class="bi bi-plus-lg"></i> Adicionar
+                  </button>
+                </div>
               </div>
+              
+              <!-- Tabela de Empresas Selecionadas -->
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Empresa</th>
+                      <th class="text-center" style="width: 80px;">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ins_empresas_tbody">
+                    <!-- Preenchido por JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+              
+              <!-- Hidden input para enviar valores ao servidor -->
+              <input type="hidden" name="ls_empresas" id="ins_empresas_hidden" value="">
             </div>
 
             <!-- TAB 3: GRUPOS -->
             <div class="tab-pane fade" id="tab-ins-grupos">
               <div class="mb-3">
-                <label class="form-label">Grupos de Acesso</label>
-                <select name="ls_grupos" class="form-select" multiple size="8">
-                  {% for grp in t_auth_groups %}
-                    <option value="{{ grp.id }}">{{ grp.name }}</option>
-                  {% endfor %}
-                </select>
-                <small class="form-text text-muted">Mantenha Ctrl (ou Cmd no Mac) pressionado para selecionar múltiplos grupos</small>
+                <label class="form-label">Selecionar Grupo</label>
+                <div class="input-group">
+                  <select id="ins_grupos_select" class="form-select">
+                    <option value="">-- Selecione um grupo --</option>
+                    {% for grp in t_auth_groups %}
+                      <option value="{{ grp.id }}" data-nome="{{ grp.name }}">{{ grp.name }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="button" class="btn btn-success" onclick="adicionarGrupoIns()">
+                    <i class="bi bi-plus-lg"></i> Adicionar
+                  </button>
+                </div>
               </div>
+
+              <!-- Tabela de Grupos Selecionados -->
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Grupo</th>
+                      <th class="text-center" style="width: 80px;">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ins_grupos_tbody">
+                    <!-- Preenchido por JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Hidden input para enviar valores ao servidor -->
+              <input type="hidden" name="ls_grupos" id="ins_grupos_hidden" value="">
             </div>
 
           </div>

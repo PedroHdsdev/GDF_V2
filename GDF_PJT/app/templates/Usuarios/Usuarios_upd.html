@@ -65,20 +65,74 @@
 
             <!-- EMPRESAS -->
             <div class="tab-pane fade" id="tab-upd-empresas">
-              <select id="upd_empresas" class="form-select" multiple size="8">
-                {% for emp in t_empresas %}
-                  <option value="{{ emp.id }}">{{ emp.nome }}</option>
-                {% endfor %}
-              </select>
+              <div class="mb-3">
+                <label class="form-label">Selecionar Empresa</label>
+                <div class="input-group">
+                  <select id="upd_empresas_select" class="form-select">
+                    <option value="">-- Selecione uma empresa --</option>
+                    {% for emp in t_empresas %}
+                      <option value="{{ emp.cod_empresa }}" data-nome="{{ emp.nome }}">{{ emp.nome }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="button" class="btn btn-success" onclick="adicionarEmpresa()">
+                    <i class="bi bi-plus-lg"></i> Adicionar
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Tabela de Empresas Selecionadas -->
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Empresa</th>
+                      <th class="text-center" style="width: 80px;">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody id="upd_empresas_tbody">
+                    <!-- Preenchido por JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+              
+              <!-- Hidden input para enviar valores ao servidor -->
+              <input type="hidden" name="ls_empresas" id="upd_empresas_hidden" value="">
             </div>
 
             <!-- GRUPOS -->
             <div class="tab-pane fade" id="tab-upd-grupos">
-              <select id="upd_grupos" class="form-select" multiple size="8">
-                {% for grp in t_auth_groups %}
-                  <option value="{{ grp.id }}">{{ grp.name }}</option>
-                {% endfor %}
-              </select>
+              <div class="mb-3">
+                <label class="form-label">Selecionar Grupo</label>
+                <div class="input-group">
+                  <select id="upd_grupos_select" class="form-select">
+                    <option value="">-- Selecione um grupo --</option>
+                    {% for grp in t_auth_groups %}
+                      <option value="{{ grp.id }}" data-nome="{{ grp.name }}">{{ grp.name }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="button" class="btn btn-success" onclick="adicionarGrupo()">
+                    <i class="bi bi-plus-lg"></i> Adicionar
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Tabela de Grupos Selecionados -->
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Grupo</th>
+                      <th class="text-center" style="width: 80px;">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody id="upd_grupos_tbody">
+                    <!-- Preenchido por JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+              
+              <!-- Hidden input para enviar valores ao servidor -->
+              <input type="hidden" name="ls_grupos" id="upd_grupos_hidden" value="">
             </div>
 
           </div>

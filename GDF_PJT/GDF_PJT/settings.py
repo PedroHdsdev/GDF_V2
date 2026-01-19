@@ -84,16 +84,10 @@ DATABASES = {
          'USER': 'postgres',         
          'PASSWORD': 'PrcIT@2023',   
          'HOST': '10.0.1.19',        
-         'PORT': '5432',             
-    },
-    'reprocessamento': {
-         'ENGINE': 'django.db.backends.postgresql',
-         'NAME': 'REPROCESSAMENTO_DEV',
-         'USER': 'postgres',
-         'PASSWORD': 'PrcIT@2023',
-         'HOST': '10.0.1.19',
-         'PORT': '5432',
-    }                                    
+         'PORT': '5432', 
+         'options': {'-c search_path=Public,Reprocessamento'  # Define o schema padrão como 'Public'
+        }           
+    },                          
 }
  
 DATABASE_ROUTERS = [
