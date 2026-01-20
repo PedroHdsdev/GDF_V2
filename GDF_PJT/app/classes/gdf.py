@@ -23,11 +23,12 @@ class Cl_Gdf():
         self.solucoes_acesso: List[Dict] = []
         self.subsolucoes_acesso: List[Dict] = []
 
+#********************************************************************************
 #--------------------------------------------------------------------------------
 #           Gerar - Token JWT (Dashboard) 
 #--------------------------------------------------------------------------------
     @staticmethod
-    def Gerar_token(request, user): 
+    def Gerar_Token(request, user): 
         if not user.is_active:
             return None 
         else:
@@ -42,12 +43,9 @@ class Cl_Gdf():
         
 #********************************************************************************
 #--------------------------------------------------------------------------------
-#           GET - consultas
-#--------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------
 #           GET - Dados iniciais
 #--------------------------------------------------------------------------------
-    def get_dados(self, I_User):
+    def Get_Dados(self, I_User):
         self.Retorn = []
         try:
             Q_user = User.objects.filter(id=I_User.id).first()
@@ -83,10 +81,11 @@ class Cl_Gdf():
         except Exception as e:
             print(str(e))
 
+#********************************************************************************
 #--------------------------------------------------------------------------------
 #           GET - Soluções e Subsoluções
 #--------------------------------------------------------------------------------
-    def get_solucoes(self):
+    def Get_Solucoes(self):
         self.Retorn = []
         try:
             if not hasattr(self, 'subsolucoes_acesso') or not hasattr(self, 'solucoes_acesso'):
@@ -149,121 +148,105 @@ class Cl_Gdf():
             print(str(e))
             return []
 
+#********************************************************************************
 #--------------------------------------------------------------------------------
-#           GET - Usuarios
+#           GET - Clientes
 #--------------------------------------------------------------------------------
-    def get_usuarios(self, i_cod_Cliente=None):
+    def Get_Clientes(self):
+        self.Retorn = []
         try:
-            if not i_cod_Cliente:
-                self._registrar_log(type='E', id='E001', Values='Cliente')
-                return [], [], [], []
+            clientes_data = []
+            Solucoes_data = []
 
-            # -------------------------------------------------
-            # Empresas do cliente (para tabela e modal)
-            # -------------------------------------------------
-            empresas_data = Empresas.objects.filter(
-                cliente_id=i_cod_Cliente
-            ).distinct()
+            q_clientes = Clientes.objects.all()
+            q_solucoes = SolucoesAcesso.objects.filter(clientess__in=q_clientes)
+            Solucoes_data = Solucoes.objects.all()
+            
+            for clie in q_clientes:
+                 clientes_data.append({
+                "cod_cliente": clie.cod_cliente,
+                "razao": clie.razao,
+                "cnpj": clie.cnpj,
+                "is_active": clie.is_active,
+                "date_joined": clie.date_joined,
+                "solucoes_acesso": [
+                    {
+                        "solucoes_id": sa.solucoes.cod_solucoes,
+                        "clientess_id": sa.clientess_id,
+                        "is_active": sa.is_active
+                    }
+                    for sa in q_solucoes if sa.clientess_id == clie.cod_cliente
+                ]   
+                })
 
-            # -------------------------------------------------
-            # Usuários vinculados às empresas do cliente
-            # -------------------------------------------------
-            user_ids = UserEmpresas.objects.filter(
-                empresas__in=empresas_data
-            ).values_list('user_id', flat=True)
+        except Clientes.DoesNotExist:
+            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            return [], []
+        except SolucoesAcesso.DoesNotExist:
+            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            return [], []
+        except IntegrityError as e:
+            self._registrar_log(type='E', id='E004', msg=f"Erro: {str(e)}")
+            return [], []
+        except Exception as e:
+            self._registrar_log(type='E', id='E000')
+            return [], []
+        
+        return clientes_data, Solucoes_data
+    
+#--------------------------------------------------------------------------------
+    """Cadastro de Clientes"""
+    def Cliente_ins(self, cod_cliente, razao, cnpj):
+        self.Retorn = []
+        try:
+            cliente_instance = Clientes.objects.create(
+                cod_cliente=cod_cliente,
+                razao=razao,
+                cnpj=cnpj,
+                is_active=True,
+                date_joined=now()
+            )
+            cliente_instance.save()
 
-            usuarios_qs = User.objects.filter(
-                id__in=user_ids
-            ).distinct()
+            q_solucoes = Solucoes.objects.all()
 
-            # -------------------------------------------------
-            # Empresa de referência do usuário (primeiro vínculo)
-            # -------------------------------------------------
-            user_empresa_map = {}
-
-            vinculos = UserEmpresas.objects.filter(
-                empresas__in=empresas_data,
-                user__in=usuarios_qs
-            ).select_related('empresas')
-
-            for v in vinculos:
-                # pega a primeira empresa encontrada por usuário
-                user_empresa_map.setdefault(
-                    v.user_id,
-                    v.empresas.cod_empresa
+            for sol in q_solucoes:
+                SolucoesAcesso.objects.create(
+                    clientess=cliente_instance,
+                    solucoes=sol,
+                    is_active=False
                 )
-
-            # -------------------------------------------------
-            # Grupos dos usuários
-            # -------------------------------------------------
-            user_group_map = {}
-
-            for u in usuarios_qs:
-                groups = u.groups.all().values_list('name', flat=True)
-                if groups:
-                    user_group_map[u.id] = list(groups)
-
-            # -------------------------------------------------
-            # Montagem da tabela de usuários
-            # -------------------------------------------------
-            usuarios_data = []
-
-            for u in usuarios_qs:
-                usuarios_data.append({
-                    "id": u.id,
-                    "username": u.username,
-                    "first_name": u.first_name,
-                    "last_name": u.last_name,
-                    "email": u.email,
-                    "is_active": u.is_active,
-                    "date_joined": u.date_joined,
-                    "empresa_id": user_empresa_map.get(u.id),
-                    "groups": user_group_map.get(u.id, []),
-                })
-
-            # -------------------------------------------------
-            # Grupos disponíveis do cliente (modal)
-            # -------------------------------------------------
-            Groups_data = GrupoCliente.objects.filter(
-                cliente__cod_cliente=i_cod_Cliente
-            ).distinct()
-            
-            print(f"[DEBUG get_usuarios] Cliente: {i_cod_Cliente}")
-            print(f"[DEBUG get_usuarios] Query GrupoCliente.objects.filter(cliente__cod_cliente={i_cod_Cliente})")
-            print(f"[DEBUG get_usuarios] Grupos encontrados: {Groups_data.count()}")
-            for grp in Groups_data:
-                print(f"  - Grupo: {grp.group.name}, Cliente: {grp.cliente.cod_cliente}")
-            
-            # -------------------------------------------------
-            # Converter empresas e grupos para dicionários
-            # -------------------------------------------------
-            empresas_dict = []
-            for emp in empresas_data:
-                empresas_dict.append({
-                    'cod_empresa': emp.cod_empresa,
-                    'nome': emp.fantasia or emp.razao,
-                    'id': emp.cod_empresa
-                })
-            
-            grupos_dict = []
-            for grp in Groups_data:
-                grupos_dict.append({
-                    'id': grp.group.id,
-                    'name': grp.group.name
-                })
-            
-            print(f"[DEBUG get_usuarios] Grupos convertidos para dict: {grupos_dict}")
-
-            return usuarios_data, empresas_dict, grupos_dict, Groups_data
-
+                
+        except Clientes.DoesNotExist as e:
+            print(str(e))
+        except Solucoes.DoesNotExist as e:
+            print(str(e))
+        except IntegrityError:
+            print("Erro: Cliente já existe.")
         except Exception as e:
             print(str(e))
-            return [], [], [], []
+
+    def Cliente_upd(self, id_cliente, razao, cnpj):   
+        self.Retorn = []
+        try:
+            created = Clientes.objects.update_or_create(
+                cod_cliente=id_cliente,
+                defaults={
+                    'razao': razao,
+                    'cnpj': cnpj
+                }
+            )
+
+        except Clientes.DoesNotExist as e:
+            print(str(e))
+        except Exception as e:
+            print(str(e))
         
+#********************************************************************************
 #--------------------------------------------------------------------------------
-#           GET - Empresas
+# Empresas (Dm_Empresas)
 #--------------------------------------------------------------------------------
-    def get_empresas(self):
+    def Get_Empresas(self):
         self.Retorn = []
         try:
             empresas_data = []
@@ -329,186 +312,8 @@ class Cl_Gdf():
         return empresas_data, Q_GrpEmpresas
 
 #--------------------------------------------------------------------------------
-#           GET - Clientes
-#--------------------------------------------------------------------------------
-    def get_clientes(self):
-        self.Retorn = []
-        try:
-            clientes_data = []
-            Solucoes_data = []
-
-            q_clientes = Clientes.objects.all()
-            q_solucoes = SolucoesAcesso.objects.filter(clientess__in=q_clientes)
-            Solucoes_data = Solucoes.objects.all()
-            
-            for clie in q_clientes:
-                 clientes_data.append({
-                "cod_cliente": clie.cod_cliente,
-                "razao": clie.razao,
-                "cnpj": clie.cnpj,
-                "is_active": clie.is_active,
-                "date_joined": clie.date_joined,
-                "solucoes_acesso": [
-                    {
-                        "solucoes_id": sa.solucoes.cod_solucoes,
-                        "clientess_id": sa.clientess_id,
-                        "is_active": sa.is_active
-                    }
-                    for sa in q_solucoes if sa.clientess_id == clie.cod_cliente
-                ]   
-                })
-
-        except Clientes.DoesNotExist:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
-            return [], []
-        except SolucoesAcesso.DoesNotExist:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
-            return [], []
-        except IntegrityError as e:
-            self._registrar_log(type='E', id='E004', msg=f"Erro: {str(e)}")
-            return [], []
-        except Exception as e:
-            self._registrar_log(type='E', id='E000')
-            return [], []
-        
-        return clientes_data, Solucoes_data
-
-#********************************************************************************
-#--------------------------------------------------------------------------------
-#           SET - inserção
-#--------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------
-#           SET - Usuarios
-#--------------------------------------------------------------------------------
-    def ins_usuario(self, username, first_name, last_name, email, password, empresa_id, grupo_ids, cod_cliente=None):
-        """Insere um novo usuário com empresa e grupos"""
-        self.Retorn = []
-        try:
-            # ✅ Validações
-            if not all([username, email, password, empresa_id]):
-                raise ValueError("Username, email, senha e empresa são obrigatórios")
-            
-            if not cod_cliente:
-                raise ValueError("Cliente não informado")
-            
-            # ✅ Verificar se empresa existe e pertence ao cliente
-            empresa_obj = Empresas.objects.filter(
-                cod_empresa=empresa_id,
-                cliente_id=cod_cliente
-            ).first()
-            
-            if not empresa_obj:
-                raise Empresas.DoesNotExist(f"Empresa {empresa_id} não existe ou não pertence ao cliente")
-            
-            # ✅ Verificar se username já existe
-            if User.objects.filter(username=username).exists():
-                raise IntegrityError(f"Username '{username}' já existe")
-            
-            # ✅ Criar usuário
-            user_instance = User.objects.create(
-                username=username,
-                first_name=first_name,
-                last_name=last_name,
-                password=make_password(password),
-                email=email,
-                is_superuser=False,
-                is_staff=False,
-                is_active=True,
-                date_joined=now()
-            )
-            
-            # ✅ Vincular empresa
-            UserEmpresas.objects.create(
-                empresas=empresa_obj,
-                user=user_instance
-            )
-            
-            # ✅ Vincular grupos (apenas se houver)
-            if grupo_ids:
-                for grupo_id in grupo_ids:
-                    try:
-                        group = Group.objects.get(id=grupo_id)
-                        user_instance.groups.add(group)
-                    except Group.DoesNotExist:
-                        print(f"[WARN] Grupo com ID {grupo_id} não encontrado")
-                        continue
-            
-            print(f"[OK] Usuário '{username}' criado com sucesso")
-            return True
-        
-        except Empresas.DoesNotExist as e:
-            print(f"[ERROR] Empresa não encontrada: {str(e)}")
-            return False
-        except IntegrityError as e:
-            print(f"[ERROR] Erro de integridade: {str(e)}")
-            return False
-        except ValueError as e:
-            print(f"[ERROR] Validação falhou: {str(e)}")
-            return False
-        except Exception as e:
-            print(f"[ERROR] Erro ao criar usuário: {str(e)}")
-            return False
-
-    def set_user(self, empresa, Usernome, firstname, lastname, email, senha, grpacesso):
-        """Método legado - manter para compatibilidade"""
-        self.Retorn = []
-        try:
-            user_instance = User.objects.create(
-                username=Usernome,
-                first_name=firstname,
-                last_name=lastname,
-                password=make_password(senha),
-                email=email,
-                is_superuser=False,
-                is_staff=False,
-                is_active=True,
-                date_joined=now()
-            )
-            
-            user_instance.save()
-            cod_empresa = Empresas.objects.get(cod_empresa=empresa)
-            cod_empresa.user.add(user_instance)
-
-            group = Group.objects.get(id=grpacesso)
-            user_instance.groups.add(group)
-            
-            self._registrar_log(type='S', id='S001', Values='Usuario: '+Usernome)
-        
-        except Empresas.DoesNotExist as e:
-            print(str(e))
-        except IntegrityError as e:
-            print(str(e))
-        except Exception as e:
-            print(str(e))
-
-
-#--------------------------------------------------------------------------------
-#           SET - Usuario Grupo
-#--------------------------------------------------------------------------------
-    def set_userGruop(self, user_id, Group_id):
-        self.Retorn = []
-        try:
-            user  = User.objects.get(id=user_id)
-            group = Group.objects.get(id=Group_id)
-
-            # Verifica se o usuário já está no grupo
-            if not user.groups.filter(id=group.id).exists():
-                user.groups.add(group)
-                user.save()
-
-                self._registrar_log(type='S', id='S001', Values=f"Usuário: '{user.username}' Grupo: '{group.name}'.") 
-            else:
-                self._registrar_log(type='E', id='E002', msg="Usuário já pertence a este grupo.")  
- 
-        except IntegrityError as e:
-            print(str(e))
-        except Exception as e:
-            print(str(e))
-
-#--------------------------------------------------------------------------------
-#           SET -  Empresa
-#--------------------------------------------------------------------------------
-    def set_empresa(self, cod_empresa, razao, cnpj, fantasia, grp_empresa):
+    """Cadastro de Empresas"""
+    def Empresa_ins(self, cod_empresa, razao, cnpj, fantasia, grp_empresa):
         self.Retorn = []
         Cert_obj = Cert.objects.filter(raiz_cnpj=cnpj[:8]).first()
         try:
@@ -542,46 +347,46 @@ class Cl_Gdf():
             print(str(e))
 
 #--------------------------------------------------------------------------------
-#           SET - Cliente
-#--------------------------------------------------------------------------------
-    def set_cliente(self, cod_cliente, razao, cnpj):
+    """Alteração de Empresas"""
+    def Empresa_upd(self, cod_empresa, cnpj, razao, fantasia, ie, im, tipo,
+                        matriz, crt, cnae, iest, suframa, grp_empresa, chave_acesso):
         self.Retorn = []
         try:
-            cliente_instance = Clientes.objects.create(
-                cod_cliente=cod_cliente,
-                razao=razao,
-                cnpj=cnpj,
-                is_active=True,
-                date_joined=now()
-            )
-            cliente_instance.save()
+            q_grpempresa = GrpEmpresas.objects.get(grp_empresa=grp_empresa)
 
-            q_solucoes = Solucoes.objects.all()
-
-            for sol in q_solucoes:
-                SolucoesAcesso.objects.create(
-                    clientess=cliente_instance,
-                    solucoes=sol,
-                    is_active=False
-                )
-                
-        except Clientes.DoesNotExist as e:
+            created = Empresas.objects.update_or_create(
+            cod_empresa=cod_empresa,
+            defaults={
+                'cnpj': cnpj,
+                'razao': razao,
+                'fantasia': fantasia,
+                'ie': ie,
+                'im': im,
+                'tipo': tipo,
+                'matriz': matriz,
+                'crt': crt,
+                'cnae': cnae,
+                'iest': iest,
+                'suframa': suframa,
+                'grp_empresa': q_grpempresa,
+                'chave_acesso': chave_acesso,
+            })
+            
+        except GrpEmpresas.DoesNotExist:
             print(str(e))
-        except Solucoes.DoesNotExist as e:
+        except Empresas.DoesNotExist as e:
             print(str(e))
-        except IntegrityError:
-            print("Erro: Cliente já existe.")
+        except IntegrityError as e:
+            print(str(e))
         except Exception as e:
             print(str(e))
 
-#********************************************************************************
+        
+        return self.Retorn
+
 #--------------------------------------------------------------------------------
-#           ALTER - alterações
-#--------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------
-#           ALTER - Certificado
-#--------------------------------------------------------------------------------
-    def alter_certificado(self, raiz, cert_file, emissor, cnpj, dt_inicial,dt_fim ):
+    """Alteração de Certificado"""
+    def Cert_upd(self, raiz, cert_file, emissor, cnpj, dt_inicial,dt_fim ):
         self.Retorn = []
         try:
             if isinstance(dt_inicial, str):
@@ -612,41 +417,246 @@ class Cl_Gdf():
         except Exception as e:
             print(str(e))
         
-#--------------------------------------------------------------------------------
-#           ALTER - Usuario
-#--------------------------------------------------------------------------------
-    def alter_usuario(self, id, Senha,firstName, lastName, Email, is_active):
-        self.Retorn = []
-        try:
-            if Senha == "" or Senha is None:
-                created = User.objects.update_or_create(
-                    id=id,
-                    defaults={
-                        'first_name': firstName,
-                        'last_name': lastName,
-                        'email': Email,
-                        'is_active': is_active 
-                    }
-                )
-            else:
-                created = User.objects.update_or_create(
-                    id=id,
-                    defaults={
-                        'password': make_password(Senha),
-                        'first_name': firstName,
-                        'last_name': lastName,
-                        'email': Email,
-                        'is_active': is_active 
-                    }
-                )
 
-        except User.DoesNotExist as e:
-            print(str(e))
+#********************************************************************************
+#--------------------------------------------------------------------------------
+# Usuarios (DM_Usuarios)
+#--------------------------------------------------------------------------------
+    """ Lista de Usuários vinculados às empresas do cliente """
+    def Get_Usuarios(self, i_cod_Cliente=None):
+        try:
+            if not i_cod_Cliente:
+                self._registrar_log(type='E', id='E001', Values='Cliente')
+                return []
+
+            # -------------------------------------------------
+            # Empresas do cliente (para tabela e modal)
+            # -------------------------------------------------
+            empresas_data = Empresas.objects.filter(
+                cliente_id=i_cod_Cliente
+            ).distinct()
+
+            # -------------------------------------------------
+            # Usuários vinculados às empresas do cliente
+            # -------------------------------------------------
+            user_ids = UserEmpresas.objects.filter(
+                empresas__in=empresas_data
+            ).values_list('user_id', flat=True)
+
+            usuarios_qs = User.objects.filter(
+                id__in=user_ids
+            ).distinct()
+
+            # -------------------------------------------------
+            # Montagem da tabela de usuários
+            # -------------------------------------------------
+            usuarios_data = []
+
+            for u in usuarios_qs:
+                usuarios_data.append({
+                    "id": u.id,
+                    "username": u.username,
+                    "first_name": u.first_name,
+                    "last_name": u.last_name,
+                    "email": u.email,
+                    "is_active": u.is_active,
+                    "date_joined": u.date_joined,
+                    "Aglomerado": i_cod_Cliente,
+                })
+
+            return usuarios_data
+
         except Exception as e:
             print(str(e))
+            return []
 
-    def upd_usuario(self, user_id, first_name, last_name, email, is_active, empresa_id, grupo_ids, cod_cliente=None):
-        """Atualiza usuário, sua empresa e grupos (novo método com assinatura de view)"""
+#--------------------------------------------------------------------------------
+    """Retorna todas as empresas e grupos disponíveis para o cliente"""
+    def Get_Usuario_ins(self, cod_cliente):
+        self.Retorn = {}
+        try:
+            # ✅ Empresas do cliente
+            todas_empresas = Empresas.objects.filter(
+                cliente__cod_cliente=cod_cliente
+            ).distinct()
+
+            # ✅ Todos os grupos do cliente (via relacionamento Group)
+            todos_grupos = GrupoCliente.objects.filter(
+                cliente__cod_cliente=cod_cliente
+            ).values('group__id', 'group__name').distinct()
+
+            # ✅ Formatando grupos para retorno
+            grupos_formatted = [
+                {"id": g['group__id'], "name": g['group__name']}
+                for g in todos_grupos
+            ]
+
+            self.Retorn = {
+                "todas_empresas": list(todas_empresas.values('cod_empresa', 'fantasia', 'razao')),
+                "todos_grupos": grupos_formatted
+            }
+
+        except Exception as e:
+            print(f"[ERROR] Erro ao buscar dados para inscrição de usuário: {str(e)}")
+            self.Retorn = {"erro": f"Erro ao buscar dados: {str(e)}"}
+
+        return self.Retorn
+
+#--------------------------------------------------------------------------------
+    """Retorna dados do usuário para edição no modal"""
+    def Get_Usuario_upd(self, user_id, cod_cliente):
+        self.Retorn = {}
+        try:
+            # ✅ Validar user_id
+            if not user_id or not isinstance(user_id, int):
+                raise ValueError(f"ID de usuário inválido: {user_id}")
+
+            # ✅ Empresas do cliente
+            todas_empresas = Empresas.objects.filter(
+                cliente__cod_cliente=cod_cliente
+            ).distinct()
+
+            # ✅ Todos os grupos do cliente (via relacionamento Group)
+            todos_grupos = GrupoCliente.objects.filter(
+                cliente__cod_cliente=cod_cliente
+            ).distinct()
+
+            q_user = User.objects.get(id=user_id)
+            q_groups = q_user.groups.all()
+            
+            # ✅ Buscar APENAS as empresas do usuário
+            q_empresas = Empresas.objects.filter(
+                userempresas__user_id=q_user.id,
+                cliente_id=cod_cliente
+            ).distinct()
+
+            # ✅ Empresas DISPONÍVEIS (não atribuídas)
+            empresas_disponiveis = todas_empresas.exclude(
+                cod_empresa__in=q_empresas.values_list('cod_empresa', flat=True)
+            )
+
+            # ✅ Grupos DISPONÍVEIS (não atribuídos)
+            grupos_disponiveis = todos_grupos.exclude(
+                group__in=q_groups
+            )
+            
+            self.Retorn = {
+                "id": q_user.id,
+                "username": q_user.username,
+                "email": q_user.email,
+                "first_name": q_user.first_name,
+                "last_name": q_user.last_name,
+                "is_active": q_user.is_active,
+                "grupos": list(q_groups.values('id', 'name')),
+                "empresas": list(q_empresas.values('cod_empresa', 'fantasia', 'razao')),
+                "empresas_disponiveis": list(empresas_disponiveis.values('cod_empresa', 'fantasia', 'razao')),
+                "grupos_disponiveis": list(grupos_disponiveis.values('group__id', 'group__name'))
+            }
+
+        except User.DoesNotExist as e:
+            print(f"[ERROR] Usuário {user_id} não encontrado: {str(e)}")
+            self.Retorn = {"erro": "Usuário não encontrado"}
+        except ValueError as e:
+            print(f"[ERROR] Validação falhou: {str(e)}")
+            self.Retorn = {"erro": str(e)}
+        except Exception as e:
+            print(f"[ERROR] Erro ao buscar usuário: {str(e)}")
+            self.Retorn = {"erro": f"Erro ao buscar usuário: {str(e)}"}
+
+        return self.Retorn
+
+#--------------------------------------------------------------------------------
+    """Método legado - manter para compatibilidade"""
+    def Usuario_ins(self, username, email, password, first_name="", last_name="", 
+                    empresas_ids=None, grupos_ids=None, cod_cliente=None):
+       
+        self.Retorn = {"success": False, "message": ""}
+        
+        try:
+            # ✅ Validações obrigatórias
+            if not username or not email or not password:
+                raise ValueError("Username, email e senha são obrigatórios")
+            
+            if not empresas_ids or not grupos_ids:
+                raise ValueError("Pelo menos 1 empresa e 1 grupo são obrigatórios")
+            
+            if not cod_cliente:
+                raise ValueError("Cliente não identificado")
+            
+            # ✅ Converter strings em listas se necessário
+            if isinstance(empresas_ids, str):
+                empresas_ids = [int(e) for e in empresas_ids.split(',') if e.strip()]
+            
+            if isinstance(grupos_ids, str):
+                grupos_ids = [int(g) for g in grupos_ids.split(',') if g.strip()]
+            
+            if not empresas_ids or not grupos_ids:
+                raise ValueError("Nenhuma empresa ou grupo selecionado")
+            
+            # ✅ Validar que todas as empresas pertencem ao cliente
+            empresas_validas = Empresas.objects.filter(
+                cod_empresa__in=empresas_ids,
+                cliente__cod_cliente=cod_cliente
+            ).count()
+            
+            if empresas_validas != len(empresas_ids):
+                raise ValueError("Uma ou mais empresas selecionadas não pertencem ao cliente")
+            
+            # ✅ Validar que todos os grupos pertencem ao cliente
+            grupos_validos = GrupoCliente.objects.filter(
+                group_id__in=grupos_ids,
+                cliente__cod_cliente=cod_cliente
+            ).count()
+            
+            if grupos_validos != len(grupos_ids):
+                raise ValueError("Um ou mais grupos selecionados não pertencem ao cliente")
+            
+            # ✅ Criar usuário Django
+            user_instance = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+                is_superuser=False,
+                is_staff=False,
+                is_active=True
+            )
+            
+            # ✅ Vincular empresas
+            empresas_obj = Empresas.objects.filter(cod_empresa__in=empresas_ids)
+            for empresa in empresas_obj:
+                UserEmpresas.objects.create(
+                    user=user_instance,
+                    empresas=empresa
+                )
+            
+            # ✅ Vincular grupos
+            grupos_obj = Group.objects.filter(id__in=grupos_ids)
+            user_instance.groups.set(grupos_obj)
+            
+            print(f"[OK] Usuário '{username}' criado com sucesso (ID: {user_instance.id})")
+            self.Retorn = {
+                "success": True,
+                "message": f"Usuário '{username}' criado com sucesso",
+                "user_id": user_instance.id
+            }
+        
+        except ValueError as e:
+            self.Retorn = {"success": False, "message": str(e)}
+            print(f"[ERROR] Usuario_ins - Validação: {str(e)}")
+        except IntegrityError as e:
+            self.Retorn = {"success": False, "message": f"Usuário ou email já existe"}
+            print(f"[ERROR] Usuario_ins - Duplicado: {str(e)}")
+        except Exception as e:
+            self.Retorn = {"success": False, "message": f"Erro ao criar usuário: {str(e)}"}
+            print(f"[ERROR] Usuario_ins - Erro geral: {str(e)}")
+        
+        return self.Retorn
+
+#--------------------------------------------------------------------------------
+    """Atualiza usuário, sua empresa e grupos (novo método com assinatura de view)"""
+    def Usuario_upd(self, user_id, first_name, last_name, email, is_active, empresa_id, grupo_ids, cod_cliente=None):
         self.Retorn = []
         try:
             # ✅ Validações
@@ -708,181 +718,9 @@ class Cl_Gdf():
         except Exception as e:
             print(f"[ERROR] Erro ao atualizar usuário: {str(e)}")
             self.Retorn = [{"erro": str(e)}]
-    
-#--------------------------------------------------------------------------------
-#           ALTER - Cliente
-#--------------------------------------------------------------------------------
-    def alter_cliente(self, id_cliente, razao, cnpj):   
-        self.Retorn = []
-        try:
-            created = Clientes.objects.update_or_create(
-                cod_cliente=id_cliente,
-                defaults={
-                    'razao': razao,
-                    'cnpj': cnpj
-                }
-            )
 
-        except Clientes.DoesNotExist as e:
-            print(str(e))
-        except Exception as e:
-            print(str(e))
-        
-#--------------------------------------------------------------------------------
-#           ALTER - Empresa
-#--------------------------------------------------------------------------------
-    def alter_empresa(self, cod_empresa, cnpj, razao, fantasia, ie, im, tipo,
-                        matriz, crt, cnae, iest, suframa, grp_empresa, chave_acesso):
-        self.Retorn = []
-        try:
-            q_grpempresa = GrpEmpresas.objects.get(grp_empresa=grp_empresa)
-
-            created = Empresas.objects.update_or_create(
-            cod_empresa=cod_empresa,
-            defaults={
-                'cnpj': cnpj,
-                'razao': razao,
-                'fantasia': fantasia,
-                'ie': ie,
-                'im': im,
-                'tipo': tipo,
-                'matriz': matriz,
-                'crt': crt,
-                'cnae': cnae,
-                'iest': iest,
-                'suframa': suframa,
-                'grp_empresa': q_grpempresa,
-                'chave_acesso': chave_acesso,
-            })
-            
-        except GrpEmpresas.DoesNotExist:
-            print(str(e))
-        except Empresas.DoesNotExist as e:
-            print(str(e))
-        except IntegrityError as e:
-            print(str(e))
-        except Exception as e:
-            print(str(e))
-
-        
-        return self.Retorn
 
 #********************************************************************************
-#--------------------------------------------------------------------------------
-#           DEL - DELETAR
-#--------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------
-#           DEL - Usuario Grupo
-#--------------------------------------------------------------------------------
-    def del_userGruop(self, grp_name, User_id):
-        self.Retorn = []
-        try:
-            q_user = User.objects.get(id=User_id)
-            Q_group = Group.objects.filter(name=grp_name).first()
-            
-            #delete the user from the group
-            q_user.groups.remove(Q_group)
 
-        except User.DoesNotExist as e:
-            print(str(e))
-        except Group.DoesNotExist as e:
-            print(str(e))
-        except IntegrityError as e:
-            print(str(e))
-        except Exception as e:
-            print(str(e))
 
-    def get_usuario_id(self, user_id, cod_cliente):
-        """Retorna dados do usuário para edição no modal"""
-        self.Retorn = {}
-        try:
-            # ✅ Validar user_id
-            if not user_id or not isinstance(user_id, int):
-                raise ValueError(f"ID de usuário inválido: {user_id}")
-            
-            q_user = User.objects.get(id=user_id)
-            q_groups = q_user.groups.all()
-            
-            # ✅ Buscar APENAS as empresas do usuário
-            q_empresas = Empresas.objects.filter(
-                userempresas__user_id=q_user.id,
-                cliente_id=cod_cliente
-            ).distinct()
-
-            self.Retorn = {
-                "id": q_user.id,
-                "username": q_user.username,
-                "email": q_user.email,
-                "first_name": q_user.first_name,
-                "last_name": q_user.last_name,
-                "is_active": q_user.is_active,
-                "grupos": list(q_groups.values('id', 'name')),
-                "empresas": list(q_empresas.values('cod_empresa', 'fantasia', 'razao'))
-            }
-
-        except User.DoesNotExist as e:
-            print(f"[ERROR] Usuário {user_id} não encontrado: {str(e)}")
-            self.Retorn = {"erro": "Usuário não encontrado"}
-        except ValueError as e:
-            print(f"[ERROR] Validação falhou: {str(e)}")
-            self.Retorn = {"erro": str(e)}
-        except Exception as e:
-            print(f"[ERROR] Erro ao buscar usuário: {str(e)}")
-            self.Retorn = {"erro": f"Erro ao buscar usuário: {str(e)}"}
-
-        return self.Retorn
-    def get_disponibles_para_usuario(self, user_id, cod_cliente):
-        """Retorna empresas e grupos disponíveis para adicionar ao usuário"""
-        try:
-            q_user = User.objects.get(id=user_id)
-            
-            # ✅ Empresas do cliente
-            todas_empresas = Empresas.objects.filter(
-                cliente__cod_cliente=cod_cliente
-            ).distinct()
-            
-            # ✅ Empresas JÁ atribuídas ao usuário
-            empresas_atribuidas = Empresas.objects.filter(
-                userempresas__user_id=q_user.id,
-                cliente__cod_cliente=cod_cliente
-            ).distinct()
-            
-            # ✅ Empresas DISPONÍVEIS (não atribuídas)
-            empresas_disponiveis = todas_empresas.exclude(
-                id__in=empresas_atribuidas.values_list('id', flat=True)
-            )
-            
-            # ✅ Todos os grupos do cliente
-            todos_grupos = GrupoCliente.objects.filter(
-                cliente__cod_cliente=cod_cliente
-            ).distinct()
-            
-            # ✅ Grupos JÁ atribuídos ao usuário
-            grupos_atribuidos = q_user.groups.all().values_list('id', flat=True)
-            
-            # ✅ Grupos DISPONÍVEIS (não atribuídos)
-            grupos_disponiveis = todos_grupos.exclude(
-                group_id__in=grupos_atribuidos
-            )
-            
-            # ✅ Converter para dicionários
-            empresas_dict = []
-            for emp in empresas_disponiveis:
-                empresas_dict.append({
-                    'cod_empresa': emp.cod_empresa,
-                    'nome': emp.fantasia or emp.razao,
-                    'id': emp.cod_empresa
-                })
-            
-            grupos_dict = []
-            for grp in grupos_disponiveis:
-                grupos_dict.append({
-                    'id': grp.group.id,
-                    'name': grp.group.name
-                })
-            
-            return empresas_dict, grupos_dict
-        
-        except Exception as e:
-            print(f"[ERROR] Erro ao buscar disponíveis: {str(e)}")
-            return [], []
+    

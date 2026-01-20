@@ -43,7 +43,7 @@
         <thead class="table-light">
           <tr>
             <th>ID</th>
-            <th>Empresa</th>
+            <th>Aglomerado</th>
             <th class="text-center">Status</th>
             <th>Usuário</th>
             <th>E-mail</th>
@@ -55,7 +55,7 @@
           {% for user in t_user %}
           <tr class="user-row" data-user-id="{{ user.id }}" role="button">
             <td>{{ user.id }}</td>
-            <td>{{ user.empresa_id }}</td>
+            <td>{{ user.Aglomerado }}</td>
             <td class="text-center">
               {% if user.is_active %}
                 <img src="{% static 'img/icon_ok.png' %}" width="20">

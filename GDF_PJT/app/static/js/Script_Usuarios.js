@@ -13,6 +13,42 @@ const usuariosState = {
     todosGrupos: []            // ✅ Lista completa de grupos disponíveis
 };
 
+/* ===============================
+   VALIDAÇÃO DO FORMULÁRIO INSERT
+================================ */
+function validarFormularioIns(event) {
+    event.preventDefault(); // Previne submit automático
+    
+    const username = document.querySelector('input[name="username"]').value.trim();
+    const email = document.querySelector('input[name="email"]').value.trim();
+    const password = document.querySelector('input[name="password"]').value.trim();
+    const password_conf = document.querySelector('input[name="password_confirm"]').value.trim();
+    const empresas_hidden = document.getElementById('ins_empresas_hidden').value.trim();
+    const grupos_hidden = document.getElementById('ins_grupos_hidden').value.trim();
+    
+    // ✅ Validações
+    const errors = [];
+    
+    if (!username) errors.push("Username é obrigatório");
+    if (!email) errors.push("Email é obrigatório");
+    if (!password) errors.push("Senha é obrigatória");
+    if (password !== password_conf) errors.push("Senhas não conferem");
+    if (!empresas_hidden) errors.push("Selecione pelo menos 1 empresa");
+    if (!grupos_hidden) errors.push("Selecione pelo menos 1 grupo");
+    
+    if (errors.length > 0) {
+        alert("❌ Erros ao preencher formulário:\n\n" + errors.join("\n"));
+        return false;
+    }
+    
+    console.log("✅ Formulário validado com sucesso!");
+    console.log("   Empresas:", empresas_hidden);
+    console.log("   Grupos:", grupos_hidden);
+    
+    // ✅ Se passou em todas validações, enviar formulário
+    event.target.submit();
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     // ✅ Carregar dados da tabela no HTML e armazenar em memória
     extrairUsuariosDoHTML();
@@ -266,6 +302,26 @@ function initPaginacao() {
 function initUsuarioIns() {
     const modalEl = document.getElementById("modalUsuarioIns");
     if (!modalEl) return;
+    // Ao abrir o modal, buscar dados do servidor para popular selects
+    modalEl.addEventListener("show.bs.modal", async () => {
+        try {
+            const resp = await fetch('/usuario/inserir/', {
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                // aceitar várias possíveis chaves retornadas pela view
+                const empresas = data.Todas_Empresas || data.todas_empresas || data.TodasEmpresas || [];
+                const grupos = data.Todos_Grupos || data.todos_grupos || data.TodosGrupos || [];
+                preencherSelectInsEmpresas(empresas);
+                preencherSelectInsGrupos(grupos);
+            } else {
+                console.warn('Falha ao carregar dados para modal INSERT:', resp.status, resp.statusText);
+            }
+        } catch (err) {
+            console.error('Erro ao buscar dados para modal INSERT:', err);
+        }
+    });
 
     modalEl.addEventListener("hidden.bs.modal", () => {
         const form = modalEl.querySelector("form");
@@ -341,6 +397,8 @@ async function loadUser(userId) {
         }
 
         const data = await resp.json();
+        console.log("📥 Dados do usuário recebidos:", data);
+        console.log("📊 grupos_disponiveis:", data.grupos_disponiveis);
         fillUserModal(data);
     } catch (error) {
         console.error("Erro na requisição:", error);
@@ -379,13 +437,25 @@ function fillUserModal(user) {
     });
     renderizarGruposSelecionados();
     
-    // ✅ Preencher selects com dados disponíveis
-    if (user.empresas_disponiveis && user.empresas_disponiveis.length > 0) {
-        preencherSelectEmpresas(user.empresas_disponiveis);
+    // ✅ Preencher selects com dados disponíveis (aceitar variações de key names)
+    const empresasDisp = user.empresas_disponiveis || user.Empresas_Disponiveis || user.empresasDisponiveis || user.Empresas_Disponiveis || [];
+    const gruposDisp = user.grupos_disponiveis || user.Grupos_Disponiveis || user.gruposDisponiveis || user.Grupos_Disponiveis || [];
+
+    console.log("🏢 Empresas disponíveis para preencher:", empresasDisp);
+    console.log("👥 Grupos disponíveis para preencher:", gruposDisp);
+
+    if (Array.isArray(empresasDisp) && empresasDisp.length > 0) {
+        console.log("✅ Preenchendo empresas...");
+        preencherSelectEmpresas(empresasDisp);
+    } else {
+        console.warn("⚠️ Nenhuma empresa disponível encontrada");
     }
-    
-    if (user.grupos_disponiveis && user.grupos_disponiveis.length > 0) {
-        preencherSelectGrupos(user.grupos_disponiveis);
+
+    if (Array.isArray(gruposDisp) && gruposDisp.length > 0) {
+        console.log("✅ Preenchendo grupos...");
+        preencherSelectGrupos(gruposDisp);
+    } else {
+        console.warn("⚠️ Nenhum grupo disponível encontrado");
     }
 }
 
@@ -404,9 +474,10 @@ function preencherSelectEmpresas(empresas) {
     // Adicionar opções disponíveis
     empresas.forEach(emp => {
         const option = document.createElement("option");
-        option.value = emp.id;
-        option.textContent = emp.nome;
-        option.dataset.nome = emp.nome;
+        // aceitar formatos: {cod_empresa, fantasia, razao} ou {id, nome}
+        option.value = emp.cod_empresa || emp.id || emp.cod || emp.codigo || '';
+        option.textContent = emp.fantasia || emp.nome || emp.razao || emp.codigo || emp.id || option.value;
+        option.dataset.nome = option.textContent;
         select.appendChild(option);
     });
 }
@@ -416,18 +487,56 @@ function preencherSelectEmpresas(empresas) {
 ================================ */
 function preencherSelectGrupos(grupos) {
     const select = document.getElementById("upd_grupos_select");
-    if (!select) return;
+    if (!select) {
+        console.error("❌ Select 'upd_grupos_select' não encontrado!");
+        return;
+    }
     
+    console.log("📝 Limpando select e adicionando opções...");
     // Limpar options existentes (mantendo o primeiro placeholder)
     while (select.options.length > 1) {
         select.removeChild(select.lastChild);
     }
     
     // Adicionar opções disponíveis
-    grupos.forEach(grp => {
+    grupos.forEach((grp, index) => {
+        console.log(`  Grupo ${index}:`, grp);
         const option = document.createElement("option");
-        option.value = grp.id;
-        option.textContent = grp.name;
+        // aceitar: {id, name} ou {group__id, group__name}
+        option.value = grp.id || grp.group__id || grp.group_id || grp.group || '';
+        option.textContent = grp.name || grp.group__name || grp.group_name || grp.nome || option.value;
+        console.log(`    → value: "${option.value}", text: "${option.textContent}"`);
+        select.appendChild(option);
+    });
+    console.log(`✅ Total de grupos adicionados: ${grupos.length}`);
+}
+
+/* ===============================
+   INSERT: PREENCHER SELECTS (dados vindos da view /usuario_ins/)
+================================ */
+function preencherSelectInsEmpresas(empresas) {
+    const select = document.getElementById("ins_empresas_select");
+    if (!select) return;
+    while (select.options.length > 1) select.removeChild(select.lastChild);
+
+    empresas.forEach(emp => {
+        const option = document.createElement('option');
+        option.value = emp.cod_empresa || emp.id || emp.cod || '';
+        option.textContent = emp.fantasia || emp.razao || emp.nome || option.value;
+        option.dataset.nome = option.textContent;
+        select.appendChild(option);
+    });
+}
+
+function preencherSelectInsGrupos(grupos) {
+    const select = document.getElementById("ins_grupos_select");
+    if (!select) return;
+    while (select.options.length > 1) select.removeChild(select.lastChild);
+
+    grupos.forEach(grp => {
+        const option = document.createElement('option');
+        option.value = grp.id || grp.group_id || '';
+        option.textContent = grp.name || grp.nome || option.value;
         select.appendChild(option);
     });
 }
@@ -625,6 +734,12 @@ function renderizarEmpresasSelecionadasIns() {
     hidden.value = usuariosState.empresasSelecionadas
         .map(e => e.id)
         .join(",");
+    
+    // ✅ Feedback visual
+    const count = usuariosState.empresasSelecionadas.length;
+    if (count > 0) {
+        console.log(`✅ ${count} empresa(s) selecionada(s)`);
+    }
 }
 
 /* ===============================
@@ -690,6 +805,41 @@ function renderizarGruposSelecionadosIns() {
     hidden.value = usuariosState.gruposSelecionados
         .map(g => g.id)
         .join(",");
+}
+
+/* ===============================
+   INSERT: PREENCHER SELECTS (dados vindos da view /usuario/inserir/)
+================================ */
+function preencherSelectInsEmpresas(empresas) {
+    const select = document.getElementById('ins_empresas_select');
+    if (!select) return;
+    // manter placeholder e limpar demais options
+    while (select.options.length > 1) select.removeChild(select.lastChild);
+
+    empresas.forEach(emp => {
+        const val = emp.cod_empresa || emp.id || emp.codigo || '';
+        const text = emp.fantasia || emp.razao || emp.nome || val;
+        const option = document.createElement('option');
+        option.value = val;
+        option.textContent = text;
+        option.dataset.nome = text;
+        select.appendChild(option);
+    });
+}
+
+function preencherSelectInsGrupos(grupos) {
+    const select = document.getElementById('ins_grupos_select');
+    if (!select) return;
+    while (select.options.length > 1) select.removeChild(select.lastChild);
+
+    grupos.forEach(grp => {
+        const val = grp.id || grp.group_id || '';
+        const text = grp.name || grp.nome || val;
+        const option = document.createElement('option');
+        option.value = val;
+        option.textContent = text;
+        select.appendChild(option);
+    });
 }
 
 

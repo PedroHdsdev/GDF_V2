@@ -20,11 +20,11 @@ def Login_view(request):
         if user is not None:
             login(request, user)
             ClGdf = Cl_Gdf()
-            ClGdf.get_dados(request.user) 
+            ClGdf.Get_Dados(request.user) 
 
             if not ClGdf.Retorn:
                 #buscar solucoes que tem acessos 
-                solucoes = ClGdf.get_solucoes()
+                solucoes = ClGdf.Get_Solucoes()
                 if solucoes:
                     request.session['t_solucoes']  = solucoes
                     request.session['cod_cliente'] = ClGdf.Cliente.cod_cliente
@@ -84,20 +84,15 @@ def Dm_Usuarios_view(request):
     
     # Buscar dados APENAS uma vez - carregamento inicial da página
     cl_gdf = Cl_Gdf()
-    t_user, t_empresas, t_auth_groups, _ = cl_gdf.get_usuarios(i_cod_Cliente=cod_cliente)
+    t_user = cl_gdf.Get_Usuarios(i_cod_Cliente=cod_cliente)
 
-    print(t_user)
-    print(t_empresas)
-    print(t_auth_groups)
     # ✅ Passar dados brutos para o template
     # Paginação e busca serão feitas em JavaScript no cliente
     return render(
         request,
         'usuarios/Usuarios.html',
         {
-            't_user': t_user,
-            't_empresas': t_empresas,
-            't_auth_groups': t_auth_groups,            
+            't_user': t_user,         
         }
     )
 
@@ -124,58 +119,79 @@ def Im_Projetos_view(request):
 #       Modais Views
 #--------------------------------------------------------------------
 @login_required(login_url='Login')
+@require_http_methods(["GET", "POST"])
 def Usuario_ins(request):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
+    return_json = {}
+    cl_gdf = Cl_Gdf()
+    
+    if request.method == "GET":
+        # ✅ Retorna dados para preencher o modal
+        return JsonResponse(cl_gdf.Get_Usuario_ins(cod_cliente=cod_cliente))
+
     if request.method == "POST":
-        # ✅ Validações de campos obrigatórios
-        username    = request.POST.get("username", "").strip()
-        first_name  = request.POST.get("first_name", "").strip()
-        last_name   = request.POST.get("last_name", "").strip()
-        email       = request.POST.get("email", "").strip()
-        password    = request.POST.get("password", "").strip()
-        empresa_id  = request.POST.get("ls_empresas", "").strip()
+        # ✅ Extrair dados do formulário
+        username        = request.POST.get("username", "").strip()
+        first_name      = request.POST.get("first_name", "").strip()
+        last_name       = request.POST.get("last_name", "").strip()
+        email           = request.POST.get("email", "").strip()
+        password        = request.POST.get("password", "").strip()
+        password_conf   = request.POST.get("password_confirm", "").strip()
+        empresas_str    = request.POST.get("ls_empresas", "").strip()
+        grupos_str      = request.POST.get("ls_grupos", "").strip()
+
+        # ✅ Validações básicas (frontend já valida, mas revalidamos no backend)
+        errors = []
         
-        # ✅ Validar campos obrigatórios
-        if not all([username, email, password, empresa_id]):
-            cl_gdf = Cl_Gdf()
-            t_user, t_empresas, t_auth_groups, _ = cl_gdf.get_usuarios(i_cod_Cliente=cod_cliente)
+        if not username:
+            errors.append("Username é obrigatório")
+        if not email:
+            errors.append("Email é obrigatório")
+        if not password:
+            errors.append("Senha é obrigatória")
+        if password != password_conf:
+            errors.append("Senhas não conferem")
+        if not empresas_str:
+            errors.append("Selecione pelo menos 1 empresa")
+        if not grupos_str:
+            errors.append("Selecione pelo menos 1 grupo")
+        
+        if errors:
+            t_user = cl_gdf.Get_Usuarios(i_cod_Cliente=cod_cliente)
             return render(request, 'usuarios/Usuarios.html', {
                 't_user': t_user,
-                't_empresas': t_empresas,
-                't_auth_groups': t_auth_groups,
-                'error_message': 'Username, email, senha e empresa são obrigatórios.'
+                'error_message': ' | '.join(errors)
             })
         
-        # ✅ Processar grupos: vêm como string separada por vírgula do hidden input
-        grupos_str = request.POST.get("ls_grupos", "")
-        grupo_ids = [int(g.strip()) for g in grupos_str.split(",") if g.strip()]
-
-        cl_gdf = Cl_Gdf()
-        result = cl_gdf.ins_usuario(
+        # ✅ Chamar método de inserção na classe
+        resultado = cl_gdf.Usuario_ins(
             username=username,
-            first_name=first_name,
-            last_name=last_name,
             email=email,
             password=password,
-            empresa_id=empresa_id,
-            grupo_ids=grupo_ids,
+            first_name=first_name,
+            last_name=last_name,
+            empresas_ids=empresas_str,  # "1,2,3"
+            grupos_ids=grupos_str,      # "4,5,6"
             cod_cliente=cod_cliente
         )
         
         # ✅ Verificar resultado
-        if result is True:
-            return redirect('Dm_Usuarios')
-        else:
-            t_user, t_empresas, t_auth_groups, _ = cl_gdf.get_usuarios(i_cod_Cliente=cod_cliente)
+        if not resultado.get("success"):
+            t_user = cl_gdf.Get_Usuarios(i_cod_Cliente=cod_cliente)
             return render(request, 'usuarios/Usuarios.html', {
                 't_user': t_user,
-                't_empresas': t_empresas,
-                't_auth_groups': t_auth_groups,
-                'error_message': 'Erro ao criar usuário. Verifique os dados.'
+                'error_message': resultado.get("message", "Erro ao criar usuário")
             })
+        
+        # ✅ Sucesso! Redirecionar com mensagem
+        t_user = cl_gdf.Get_Usuarios(i_cod_Cliente=cod_cliente)
+        return render(request, 'usuarios/Usuarios.html', {
+            't_user': t_user,
+            'success_message': resultado.get("message")
+        })
 
 @login_required(login_url='Login')
 @require_http_methods(["GET", "POST"])
@@ -185,23 +201,14 @@ def Usuario_upd(request, user_id):
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
     cl_gdf = Cl_Gdf()
-    
     if request.method == "GET":
         # Retornar dados do usuário em JSON (para modal)
-        user = cl_gdf.get_usuario_id(user_id=user_id, cod_cliente=cod_cliente)
-        if not user or user.get('erro'):
+        data = cl_gdf.Get_Usuario_upd(user_id=user_id, cod_cliente=cod_cliente)
+        if not data or data.get('erro'):
             return JsonResponse({"erro": "Usuário não encontrado"}, status=404)
-        
-        # ✅ Adicionar empresas e grupos disponíveis
-        empresas_disponiveis, grupos_disponiveis = cl_gdf.get_disponibles_para_usuario(
-            user_id=user_id, 
-            cod_cliente=cod_cliente
-        )
-        user['empresas_disponiveis'] = empresas_disponiveis
-        user['grupos_disponiveis'] = grupos_disponiveis
-        
-        return JsonResponse(user)
-    
+
+        return JsonResponse(data)
+
     elif request.method == "POST":
         # ✅ Validações de campos obrigatórios
         first_name  = request.POST.get("first_name", "").strip()
@@ -218,7 +225,7 @@ def Usuario_upd(request, user_id):
         grupos_str = request.POST.get("ls_grupos", "")
         grupo_ids = [int(g.strip()) for g in grupos_str.split(",") if g.strip()]
 
-        cl_gdf.upd_usuario(
+        cl_gdf.Usuario_upd(
             user_id=user_id,
             first_name=first_name,
             last_name=last_name,
@@ -242,9 +249,9 @@ def Usuario_upd(request, user_id):
 #--------------------------------------------------------------------
 @login_required(login_url='Login')
 def Dashboard_view(request):   
-    token = Cl_Gdf.Gerar_token(request, request.user)
+    token = Cl_Gdf.Gerar_Token(request, request.user)
     if not token:
         return render(request, 'Index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
-    return render(request, "Index_Dashboard.html", {"token": token})
+    return render(request, "Index_Dashboard.html", {"token": token })
 
 

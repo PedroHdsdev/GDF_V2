@@ -11,19 +11,27 @@ class Cert(models.Model):
     proprietario = models.CharField(max_length=100, blank=True, null=True)
     cpf_cnpj = models.CharField(max_length=14, blank=True, null=True)
     arquivo_cert = models.BinaryField(blank=True, null=True)
+
     class Meta:
-        managed = False
+        managed = True
         db_table = 'cert'
+        indexes = [
+            models.Index(fields=['cpf_cnpj']),
+        ]
 
 class Clientes(models.Model):
     cod_cliente = models.CharField(primary_key=True, max_length=10)
     razao = models.CharField(unique=True, max_length=120, blank=True, null=True)
-    cnpj = models.CharField(max_length=14)
+    cnpj = models.CharField(unique=True, max_length=14)
     is_active = models.BooleanField()
     date_joined = models.DateTimeField()
+    
     class Meta:
-        managed = False
+        managed = True
         db_table = 'clientes'
+        indexes = [
+            models.Index(fields=['cnpj', 'razao']),
+        ]
     
     def __str__(self):
         return f"{self.cod_cliente} - {self.razao}"
@@ -31,7 +39,7 @@ class Clientes(models.Model):
 
 class Empresas(models.Model):
     cod_empresa = models.CharField(primary_key=True, max_length=10)
-    cnpj = models.CharField(max_length=14)
+    cnpj = models.CharField(unique=True, max_length=14)
     razao = models.CharField(unique=True, max_length=120, blank=True, null=True)
     fantasia = models.CharField(max_length=60, blank=True, null=True)
     ie = models.CharField(max_length=13, blank=True, null=True)
@@ -46,74 +54,89 @@ class Empresas(models.Model):
     chave_acesso = models.CharField(max_length=40, blank=True, null=True)
     id_user = models.IntegerField(blank=True, null=True)
     cert = models.ForeignKey(Cert, models.DO_NOTHING, blank=True, null=True)
-    cliente = models.ForeignKey(Clientes, models.DO_NOTHING, blank=True, null=True)
+    cliente = models.ForeignKey(Clientes, models.CASCADE, blank=True, null=True)
+
     class Meta:
-        managed = False
+        managed = True
         db_table = 'empresas'
+        indexes = [
+            models.Index(fields=['cnpj', 'razao', 'fantasia']),
+        ]
     
     def __str__(self):
         return f"{self.cod_empresa} - {self.fantasia or self.razao}"
 
 class GrpEmpresas(models.Model):
     grp_empresa = models.CharField(primary_key=True, max_length=5)
-    nome = models.CharField(max_length=80, blank=True, null=True)
-    cliente = models.ForeignKey(Clientes, models.DO_NOTHING, blank=True, null=True)
+    descricao = models.CharField(max_length=80, blank=True, null=True)
+    cliente = models.ForeignKey(Clientes, models.CASCADE, blank=True, null=True)
+
     class Meta:
-        managed = False
+        managed = True
         db_table = 'grp_empresas'
 
 class GrupoCliente(models.Model):
     id = models.BigAutoField(primary_key=True)
-    group = models.ForeignKey(Group, models.DO_NOTHING, db_column='Group_id')  # Field name made lowercase.
-    cliente = models.ForeignKey(Clientes, models.DO_NOTHING, blank=True, null=True)
+    group = models.ForeignKey(Group, models.CASCADE, db_column='Group_id') 
+    cliente = models.ForeignKey(Clientes, models.CASCADE, blank=True, null=True)
+
     class Meta:
-        managed = False
+        managed = True
         db_table = 'grupo_cliente'
+        unique_together = ('group', 'cliente')
+
 
 class Solucoes(models.Model):
-    cod_solucoes = models.CharField(primary_key=True, max_length=15)
+    cod_solucao = models.CharField(primary_key=True, max_length=15)
     descricao = models.CharField(max_length=50, blank=True, null=True)
+
     class Meta:
-        managed = False
+        managed = True
         db_table = 'solucoes'
     
     def __str__(self):
-        return f"{self.cod_solucoes} - {self.descricao}"
+        return f"{self.cod_solucao} - {self.descricao}"
 
 class SolucoesAcesso(models.Model):
     id = models.BigAutoField(primary_key=True)
-    clientess = models.ForeignKey(Clientes, models.DO_NOTHING, blank=True, null=True)
-    solucoes = models.ForeignKey(Solucoes, models.DO_NOTHING, blank=True, null=True)
+    cliente = models.ForeignKey(Clientes, models.CASCADE, blank=True, null=True)
+    solucao = models.ForeignKey(Solucoes, models.CASCADE, blank=True, null=True)
     is_active = models.BooleanField(blank=True, null=True)
+
     class Meta:
-        managed = False
+        managed = True
         db_table = 'solucoes_acesso'
+        unique_together = ('cliente', 'solucao')
 
 class Subsolucoes(models.Model):
     id = models.BigAutoField(primary_key=True)
-    cod_subsolucoes = models.CharField(db_column='cod_subSolucoes', max_length=15)  # Field name made lowercase.
+    cod_subsolucao = models.CharField(db_column='cod_subSolucoes', max_length=15)  # Field name made lowercase.
     descricao = models.CharField(max_length=50, blank=True, null=True)
-    solucoes = models.ForeignKey(Solucoes, models.DO_NOTHING, blank=True, null=True)
+    solucao = models.ForeignKey(Solucoes, models.CASCADE, blank=True, null=True)
+
     class Meta:
-        managed = False
+        managed = True
         db_table = 'subsolucoes'
     
     def __str__(self):
-        return f"{self.cod_subsolucoes} - {self.descricao}"
+        return f"{self.cod_subsolucao} - {self.descricao}"
 
 class SubsolucoesAcesso(models.Model):
     id = models.BigAutoField(primary_key=True)
-    group = models.ForeignKey(Group, models.DO_NOTHING, db_column='Group_id')  # Field name made lowercase.
-    subsolucoes = models.ForeignKey(Subsolucoes, models.DO_NOTHING, blank=True, null=True)
+    group = models.ForeignKey(Group, models.CASCADE, db_column='Group_id')  # Field name made lowercase.
+    subsolucao = models.ForeignKey(Subsolucoes, models.CASCADE, blank=True, null=True)
+
     class Meta:
-        managed = False
+        managed = True
         db_table = 'subsolucoes_acesso'
+        unique_together = ('group', 'subsolucao')
 
 class UserEmpresas(models.Model):
     id = models.BigAutoField(primary_key=True)
-    empresas = models.ForeignKey(Empresas, models.DO_NOTHING)
-    user = models.ForeignKey(User, models.DO_NOTHING)
+    empresa = models.ForeignKey(Empresas, models.CASCADE)
+    user = models.ForeignKey(User, models.CASCADE)
+
     class Meta:
-        managed = False
+        managed = True
         db_table = 'user_empresas'
-        unique_together = (('empresas', 'user'),)
+        unique_together = ('empresa', 'user')

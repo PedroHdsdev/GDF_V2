@@ -2,7 +2,7 @@
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
 
-      <form method="post" action="{% url 'Usuario_ins' %}">
+      <form method="post" action="{% url 'Usuario_ins' %}" onsubmit="validarFormularioIns(event)">
         {% csrf_token %}
 
         <div class="modal-header">
@@ -55,10 +55,15 @@
                   <label class="form-label">Sobrenome</label>
                   <input type="text" name="last_name" class="form-control">
                 </div>
-
+                
                 <div class="col-md-6">
                   <label class="form-label">Senha</label>
                   <input type="password" name="password" class="form-control" required>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Confirma Senha</label>
+                  <input type="password" name="password_confirm" class="form-control" required>
                 </div>
               </div>
             </div>
@@ -70,9 +75,6 @@
                 <div class="input-group">
                   <select id="ins_empresas_select" class="form-select">
                     <option value="">-- Selecione uma empresa --</option>
-                    {% for emp in t_empresas %}
-                      <option value="{{ emp.cod_empresa }}" data-nome="{{ emp.nome }}">{{ emp.nome }}</option>
-                    {% endfor %}
                   </select>
                   <button type="button" class="btn btn-success" onclick="adicionarEmpresaIns()">
                     <i class="bi bi-plus-lg"></i> Adicionar
@@ -106,9 +108,6 @@
                 <div class="input-group">
                   <select id="ins_grupos_select" class="form-select">
                     <option value="">-- Selecione um grupo --</option>
-                    {% for grp in t_auth_groups %}
-                      <option value="{{ grp.id }}" data-nome="{{ grp.name }}">{{ grp.name }}</option>
-                    {% endfor %}
                   </select>
                   <button type="button" class="btn btn-success" onclick="adicionarGrupoIns()">
                     <i class="bi bi-plus-lg"></i> Adicionar

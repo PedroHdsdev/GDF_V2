@@ -70,9 +70,6 @@
                 <div class="input-group">
                   <select id="upd_empresas_select" class="form-select">
                     <option value="">-- Selecione uma empresa --</option>
-                    {% for emp in t_empresas %}
-                      <option value="{{ emp.cod_empresa }}" data-nome="{{ emp.nome }}">{{ emp.nome }}</option>
-                    {% endfor %}
                   </select>
                   <button type="button" class="btn btn-success" onclick="adicionarEmpresa()">
                     <i class="bi bi-plus-lg"></i> Adicionar
@@ -106,9 +103,6 @@
                 <div class="input-group">
                   <select id="upd_grupos_select" class="form-select">
                     <option value="">-- Selecione um grupo --</option>
-                    {% for grp in t_auth_groups %}
-                      <option value="{{ grp.id }}" data-nome="{{ grp.name }}">{{ grp.name }}</option>
-                    {% endfor %}
                   </select>
                   <button type="button" class="btn btn-success" onclick="adicionarGrupo()">
                     <i class="bi bi-plus-lg"></i> Adicionar

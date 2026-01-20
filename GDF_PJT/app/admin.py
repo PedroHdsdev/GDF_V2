@@ -1,5 +1,4 @@
 from django.contrib import admin
-from django.contrib.auth.models import User, Group
 from app.db_GDF.Public.models import (
     Cert, Clientes, Empresas, GrupoCliente, GrpEmpresas,
     Solucoes, Subsolucoes, SolucoesAcesso, SubsolucoesAcesso, UserEmpresas
@@ -53,30 +52,30 @@ class CertAdmin(admin.ModelAdmin):
 class SubsolucoesInline(admin.TabularInline):
     model = Subsolucoes
     extra = 1
-    fields = ('cod_subsolucoes', 'descricao')
+    fields = ('cod_subsolucao', 'descricao')
 
 
 @admin.register(Solucoes)
 class SolucoesAdmin(admin.ModelAdmin):
-    list_display = ('cod_solucoes', 'descricao')
-    search_fields = ('cod_solucoes', 'descricao')
-    readonly_fields = ('cod_solucoes',)
+    list_display = ('cod_solucao', 'descricao')
+    search_fields = ('cod_solucao', 'descricao')
+    readonly_fields = ('cod_solucao',)
     inlines = [SubsolucoesInline]
     fieldsets = (
         ('Informações da Solução', {
-            'fields': ('cod_solucoes', 'descricao')
+            'fields': ('cod_solucao', 'descricao')
         }),
     )
 
 
 @admin.register(Subsolucoes)
 class SubsolucoesAdmin(admin.ModelAdmin):
-    list_display = ('id', 'cod_subsolucoes', 'descricao', 'solucoes')
-    list_filter = ('solucoes',)
-    search_fields = ('cod_subsolucoes', 'descricao')
+    list_display = ('id', 'cod_subsolucao', 'descricao', 'solucao')
+    list_filter = ('solucao',)
+    search_fields = ('cod_subsolucao', 'descricao')
     fieldsets = (
         ('Informações da Subssolução', {
-            'fields': ('cod_subsolucoes', 'descricao', 'solucoes')
+            'fields': ('cod_subsolucao', 'descricao', 'solucao')
         }),
     )
 
@@ -86,12 +85,12 @@ class SubsolucoesAdmin(admin.ModelAdmin):
 # ============================================================================
 @admin.register(SolucoesAcesso)
 class SolucoesAcessoAdmin(admin.ModelAdmin):
-    list_display = ('id', 'clientess', 'solucoes', 'is_active')
-    list_filter = ('is_active', 'solucoes', 'clientess')
-    search_fields = ('clientess__razao', 'solucoes__cod_solucoes')
+    list_display = ('id', 'cliente', 'solucao', 'is_active')
+    list_filter = ('is_active', 'solucao', 'cliente')
+    search_fields = ('cliente__razao', 'solucao__cod_solucao')
     fieldsets = (
         ('Acesso à Solução', {
-            'fields': ('clientess', 'solucoes', 'is_active')
+            'fields': ('cliente', 'solucao', 'is_active')
         }),
     )
 
@@ -99,20 +98,20 @@ class SolucoesAcessoAdmin(admin.ModelAdmin):
 @admin.register(SubsolucoesAcesso)
 class SubsolucoesAcessoAdmin(admin.ModelAdmin):
     list_display = ('id', 'group', 'get_subsolucao_chave', 'get_subsolucao_nome')
-    list_filter = ('group', 'subsolucoes__solucoes')
-    search_fields = ('group__name', 'subsolucoes__cod_subsolucoes', 'subsolucoes__descricao')
+    list_filter = ('group', 'subsolucao__solucao')
+    search_fields = ('group__name', 'subsolucao__cod_subsolucao', 'subsolucao__descricao')
     fieldsets = (
         ('Acesso à Subssolução', {
-            'fields': ('group', 'subsolucoes')
+            'fields': ('group', 'subsolucao')
         }),
     )
     
     def get_subsolucao_chave(self, obj):
-        return obj.subsolucoes.cod_subsolucoes if obj.subsolucoes else '-'
+        return obj.subsolucao.cod_subsolucao if obj.subsolucao else '-'
     get_subsolucao_chave.short_description = 'Chave da Subssolução'
     
     def get_subsolucao_nome(self, obj):
-        return obj.subsolucoes.descricao if obj.subsolucoes else '-'
+        return obj.subsolucao.descricao if obj.subsolucao else '-'
     get_subsolucao_nome.short_description = 'Nome da Subssolução'
 
 
@@ -121,13 +120,13 @@ class SubsolucoesAcessoAdmin(admin.ModelAdmin):
 # ============================================================================
 @admin.register(GrpEmpresas)
 class GrpEmpresasAdmin(admin.ModelAdmin):
-    list_display = ('grp_empresa', 'nome', 'cliente')
+    list_display = ('grp_empresa', 'descricao', 'cliente')
     list_filter = ('cliente',)
-    search_fields = ('grp_empresa', 'nome', 'cliente__razao')
+    search_fields = ('grp_empresa', 'descricao', 'cliente__razao')
     readonly_fields = ('grp_empresa',)
     fieldsets = (
         ('Informações do Grupo', {
-            'fields': ('grp_empresa', 'nome', 'cliente')
+            'fields': ('grp_empresa', 'descricao', 'cliente')
         }),
     )
 
@@ -187,13 +186,13 @@ class GrupoClienteAdmin(admin.ModelAdmin):
 # ============================================================================
 @admin.register(UserEmpresas)
 class UserEmpresasAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'empresas')
-    list_filter = ('empresas', 'user')
-    search_fields = ('user__username', 'empresas__razao')
-    raw_id_fields = ('user', 'empresas')
+    list_display = ('id', 'user', 'empresa')
+    list_filter = ('empresa', 'user')
+    search_fields = ('user__username', 'empresa__razao')
+    raw_id_fields = ('user', 'empresa')
     fieldsets = (
         ('Vínculo Usuário-Empresa', {
-            'fields': ('user', 'empresas')
+            'fields': ('user', 'empresa')
         }),
     )
 
