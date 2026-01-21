@@ -5,11 +5,10 @@ Ou dentro do shell: exec(open('script_teste_insert.py').read())
 """
 
 from django.utils import timezone
-from app.db_GDF.Public.models import (
+from GDF_PJT.app.db_GDF.Public.models import (
     Clientes, Empresas, GrpEmpresas, Cert,
     Solucoes, SolucoesAcesso, Subsolucoes,
     GrupoCliente, UserEmpresas, SubsolucoesAcesso,
-    AuthGroup, AuthUser, AuthUserGroups
 )
 
 def testar_criacao_registros():

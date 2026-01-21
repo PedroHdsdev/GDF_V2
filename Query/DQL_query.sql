@@ -21,3 +21,14 @@ SELECT * from solucoes_acesso;
 SELECT * from subsolucoes;
 
 SELECT * from subsolucoes_acesso;
+
+SELECT * from django_migrations;
+
+SELECT * from django_session;
+
+SELECT * from django_content_type;
+
+SELECT * from django_admin_log;
+
+SELECT * from auth_permission;
+

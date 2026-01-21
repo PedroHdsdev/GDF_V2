@@ -7,7 +7,6 @@ from django.views.decorators.http   import require_http_methods
 from django.conf                    import settings
 from app.classes.Gdf                import Cl_Gdf
 from django.core.paginator          import Paginator
-from pyexpat.errors import messages
 #from django.http import JsonResponse
 
 def Login_view(request):
@@ -45,8 +44,8 @@ def get_subsolucao_view(request, cod_sub):
 
         for sol in solucoes:
             for sub in sol.get('sub_solucoes', []):
-                if str(sub.get('cod_subsolucoes')) == str(cod_sub):
-                    return redirect(sub.get('cod_subsolucoes'))
+                if str(sub.get('cod_subsolucao')) == str(cod_sub):
+                    return redirect(sub.get('cod_subsolucao'))
 
         return render(request, 'index_home.html')
 
@@ -76,7 +75,6 @@ def Sair_View(request):
 @login_required(login_url='Login')
 def Dm_Usuarios_view(request):
     cod_cliente = request.session.get('cod_cliente', None)
-    query = request.GET.get('q', '').strip()
     
     # Validar se usuário tem acesso a cliente
     if not cod_cliente:

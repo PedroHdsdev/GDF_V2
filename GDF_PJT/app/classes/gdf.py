@@ -67,14 +67,16 @@ class Cl_Gdf():
 
             # Soluções liberadas para o cliente
             self.solucoes_acesso = SolucoesAcesso.objects.filter(
-                clientess=self.Cliente,
+                cliente=self.Cliente,
                 is_active=True
-            ).select_related('solucoes')
+            ).select_related('solucao')
+            print(self.solucoes_acesso)
 
             # Subsoluções liberadas via grupo
             self.subsolucoes_acesso = SubsolucoesAcesso.objects.filter(
                 group__in=self.Groups
-            ).select_related('subsolucoes')
+            ).select_related('subsolucao')
+            print(self.subsolucoes_acesso)
         
         except OperationalError as e:
             print(str(e))
@@ -95,9 +97,9 @@ class Cl_Gdf():
 
             # 🔹 Subsoluções permitidas via grupo
             sub_ids = {
-                acesso.subsolucoes.cod_subsolucoes
+                acesso.subsolucao.cod_subsolucao
                 for acesso in self.subsolucoes_acesso
-                if acesso.subsolucoes
+                if getattr(acesso, "subsolucao", None) is not None
             }
 
             if not sub_ids:
@@ -110,10 +112,10 @@ class Cl_Gdf():
 
             for solucao in solucoes:
                 subsolucoes = Subsolucoes.objects.filter(
-                    solucoes=solucao,
-                    cod_subsolucoes__in=sub_ids
+                    solucao=solucao,
+                    cod_subsolucao__in=sub_ids
                 ).values(
-                    'cod_subsolucoes',
+                    'cod_subsolucao',
                     'descricao'
                 )
 
@@ -121,7 +123,7 @@ class Cl_Gdf():
                     continue
 
                 solucoes_data.append({
-                    "codigo": solucao.cod_solucoes,
+                    "codigo": solucao.cod_solucao,
                     "descricao": solucao.descricao,
                     "sub_solucoes": list(subsolucoes)
                 })
@@ -136,6 +138,7 @@ class Cl_Gdf():
 
             solucoes_data.sort(key=sort_key)
 
+            print(solucoes_data)
             return solucoes_data
 
         except AttributeError as e:
@@ -440,7 +443,7 @@ class Cl_Gdf():
             # Usuários vinculados às empresas do cliente
             # -------------------------------------------------
             user_ids = UserEmpresas.objects.filter(
-                empresas__in=empresas_data
+                empresa__in=empresas_data
             ).values_list('user_id', flat=True)
 
             usuarios_qs = User.objects.filter(
@@ -628,7 +631,7 @@ class Cl_Gdf():
             for empresa in empresas_obj:
                 UserEmpresas.objects.create(
                     user=user_instance,
-                    empresas=empresa
+                    empresa=empresa
                 )
             
             # ✅ Vincular grupos

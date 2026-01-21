@@ -13,7 +13,7 @@ class Cert(models.Model):
     arquivo_cert = models.BinaryField(blank=True, null=True)
 
     class Meta:
-        managed = True
+        managed  = True
         db_table = 'cert'
         indexes = [
             models.Index(fields=['cpf_cnpj']),
@@ -24,10 +24,10 @@ class Clientes(models.Model):
     razao = models.CharField(unique=True, max_length=120, blank=True, null=True)
     cnpj = models.CharField(unique=True, max_length=14)
     is_active = models.BooleanField()
-    date_joined = models.DateTimeField()
+    date_joined = models.DateTimeField(auto_now_add=True)
     
     class Meta:
-        managed = True
+        managed  = True
         db_table = 'clientes'
         indexes = [
             models.Index(fields=['cnpj', 'razao']),
@@ -52,12 +52,11 @@ class Empresas(models.Model):
     suframa = models.CharField(max_length=10, blank=True, null=True)
     grp_empresa = models.ForeignKey('GrpEmpresas', models.DO_NOTHING, blank=True, null=True)
     chave_acesso = models.CharField(max_length=40, blank=True, null=True)
-    id_user = models.IntegerField(blank=True, null=True)
     cert = models.ForeignKey(Cert, models.DO_NOTHING, blank=True, null=True)
     cliente = models.ForeignKey(Clientes, models.CASCADE, blank=True, null=True)
 
     class Meta:
-        managed = True
+        managed  = True
         db_table = 'empresas'
         indexes = [
             models.Index(fields=['cnpj', 'razao', 'fantasia']),
@@ -72,7 +71,7 @@ class GrpEmpresas(models.Model):
     cliente = models.ForeignKey(Clientes, models.CASCADE, blank=True, null=True)
 
     class Meta:
-        managed = True
+        managed  = True
         db_table = 'grp_empresas'
 
 class GrupoCliente(models.Model):
@@ -81,7 +80,7 @@ class GrupoCliente(models.Model):
     cliente = models.ForeignKey(Clientes, models.CASCADE, blank=True, null=True)
 
     class Meta:
-        managed = True
+        managed  = True
         db_table = 'grupo_cliente'
         unique_together = ('group', 'cliente')
 
@@ -91,7 +90,7 @@ class Solucoes(models.Model):
     descricao = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
-        managed = True
+        managed  = True
         db_table = 'solucoes'
     
     def __str__(self):
@@ -104,7 +103,7 @@ class SolucoesAcesso(models.Model):
     is_active = models.BooleanField(blank=True, null=True)
 
     class Meta:
-        managed = True
+        managed  = True
         db_table = 'solucoes_acesso'
         unique_together = ('cliente', 'solucao')
 
@@ -115,7 +114,7 @@ class Subsolucoes(models.Model):
     solucao = models.ForeignKey(Solucoes, models.CASCADE, blank=True, null=True)
 
     class Meta:
-        managed = True
+        managed  = True
         db_table = 'subsolucoes'
     
     def __str__(self):
@@ -127,7 +126,7 @@ class SubsolucoesAcesso(models.Model):
     subsolucao = models.ForeignKey(Subsolucoes, models.CASCADE, blank=True, null=True)
 
     class Meta:
-        managed = True
+        managed  = True
         db_table = 'subsolucoes_acesso'
         unique_together = ('group', 'subsolucao')
 
@@ -137,6 +136,6 @@ class UserEmpresas(models.Model):
     user = models.ForeignKey(User, models.CASCADE)
 
     class Meta:
-        managed = True
+        managed  = True
         db_table = 'user_empresas'
         unique_together = ('empresa', 'user')

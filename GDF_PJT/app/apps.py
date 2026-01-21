@@ -8,7 +8,6 @@ class AppConfig(AppConfig):
     name = 'app'
 
     if os.environ.get('RUN_MAIN', None) == 'true':
-
         def run_streamlit():        
             # Caminho da raiz do projeto
             print("Iniciando Streamlit automaticamente...")
@@ -18,7 +17,6 @@ class AppConfig(AppConfig):
                 "streamlit",
                 "home.py"
             )
-                
             subprocess.Popen(
                 [
                     "streamlit", "run", streamlit_file,

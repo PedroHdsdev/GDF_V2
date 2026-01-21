@@ -1,9 +1,8 @@
-from django.contrib import admin
-from app.db_GDF.Public.models import (
+from django.contrib             import admin
+from app.db_GDF.Public.models   import (
     Cert, Clientes, Empresas, GrupoCliente, GrpEmpresas,
     Solucoes, Subsolucoes, SolucoesAcesso, SubsolucoesAcesso, UserEmpresas
 )
-
 
 # ============================================================================
 # CLIENTES
@@ -13,7 +12,7 @@ class ClientesAdmin(admin.ModelAdmin):
     list_display = ('cod_cliente', 'razao', 'cnpj', 'is_active', 'date_joined')
     list_filter = ('is_active', 'date_joined')
     search_fields = ('cod_cliente', 'razao', 'cnpj')
-    readonly_fields = ('cod_cliente', 'date_joined')
+    readonly_fields = ('date_joined',)
     fieldsets = (
         ('Informações Básicas', {
             'fields': ('cod_cliente', 'razao', 'cnpj', 'is_active')
@@ -32,10 +31,10 @@ class CertAdmin(admin.ModelAdmin):
     list_display = ('raiz_cnpj', 'proprietario', 'cpf_cnpj', 'ini_validade', 'fim_validade')
     list_filter = ('ini_validade', 'fim_validade')
     search_fields = ('raiz_cnpj', 'proprietario', 'cpf_cnpj', 'emissor')
-    readonly_fields = ('raiz_cnpj',)
+
     fieldsets = (
         ('Informações do Certificado', {
-            'fields': ('raiz_cnpj', 'nm_arquivo_pfx', 'arquivo_cert')
+            'fields': ('raiz_cnpj', 'nm_arquivo_pfx')
         }),
         ('Datas de Validade', {
             'fields': ('ini_validade', 'fim_validade')

@@ -2,8 +2,8 @@ import os
 import sys
 import streamlit       as st
 import pandas          as pd
-import type_lists      as tl 
-import type_graficos   as tg
+import tp_lists      as tl 
+import tp_graficos   as tg
 from datetime          import date
 from django.core.cache import cache
 
@@ -29,7 +29,7 @@ init_django()
 
 # Imports Django depois do setup
 from django.contrib.auth.models import User
-from app.models import RelatorioCusto, Bukrs, SapLog
+from GDF_PJT.app.db_GDF.Public.models import RelatorioCusto, Bukrs, SapLog
 from django.db.models import Q
 import jwt
 from django.conf import settings
