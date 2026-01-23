@@ -1,0 +1,343 @@
+{% load static %}
+<div class="modal fade" id="modalEmpresaUpd" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Editar Empresa</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- NAV TABS -->
+        <ul class="nav nav-tabs mb-3" id="empresaTabs" role="tablist">
+          <li class="nav-item">
+            <button
+              type="button"
+              class="nav-link active"
+              id="tab-empresa-btn"
+              data-bs-toggle="tab"
+              data-bs-target="#tab-empresa"
+              role="tab">
+              Dados da Empresa
+            </button>
+          </li>
+          <li class="nav-item">
+            <button
+              type="button"
+              class="nav-link"
+              id="tab-certificado-btn"
+              data-bs-toggle="tab"
+              data-bs-target="#tab-certificado"
+              role="tab">
+              Certificado Digital
+            </button>
+          </li>
+        </ul>
+
+        <!-- MENSAGENS -->
+        {% if messages %}
+          {% for message in messages %}
+            {% if message.extra_tags == 'MODAL_UPD' %}
+              <div class="alert alert-{{ message.level_tag }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+
+        <!-- TAB CONTENT -->
+        <div class="tab-content">
+
+          <!-- TAB 1: DADOS DA EMPRESA -->
+          <div class="tab-pane fade show active" id="tab-empresa" role="tabpanel">
+            <form method="post" id="formEmpresaUpd" action="/empresa/" onsubmit="validarFormularioUpd(event)">
+              {% csrf_token %}
+              <input type="hidden" id="upd_empresa_id_hidden" name="m_empresa_id" value="">
+
+              <div class="row g-3">
+                
+                <div class="col-md-4">
+                  <label for="upd_empresa_id" class="form-label">Código Empresa</label>
+                  <input
+                    type="text"
+                    id="upd_empresa_id"
+                    name="m_empresa_id"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-4">
+                  <label for="upd_emp_cnpj" class="form-label">CNPJ</label>
+                  <input
+                    type="text"
+                    id="upd_emp_cnpj"
+                    name="m_emp_cnpj"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-4">
+                  <label for="upd_tipo" class="form-label">Tipo</label>
+                  <input
+                    type="text"
+                    id="upd_tipo"
+                    name="m_tipo"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_razao" class="form-label">Razão Social</label>
+                  <input
+                    type="text"
+                    id="upd_razao"
+                    name="m_razao"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_fantasia" class="form-label">Nome Fantasia</label>
+                  <input
+                    type="text"
+                    id="upd_fantasia"
+                    name="m_fantasia"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-4">
+                  <label for="upd_ie" class="form-label">Inscrição Estadual</label>
+                  <input
+                    type="text"
+                    id="upd_ie"
+                    name="m_ie"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-4">
+                  <label for="upd_im" class="form-label">Inscrição Municipal</label>
+                  <input
+                    type="text"
+                    id="upd_im"
+                    name="m_im"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-4">
+                  <label for="upd_iest" class="form-label">IE Substituto Tributário</label>
+                  <input
+                    type="text"
+                    id="upd_iest"
+                    name="m_iest"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-3">
+                  <label for="upd_crt" class="form-label">CRT</label>
+                  <input
+                    type="text"
+                    id="upd_crt"
+                    name="m_crt"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-3">
+                  <label for="upd_cnae" class="form-label">CNAE</label>
+                  <input
+                    type="text"
+                    id="upd_cnae"
+                    name="m_cnae"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-3">
+                  <label for="upd_suframa" class="form-label">SUFRAMA</label>
+                  <input
+                    type="text"
+                    id="upd_suframa"
+                    name="m_suframa"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-3">
+                  <label class="form-label">Matriz</label>
+                  <div class="form-check form-switch mt-2">
+                    <input
+                      type="checkbox"
+                      id="upd_matriz"
+                      name="m_matriz"
+                      class="form-check-input"
+                      disabled>
+                    <label class="form-check-label" for="upd_matriz">É Matriz</label>
+                  </div>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_grpEmpresa_id" class="form-label">Grupo de Empresas</label>
+                  <input
+                    type="text"
+                    id="upd_grpEmpresa_id"
+                    name="m_grpEmpresa_id"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_cliente_id" class="form-label">Cliente</label>
+                  <input
+                    type="text"
+                    id="upd_cliente_id"
+                    name="m_cliente_id"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-12">
+                  <label for="upd_chave_acesso" class="form-label">Chave de Acesso</label>
+                  <input
+                    type="text"
+                    id="upd_chave_acesso"
+                    name="m_chave_acesso"
+                    class="form-control"
+                    readonly>
+                </div>
+
+              </div>
+
+              <div class="d-flex gap-2 mt-4">
+                <button
+                  type="button"
+                  id="btn-edit-empresa"
+                  class="btn btn-primary"
+                  onclick="makeEditableEmpresa()">
+                  Editar
+                </button>
+                <button
+                  type="submit"
+                  id="btn-save-empresa"
+                  class="btn btn-success"
+                  style="display: none;">
+                  Salvar
+                </button>
+                <button
+                  type="button"
+                  id="btn-cancel-empresa"
+                  class="btn btn-secondary"
+                  style="display: none;"
+                  onclick="cancelChangesEmpresa()">
+                  Cancelar
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+          <!-- TAB 2: CERTIFICADO DIGITAL -->
+          <div class="tab-pane fade" id="tab-certificado" role="tabpanel">
+            <form method="post" id="formCertUpd" action="/empresa/" enctype="multipart/form-data">
+              {% csrf_token %}
+
+              <div class="row g-3">
+                
+                <div class="col-md-12">
+                  <label for="upd_cert_file" class="form-label">Arquivo do Certificado (.pfx, .p12)</label>
+                  <input
+                    type="file"
+                    id="upd_cert_file"
+                    name="m_file"
+                    class="form-control"
+                    accept=".pfx,.p12"
+                    disabled>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_emissor" class="form-label">Emissor</label>
+                  <input
+                    type="text"
+                    id="upd_emissor"
+                    name="m_emissor"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_cert_cnpj" class="form-label">CNPJ do Certificado</label>
+                  <input
+                    type="text"
+                    id="upd_cert_cnpj"
+                    name="m_cnpj"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_dt_inicial" class="form-label">Data Início Validade</label>
+                  <input
+                    type="text"
+                    id="upd_dt_inicial"
+                    name="m_dt_inicial"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_dt_fim" class="form-label">Data Fim Validade</label>
+                  <input
+                    type="text"
+                    id="upd_dt_fim"
+                    name="m_dt_fim"
+                    class="form-control"
+                    readonly>
+                </div>
+
+              </div>
+
+              <div class="d-flex gap-2 mt-4">
+                <button
+                  type="button"
+                  id="btn-edit-cert"
+                  class="btn btn-primary"
+                  onclick="makeEditableCert()">
+                  Editar
+                </button>
+                <button
+                  type="submit"
+                  id="btn-save-cert"
+                  class="btn btn-success"
+                  style="display: none;">
+                  Salvar
+                </button>
+                <button
+                  type="button"
+                  id="btn-cancel-cert"
+                  class="btn btn-secondary"
+                  style="display: none;"
+                  onclick="cancelChangesCert()">
+                  Cancelar
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+      </div>
+
+    </div>
+  </div>
+</div>

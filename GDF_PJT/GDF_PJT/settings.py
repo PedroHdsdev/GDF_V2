@@ -21,12 +21,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-)+_kx-l8g8iu@t@k3y=mswm^+s#%)yu_d=kevi0vac+y#m0oc^'
+import environ
+
+env = environ.Env()
+environ.Env.read_env(os.path.join(BASE_DIR.parent, '.env'))
+
+SECRET_KEY = env('SECRET_KEY', default='django-insecure-)+_kx-l8g8iu@t@k3y=mswm^+s#%)yu_d=kevi0vac+y#m0oc^')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
 
 
 # Application definition
@@ -74,17 +79,14 @@ WSGI_APPLICATION = 'GDF_PJT.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-# ============================================================================
-# CONFIGURAÇÃO POSTGRESQL (COMENTADA PARA TESTES COM SQLITE)
-# ============================================================================
 DATABASES = {
     'default': { # GDF
-         'ENGINE': 'django.db.backends.postgresql',
-         'NAME': 'GDF_V2_DEV',          
-         'USER': 'postgres',         
-         'PASSWORD': 'PrcIT@2023',   
-         'HOST': '10.0.1.19',        
-         'PORT': '5432', 
+         'ENGINE': env('DB_ENGINE'),
+         'NAME': env('DB_NAME'),          
+         'USER': env('DB_USER'),         
+         'PASSWORD': env('DB_PASSWORD'),   
+         'HOST': env('DB_HOST'),        
+         'PORT': env('DB_PORT'), 
         'OPTIONS': {
             'options': '-c search_path=public,reprocessamento'
         }         
@@ -95,16 +97,6 @@ DATABASE_ROUTERS = [
     'GDF_PJT.routers.GDFRouter',
     #'GDF_PJT.routers.ReprocessamentoRouter',
 ]
-
-# ============================================================================
-# CONFIGURAÇÃO SQLITE (PARA TESTES)
-# ============================================================================
-#DATABASES = {
-#    'default': {
-#        'ENGINE': 'django.db.backends.sqlite3',
-#        'NAME': BASE_DIR.parent / 'Query' / 'db.sqlite3',
-#    }
-#}
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -130,7 +122,10 @@ LOGOUT_REDIRECT_URL = '/login/'
 
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_SAVE_EVERY_REQUEST = False
-SESSION_COOKIE_AGE = 1800
+SESSION_COOKIE_AGE = env.int('SESSION_COOKIE_AGE', default=1800)
+SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=True)
+SESSION_COOKIE_HTTPONLY = env.bool('SESSION_COOKIE_HTTPONLY', default=True)
+CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=True)
 
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/

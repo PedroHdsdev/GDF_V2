@@ -1,0 +1,186 @@
+{% load static %}
+<div class="modal fade" id="modalClienteUpd" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Editar Cliente</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- NAV TABS -->
+        <ul class="nav nav-tabs mb-3" id="clienteTabs" role="tablist">
+          <li class="nav-item">
+            <button
+              type="button"
+              class="nav-link active"
+              id="tab-cliente-btn"
+              data-bs-toggle="tab"
+              data-bs-target="#tab-cliente"
+              role="tab">
+              Dados do Cliente
+            </button>
+          </li>
+          <li class="nav-item">
+            <button
+              type="button"
+              class="nav-link"
+              id="tab-acesso-btn"
+              data-bs-toggle="tab"
+              data-bs-target="#tab-acesso"
+              role="tab">
+              Direitos de Acesso
+            </button>
+          </li>
+        </ul>
+
+        <!-- MENSAGENS -->
+        {% if messages %}
+          {% for message in messages %}
+            {% if message.extra_tags == 'MODAL_UPD' %}
+              <div class="alert alert-{{ message.level_tag }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+
+        <!-- TAB CONTENT -->
+        <div class="tab-content">
+
+          <!-- TAB 1: DADOS DO CLIENTE -->
+          <div class="tab-pane fade show active" id="tab-cliente" role="tabpanel">
+            <form method="post" id="formClienteUpd" action="/cliente/" onsubmit="validarFormularioUpd(event)">
+              {% csrf_token %}
+              <input type="hidden" id="upd_cliente_id" name="m_cliente_id" value="">
+
+              <div class="row g-3">
+                
+                <div class="col-md-6">
+                  <label for="upd_codigo" class="form-label">Código do Cliente</label>
+                  <input
+                    type="text"
+                    id="upd_codigo"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_cnpj" class="form-label">CNPJ</label>
+                  <input
+                    type="text"
+                    id="upd_cnpj"
+                    name="m_cnpj"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-12">
+                  <label for="upd_razao" class="form-label">Razão Social</label>
+                  <input
+                    type="text"
+                    id="upd_razao"
+                    name="m_razao"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-12">
+                  <label class="form-label">Ativo</label>
+                  <div class="form-check form-switch">
+                    <input
+                      type="checkbox"
+                      id="upd_ativo"
+                      name="m_active"
+                      class="form-check-input"
+                      disabled>
+                    <label class="form-check-label" for="upd_ativo">Cliente ativo no sistema</label>
+                  </div>
+                </div>
+
+              </div>
+
+              <div class="d-flex gap-2 mt-4">
+                <button
+                  type="button"
+                  id="btn-edit-cliente"
+                  class="btn btn-primary"
+                  onclick="makeEditableCliente()">
+                  Editar
+                </button>
+                <button
+                  type="submit"
+                  id="btn-save-cliente"
+                  class="btn btn-success"
+                  style="display: none;">
+                  Salvar
+                </button>
+                <button
+                  type="button"
+                  id="btn-cancel-cliente"
+                  class="btn btn-secondary"
+                  style="display: none;"
+                  onclick="cancelChangesCliente()">
+                  Cancelar
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+          <!-- TAB 2: DIREITOS DE ACESSO -->
+          <div class="tab-pane fade" id="tab-acesso" role="tabpanel">
+            <form method="post" id="formAcessoUpd" action="/cliente/">
+              {% csrf_token %}
+              <input type="hidden" id="upd_cliente_id_acesso" name="m_cliente_id" value="">
+
+              <div class="mb-3">
+                <label class="form-label">Selecione as soluções disponíveis para este cliente:</label>
+              </div>
+
+              <div id="solucoes-list" class="row g-3">
+                <!-- Será preenchido por JavaScript -->
+              </div>
+
+              <div class="d-flex gap-2 mt-4">
+                <button
+                  type="button"
+                  id="btn-edit-acesso"
+                  class="btn btn-primary"
+                  onclick="makeEditableAcesso()">
+                  Editar
+                </button>
+                <button
+                  type="submit"
+                  id="btn-save-acesso"
+                  class="btn btn-success"
+                  style="display: none;">
+                  Salvar
+                </button>
+                <button
+                  type="button"
+                  id="btn-cancel-acesso"
+                  class="btn btn-secondary"
+                  style="display: none;"
+                  onclick="cancelChangesAcesso()">
+                  Cancelar
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+      </div>
+
+    </div>
+  </div>
+</div>

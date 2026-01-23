@@ -1,533 +1,113 @@
-{% extends 'index.html' %} 
+{% extends 'Index_Base.html' %}
 {% load static %}
 
-{% block title %}Empresas{%endblock %}
+{% block title %}Empresas{% endblock %}
 
 {% block styles %}
-  <link rel="stylesheet" href="{% static 'css/style_empresas.css' %}" />
-{% endblock %} 
+<link rel="stylesheet" href="{% static 'css/Style_Empresas.css' %}">
+{% endblock %}
 
-{% block titlepage %}Empresas{% endblock %} 
+{% block titlepage %}Empresas{% endblock %}
 
 {% block container %}
-{% now "Y-m-d" as data_atual %}
-<div class="container01">
-  <div class="search-bar-container">
-    <form
-      method="get"
-      action="{%  url 'DM_EMPRESA' %}"
-      class="search-bar-container"
-    >
-      <input
-        type="text"
-        name="Buscar"
-        placeholder="Pesquisar..."
-        class="search-input"
-        value="{{ query }}"
-      />
-      <button type="submit" class="search-button">Buscar</button>
-    </form>
-  </div>
-</div>
-<div class="container02">
-  <button type="button" class="mini_btn" onclick="openModal_ins( )">
-    Cadastrar
-  </button>
-</div>
-<div class="container03">
-  <table>
-    <thead>
-      <tr>
-        <th>Status</th>
-        <th>Codigo de Empr</th>
-        <th>Certificado</th>
-        <th>Empresa</th>
-        <th>CNPJ</th>
-        <th>Grupo de Emp</th>
-        <th>Data final Certificado</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for emp in t_empresas %}
-      <tr onclick="handleEmpresaClick('{{ emp.cod_empresa }}')">
-        <td style="align-items: center; text-align: center">
-          {% if emp.cert_emp.0.status %} {% if emp.cert_emp.0.status == "VERMELHO" %}
-          <img
-            src="/static/img/icon_status_vermelho.png"
-            alt="Ativo"
-            width="20"
-            height="20"
-          />
-          {% elif emp.cert_emp.0.status == "INDEFINIDO" %}
-          <img
-            src="/static/img/icon_status_vermelho.png"
-            alt="Ativo"
-            width="20"
-            height="20"
-          />
-          {% elif emp.cert_emp.0.status == "AMARELO" %}
-          <img
-            src="/static/img/icon_status_amarelo.png"
-            alt="Ativo"
-            width="20"
-            height="20"
-          />
-          {% else %}
-          <img
-            src="/static/img/icon_status_verde.png"
-            alt="Ativo"
-            width="20"
-            height="20"
-          />
-          {% endif %}{% endif %}
-        </td>
+<div class="container-fluid py-3">
 
-        <td>{{ emp.cod_empresa }}</td>
-        <td style="align-items: center; text-align: center">
-          {% if emp.cert_emp.cert_file %}
-          <img
-            src="/static/img/icon_certificado.png"
-            alt="Ativo"
-            width="20"
-            height="20"
-          />
-          {% else %}
-          <img
-            src="/static/img/icon_x.png"
-            alt="Ativo"
-            width="20"
-            height="20"
-          />
-          {% endif %}
-        </td>
-        <td>{{ emp.razao }}</td>
-        <td>{{ emp.cnpj }}</td>
-        <td>{{ emp.grp_empresa }}</td>
-        {% if emp.cert_emp %}
-        <td>{{ emp.cert_emp.0.fim_validade }}</td>
-        {% else %}
-        <td></td>
-        {% endif %}
-      </tr>
-      {% empty %}
-      <tr>
-        <td colspan="5">Nenhum Empresa cadastrada.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-<div class="container02">
-<div class="pagination">
-    {% if page_obj.has_previous %}
-      <a href="?page=1{% if request.GET.Buscar %}&Buscar={{ request.GET.Buscar }}{% endif %}">&laquo; Primeiro</a>
-      <a href="?page={{ page_obj.previous_page_number }}{% if request.GET.Buscar %}&Buscar={{ request.GET.Buscar }}{% endif %}">Anterior</a>
-    {% endif %}
-
-    {% for num in page_obj.paginator.page_range %}
-      {% if num == page_obj.number %}
-        <a class="active">{{ num }}</a>
-      {% elif num >= page_obj.number|add:'-5' and num <= page_obj.number|add:'5' %}
-        <a href="?page={{ num }}{% if request.GET.Buscar %}&Buscar={{ request.GET.Buscar }}{% endif %}">{{ num }}</a>
-      {% endif %}
-    {% endfor %}
-
-    {% if page_obj.has_next %}
-      <a href="?page={{ page_obj.next_page_number }}{% if request.GET.Buscar %}&Buscar={{ request.GET.Buscar }}{% endif %}">Próxima</a>
-      <a href="?page={{ page_obj.paginator.num_pages }}{% if request.GET.Buscar %}&Buscar={{ request.GET.Buscar }}{% endif %}">Última &raquo;</a>
-    {% endif %}
-  </div>  
-</div>
-<div id="myModal_upd" class="modal">
-  <div class="modal-content">
-    <div class="tab-header">
-      <button class="tab-btn active" onclick="openTab(this, 'tab-Empresa')">
-        Empresa
-      </button>
-      <button class="tab-btn" onclick="openTab(this, 'tab-Certificado')">
-        Certificado
-      </button>
-      <span class="close" onclick="closeModal()">&times;</span>
-    </div>
-    {% if messages %} {% for message in messages %}
-      {% if message.extra_tags == 'MODAL_UPD' %}
-        <label class="msg_return">{{ message }}</label>
-      {% endif %}
-    {% endfor %} {% endif %}
-    <div id="tab-Empresa" class="tab-content active-tab">
-      <form method="POST" action="{%  url 'empresa_upd' %}">
-        {% csrf_token %}
-        <input type="hidden" id="m_raiz" name="m_raiz" value="" />
-        
-        <div class="modal_field">
-        <label for="m_empresa_id" class="modal_label">Empresa:</label>
+  <!-- BUSCA E CADASTRAR -->
+  <div class="row mb-3 align-items-center">
+    <div class="col-md-6">
+      <form method="get" action="{% url 'Dm_Empresas' %}" class="d-flex gap-2">
         <input
-          id="m_empresa_id"
-          name="m_empresa_id"
           type="text"
-          class="modal_txt_edit"
-          readonly
-        />
-        </div>
-
-        <div class="modal_field">
-          <label for="m_emp_cnpj" class="modal_label">Cnpj:</label>
-          <input
-            id="m_emp_cnpj"
-            name="m_emp_cnpj"
-            type="text"
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        
-        <div class="modal_field">
-          <label for="m_razao" class="modal_label">Razão:</label>
-          <input
-            id="m_razao"
-            name="m_razao"
-            type="text"
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        
-        <div class="modal_field">
-          <label for="m_fantasia" class="modal_label">Fantasia:</label>
-          <input
-            id="m_fantasia"
-            name="m_fantasia"
-            type="text"
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        
-        <div class="modal_field">
-          <label for="m_ie" class="modal_label">Ie:</label>
-          <input
-            id="m_ie"
-            name="m_ie"
-            type="text"
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        
-        <div class="modal_field">
-          <label for="m_im" class="modal_label">Im:</label>
-          <input
-            id="m_im"
-            name="m_im"
-            type="text"
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        
-        <div class="modal_field">
-          <label for="m_tipo" class="modal_label">Tipo:</label>
-          <input
-            id="m_tipo"
-            name="m_tipo"
-            type="text"
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        
-        <div class="modal_field">
-          <label for="m_matriz" class="modal_label">Matriz</label>
-          <label class="switch">
-            <input type="checkbox" name="m_matriz" id="m_matriz" disabled />
-            <span class="slider round"></span>
-          </label>
-        </div>
-        
-        <div class="modal_field">
-          <label for="m_crt" class="modal_label">Crt:</label>
-          <input
-            id="m_crt"
-            name="m_crt"
-            type="text"
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        
-        <div class="modal_field">
-          <label for="m_cnae" class="modal_label">Cnae:</label>
-          <input
-            id="m_cnae"
-            name="m_cnae"
-            type="text"
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        
-        <div class="modal_field">
-          <label for="m_iest" class="modal_label">Iest:</label>
-          <input
-            id="m_iest"
-            name="m_iest"
-            type="text"
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        
-        <div class="modal_field">
-          <label for="m_suframa" class="modal_label">Suframa:</label>
-          <input
-            id="m_suframa"
-            name="m_suframa"
-            type="text"
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        
-        <div class="modal_field">
-          <label for="m_grpEmpresa_id" class="modal_label"
-            >Grupo Empresas:</label
-          >
-          <input
-            id="m_grpEmpresa_id"
-            name="m_grpEmpresa_id"
-            type="text"
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        
-        <div class="modal_field">
-          <label for="m_chave_acesso" class="modal_label"
-            >Chave de Acesso:</label
-          >
-          <input
-            id="m_chave_acesso"
-            name="m_chave_acesso"
-            type="text"
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        
-        <div class="modal_field">
-          <label for="m_cliente_id" class="modal_label">Cliente:</label>
-          <input
-            id="m_cliente_id"
-            name="m_cliente_id"
-            type="text"
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        
-        <div class="m_div_btn">
-          <button
-          id="save-btn"
-          type="submit"
-          class="btn_modal"
-          style="display: none"
-          >
-            Salvar
-          </button>
-          <button
-          id="edit-btn"
-          type="button"
-          class="btn_modal"
-          onclick="makeEditable()"
-          >
-            Editar
-          </button>
-          <button
-          id="cancel-btn"
-          type="button"
-          class="btn_modal"
-          style="display: none"
-          onclick="cancelChanges()"
-          >
-            Cancelar
-          </button>
-          <br /><br />
-        </div>
-      </form>  
-    </div>
-    <div id="tab-Certificado" class="tab-content">
-      <form method="POST" action="{%  url 'cert_upd' %}">
-        {% csrf_token %}
-        <div class="modal_field2">
-          <label for="m_file" class="modal_label">Certificado:</label>
-          <input
-            id="m_file"
-            name="m_file"
-            type="file"
-            accept=".pfx,.p12"
-            class="modal_txt_edit"
-            disabled
-          />
-        </div>
-        <div class="modal_field2">
-          <label for="m_emissor" class="modal_label">Emissor: </label>
-          <input
-            id="m_emissor"
-            name="m_emissor"
-            type="text"
-            value=""
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        <div class="modal_field2">
-          <label for="m_cnpj" class="modal_label">CNPJ: </label>
-          <input
-            id="m_cnpj"
-            name="m_cnpj"
-            type="text"
-            value=""
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        <div class="modal_field2">
-          <label for="m_dt_inicial" class="modal_label"
-            >Data início validade:
-          </label>
-          <input
-            id="m_dt_inicial"
-            name="m_dt_inicial"
-            type="text"
-            value=""
-            class="modal_txt_edit"
-            readonly
-          />
-        </div>
-        <div class="modal_field2">
-          <label for="m_dt_fim" class="modal_label">Data fim validade:</label>
-          <input
-            id="m_dt_fim"
-            name="m_dt_fim"
-            type="text"
-            value=""
-            class="modal_txt_edit"
-            readonly
-          />
-          </div>
-          <div class="m_div_btn">
-          <button
-          id="save-btn"
-          type="submit"
-          class="btn_modal"
-          style="display: none"
-          >
-            Salvar
-          </button>
-          <button
-          id="edit-btn"
-          type="button"
-          class="btn_modal"
-          onclick="makeEditable()"
-          >
-            Editar
-          </button>
-          <button
-          id="cancel-btn"
-          type="button"
-          class="btn_modal"
-          style="display: none"
-          onclick="cancelChanges()"
-          >
-            Cancelar
-          </button>
-          <br/><br/>
-        </div>
+          name="Buscar"
+          class="form-control"
+          placeholder="Pesquisar..."
+          value="{{ query }}">
+        <button class="btn btn-primary" type="submit" style="display: none;">Buscar</button>
       </form>
     </div>
-  </div>
-</div>
-<div id="myModal_ins" class="modal">
-  <div class="modal-content">
-    <div class="tab-header">
-      <span class="close" onclick="closeModal()">&times;</span>
-      <h3>Cadastro de Empresa</h3>
+
+    <div class="col-md-6 text-end">
+      <button
+        class="btn btn-success"
+        data-bs-toggle="modal"
+        data-bs-target="#modalEmpresaIns">
+        Cadastrar
+      </button>
     </div>
-    <form method="POST" action="{%  url 'empresa_ins' %}">
-      {% csrf_token %}
-      <div class="modal_field">
-        <label for="m_codempresa" class="modal_label">Codigo de empresa:</label>
-        <input
-          type="text"
-          id="m_codempresa"
-          name="m_codempresa"
-          class="modal_txt"
-          placeholder=""
-          required
-        />
-      </div>
-      <div class="modal_field">
-        <label for="m_razao" class="modal_label">Razão:</label>
-        <input
-          type="text"
-          id="m_razao"
-          name="m_razao"
-          class="modal_txt"
-          placeholder=""
-          required
-        />
-      </div>
-      <div class="modal_field">
-        <label for="m_cnpj" class="modal_label">Cnpj:</label>
-        <input
-          type="text"
-          id="m_cnpj"
-          name="m_cnpj"
-          class="modal_txt"
-          placeholder=""
-          required
-        />
-      </div>
-      <div class="modal_field">
-        <label for="m_fantasia" class="modal_label">Fantasia:</label>
-        <input
-          type="text"
-          id="m_fantasia"
-          name="m_fantasia"
-          class="modal_txt"
-          placeholder=""
-          required
-        />
-      </div>
-      <div class="modal_field">
-        <label for="m_grpempresas" class="modal_label">Grupo de Empresas</label>
-        <select
-          id="m_grpempresas"
-          name="m_grpempresas"
-          class="modal_txt"
-          required
-        >
-          <option value="" disabled selected>Selecione</option>
-          {% for grp in t_grpempresas %}
-          <option value="{{grp.grp_empresa}}">{{grp.grp_empresa}}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {% if messages %} {% for message in messages %}
-        {% if message.extra_tags == 'MODAL_INS' %}
-          <label class="msg_return">{{ message }}</label>
-        {% endif %}
-      {% endfor %} {% endif %}
-      <button type="submit" class="btn_modal">Cadastrar</button>
-    </form>
   </div>
+
+  <!-- TABELA -->
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover table-striped align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th class="text-center">Status</th>
+            <th>Código</th>
+            <th class="text-center">Certificado</th>
+            <th>Empresa</th>
+            <th>CNPJ</th>
+            <th>Validade Cert.</th>
+            <th>Grupo </th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for emp in t_empresas %}
+          <tr class="empresa-row" data-empresa-id="{{ emp.cod_empresa }}" role="button">
+            <td class="text-center">
+              {% if emp.cert_emp.0.status %}
+                {% if emp.cert_emp.0.status == "VERMELHO" or emp.cert_emp.0.status == "INDEFINIDO" %}
+                  <img src="{% static 'img/icon_status_vermelho.png' %}" alt="Vermelho" width="20" height="20">
+                {% elif emp.cert_emp.0.status == "AMARELO" %}
+                  <img src="{% static 'img/icon_status_amarelo.png' %}" alt="Amarelo" width="20" height="20">
+                {% else %}
+                  <img src="{% static 'img/icon_status_verde.png' %}" alt="Verde" width="20" height="20">
+                {% endif %}
+              {% endif %}
+            </td>
+            <td>{{ emp.cod_empresa }}</td>
+            <td class="text-center">
+              {% if emp.cert_emp.cert_file %}
+                <img src="{% static 'img/icon_certificado.png' %}" alt="Certificado" width="20" height="20">
+              {% else %}
+                <img src="{% static 'img/icon_x.png' %}" alt="Sem certificado" width="20" height="20">
+              {% endif %}
+            </td>
+            <td>{{ emp.razao }}</td>
+            <td>{{ emp.cnpj }}</td>
+            <td>
+              {% if emp.cert_emp %}
+                {{ emp.cert_emp.0.fim_validade|default:"-" }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td>{{ emp.grupo }}</td>
+          {% empty %}
+          <tr>
+            <td colspan="7" class="text-center text-muted">Nenhuma empresa cadastrada.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PAGINAÇÃO -->
+  <nav class="mt-3">
+    <ul class="pagination justify-content-end">
+      <!-- ✅ Paginação gerenciada por JavaScript -->
+    </ul>
+  </nav>
+
 </div>
+
+<!-- INCLUIR MODAIS -->
+{% include 'Empresas/Empresas_ins.html' %}
+{% include 'Empresas/Empresas_upd.html' %}
+
 {% endblock %}
+
 {% block scripts %}
-<script>
-  const csrfToken = '{{ csrf_token }}';
-  const modalUpdId = '{{ request.session.modal_upd_id|default:"" }}';
-</script>
-{{ t_empresas|json_script:"empresas-data" }}
-<script src="{% static 'js/script_empresas.js' %}"></script>
+<script src="{% static 'js/Script_Empresas.js' %}"></script>
 {% endblock %}

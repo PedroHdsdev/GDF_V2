@@ -1,0 +1,99 @@
+<div class="modal fade" id="modalEmpresaIns" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <form method="post" action="{% url 'Empresa_ins' %}" onsubmit="validarFormularioIns(event)">
+        {% csrf_token %}
+
+        <div class="modal-header">
+          <h5 class="modal-title">Cadastrar Empresa</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="row g-3">
+            
+            <div class="col-md-6">
+              <label for="ins_codempresa" class="form-label">Código da Empresa</label>
+              <input
+                type="text"
+                id="ins_codempresa"
+                name="m_codempresa"
+                class="form-control"
+                placeholder="Ex: 001"
+                required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="ins_cnpj" class="form-label">CNPJ</label>
+              <input
+                type="text"
+                id="ins_cnpj"
+                name="m_cnpj"
+                class="form-control"
+                placeholder="00.000.000/0000-00"
+                required>
+            </div>
+
+            <div class="col-md-12">
+              <label for="ins_razao" class="form-label">Razão Social</label>
+              <input
+                type="text"
+                id="ins_razao"
+                name="m_razao"
+                class="form-control"
+                placeholder="Nome da empresa"
+                required>
+            </div>
+
+            <div class="col-md-12">
+              <label for="ins_fantasia" class="form-label">Nome Fantasia</label>
+              <input
+                type="text"
+                id="ins_fantasia"
+                name="m_fantasia"
+                class="form-control"
+                placeholder="Nome fantasia"
+                required>
+            </div>
+
+            <div class="col-md-12">
+              <label for="ins_grpempresas" class="form-label">Grupo de Empresas</label>
+              <select
+                id="ins_grpempresas"
+                name="ls_grpempresas"
+                class="form-select"
+                required>
+                <option value="" disabled selected>-- Selecione um grupo --</option>
+                {% for grp in t_grpempresas %}
+                <option value="{{ grp.grp_empresa }}">{{ grp.grp_empresa }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            {% if messages %}
+              {% for message in messages %}
+                {% if message.extra_tags == 'MODAL_INS' %}
+                  <div class="col-12">
+                    <div class="alert alert-{{ message.level_tag }} alert-dismissible fade show" role="alert">
+                      {{ message }}
+                      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success">Cadastrar</button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</div>
