@@ -7,7 +7,10 @@ const clientesState = {
     itemsPerPage: 30,
     currentPage: 1,
     searchQuery: '',
-    originalFormData: {}
+    originalFormData: {},
+    modalAberto: null,    // ✅ Controlar qual modal está aberto
+    solucoesSelecionadas: [],  // ✅ Array de soluções selecionadas
+    solucoesDisponiveis: []    // ✅ Lista de soluções disponíveis para adicionar
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -261,9 +264,23 @@ function initClienteIns() {
     const modalEl = document.getElementById("modalClienteIns");
     if (!modalEl) return;
 
+    modalEl.addEventListener("show.bs.modal", () => {
+        // ✅ Fechar modal de UPDATE se estiver aberto
+        fecharModalAbertoCliente();
+        
+        // ✅ Marcar como modal aberto
+        clientesState.modalAberto = "modalClienteIns";
+        console.log("✅ Modal INSERT aberto");
+    });
+
     modalEl.addEventListener("hidden.bs.modal", () => {
         const form = modalEl.querySelector("form");
         if (form) form.reset();
+        
+        // ✅ Desmarcar modal aberto
+        if (clientesState.modalAberto === "modalClienteIns") {
+            clientesState.modalAberto = null;
+        }
     });
 }
 
@@ -283,17 +300,51 @@ function initClienteUpd() {
         const clienteId = row.dataset.clienteId;
         if (!clienteId) return;
 
-        await loadCliente(clienteId);
-        const modal = new bootstrap.Modal(modalEl, {
-            backdrop: "static",
-            keyboard: false
-        });
-        modal.show();
+        // ✅ Fechar modal de INSERT se estiver aberto
+        fecharModalAbertoCliente();
+        
+        // ✅ Marcar como modal aberto
+        clientesState.modalAberto = "modalClienteUpd";
+        
+        // ✅ Aguardar dados serem carregados ANTES de abrir o modal
+        const sucesso = await loadCliente(clienteId);
+        
+        if (sucesso) {
+            const modal = new bootstrap.Modal(modalEl, {
+                backdrop: "static",
+                keyboard: false
+            });
+            modal.show();
+        } else {
+            clientesState.modalAberto = null;
+        }
     });
 
     modalEl.addEventListener("hidden.bs.modal", () => {
         resetarFormularioUpd();
+        
+        // ✅ Desmarcar modal aberto
+        if (clientesState.modalAberto === "modalClienteUpd") {
+            clientesState.modalAberto = null;
+        }
     });
+}
+
+/* ===============================
+   GERENCIAR MODAIS (prevenir múltiplos abertos)
+================================ */
+function fecharModalAbertoCliente() {
+    if (!clientesState.modalAberto) return;
+    
+    const modalElement = document.getElementById(clientesState.modalAberto);
+    if (modalElement) {
+        const modalInstance = bootstrap.Modal.getInstance(modalElement);
+        if (modalInstance) {
+            console.log(`🔒 Fechando modal: ${clientesState.modalAberto}`);
+            modalInstance.hide();
+            clientesState.modalAberto = null;
+        }
+    }
 }
 
 /* ===============================
@@ -301,6 +352,8 @@ function initClienteUpd() {
 ================================ */
 async function loadCliente(clienteId) {
     try {
+        console.log(`📥 Iniciando carregamento do cliente ${clienteId}...`);
+        
         const resp = await fetch(`/cliente/${clienteId}/`, {
             headers: { 
                 "X-Requested-With": "XMLHttpRequest",
@@ -311,18 +364,21 @@ async function loadCliente(clienteId) {
         if (!resp.ok) {
             console.error(`Erro ao carregar cliente: ${resp.status} - ${resp.statusText}`);
             alert(`Erro ao carregar cliente: ${resp.statusText}`);
-            return;
+            return false;  // ✅ Retornar false se falhar
         }
 
         const data = await resp.json();
-        console.log("📥 Dados do cliente recebidos:", data);
+        console.log("✅ Dados do cliente recebidos com sucesso");
 
         // ✅ Preencher o formulário modal
         preencherFormularioCliente(data);
+        
+        return true;  // ✅ Retornar true se sucesso
 
     } catch (err) {
         console.error("Erro ao fazer fetch do cliente:", err);
         alert("Erro ao carregar dados do cliente");
+        return false;  // ✅ Retornar false se erro
     }
 }
 
@@ -336,32 +392,180 @@ function preencherFormularioCliente(data) {
   
   // Dados do cliente
   document.getElementById('upd_cliente_id').value = data.cod_cliente || '';
-  document.getElementById('upd_cliente_id_acesso').value = data.cod_cliente || '';
+  document.getElementById('Acesso_cliente_id').value = data.cod_cliente || '';
   document.getElementById('upd_codigo').value = data.cod_cliente || '';
   document.getElementById('upd_razao').value = data.razao || '';
-  document.getElementById('upd_fantasia').value = data.fantasia || '';
   document.getElementById('upd_cnpj').value = data.cnpj || '';
-  document.getElementById('upd_ie').value = data.ie || '';
-  document.getElementById('upd_im').value = data.im || '';
-  document.getElementById('upd_inscricao_municipal').value = data.inscricao_municipal || '';
-  document.getElementById('upd_tipo').value = data.tipo || '';
-  document.getElementById('upd_ativo').checked = data.is_active || false;
+  document.getElementById('upd_clie_active').checked = Boolean(data.is_active) || false;
   
-  // Endereço
-  document.getElementById('upd_endereco').value = data.endereco || '';
-  document.getElementById('upd_numero').value = data.numero || '';
-  document.getElementById('upd_complemento').value = data.complemento || '';
-  document.getElementById('upd_bairro').value = data.bairro || '';
-  document.getElementById('upd_cidade').value = data.cidade || '';
-  document.getElementById('upd_estado').value = data.estado || '';
-  document.getElementById('upd_cep').value = data.cep || '';
+  // ✅ Processar soluções já vinculadas ao cliente
+  clientesState.solucoesSelecionadas = [];
+  clientesState.solucoesDisponiveis = [];
   
-  // Contato
-  document.getElementById('upd_telefone').value = data.telefone || '';
-  document.getElementById('upd_email').value = data.email || '';
+  if (data.solucoes_acesso && Array.isArray(data.solucoes_acesso)) {
+    clientesState.solucoesSelecionadas = data.solucoes_acesso.map(sol => ({
+      cod_solucao: sol.cod_solucao,
+      descricao: sol.solucao_descricao,
+      is_active: sol.is_active
+    }));
+  }
   
-  // Salvar estado original
-  saveOriginalFormData();
+  // ✅ Processar soluções disponíveis (não vinculadas ainda)
+  if (data.solucoes_disponiveis && Array.isArray(data.solucoes_disponiveis)) {
+    clientesState.solucoesDisponiveis = data.solucoes_disponiveis.map(sol => ({
+      cod_solucao: sol.cod_solucao,
+      descricao: sol.descricao
+    }));
+  }
+  
+  renderizarSolucoesSelecionadas();
+  preencherSelectSolucoes();
+}
+
+/* ===============================
+   PREENCHER SELECT DE SOLUÇÕES DISPONÍVEIS
+================================ */
+function preencherSelectSolucoes() {
+  const select = document.getElementById('upd_solucoes_select');
+  if (!select) return;
+  
+  // Limpar options existentes (mantendo o primeiro placeholder)
+  while (select.options.length > 1) {
+    select.removeChild(select.lastChild);
+  }
+  
+  // Adicionar soluções disponíveis
+  clientesState.solucoesDisponiveis.forEach(sol => {
+    const option = document.createElement('option');
+    option.value = sol.cod_solucao;
+    option.textContent = `${sol.cod_solucao} - ${sol.descricao}`;
+    option.dataset.descricao = sol.descricao;
+    select.appendChild(option);
+  });
+}
+
+/* ===============================
+   ADICIONAR SOLUÇÃO
+================================ */
+function adicionarSolucao() {
+  const select = document.getElementById('upd_solucoes_select');
+  if (!select.value) {
+    alert('Selecione uma solução!');
+    return;
+  }
+  
+  const solCod = select.value;
+  const solDescricao = select.options[select.selectedIndex].dataset.descricao;
+  
+  // ✅ Verificar se já foi adicionada
+  if (clientesState.solucoesSelecionadas.some(s => s.cod_solucao === solCod)) {
+    alert('Esta solução já foi adicionada!');
+    return;
+  }
+  
+  // Mover de disponíveis para selecionadas
+  clientesState.solucoesSelecionadas.push({
+    cod_solucao: solCod,
+    descricao: solDescricao,
+    is_active: true
+  });
+  
+  clientesState.solucoesDisponiveis = clientesState.solucoesDisponiveis.filter(
+    s => s.cod_solucao !== solCod
+  );
+  
+  select.value = '';
+  renderizarSolucoesSelecionadas();
+  preencherSelectSolucoes();
+}
+
+/* ===============================
+   REMOVER SOLUÇÃO
+================================ */
+function removerSolucao(codSolucao) {
+  const solucao = clientesState.solucoesSelecionadas.find(s => s.cod_solucao === codSolucao);
+  if (!solucao) return;
+  
+  // Mover de volta para disponíveis
+  clientesState.solucoesDisponiveis.push({
+    cod_solucao: solucao.cod_solucao,
+    descricao: solucao.descricao
+  });
+  
+  clientesState.solucoesSelecionadas = clientesState.solucoesSelecionadas.filter(
+    s => s.cod_solucao !== codSolucao
+  );
+  
+  renderizarSolucoesSelecionadas();
+  preencherSelectSolucoes();
+}
+
+/* ===============================
+   TOGGLE STATUS SOLUÇÃO
+================================ */
+function toggleSolucaoStatus(codSolucao) {
+  const solucao = clientesState.solucoesSelecionadas.find(s => s.cod_solucao === codSolucao);
+  if (solucao) {
+    solucao.is_active = !solucao.is_active;
+    renderizarSolucoesSelecionadas();
+  }
+}
+
+/* ===============================
+   RENDERIZAR SOLUÇÕES SELECIONADAS
+================================ */
+function renderizarSolucoesSelecionadas() {
+  const tbody = document.getElementById('upd_solucoes_tbody');
+  const hidden = document.getElementById('upd_solucoes_hidden');
+  
+  if (!tbody) return;
+  
+  // ✅ Limpar tbody
+  tbody.innerHTML = '';
+  
+  if (clientesState.solucoesSelecionadas.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="4" class="text-center text-muted">
+          Nenhuma solução vinculada
+        </td>
+      </tr>
+    `;
+    hidden.value = '';
+    return;
+  }
+  
+  // ✅ Adicionar linhas
+  clientesState.solucoesSelecionadas.forEach(sol => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${sol.cod_solucao}</td>
+      <td>${sol.descricao}</td>
+      <td class="text-center">
+        <div class="form-check form-switch d-flex justify-content-center">
+          <input 
+            class="form-check-input" 
+            type="checkbox" 
+            ${sol.is_active ? 'checked' : ''}
+            onchange="toggleSolucaoStatus('${sol.cod_solucao}')">
+        </div>
+      </td>
+      <td class="text-center">
+        <button 
+          type="button" 
+          class="btn btn-sm btn-danger" 
+          onclick="removerSolucao('${sol.cod_solucao}')">
+          Remover
+        </button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+  
+  // ✅ Atualizar hidden input no formato: cod1:status,cod2:status
+  hidden.value = clientesState.solucoesSelecionadas
+    .map(s => `${s.cod_solucao}:${s.is_active ? '1' : '0'}`)
+    .join(',');
 }
 
 /* ===============================
@@ -373,180 +577,17 @@ function resetarFormularioUpd() {
   if (firstTab) {
     firstTab.click();
   }
-  
-  // Resetar botões
-  document.getElementById('btn-edit').style.display = 'inline-block';
-  document.getElementById('btn-save').style.display = 'none';
-  document.getElementById('btn-cancel').style.display = 'none';
-  
-  // Tornar campos readonly novamente
-  const editableFields = [
-    'upd_razao',
-    'upd_fantasia',
-    'upd_ie',
-    'upd_im',
-    'upd_inscricao_municipal',
-    'upd_tipo',
-    'upd_endereco',
-    'upd_numero',
-    'upd_complemento',
-    'upd_bairro',
-    'upd_cidade',
-    'upd_estado',
-    'upd_cep',
-    'upd_telefone',
-    'upd_email'
-  ];
-  
-  editableFields.forEach(fieldId => {
-    const field = document.getElementById(fieldId);
-    if (field) {
-      field.setAttribute('readonly', 'readonly');
-    }
-  });
-  
-  // Desabilitar checkbox ativo
-  const ativoCheckbox = document.getElementById('upd_ativo');
-  if (ativoCheckbox) {
-    ativoCheckbox.setAttribute('disabled', 'disabled');
-  }
 }
 
-// Função para tornar campos editáveis
-function makeEditable() {
-  const editableFields = [
-    'upd_razao',
-    'upd_fantasia',
-    'upd_ie',
-    'upd_im',
-    'upd_inscricao_municipal',
-    'upd_tipo',
-    'upd_endereco',
-    'upd_numero',
-    'upd_complemento',
-    'upd_bairro',
-    'upd_cidade',
-    'upd_estado',
-    'upd_cep',
-    'upd_telefone',
-    'upd_email'
-  ];
-
-  editableFields.forEach(fieldId => {
-    const field = document.getElementById(fieldId);
-    if (field) {
-      field.removeAttribute('readonly');
-    }
-  });
-
-  // Habilitar checkbox ativo
-  const ativoCheckbox = document.getElementById('upd_ativo');
-  if (ativoCheckbox) {
-    ativoCheckbox.removeAttribute('disabled');
-  }
-
-  // Trocar botões
-  document.getElementById('btn-edit').style.display = 'none';
-  document.getElementById('btn-save').style.display = 'inline-block';
-  document.getElementById('btn-cancel').style.display = 'inline-block';
-}
-
-// Função para cancelar edição
-function cancelChanges() {
-  // Restaurar valores originais
-  restoreOriginalFormData();
-
-  // Tornar campos readonly novamente
-  const editableFields = [
-    'upd_razao',
-    'upd_fantasia',
-    'upd_ie',
-    'upd_im',
-    'upd_inscricao_municipal',
-    'upd_tipo',
-    'upd_endereco',
-    'upd_numero',
-    'upd_complemento',
-    'upd_bairro',
-    'upd_cidade',
-    'upd_estado',
-    'upd_cep',
-    'upd_telefone',
-    'upd_email'
-  ];
-
-  editableFields.forEach(fieldId => {
-    const field = document.getElementById(fieldId);
-    if (field) {
-      field.setAttribute('readonly', 'readonly');
-    }
-  });
-
-  // Desabilitar checkbox ativo
-  const ativoCheckbox = document.getElementById('upd_ativo');
-  if (ativoCheckbox) {
-    ativoCheckbox.setAttribute('disabled', 'disabled');
-  }
-
-  // Trocar botões
-  document.getElementById('btn-edit').style.display = 'inline-block';
-  document.getElementById('btn-save').style.display = 'none';
-  document.getElementById('btn-cancel').style.display = 'none';
-}
-
-// Salvar estado original do formulário
-function saveOriginalFormData() {
-  clientesState.originalFormData = {
-    razao: document.getElementById('upd_razao').value,
-    fantasia: document.getElementById('upd_fantasia').value,
-    ie: document.getElementById('upd_ie').value,
-    im: document.getElementById('upd_im').value,
-    inscricao_municipal: document.getElementById('upd_inscricao_municipal').value,
-    tipo: document.getElementById('upd_tipo').value,
-    ativo: document.getElementById('upd_ativo').checked,
-    endereco: document.getElementById('upd_endereco').value,
-    numero: document.getElementById('upd_numero').value,
-    complemento: document.getElementById('upd_complemento').value,
-    bairro: document.getElementById('upd_bairro').value,
-    cidade: document.getElementById('upd_cidade').value,
-    estado: document.getElementById('upd_estado').value,
-    cep: document.getElementById('upd_cep').value,
-    telefone: document.getElementById('upd_telefone').value,
-    email: document.getElementById('upd_email').value
-  };
-}
-
-// Restaurar estado original do formulário
-function restoreOriginalFormData() {
-  if (Object.keys(clientesState.originalFormData).length === 0) return;
-
-  document.getElementById('upd_razao').value = clientesState.originalFormData.razao || '';
-  document.getElementById('upd_fantasia').value = clientesState.originalFormData.fantasia || '';
-  document.getElementById('upd_ie').value = clientesState.originalFormData.ie || '';
-  document.getElementById('upd_im').value = clientesState.originalFormData.im || '';
-  document.getElementById('upd_inscricao_municipal').value = clientesState.originalFormData.inscricao_municipal || '';
-  document.getElementById('upd_tipo').value = clientesState.originalFormData.tipo || '';
-  document.getElementById('upd_ativo').checked = clientesState.originalFormData.ativo || false;
-  document.getElementById('upd_endereco').value = clientesState.originalFormData.endereco || '';
-  document.getElementById('upd_numero').value = clientesState.originalFormData.numero || '';
-  document.getElementById('upd_complemento').value = clientesState.originalFormData.complemento || '';
-  document.getElementById('upd_bairro').value = clientesState.originalFormData.bairro || '';
-  document.getElementById('upd_cidade').value = clientesState.originalFormData.cidade || '';
-  document.getElementById('upd_estado').value = clientesState.originalFormData.estado || '';
-  document.getElementById('upd_cep').value = clientesState.originalFormData.cep || '';
-  document.getElementById('upd_telefone').value = clientesState.originalFormData.telefone || '';
-  document.getElementById('upd_email').value = clientesState.originalFormData.email || '';
-}
-
-// Função para formatar CNPJ (opcional)
+// Função para formatar CNPJ
 function formatCNPJ(input) {
   let value = input.value.replace(/\D/g, '');
   
   if (value.length <= 14) {
     value = value.replace(/^(\d{2})(\d)/, '$1.$2');
     value = value.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
-    value = value.replace(/\.(\d{3})(\d)/, '.$1/$2');
-    value = value.replace(/(\d{4})(\d)/, '$1-$2');
+    value = value.replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3/$4');
+    value = value.replace(/^(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d)/, '$1.$2.$3/$4-$5');
   }
   
   input.value = value;
@@ -554,7 +595,7 @@ function formatCNPJ(input) {
 
 // Adicionar formatação automática ao campo CNPJ
 document.addEventListener('DOMContentLoaded', () => {
-  const cnpjInputs = document.querySelectorAll('input[name="cnpj"], input[name="upd_cnpj"]');
+  const cnpjInputs = document.querySelectorAll('input[name="m_cnpj"], input[name="upd_cnpj"]');
   cnpjInputs.forEach(input => {
     input.addEventListener('input', function() {
       formatCNPJ(this);

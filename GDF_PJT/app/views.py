@@ -9,6 +9,7 @@ from django.contrib                 import messages
 from app.classes.Gdf                import Cl_Gdf
 from django.core.paginator          import Paginator
 from app.db_GDF.Public.models       import UserEmpresas, Empresas
+import re
 
 def Login_view(request):
     if request.method == "POST":
@@ -135,13 +136,6 @@ def Dm_Clientes_view(request):
     )
 
 #--------------------------------------------------------------------
-#       Sub-soluções Views ( Implementação )
-#--------------------------------------------------------------------
-@login_required(login_url='Login')
-def Im_Projetos_view(request): 
-    return render(request, 'Index_Login.html')
-
-#--------------------------------------------------------------------
 #       Modais Views
 #--------------------------------------------------------------------
 @login_required(login_url='Login')
@@ -151,9 +145,7 @@ def Usuario_ins(request):
     if not cod_cliente:
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
-    return_json = {}
     cl_gdf = Cl_Gdf()
-    
     if request.method == "GET":
         # ✅ Retorna dados para preencher o modal
         return JsonResponse(cl_gdf.Get_Usuario_ins(cod_cliente=cod_cliente))
@@ -308,16 +300,25 @@ def Empresa_ins(request):
     
     cl_gdf = Cl_Gdf()
     if request.method == "GET":
-        dados_modal = cl_gdf.Get_Empresas_ins(cod_cliente=cod_cliente)
-        return JsonResponse(dados_modal)  
+        data = cl_gdf.Get_Empresas_ins(cod_cliente=cod_cliente)
+        return JsonResponse(data)  
     
     elif request.method == "POST":
         # ✅ Extrair dados do formulário
         cod_empresa = request.POST.get("m_codempresa", "").strip()
         razao = request.POST.get("m_razao", "").strip()
         cnpj = request.POST.get("m_cnpj", "").strip()
+        cnpj = re.sub(r"\D", "", cnpj)
         fantasia = request.POST.get("m_fantasia", "").strip()
         grp_empresa = request.POST.get("ls_grpempresas", "").strip()
+        matriz = request.POST.get("m_matriz") == "on"
+        ie = request.POST.get("m_ie", "").strip()
+        im = request.POST.get("m_im", "").strip()
+        iest = request.POST.get("m_iest", "").strip()
+        crt = request.POST.get("m_crt", "").strip()
+        cnae = request.POST.get("m_cnae", "").strip()
+        suframa = request.POST.get("m_suframa", "").strip()
+        chave_acesso = request.POST.get("m_chave_acesso", "").strip()
 
         # ✅ Validações básicas (frontend já valida, mas revalidamos no backend)
         errors = []
@@ -343,7 +344,15 @@ def Empresa_ins(request):
             cnpj=cnpj,
             fantasia=fantasia,
             grp_empresa=grp_empresa,
-            cod_cliente=cod_cliente
+            cod_cliente=cod_cliente,
+            matriz=matriz,
+            ie=ie,
+            im=im,
+            iest=iest,
+            crt=crt,
+            cnae=cnae,
+            suframa=suframa,
+            chave_acesso=chave_acesso
         )
         
         # ✅ Verificar resultado
@@ -354,19 +363,18 @@ def Empresa_ins(request):
 
 @login_required(login_url='Login')
 @require_http_methods(["GET", "POST"])
-def Empresa_upd(request, empresa_id):
+def Empresa_upd(request, cod_empresa):
     """Atualizar empresa existente"""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
     cl_gdf = Cl_Gdf()
-    
     if request.method == "GET":
         # Retornar dados da empresa para popular o modal
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             empresa_data = cl_gdf.Get_Empresas_upd(
-                i_Cod_empresas=empresa_id,
+                i_Cod_empresas=cod_empresa,
                 cod_cliente=cod_cliente
             )
             return JsonResponse(empresa_data)
@@ -388,7 +396,7 @@ def Empresa_upd(request, empresa_id):
         matriz = request.POST.get("m_matriz") == "on"
         
         resultado = cl_gdf.Empresa_upd(
-            cod_empresa=empresa_id,
+            cod_empresa=cod_empresa,
             razao=razao,
             fantasia=fantasia,
             ie=ie,
@@ -457,7 +465,6 @@ def Cliente_ins(request):
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
     cl_gdf = Cl_Gdf()
-    
     if request.method == "GET":
         # Retornar dados para preencher o modal (opcionalmente listas de soluções, etc)
         return JsonResponse({"success": True})
@@ -467,6 +474,7 @@ def Cliente_ins(request):
         cliente_id = request.POST.get("m_cliente_id", "").strip()
         razao = request.POST.get("m_razao", "").strip()
         cnpj = request.POST.get("m_cnpj", "").strip()
+        cnpj = re.sub(r"\D", "", cnpj)
 
         # ✅ Validações básicas
         if not cliente_id:
@@ -478,10 +486,9 @@ def Cliente_ins(request):
         
         # ✅ Chamar método de inserção na classe
         resultado = cl_gdf.Cliente_ins(
-            cod_cliente=cliente_id,
-            razao=razao,
-            cnpj=cnpj,
-            cod_cliente_sessao=cod_cliente
+            i_cliente=cliente_id,
+            i_razao=razao,
+            i_cnpj=cnpj
         )
         
         # ✅ Verificar resultado
@@ -494,58 +501,60 @@ def Cliente_ins(request):
 
 @login_required(login_url='Login')
 @require_http_methods(["GET", "POST"])
-def Cliente_upd(request, cliente_id):
+def Cliente_upd(request, cod_cliente):
     """Atualizar cliente existente - seguindo padrão Usuario_upd"""
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
+    cod_cliente_sessao = request.session.get('cod_cliente', None)
+    if not cod_cliente_sessao:
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
-    
-    # ✅ VALIDAR IDOR: Cliente só pode editar a si mesmo
-    # (assumindo que cada cliente só edita seus próprios dados)
-    if cliente_id != cod_cliente:
-        return JsonResponse({"erro": "Acesso negado: você não pode editar outro cliente"}, status=403)
-    
+ 
     cl_gdf = Cl_Gdf()
-    
     if request.method == "GET":
         # Retornar dados do cliente em JSON (para modal)
-        data = cl_gdf.Get_Cliente_Detalhes(cliente_id=cliente_id, cod_cliente=cod_cliente)
+        data = cl_gdf.Get_Clientes_upd(cliente_id=cod_cliente)
         if not data or data.get('erro'):
             return JsonResponse({"erro": "Cliente não encontrado"}, status=404)
 
         return JsonResponse(data)
 
     elif request.method == "POST":
-        # ✅ Validações de campos obrigatórios
-        razao = request.POST.get("m_razao", "").strip()
-        cnpj = request.POST.get("m_cnpj", "").strip()
-        is_active = request.POST.get("m_active") == "on"
+        modal_upd = request.POST.get("modal_upd", "").strip()
+        cod_cliente_id = request.POST.get("upd_cliente_id", "").strip()
         
-        # ✅ Processar soluções (permissões de acesso)
-        solucoes_acessadas = []
-        for key in request.POST:
-            if key.startswith('sol_'):
-                solucoes_acessadas.append(key.replace('sol_', ''))
-        
-        # ✅ Validações básicas antes de chamar método
-        if not razao:
-            return JsonResponse({"erro": "Razão social é obrigatória"}, status=400)
-        if not cnpj:
-            return JsonResponse({"erro": "CNPJ é obrigatório"}, status=400)
-        
-        resultado = cl_gdf.Cliente_upd(
-            cliente_id=cliente_id,
-            razao=razao,
-            cnpj=cnpj,
-            is_active=is_active,
-            solucoes=solucoes_acessadas,
-            cod_cliente=cod_cliente
-        )
-        
-        # ✅ Verificar resultado
-        if not resultado.get("success"):
-            return JsonResponse({"erro": resultado.get("message")}, status=400)
+        if not cod_cliente_id:
+            cod_cliente_id = request.POST.get("Acesso_cliente_id", "").strip()
 
+        # Atualização dos dados do cliente (aba Dados)
+        if modal_upd == "C" or modal_upd == "":
+            # ✅ Extrair dados do formulário
+            razao = request.POST.get("upd_razao", "").strip()
+            cnpj = request.POST.get("upd_cnpj", "").strip()
+            cnpj = re.sub(r"\D", "", cnpj)
+            is_active = request.POST.get("upd_is_active") == "on"
+        
+            # ✅ Validações básicas
+            if not razao:
+                return JsonResponse({"erro": "Razão social é obrigatória"}, status=400)
+            if not cnpj:
+                return JsonResponse({"erro": "CNPJ é obrigatório"}, status=400)
+
+            resultado = cl_gdf.Cliente_upd(
+                i_cliente=cod_cliente_id,
+                i_razao=razao,
+                i_cnpj=cnpj,
+                i_is_active=is_active
+            )
+            if not resultado.get("success"):
+                return JsonResponse({"erro": resultado.get("message")}, status=400)
+
+        # Atualização dos acessos (aba Direitos de Acesso)
+        if modal_upd == "S" or modal_upd == "":
+            ls_solucoes = request.POST.get("ls_solucoes", "").strip()  # Formato: "COD1:1,COD2:0"
+            resultado = cl_gdf.Cliente_solucao(
+                i_Cod_cliente=cod_cliente_id,
+                ls_solucoes=ls_solucoes
+            )
+            if not resultado.get("success"):
+                return JsonResponse({"erro": resultado.get("message")}, status=400)
+        
         return redirect('Dm_Clientes')
-    
     return JsonResponse({"erro": "Método não permitido"}, status=405)

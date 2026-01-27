@@ -10,11 +10,11 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
 
-        <div class="modal-body">
+        <div class="modal-body modal-body-scroll">
           <div class="row g-3">
-            
+
             <div class="col-md-6">
-              <label for="ins_codempresa" class="form-label">Código da Empresa</label>
+              <label for="ins_codempresa" class="form-label">* Código da Empresa</label>
               <input
                 type="text"
                 id="ins_codempresa"
@@ -25,7 +25,7 @@
             </div>
 
             <div class="col-md-6">
-              <label for="ins_cnpj" class="form-label">CNPJ</label>
+              <label for="ins_cnpj" class="form-label">* CNPJ</label>
               <input
                 type="text"
                 id="ins_cnpj"
@@ -35,19 +35,19 @@
                 required>
             </div>
 
-            <div class="col-md-12">
-              <label for="ins_razao" class="form-label">Razão Social</label>
+            <div class="col-md-6">
+              <label for="ins_razao" class="form-label">* Razão Social</label>
               <input
                 type="text"
                 id="ins_razao"
                 name="m_razao"
                 class="form-control"
-                placeholder="Nome da empresa"
+                placeholder="Razão social"
                 required>
             </div>
 
-            <div class="col-md-12">
-              <label for="ins_fantasia" class="form-label">Nome Fantasia</label>
+            <div class="col-md-6">
+              <label for="ins_fantasia" class="form-label">* Nome Fantasia</label>
               <input
                 type="text"
                 id="ins_fantasia"
@@ -57,18 +57,102 @@
                 required>
             </div>
 
-            <div class="col-md-12">
-              <label for="ins_grpempresas" class="form-label">Grupo de Empresas</label>
+            <div class="col-md-6">
+              <label for="ins_grpempresas" class="form-label">* Grupo de Empresas</label>
               <select
                 id="ins_grpempresas"
                 name="ls_grpempresas"
                 class="form-select"
                 required>
                 <option value="" disabled selected>-- Selecione um grupo --</option>
-                {% for grp in t_grpempresas %}
-                <option value="{{ grp.grp_empresa }}">{{ grp.grp_empresa }}</option>
-                {% endfor %}
               </select>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Matriz</label>
+              <div class="form-check form-switch mt-1">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="ins_matriz"
+                  name="m_matriz">
+                <label class="form-check-label" for="ins_matriz">Empresa é matriz</label>
+              </div>
+            </div>
+
+            <!-- Opcionais -->
+            <div class="col-12 mt-3">
+              <h6 class="fw-bold text-secondary mb-2">Dados opcionais</h6>
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_ie" class="form-label">Inscrição Estadual</label>
+              <input
+                type="text"
+                id="ins_ie"
+                name="m_ie"
+                class="form-control"
+                placeholder="IE">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_im" class="form-label">Inscrição Municipal</label>
+              <input
+                type="text"
+                id="ins_im"
+                name="m_im"
+                class="form-control"
+                placeholder="IM">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_iest" class="form-label">IE Substituto Tributário</label>
+              <input
+                type="text"
+                id="ins_iest"
+                name="m_iest"
+                class="form-control"
+                placeholder="IE ST">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_crt" class="form-label">CRT</label>
+              <input
+                type="text"
+                id="ins_crt"
+                name="m_crt"
+                class="form-control"
+                placeholder="CRT">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_cnae" class="form-label">CNAE</label>
+              <input
+                type="text"
+                id="ins_cnae"
+                name="m_cnae"
+                class="form-control"
+                placeholder="CNAE">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_suframa" class="form-label">SUFRAMA</label>
+              <input
+                type="text"
+                id="ins_suframa"
+                name="m_suframa"
+                class="form-control"
+                placeholder="SUFRAMA">
+            </div>
+
+            <div class="col-md-12">
+              <label for="ins_chave_acesso" class="form-label">Chave de Acesso</label>
+              <input
+                type="text"
+                id="ins_chave_acesso"
+                name="m_chave_acesso"
+                class="form-control"
+                placeholder="Chave de acesso">
             </div>
 
             {% if messages %}

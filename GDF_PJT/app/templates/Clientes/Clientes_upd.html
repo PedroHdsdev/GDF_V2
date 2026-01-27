@@ -55,8 +55,8 @@
           <div class="tab-pane fade show active" id="tab-cliente" role="tabpanel">
             <form method="post" id="formClienteUpd" action="/cliente/" onsubmit="validarFormularioUpd(event)">
               {% csrf_token %}
-              <input type="hidden" id="upd_cliente_id" name="m_cliente_id" value="">
-
+              <input type="hidden" id="upd_cliente_id" name="upd_cliente_id" value="">
+              <input type="hidden" id="modal_upd" name="modal_upd" value="C">
               <div class="row g-3">
                 
                 <div class="col-md-6">
@@ -73,9 +73,8 @@
                   <input
                     type="text"
                     id="upd_cnpj"
-                    name="m_cnpj"
-                    class="form-control"
-                    readonly>
+                    name="upd_cnpj"
+                    class="form-control">
                 </div>
 
                 <div class="col-md-12">
@@ -83,9 +82,8 @@
                   <input
                     type="text"
                     id="upd_razao"
-                    name="m_razao"
-                    class="form-control"
-                    readonly>
+                    name="upd_razao"
+                    class="form-control">
                 </div>
 
                 <div class="col-md-12">
@@ -93,11 +91,10 @@
                   <div class="form-check form-switch">
                     <input
                       type="checkbox"
-                      id="upd_ativo"
-                      name="m_active"
-                      class="form-check-input"
-                      disabled>
-                    <label class="form-check-label" for="upd_ativo">Cliente ativo no sistema</label>
+                      id="upd_clie_active"
+                      name="upd_is_active"
+                      class="form-check-input">
+                    <label class="form-check-label" for="upd_clie_active">Cliente ativo no sistema</label>
                   </div>
                 </div>
 
@@ -105,25 +102,14 @@
 
               <div class="d-flex gap-2 mt-4">
                 <button
-                  type="button"
-                  id="btn-edit-cliente"
-                  class="btn btn-primary"
-                  onclick="makeEditableCliente()">
-                  Editar
-                </button>
-                <button
                   type="submit"
-                  id="btn-save-cliente"
-                  class="btn btn-success"
-                  style="display: none;">
-                  Salvar
+                  class="btn btn-primary">
+                  Salvar Alterações
                 </button>
                 <button
                   type="button"
-                  id="btn-cancel-cliente"
                   class="btn btn-secondary"
-                  style="display: none;"
-                  onclick="cancelChangesCliente()">
+                  data-bs-dismiss="modal">
                   Cancelar
                 </button>
               </div>
@@ -135,52 +121,51 @@
           <div class="tab-pane fade" id="tab-acesso" role="tabpanel">
             <form method="post" id="formAcessoUpd" action="/cliente/">
               {% csrf_token %}
-              <input type="hidden" id="upd_cliente_id_acesso" name="m_cliente_id" value="">
-
+              <input type="hidden" id="Acesso_cliente_id" name="Acesso_cliente_id" value="">
+              <input type="hidden" id="modal_upd" name="modal_upd" value="S">
               <div class="mb-3">
-                <label class="form-label">Selecione as soluções disponíveis para este cliente:</label>
+                <label class="form-label">Adicionar Solução</label>
+                <div class="input-group">
+                  <select id="upd_solucoes_select" class="form-select">
+                    <option value="">-- Selecione uma solução --</option>
+                  </select>
+                  <button type="button" class="btn btn-success" onclick="adicionarSolucao()">
+                    <i class="bi bi-plus-lg"></i> Adicionar
+                  </button>
+                </div>
               </div>
-
-              <div id="solucoes-list" class="row g-3">
-                <!-- Será preenchido por JavaScript -->
+              
+              <!-- Tabela de Soluções Selecionadas -->
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Código</th>
+                      <th>Descrição</th>
+                      <th class="text-center" style="width: 100px;">Status</th>
+                      <th class="text-center" style="width: 80px;">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody id="upd_solucoes_tbody">
+                    <!-- Preenchido por JavaScript -->
+                  </tbody>
+                </table>
               </div>
+              
+              <!-- Hidden input para enviar valores ao servidor -->
+              <input type="hidden" name="ls_solucoes" id="upd_solucoes_hidden" value="">
 
               <div class="d-flex gap-2 mt-4">
                 <button
-                  type="button"
-                  id="btn-edit-acesso"
-                  class="btn btn-primary"
-                  onclick="makeEditableAcesso()">
-                  Editar
-                </button>
-                <button
                   type="submit"
-                  id="btn-save-acesso"
-                  class="btn btn-success"
-                  style="display: none;">
-                  Salvar
-                </button>
-                <button
-                  type="button"
-                  id="btn-cancel-acesso"
-                  class="btn btn-secondary"
-                  style="display: none;"
-                  onclick="cancelChangesAcesso()">
-                  Cancelar
+                  class="btn btn-primary">
+                  Salvar Acessos
                 </button>
               </div>
-
             </form>
           </div>
-
         </div>
-
       </div>
-
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-      </div>
-
     </div>
   </div>
 </div>

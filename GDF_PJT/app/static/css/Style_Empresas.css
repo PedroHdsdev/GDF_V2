@@ -63,3 +63,9 @@
     background-color: #0d6efd;
     border-color: #0d6efd;
 }
+
+/* Scroll inside empresa modal body when content exceeds viewport */
+.modal-body-scroll {
+    max-height: 70vh;
+    overflow-y: auto;
+}

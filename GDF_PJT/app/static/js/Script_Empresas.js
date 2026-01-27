@@ -7,7 +7,8 @@ const empresasState = {
     itemsPerPage: 30,
     currentPage: 1,
     searchQuery: '',
-    originalFormData: {}
+    originalFormData: {},
+    modalAberto: null     // ✅ Controlar qual modal está aberto
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -260,13 +261,122 @@ function initPaginacao() {
    INS – INSERT EMPRESA
 ================================ */ 
 function initEmpresaIns() {
+    const btnAbrirModal = document.getElementById("btnAbrirModalEmpresaIns");
     const modalEl = document.getElementById("modalEmpresaIns");
-    if (!modalEl) return;
-
+    
+    if (!btnAbrirModal || !modalEl) {
+        console.error("❌ Botão ou modal não encontrado");
+        return;
+    }
+    
+    // Clique no botão Cadastrar
+    btnAbrirModal.addEventListener("click", async (e) => {
+        e.preventDefault();
+        console.log("🔄 Clique no botão Cadastrar - buscando grupos...");
+        
+        // Fechar modal de UPDATE se estiver aberto
+        fecharModalAbertoEmpresa();
+        
+        // Buscar grupos ANTES de abrir o modal
+        try {
+            console.log("🔄 Buscando grupos em /empresa/inserir/...");
+            const resp = await fetch('/empresa/inserir/', {
+                method: 'GET',
+                headers: { 
+                    'X-Requested-With': 'XMLHttpRequest', 
+                    'Accept': 'application/json' 
+                }
+            });
+            console.log("📡 Response status:", resp.status);
+            
+            if (resp.ok) {
+                const data = await resp.json();
+                console.log("📦 Dados recebidos:", data);
+                console.log("📋 Estrutura de todos_grupos:", data.todos_grupos);
+                
+                const grupos = data.todos_grupos || [];
+                console.log(`✅ ${grupos.length} grupos encontrados`);
+                
+                if (grupos.length > 0) {
+                    console.log("🔍 Primeiro grupo:", grupos[0]);
+                }
+                
+                // PREENCHER select ANTES de abrir modal
+                preencherSelectGrupos(grupos);
+                
+                // AGORA SIM, abrir o modal
+                empresasState.modalAberto = "modalEmpresaIns";
+                const modal = new bootstrap.Modal(modalEl, {
+                    backdrop: "static",
+                    keyboard: false
+                });
+                modal.show();
+                console.log("✅ Modal aberto após carregar grupos");
+            } else {
+                console.warn('❌ Falha ao carregar grupos:', resp.status);
+                alert('Erro ao carregar dados. Tente novamente.');
+            }
+        } catch (err) {
+            console.error('💥 Erro ao buscar grupos:', err);
+            alert('Erro de conexão. Tente novamente.');
+        }
+    });
+    
+    // Limpar modal ao fechar
     modalEl.addEventListener("hidden.bs.modal", () => {
         const form = modalEl.querySelector("form");
         if (form) form.reset();
+        
+        if (empresasState.modalAberto === "modalEmpresaIns") {
+            empresasState.modalAberto = null;
+        }
     });
+}
+
+/* ===============================
+   PREENCHER SELECT DE GRUPOS
+================================ */
+function preencherSelectGrupos(grupos) {
+    console.log("🎯 preencherSelectGrupos chamado com:", grupos);
+    
+    const select = document.getElementById("ins_grpempresas");
+    if (!select) {
+        console.error("❌ Select ins_grpempresas não encontrado!");
+        return;
+    }
+    
+    console.log("✅ Select encontrado, options atuais:", select.options.length);
+    
+    // Limpar opções existentes (manter apenas a primeira "Selecione um grupo")
+    while (select.options.length > 1) {
+        select.removeChild(select.lastChild);
+    }
+    
+    console.log("🧹 Select limpo, options restantes:", select.options.length);
+    
+    // Se não há grupos, mostrar aviso
+    if (!grupos || grupos.length === 0) {
+        console.warn("⚠️  Nenhum grupo encontrado!");
+        return;
+    }
+    
+    // Adicionar grupos
+    grupos.forEach((grp, index) => {
+        console.log(`  Processando grupo ${index + 1}:`, grp);
+        const option = document.createElement('option');
+        
+        const grpValue = grp.grp_empresa || grp.id || '';
+        const grpDesc = grp.descricao || grp.nome || grp.grp_empresa || grp.id || '';
+        
+        option.value = grpValue;
+        option.textContent = `${grpValue} - ${grpDesc}`;
+        
+        select.appendChild(option);
+        console.log(`    ✅ Adicionado: value="${option.value}" text="${option.textContent}"`);
+    });
+    
+    console.log(`✅ Total final de options no select: ${select.options.length}`);
+    console.log(`✅ ${grupos.length} grupos adicionados ao select`);
 }
 
 /* ===============================
@@ -285,17 +395,51 @@ function initEmpresaUpd() {
         const empresaId = row.dataset.empresaId;
         if (!empresaId) return;
 
-        await loadEmpresa(empresaId);
-        const modal = new bootstrap.Modal(modalEl, {
-            backdrop: "static",
-            keyboard: false
-        });
-        modal.show();
+        // ✅ Fechar modal de INSERT se estiver aberto
+        fecharModalAbertoEmpresa();
+        
+        // ✅ Marcar como modal aberto
+        empresasState.modalAberto = "modalEmpresaUpd";
+        
+        // ✅ Aguardar dados serem carregados ANTES de abrir o modal
+        const sucesso = await loadEmpresa(empresaId);
+        
+        if (sucesso) {
+            const modal = new bootstrap.Modal(modalEl, {
+                backdrop: "static",
+                keyboard: false
+            });
+            modal.show();
+        } else {
+            empresasState.modalAberto = null;
+        }
     });
 
     modalEl.addEventListener("hidden.bs.modal", () => {
         resetarFormularioUpd();
+        
+        // ✅ Desmarcar modal aberto
+        if (empresasState.modalAberto === "modalEmpresaUpd") {
+            empresasState.modalAberto = null;
+        }
     });
+}
+
+/* ===============================
+   GERENCIAR MODAIS (prevenir múltiplos abertos)
+================================ */
+function fecharModalAbertoEmpresa() {
+    if (!empresasState.modalAberto) return;
+    
+    const modalElement = document.getElementById(empresasState.modalAberto);
+    if (modalElement) {
+        const modalInstance = bootstrap.Modal.getInstance(modalElement);
+        if (modalInstance) {
+            console.log(`🔒 Fechando modal: ${empresasState.modalAberto}`);
+            modalInstance.hide();
+            empresasState.modalAberto = null;
+        }
+    }
 }
 
 /* ===============================
@@ -303,6 +447,8 @@ function initEmpresaUpd() {
 ================================ */
 async function loadEmpresa(empresaId) {
     try {
+        console.log(`📥 Iniciando carregamento da empresa ${empresaId}...`);
+        
         const resp = await fetch(`/empresa/${empresaId}/`, {
             headers: { 
                 "X-Requested-With": "XMLHttpRequest",
@@ -313,18 +459,21 @@ async function loadEmpresa(empresaId) {
         if (!resp.ok) {
             console.error(`Erro ao carregar empresa: ${resp.status} - ${resp.statusText}`);
             alert(`Erro ao carregar empresa: ${resp.statusText}`);
-            return;
+            return false;  // ✅ Retornar false se falhar
         }
 
         const data = await resp.json();
-        console.log("📥 Dados da empresa recebidos:", data);
+        console.log("✅ Dados da empresa recebidos com sucesso");
 
         // ✅ Preencher o formulário modal
         preencherFormularioEmpresa(data);
+        
+        return true;  // ✅ Retornar true se sucesso
 
     } catch (err) {
         console.error("Erro ao fazer fetch da empresa:", err);
         alert("Erro ao carregar dados da empresa");
+        return false;  // ✅ Retornar false se erro
     }
 }
 

@@ -165,25 +165,12 @@ class Cl_Gdf():
             q_clientes = Clientes.objects.all()
 
             for clie in q_clientes:
-                # Buscar soluções de acesso para este cliente
-                q_solucoes_acesso = SolucoesAcesso.objects.filter(
-                    cliente=clie
-                ).select_related('solucao')
-
                 clientes_data.append({
                     "cod_cliente": clie.cod_cliente,
                     "razao": clie.razao,
                     "cnpj": clie.cnpj,
                     "is_active": clie.is_active,
-                    "date_joined": clie.date_joined,
-                    "solucoes_acesso": [
-                        {
-                            "cod_solucao": sa.solucao.cod_solucao,
-                            "solucao_descricao": sa.solucao.descricao,
-                            "is_active": sa.is_active
-                        }
-                        for sa in q_solucoes_acesso
-                    ]   
+                    "date_joined": clie.date_joined, 
                 })
 
         except Clientes.DoesNotExist as e:
@@ -200,55 +187,151 @@ class Cl_Gdf():
             return []
         
         return clientes_data
-    
+
 #--------------------------------------------------------------------------------
-    """Cadastro de Clientes"""
-    def Cliente_ins(self, cod_cliente, razao, cnpj):
+    """Retorna dados do cliente para edição no modal"""
+    def Get_Clientes_upd(self, cliente_id):
         self.Retorn = []
         try:
-            cliente_instance = Clientes.objects.create(
-                cod_cliente=cod_cliente,
-                razao=razao,
-                cnpj=cnpj,
-                is_active=True,
-                date_joined=now()
+            q_cliente = Clientes.objects.get(cod_cliente=cliente_id)
+
+            # Soluções já atribuídas ao cliente
+            q_solucoes_acesso = SolucoesAcesso.objects.filter(
+                    cliente=q_cliente
+            ).select_related('solucao')
+            
+            # Todas as soluções cadastradas
+            todas_solucoes = Solucoes.objects.all()
+            
+            # Soluções disponíveis (não atribuídas)
+            solucoes_disponiveis = todas_solucoes.exclude(
+                cod_solucao__in=q_solucoes_acesso.values_list('solucao__cod_solucao', flat=True)
             )
-            cliente_instance.save()
-
-            q_solucoes = Solucoes.objects.all()
-
-            for sol in q_solucoes:
-                SolucoesAcesso.objects.create(
-                    clientess=cliente_instance,
-                    solucoes=sol,
-                    is_active=False
-                )
-                
-        except Clientes.DoesNotExist as e:
-            print(str(e))
-        except Solucoes.DoesNotExist as e:
-            print(str(e))
-        except IntegrityError:
-            print("Erro: Cliente já existe.")
-        except Exception as e:
-            print(str(e))
-
-    def Cliente_upd(self, id_cliente, razao, cnpj):   
-        self.Retorn = []
-        try:
-            created = Clientes.objects.update_or_create(
-                cod_cliente=id_cliente,
-                defaults={
-                    'razao': razao,
-                    'cnpj': cnpj
-                }
-            )
+            
+            self.Retorn = {
+                "cod_cliente": q_cliente.cod_cliente,
+                "razao": q_cliente.razao,
+                "cnpj": q_cliente.cnpj,
+                "is_active": q_cliente.is_active,
+                "solucoes_acesso": [
+                        {
+                            "cod_solucao": sa.solucao.cod_solucao,
+                            "solucao_descricao": sa.solucao.descricao,
+                            "is_active": sa.is_active
+                        }
+                        for sa in q_solucoes_acesso
+                    ],
+                "solucoes_disponiveis": list(solucoes_disponiveis.values('cod_solucao', 'descricao'))
+            }
 
         except Clientes.DoesNotExist as e:
             print(str(e))
         except Exception as e:
             print(str(e))
         
+        return self.Retorn
+#--------------------------------------------------------------------------------
+    """Cadastro de Clientes"""
+    def Cliente_ins(self, i_cliente, i_razao, i_cnpj):
+        try:
+            with transaction.atomic():
+                cliente_instance, created = Clientes.objects.get_or_create(
+                    cod_cliente=i_cliente,
+                    defaults={
+                        'razao': i_razao,
+                        'cnpj': i_cnpj,
+                        'is_active': True,
+                        'date_joined': now()
+                    }
+                )
+
+                if not created:
+                    return {"success": False, "message": "Cliente já existe"}
+
+                # Criar vínculos de soluções (todas inativas inicialmente)
+                q_solucoes = Solucoes.objects.all()
+                SolucoesAcesso.objects.bulk_create([
+                    SolucoesAcesso(cliente=cliente_instance, solucao=sol, is_active=False)
+                    for sol in q_solucoes
+                ])
+
+            return {"success": True, "message": "Cliente cadastrado com sucesso"}
+
+        except Solucoes.DoesNotExist:
+            return {"success": False, "message": "Soluções não encontradas"}
+        except IntegrityError:
+            return {"success": False, "message": "Cliente já existe"}
+        except Exception as e:
+            return {"success": False, "message": f"Erro ao criar cliente: {str(e)}"}
+
+#--------------------------------------------------------------------------------
+    """Atualiza cliente e seus vínculos de soluções com transação atômica"""
+    def Cliente_upd(self, i_cliente, i_razao, i_cnpj, i_is_active):   
+        try:
+            # ✅ Validações
+            if not i_cliente or not i_razao or not i_cnpj:
+                raise ValueError("Todos os campos são obrigatórios")
+            
+            # ✅ Transação atômica: tudo ou nada
+            with transaction.atomic():
+                # Atualizar dados básicos do cliente
+                cliente = Clientes.objects.select_for_update().get(cod_cliente=i_cliente)
+                cliente.razao = i_razao
+                cliente.cnpj = i_cnpj
+                cliente.is_active = i_is_active
+                cliente.save(update_fields=['razao', 'cnpj', 'is_active'])
+                
+            
+            print(f"[OK] Cliente {i_cliente} atualizado com sucesso")
+            return {"success": True, "message": "Cliente atualizado com sucesso"}
+        
+        except Exception as e:
+            print(f"[ERROR] Erro ao atualizar cliente: {str(e)}")
+            return {"success": False, "message": f"Erro inesperado: {str(e)}"}
+
+    def Cliente_solucao(self, i_Cod_cliente, ls_solucoes):
+        """Atualiza vínculos de soluções de um cliente a partir de string "COD:STATUS""" 
+        try:
+            # ✅ Buscar instância do cliente
+            cliente = Clientes.objects.get(cod_cliente=i_Cod_cliente)
+            # ✅ Se nada foi enviado, considerar sem alterações
+            if not ls_solucoes:
+                return {"success": True, "message": "Nenhuma alteração de soluções"}
+
+            # ✅ Parse do formato "COD:STATUS"
+            solucoes_dict = {}  # {cod_solucao: is_active}
+            for item in ls_solucoes.split(','):
+                if ':' in item:
+                    cod, status = item.split(':')
+                    solucoes_dict[cod.strip()] = status.strip() == '1'
+
+            # ✅ Transação atômica
+            with transaction.atomic():
+                # Atualizar/criar vínculos
+                for cod_sol, is_active_sol in solucoes_dict.items():
+                    solucao = Solucoes.objects.get(cod_solucao=cod_sol)
+                    SolucoesAcesso.objects.update_or_create(
+                        cliente=cliente,
+                        solucao=solucao,
+                        defaults={'is_active': is_active_sol}
+                    )
+
+                # Remover vínculos não listados
+                SolucoesAcesso.objects.filter(
+                    cliente=cliente
+                ).exclude(
+                    solucao__cod_solucao__in=solucoes_dict.keys()
+                ).delete()
+
+            return {"success": True, "message": "Soluções atualizadas com sucesso"}
+
+        except Clientes.DoesNotExist:
+            return {"success": False, "message": "Cliente não encontrado"}
+        except Solucoes.DoesNotExist:
+            return {"success": False, "message": "Solução inválida"}
+        except Exception as e:
+            return {"success": False, "message": f"Erro ao atualizar soluções: {str(e)}"}
+
 #********************************************************************************
 #--------------------------------------------------------------------------------
 # Empresas (Dm_Empresas)
@@ -322,26 +405,34 @@ class Cl_Gdf():
 #--------------------------------------------------------------------------------
     """Retorna todas as empresas e grupos disponíveis para o cliente"""
     def Get_Empresas_ins(self, cod_cliente):
-        """Retorna dados necessários para modal de inserção de empresa"""
         try:
             # ✅ Validação
             if not cod_cliente:
                 raise ValueError("Cliente não identificado")
+            
+            print(f"[DEBUG] Get_Empresas_ins - cod_cliente: {cod_cliente}")
 
             # ✅ Todos os grupos do cliente
             todos_grupos = GrpEmpresas.objects.filter(
                 cliente__cod_cliente=cod_cliente
             ).values('grp_empresa', 'descricao').distinct()
+            
+            print(f"[DEBUG] Grupos encontrados: {todos_grupos.count()}")
+            for g in todos_grupos:
+                print(f"  - {g['grp_empresa']}: {g['descricao']}")
 
-            return {
-                "todos_grupos": [
-                    {
-                        "grp_empresa": g['grp_empresa'],
-                        "descricao": g['descricao']
-                    }
-                    for g in todos_grupos
-                ]
-            }
+            grupos_list = [
+                {
+                    "grp_empresa": g['grp_empresa'],
+                    "descricao": g['descricao']
+                }
+                for g in todos_grupos
+            ]
+            
+            resultado = {"todos_grupos": grupos_list}
+            print(f"[DEBUG] Retornando: {resultado}")
+            
+            return resultado
 
         except Exception as e:
             print(f"[ERROR] Erro ao buscar dados para inscrição de empresa: {str(e)}")
@@ -399,7 +490,23 @@ class Cl_Gdf():
         
 #--------------------------------------------------------------------------------
     """Cadastro de Empresas"""
-    def Empresa_ins(self, cod_empresa, razao, cnpj, fantasia, matriz, grp_empresa, cod_cliente) -> dict:
+    def Empresa_ins(
+        self,
+        cod_empresa,
+        razao,
+        cnpj,
+        fantasia,
+        grp_empresa,
+        cod_cliente,
+        matriz=False,
+        ie="",
+        im="",
+        iest="",
+        crt="",
+        cnae="",
+        suframa="",
+        chave_acesso=""
+    ) -> dict:
 
         try:
             # ✅ Validações obrigatórias
@@ -440,14 +547,25 @@ class Cl_Gdf():
                     grp_empresa=q_grpempresa,
                     cliente=cliente,
                     cert=cert_obj,
-                    is_active=True,
-                    date_joined=now()
+                    matriz=matriz,
+                    ie=ie,
+                    im=im,
+                    iest=iest,
+                    crt=crt,
+                    cnae=cnae,
+                    suframa=suframa,
+                    chave_acesso=chave_acesso
                 )
                 empresa.save()
+
             return {"success": True, "message": "Empresa cadastrada com sucesso"}
         
         except ValueError as e:
             return {"success": False, "message": str(e)}
+
+        except Exception as e:
+            print(f"[ERROR] Erro ao buscar dados para edição de empresa: {str(e)}")
+            return {"erro": f"Erro ao buscar dados: {str(e)}"}
 
         
         return self.Retorn   
@@ -608,6 +726,14 @@ class Cl_Gdf():
                 group__in=q_groups
             )
             
+            # ✅ Transformar grupos_disponiveis para o formato esperado pelo JS
+            ls_grupos_disponiveis = []
+            for grp in grupos_disponiveis:
+                ls_grupos_disponiveis.append({
+                    'id': grp.group.id,
+                    'name': grp.group.name
+                })
+            
             self.Retorn = {
                 "id": q_user.id,
                 "username": q_user.username,
@@ -618,7 +744,7 @@ class Cl_Gdf():
                 "grupos": list(q_groups.values('id', 'name')),
                 "empresas": list(q_empresas.values('cod_empresa', 'fantasia', 'razao')),
                 "empresas_disponiveis": list(empresas_disponiveis.values('cod_empresa', 'fantasia', 'razao')),
-                "grupos_disponiveis": list(grupos_disponiveis.values('group__id', 'group__name'))
+                "grupos_disponiveis": ls_grupos_disponiveis
             }
 
         except User.DoesNotExist as e:

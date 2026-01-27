@@ -10,7 +10,8 @@ const usuariosState = {
     empresasSelecionadas: [],  // ✅ Array de empresas selecionadas para adicionar
     gruposSelecionados: [],    // ✅ Array de grupos selecionados para adicionar
     todasEmpresas: [],         // ✅ Lista completa de empresas disponíveis
-    todosGrupos: []            // ✅ Lista completa de grupos disponíveis
+    todosGrupos: [],           // ✅ Lista completa de grupos disponíveis
+    modalAberto: null          // ✅ Controlar qual modal está aberto
 };
 
 /* ===============================
@@ -47,6 +48,23 @@ function validarFormularioIns(event) {
     
     // ✅ Se passou em todas validações, enviar formulário
     event.target.submit();
+}
+
+/* ===============================
+   GERENCIAR MODAIS (prevenir múltiplos abertos)
+================================ */
+function fecharModalAberto() {
+    if (!usuariosState.modalAberto) return;
+    
+    const modalElement = document.getElementById(usuariosState.modalAberto);
+    if (modalElement) {
+        const modalInstance = bootstrap.Modal.getInstance(modalElement);
+        if (modalInstance) {
+            console.log(`🔒 Fechando modal: ${usuariosState.modalAberto}`);
+            modalInstance.hide();
+            usuariosState.modalAberto = null;
+        }
+    }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -302,9 +320,16 @@ function initPaginacao() {
 function initUsuarioIns() {
     const modalEl = document.getElementById("modalUsuarioIns");
     if (!modalEl) return;
+
     // Ao abrir o modal, buscar dados do servidor para popular selects
     modalEl.addEventListener("show.bs.modal", async () => {
         try {
+            // ✅ Fechar modal de UPDATE se estiver aberto
+            fecharModalAberto();
+            
+            // ✅ Marcar como modal aberto
+            usuariosState.modalAberto = "modalUsuarioIns";
+            
             const resp = await fetch('/usuario/inserir/', {
                 headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
             });
@@ -315,6 +340,7 @@ function initUsuarioIns() {
                 const grupos = data.Todos_Grupos || data.todos_grupos || data.TodosGrupos || [];
                 preencherSelectInsEmpresas(empresas);
                 preencherSelectInsGrupos(grupos);
+                console.log("✅ Modal INSERT: Dados carregados com sucesso");
             } else {
                 console.warn('Falha ao carregar dados para modal INSERT:', resp.status, resp.statusText);
             }
@@ -334,6 +360,11 @@ function initUsuarioIns() {
         // ✅ Limpar as tabelas e hidden inputs
         renderizarEmpresasSelecionadasIns();
         renderizarGruposSelecionadosIns();
+        
+        // ✅ Desmarcar modal aberto
+        if (usuariosState.modalAberto === "modalUsuarioIns") {
+            usuariosState.modalAberto = null;
+        }
     });
 }
 
@@ -369,12 +400,31 @@ function initUsuarioUpd() {
         const userId = row.dataset.userId;
         if (!userId) return;
 
-        await loadUser(userId);
-        const modal = new bootstrap.Modal(modalEl, {
-            backdrop: "static",
-            keyboard: false
-        });
-        modal.show();
+        // ✅ Fechar modal de INSERT se estiver aberto
+        fecharModalAberto();
+        
+        // ✅ Marcar como modal aberto
+        usuariosState.modalAberto = "modalUsuarioUpd";
+        
+        // ✅ Aguardar dados serem carregados ANTES de abrir o modal
+        const sucesso = await loadUser(userId);
+        
+        if (sucesso) {
+            const modal = new bootstrap.Modal(modalEl, {
+                backdrop: "static",
+                keyboard: false
+            });
+            modal.show();
+        } else {
+            usuariosState.modalAberto = null;
+        }
+    });
+
+    // ✅ Desmarcar modal aberto ao fechar
+    modalEl.addEventListener("hidden.bs.modal", () => {
+        if (usuariosState.modalAberto === "modalUsuarioUpd") {
+            usuariosState.modalAberto = null;
+        }
     });
 }
 
@@ -383,6 +433,8 @@ function initUsuarioUpd() {
 ================================ */
 async function loadUser(userId) {
     try {
+        console.log(`📥 Iniciando carregamento do usuário ${userId}...`);
+        
         const resp = await fetch(`/usuario/${userId}/`, {
             headers: { 
                 "X-Requested-With": "XMLHttpRequest",
@@ -393,16 +445,21 @@ async function loadUser(userId) {
         if (!resp.ok) {
             console.error(`Erro ao carregar usuário: ${resp.status} - ${resp.statusText}`);
             alert(`Erro ao carregar usuário: ${resp.statusText}`);
-            return;
+            return false;  // ✅ Retornar false se falhar
         }
 
         const data = await resp.json();
-        console.log("📥 Dados do usuário recebidos:", data);
+        console.log("✅ Dados do usuário recebidos com sucesso");
         console.log("📊 grupos_disponiveis:", data.grupos_disponiveis);
+        
+        // ✅ Preencher modal com dados
         fillUserModal(data);
+        
+        return true;  // ✅ Retornar true se sucesso
     } catch (error) {
         console.error("Erro na requisição:", error);
         alert("Erro ao carregar usuário. Tente novamente.");
+        return false;  // ✅ Retornar false se erro
     }
 }
 
@@ -415,8 +472,12 @@ function fillUserModal(user) {
     document.getElementById("upd_email").value = user.email;
     document.getElementById("upd_first_name").value = user.first_name;
     document.getElementById("upd_last_name").value = user.last_name;
-    document.getElementById("upd_is_active").checked = user.is_active;
-    
+
+    const checkbox = document.getElementById("upd_is_active");
+    if (checkbox) {
+        checkbox.checked = Boolean(user.is_active);
+    }
+
     // ✅ Limpar e preencher empresas
     usuariosState.empresasSelecionadas = [];
     user.empresas.forEach(emp => {
