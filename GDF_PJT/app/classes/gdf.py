@@ -880,69 +880,69 @@ class Cl_Gdf():
             if not i_v_username or not i_v_email or not i_v_password:
                 raise ValueError("Username, email e senha são obrigatórios")
             
-            if not empresas_ids or not grupos_ids:
+            if not i_lsl_empresas_ids or not i_lsl_grupos_ids:
                 raise ValueError("Pelo menos 1 empresa e 1 grupo são obrigatórios")
             
-            if not cod_cliente:
+            if not i_v_cod_cliente:
                 raise ValueError("Cliente não identificado")
             
             # ✅ Converter strings em listas se necessário
-            if isinstance(empresas_ids, str):
-                empresas_ids = [int(e) for e in empresas_ids.split(',') if e.strip()]
+            if isinstance(i_lsl_empresas_ids, str):
+                i_lsl_empresas_ids = [int(e) for e in i_lsl_empresas_ids.split(',') if e.strip()]
             
-            if isinstance(grupos_ids, str):
-                grupos_ids = [int(g) for g in grupos_ids.split(',') if g.strip()]
+            if isinstance(i_lsl_grupos_ids, str):
+                i_lsl_grupos_ids = [int(g) for g in i_lsl_grupos_ids.split(',') if g.strip()]
             
-            if not empresas_ids or not grupos_ids:
+            if not i_lsl_empresas_ids or not i_lsl_grupos_ids:
                 raise ValueError("Nenhuma empresa ou grupo selecionado")
             
             # ✅ Validar que todas as empresas pertencem ao cliente
-            empresas_validas = Empresas.objects.filter(
-                cod_empresa__in=empresas_ids,
-                cliente__cod_cliente=cod_cliente
+            l_v_empresas_validas = Empresas.objects.filter(
+                cod_empresa__in=i_lsl_empresas_ids,
+                cliente__cod_cliente=i_v_cod_cliente
             ).count()
             
-            if empresas_validas != len(empresas_ids):
+            if l_v_empresas_validas != len(i_lsl_empresas_ids):
                 raise ValueError("Uma ou mais empresas selecionadas não pertencem ao cliente")
             
             # ✅ Validar que todos os grupos pertencem ao cliente
-            grupos_validos = GrupoCliente.objects.filter(
-                group_id__in=grupos_ids,
-                cliente__cod_cliente=cod_cliente
+            l_v_grupos_validos = GrupoCliente.objects.filter(
+                group_id__in=i_lsl_grupos_ids,
+                cliente__cod_cliente=i_v_cod_cliente
             ).count()
             
-            if grupos_validos != len(grupos_ids):
+            if l_v_grupos_validos != len(i_lsl_grupos_ids):
                 raise ValueError("Um ou mais grupos selecionados não pertencem ao cliente")
             
             # ✅ Criar usuário Django
-            user_instance = User.objects.create_user(
-                username=username,
-                email=email,
-                password=password,
-                first_name=first_name,
-                last_name=last_name,
+            l_v_user_instance = User.objects.create_user(
+                username=i_v_username,
+                email=i_v_email,
+                password=i_v_password,
+                first_name=i_v_first_name,
+                last_name=i_v_last_name,
                 is_superuser=False,
                 is_staff=False,
                 is_active=True
             )
             
             # ✅ Vincular empresas
-            empresas_obj = Empresas.objects.filter(cod_empresa__in=empresas_ids)
-            for empresa in empresas_obj:
+            l_v_queryset_empresas = Empresas.objects.filter(cod_empresa__in=i_lsl_empresas_ids)
+            for l_v_empresa in l_v_queryset_empresas:
                 UserEmpresas.objects.create(
-                    user=user_instance,
-                    empresa=empresa
+                    user=l_v_user_instance,
+                    empresa=l_v_empresa
                 )
             
             # ✅ Vincular grupos
-            grupos_obj = Group.objects.filter(id__in=grupos_ids)
-            user_instance.groups.set(grupos_obj)
+            l_v_queryset_grupos = Group.objects.filter(id__in=i_lsl_grupos_ids)
+            l_v_user_instance.groups.set(l_v_queryset_grupos)
             
-            print(f"[OK] Usuário '{username}' criado com sucesso (ID: {user_instance.id})")
+            print(f"[OK] Usuário '{i_v_username}' criado com sucesso (ID: {l_v_user_instance.id})")
             self.Retorn = {
                 "success": True,
-                "message": f"Usuário '{username}' criado com sucesso",
-                "user_id": user_instance.id
+                "message": f"Usuário '{i_v_username}' criado com sucesso",
+                "user_id": l_v_user_instance.id
             }
         
         except ValueError as e:
@@ -968,63 +968,63 @@ class Cl_Gdf():
             if not i_v_cod_cliente:
                 raise ValueError("Cliente não informado")
             
-            if not user_id or not isinstance(user_id, int):
-                raise ValueError(f"ID de usuário inválido: {user_id}")
+            if not i_v_user_id or not isinstance(i_v_user_id, int):
+                raise ValueError(f"ID de usuário inválido: {i_v_user_id}")
             
-            if not email:
+            if not i_v_email:
                 raise ValueError("Email obrigatório")
             
-            if not empresa_ids:
+            if not i_lsl_empresa_ids:
                 raise ValueError("Pelo menos 1 empresa é obrigatória")
             
-            if not grupo_ids:
+            if not i_lsl_grupo_ids:
                 raise ValueError("Pelo menos 1 grupo é obrigatório")
             
             # ✅ Validar que empresas pertencem ao cliente
-            empresas_validas = Empresas.objects.filter(
-                cod_empresa__in=empresa_ids,
-                cliente__cod_cliente=cod_cliente
+            l_v_queryset_empresas_validas = Empresas.objects.filter(
+                cod_empresa__in=i_lsl_empresa_ids,
+                cliente__cod_cliente=i_v_cod_cliente
             )
             
-            if empresas_validas.count() != len(empresa_ids):
+            if l_v_queryset_empresas_validas.count() != len(i_lsl_empresa_ids):
                 raise ValueError("Uma ou mais empresas não pertencem ao cliente")
             
             # ✅ Validar que grupos pertencem ao cliente
-            grupos_validos = GrupoCliente.objects.filter(
-                group_id__in=grupo_ids,
-                cliente__cod_cliente=cod_cliente
+            l_v_queryset_grupos_validos = GrupoCliente.objects.filter(
+                group_id__in=i_lsl_grupo_ids,
+                cliente__cod_cliente=i_v_cod_cliente
             )
             
-            if grupos_validos.count() != len(grupo_ids):
+            if l_v_queryset_grupos_validos.count() != len(i_lsl_grupo_ids):
                 raise ValueError("Um ou mais grupos não pertencem ao cliente")
             
             # ✅ Transação atômica: tudo ou nada
             with transaction.atomic():
                 # Buscar usuário
-                q_user = User.objects.select_for_update().get(id=user_id)
+                l_v_user = User.objects.select_for_update().get(id=i_v_user_id)
                 
                 # Atualizar campos
-                q_user.first_name = first_name
-                q_user.last_name = last_name
-                q_user.email = email
-                q_user.is_active = is_active
-                q_user.save(update_fields=['first_name', 'last_name', 'email', 'is_active'])
+                l_v_user.first_name = i_v_first_name
+                l_v_user.last_name = i_v_last_name
+                l_v_user.email = i_v_email
+                l_v_user.is_active = i_v_is_active
+                l_v_user.save(update_fields=['first_name', 'last_name', 'email', 'is_active'])
                 
                 # Atualizar empresas (substituir todas)
-                UserEmpresas.objects.filter(user=q_user).delete()
+                UserEmpresas.objects.filter(user=l_v_user).delete()
                 UserEmpresas.objects.bulk_create([
-                    UserEmpresas(user=q_user, empresa=emp)
-                    for emp in empresas_validas
+                    UserEmpresas(user=l_v_user, empresa=emp)
+                    for emp in l_v_queryset_empresas_validas
                 ])
                 
                 # Atualizar grupos (substituir todos)
-                q_user.groups.set(grupo_ids)
+                l_v_user.groups.set(i_lsl_grupo_ids)
             
-            print(f"[OK] Usuário {user_id} atualizado com sucesso")
+            print(f"[OK] Usuário {i_v_user_id} atualizado com sucesso")
             return {"success": True, "message": "Usuário atualizado com sucesso"}
         
         except User.DoesNotExist:
-            print(f"[ERROR] Usuário {user_id} não encontrado")
+            print(f"[ERROR] Usuário {i_v_user_id} não encontrado")
             self.Retorn = [{"erro": "Usuário não encontrado"}]
             return {"success": False, "message": "Usuário não encontrado"}
         except ValueError as e:
