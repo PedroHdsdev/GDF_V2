@@ -53,7 +53,7 @@
 
           <!-- TAB 1: DADOS DO CLIENTE -->
           <div class="tab-pane fade show active" id="tab-cliente" role="tabpanel">
-            <form method="post" id="formClienteUpd" action="" onsubmit="validarFormularioUpd(event)">
+            <form method="post" id="formClienteUpd" action="/cliente/" onsubmit="fn_validar_formulario_upd(event)">
               {% csrf_token %}
               <input type="hidden" id="upd_cliente_id" name="upd_cliente_id" value="">
               <div class="row g-3">
@@ -127,7 +127,7 @@
                   <select id="upd_solucoes_select" class="form-select">
                     <option value="">-- Selecione uma solução --</option>
                   </select>
-                  <button type="button" class="btn btn-success" onclick="adicionarSolucao()">
+                  <button type="button" class="btn btn-success" onclick="fn_adicionar_solucao()">
                     <i class="bi bi-plus-lg"></i> Adicionar
                   </button>
                 </div>

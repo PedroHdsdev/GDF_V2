@@ -7,33 +7,34 @@ urlpatterns = [
     path('admin/', admin.site.urls),
 
     # App views
-    path('Login/', views.Login_view, name='Login'),
-    path('Home/',views.Home_view, name='Home'),
-    path('get_subsolucao/<str:cod_sub>/', views.get_subsolucao_view, name='get_subsolucao'),
-    path('Logout/', views.Sair_View, name='Logout'),
+    path('Login/', views.fn_view_login, name='Login'),
+    path('Home/',views.fn_view_home, name='Home'),
+    path('get_subsolucao/<str:cod_sub>/', views.fn_view_obter_subsolucao, name='get_subsolucao'),
+    path('Logout/', views.fn_view_sair, name='Logout'),
 
     #Sub-soluções paths
-    path('usuarios/', views.Dm_Usuarios_view, name='Dm_Usuarios'),
-    path('empresas/', views.Dm_Empresas_view, name='Dm_Empresas'),
-    path('clientes/', views.Dm_Clientes_view, name='Dm_Clientes'),
-    path('dashboard/',views.Dashboard_view,  name='Dashboard'),
+    path('usuarios/', views.fn_view_listar_usuarios, name='Dm_Usuarios'),
+    path('empresas/', views.fn_view_listar_empresas, name='Dm_Empresas'),
+    path('clientes/', views.fn_view_listar_clientes, name='Dm_Clientes'),
+    path('dashboard/vendas/', views.fn_view_dashboard_vendas, name='Db_Vendas'),
+    path('dashboard/compras/', views.fn_view_dashboard_compras, name='Db_Compras'),
     
 #--------------------------------------------------------------------
     # modal path
 #--------------------------------------------------------------------
     # Usuarios
-    path('usuario/inserir/', views.Usuario_ins, name='Usuario_ins'),
-    path('usuario/<int:user_id>/', views.Usuario_upd, name='Usuario_upd'),
+    path('usuario/inserir/', views.fn_view_inserir_usuario, name='Usuario_ins'),
+    path('usuario/<int:user_id>/', views.fn_view_atualizar_usuario, name='Usuario_upd'),
     
     # Empresas
-    path('empresa/inserir/', views.Empresa_ins, name='Empresa_ins'),
-    path('empresa/<str:cod_empresa>/', views.Empresa_upd, name='Empresa_upd'),
-    path('empresa/Cert/', views.Cert_upd, name='Cert_upd'),
+    path('empresa/inserir/', views.fn_view_inserir_empresa, name='Empresa_ins'),
+    path('empresa/<str:cod_empresa>/', views.fn_view_atualizar_empresa, name='Empresa_upd'),
+    path('empresa/Cert/', views.fn_view_atualizar_certificado, name='Cert_upd'),
 
     # Clientes
-    path('cliente/inserir/', views.Cliente_ins, name='Cliente_ins'),
-    path('cliente/Acesso/', views.Cliente_acesso_upd, name='Cliente_acesso_upd'),
-    path('cliente/<str:cod_cliente>/', views.Cliente_upd, name='Cliente_upd'),
+    path('cliente/inserir/', views.fn_view_inserir_cliente, name='Cliente_ins'),
+    path('cliente/Acesso/', views.fn_view_atualizar_acesso_cliente, name='Cliente_acesso_upd'),
+    path('cliente/<str:cod_cliente>/', views.fn_view_atualizar_cliente, name='Cliente_upd'),
     
-    path('',views.Login_view),
+    path('',views.fn_view_login),
 ]

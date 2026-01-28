@@ -88,14 +88,13 @@ DATABASES = {
          'HOST': env('DB_HOST'),        
          'PORT': env('DB_PORT'), 
         'OPTIONS': {
-            'options': '-c search_path=public,reprocessamento'
+            'options': '-c search_path=public,"nfe"'
         }         
     },                          
 }
  
 DATABASE_ROUTERS = [
     'GDF_PJT.routers.GDFRouter',
-    #'GDF_PJT.routers.ReprocessamentoRouter',
 ]
 
 # Password validation

@@ -6,12 +6,12 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http   import require_http_methods
 from django.conf                    import settings
 from django.contrib                 import messages
-from app.classes.Gdf                import Cl_Gdf
+from app.classes.Gdf                import ClGdf
 from django.core.paginator          import Paginator
 from app.db_GDF.Public.models       import UserEmpresas, Empresas
 import re
 
-def Login_view(request):
+def fn_view_login(request):
     if request.method == "POST":
         Username = request.POST.get('Username')
         password = request.POST.get('password') 
@@ -20,15 +20,15 @@ def Login_view(request):
         
         if user is not None:
             login(request, user)
-            ClGdf = Cl_Gdf()
-            ClGdf.Get_Dados(request.user) 
+            cl_gdf_instance = ClGdf()
+            cl_gdf_instance.get_dados(request.user) 
 
-            if not ClGdf.Retorn:
+            if not cl_gdf_instance.Retorn:
                 #buscar solucoes que tem acessos 
-                solucoes = ClGdf.Get_Solucoes()
+                solucoes = cl_gdf_instance.get_solucoes()
                 if solucoes:
                     request.session['t_solucoes']  = solucoes
-                    request.session['cod_cliente'] = ClGdf.Cliente.cod_cliente
+                    request.session['cod_cliente'] = cl_gdf_instance.Cliente.cod_cliente
 
                     return render(request, 'Index_Home.html')
                 else:
@@ -39,7 +39,7 @@ def Login_view(request):
 
     return render(request, 'Index_Login.html')
 
-def get_subsolucao_view(request, cod_sub): 
+def fn_view_obter_subsolucao(request, cod_sub): 
     if request.user.is_authenticated:
 
         solucoes = request.session.get('t_solucoes', [])
@@ -54,7 +54,7 @@ def get_subsolucao_view(request, cod_sub):
     return render(request, 'index_login.html')
 
 @login_required(login_url='Login')
-def Home_view(request):
+def fn_view_home(request):
     if request.user.is_authenticated:
         if request.method == "POST":
             codigo = request.POST.get('codigo')
@@ -66,7 +66,7 @@ def Home_view(request):
     return render(request, 'Index_Login.html')
 
 @login_required
-def Sair_View(request):   
+def fn_view_sair(request):   
     logout(request)
     return redirect('Login')
 
@@ -75,7 +75,7 @@ def Sair_View(request):
 #--------------------------------------------------------------------
 # Usuarios
 @login_required(login_url='Login')
-def Dm_Usuarios_view(request):
+def fn_view_listar_usuarios(request):
     cod_cliente = request.session.get('cod_cliente', None)
     
     # Validar se usuário tem acesso a cliente
@@ -83,8 +83,8 @@ def Dm_Usuarios_view(request):
         return render(request, 'Index_Login.html', {'error_message': 'Acesso negado: cliente não identificado'})
     
     # Buscar dados APENAS uma vez - carregamento inicial da página
-    cl_gdf = Cl_Gdf()
-    t_user = cl_gdf.Get_Usuarios(i_cod_Cliente=cod_cliente)
+    cl_gdf = ClGdf()
+    t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
 
     # ✅ Passar dados brutos para o template
     # Paginação e busca serão feitas em JavaScript no cliente
@@ -98,15 +98,15 @@ def Dm_Usuarios_view(request):
 
 # Empresas
 @login_required(login_url='Login')
-def Dm_Empresas_view(request): 
+def fn_view_listar_empresas(request): 
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return redirect('Login')
     
-    cl_gdf = Cl_Gdf()
+    cl_gdf = ClGdf()
 
     # Buscar todas as empresas - paginação será feita em JavaScript
-    t_empresas = cl_gdf.Get_Empresas(i_cod_Cliente=cod_cliente)
+    t_empresas = cl_gdf.get_empresas(i_v_cod_cliente=cod_cliente)
     
     return render(
         request,
@@ -118,14 +118,14 @@ def Dm_Empresas_view(request):
 
 # Clientes
 @login_required(login_url='Login')
-def Dm_Clientes_view(request): 
+def fn_view_listar_clientes(request): 
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return redirect('Login')
     
-    cl_gdf = Cl_Gdf()
+    cl_gdf = ClGdf()
     
-    t_clientes = cl_gdf.Get_Clientes()
+    t_clientes = cl_gdf.get_clientes()
 
     return render(
         request,
@@ -140,15 +140,15 @@ def Dm_Clientes_view(request):
 #--------------------------------------------------------------------
 @login_required(login_url='Login')
 @require_http_methods(["GET", "POST"])
-def Usuario_ins(request):
+def fn_view_inserir_usuario(request):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
-    cl_gdf = Cl_Gdf()
+    cl_gdf = ClGdf()
     if request.method == "GET":
         # ✅ Retorna dados para preencher o modal
-        return JsonResponse(cl_gdf.Get_Usuario_ins(cod_cliente=cod_cliente))
+        return JsonResponse(cl_gdf.get_usuario_dados_ins(i_v_cod_cliente=cod_cliente))
 
     if request.method == "POST":
         # ✅ Extrair dados do formulário
@@ -178,14 +178,14 @@ def Usuario_ins(request):
             errors.append("Selecione pelo menos 1 grupo")
         
         if errors:
-            t_user = cl_gdf.Get_Usuarios(i_cod_Cliente=cod_cliente)
+            t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
             return render(request, 'usuarios/Usuarios.html', {
                 't_user': t_user,
                 'error_message': ' | '.join(errors)
             })
         
         # ✅ Chamar método de inserção na classe
-        resultado = cl_gdf.Usuario_ins(
+        resultado = cl_gdf.set_usuario(
             username=username,
             email=email,
             password=password,
@@ -193,19 +193,19 @@ def Usuario_ins(request):
             last_name=last_name,
             empresas_ids=empresas_str,  # "1,2,3"
             grupos_ids=grupos_str,      # "4,5,6"
-            cod_cliente=cod_cliente
+            i_v_cod_cliente=cod_cliente
         )
         
         # ✅ Verificar resultado
         if not resultado.get("success"):
-            t_user = cl_gdf.Get_Usuarios(i_cod_Cliente=cod_cliente)
+            t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
             return render(request, 'usuarios/Usuarios.html', {
                 't_user': t_user,
                 'error_message': resultado.get("message", "Erro ao criar usuário")
             })
         
         # ✅ Sucesso! Redirecionar com mensagem
-        t_user = cl_gdf.Get_Usuarios(i_cod_Cliente=cod_cliente)
+        t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
         return render(request, 'usuarios/Usuarios.html', {
             't_user': t_user,
             'success_message': resultado.get("message")
@@ -213,7 +213,7 @@ def Usuario_ins(request):
 
 @login_required(login_url='Login')
 @require_http_methods(["GET", "POST"])
-def Usuario_upd(request, user_id):
+def fn_view_atualizar_usuario(request, user_id):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
@@ -227,10 +227,10 @@ def Usuario_upd(request, user_id):
     if not user_belongs_to_client:
         return JsonResponse({"erro": "Acesso negado: usuário não pertence ao seu cliente"}, status=403)
     
-    cl_gdf = Cl_Gdf()
+    cl_gdf = ClGdf()
     if request.method == "GET":
         # Retornar dados do usuário em JSON (para modal)
-        data = cl_gdf.Get_Usuario_upd(user_id=int(user_id), cod_cliente=cod_cliente)
+        data = cl_gdf.get_usuario_upd(i_v_user_id=int(user_id), i_v_cod_cliente=cod_cliente)
         if not data or data.get('erro'):
             return JsonResponse({"erro": "Usuário não encontrado"}, status=404)
 
@@ -258,15 +258,15 @@ def Usuario_upd(request, user_id):
         if not grupo_ids:
             return JsonResponse({"erro": "Selecione pelo menos 1 grupo"}, status=400)
 
-        resultado = cl_gdf.Usuario_upd(
-            user_id=int(user_id),
+        resultado = cl_gdf.upd_usuario(
+            i_v_user_id=int(user_id),
             first_name=first_name,
             last_name=last_name,
             email=email,
             is_active=is_active,
             empresa_ids=empresa_ids,
             grupo_ids=grupo_ids,
-            cod_cliente=cod_cliente
+            i_v_cod_cliente=cod_cliente
         )
         
         # ✅ Verificar resultado
@@ -281,26 +281,33 @@ def Usuario_upd(request, user_id):
 #       Sub-soluções Views (Dashboard)
 #--------------------------------------------------------------------
 @login_required(login_url='Login')
-def Dashboard_view(request):   
-    token = Cl_Gdf.Gerar_Token(request, request.user)
+def fn_view_dashboard_vendas(request):   
+    token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Vendas')
     if not token:
         return render(request, 'Index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
-    return render(request, "Index_Dashboard.html", {"token": token })
+    return render(request, "Dashboard/Index_Vendas.html", {"token": token })
+
+@login_required(login_url='Login')
+def fn_view_dashboard_compras(request):   
+    token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Compras')
+    if not token:
+        return render(request, 'Index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
+    return render(request, "Dashboard/Index_Compras.html", {"token": token })
 
 #--------------------------------------------------------------------
 #       Empresas - Modais
 #--------------------------------------------------------------------
 @login_required(login_url='Login')
 @require_http_methods(["GET","POST"])
-def Empresa_ins(request):
+def fn_view_inserir_empresa(request):
     """Inserir nova empresa"""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
-    cl_gdf = Cl_Gdf()
+    cl_gdf = ClGdf()
     if request.method == "GET":
-        data = cl_gdf.Get_Empresas_ins(cod_cliente=cod_cliente)
+        data = cl_gdf.get_empresa_dados_ins(i_v_cod_cliente=cod_cliente)
         return JsonResponse(data)  
     
     elif request.method == "POST":
@@ -338,21 +345,21 @@ def Empresa_ins(request):
             return JsonResponse({"erro": " | ".join(errors)}, status=400)
         
         # ✅ Chamar método de inserção na classe com cod_cliente para validação IDOR
-        resultado = cl_gdf.Empresa_ins(
-            cod_empresa=cod_empresa,
-            razao=razao,
-            cnpj=cnpj,
-            fantasia=fantasia,
-            grp_empresa=grp_empresa,
-            cod_cliente=cod_cliente,
-            matriz=matriz,
-            ie=ie,
-            im=im,
-            iest=iest,
-            crt=crt,
-            cnae=cnae,
-            suframa=suframa,
-            chave_acesso=chave_acesso
+        resultado = cl_gdf.set_empresa(
+            i_v_cod_empresa=cod_empresa,
+            i_v_razao=razao,
+            i_v_cnpj=cnpj,
+            i_v_fantasia=fantasia,
+            i_v_grp_empresa=grp_empresa,
+            i_v_cod_cliente=cod_cliente,
+            i_b_matriz=matriz,
+            i_v_ie=ie,
+            i_v_im=im,
+            i_v_iest=iest,
+            i_v_crt=crt,
+            i_v_cnae=cnae,
+            i_v_suframa=suframa,
+            i_v_chave_acesso=chave_acesso
         )
         
         # ✅ Verificar resultado
@@ -363,19 +370,19 @@ def Empresa_ins(request):
 
 @login_required(login_url='Login')
 @require_http_methods(["GET", "POST"])
-def Empresa_upd(request, cod_empresa):
+def fn_view_atualizar_empresa(request, cod_empresa):
     """Atualizar empresa existente"""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
-    cl_gdf = Cl_Gdf()
+    cl_gdf = ClGdf()
     if request.method == "GET":
         # Retornar dados da empresa para popular o modal
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            empresa_data = cl_gdf.Get_Empresas_upd(
-                i_Cod_empresas=cod_empresa,
-                cod_cliente=cod_cliente
+            empresa_data = cl_gdf.get_empresa_upd(
+                i_v_cod_empresa=cod_empresa,
+                i_v_cod_cliente=cod_cliente
             )
             return JsonResponse(empresa_data)
         else:
@@ -395,20 +402,20 @@ def Empresa_upd(request, cod_empresa):
         chave_acesso = request.POST.get("m_chave_acesso", "").strip()
         matriz = request.POST.get("m_matriz") == "on"
         
-        resultado = cl_gdf.Empresa_upd(
-            cod_empresa=cod_empresa,
-            razao=razao,
-            fantasia=fantasia,
-            ie=ie,
-            im=im,
-            iest=iest,
-            crt=crt,
-            cnae=cnae,
-            suframa=suframa,
-            grp_empresa=grp_empresa,
-            chave_acesso=chave_acesso,
-            matriz=matriz,
-            cod_cliente=cod_cliente
+        resultado = cl_gdf.upd_empresa(
+            i_v_cod_empresa=cod_empresa,
+            i_v_razao=razao,
+            i_v_fantasia=fantasia,
+            i_v_ie=ie,
+            i_v_im=im,
+            i_v_iest=iest,
+            i_v_crt=crt,
+            i_v_cnae=cnae,
+            i_v_suframa=suframa,
+            i_v_grp_empresa=grp_empresa,
+            i_v_chave_acesso=chave_acesso,
+            i_b_matriz=matriz,
+            i_v_cod_cliente=cod_cliente
         )
         
         if resultado.get("success"):
@@ -422,13 +429,13 @@ def Empresa_upd(request, cod_empresa):
 
 @login_required(login_url='Login')
 @require_http_methods(["POST"])
-def Cert_upd(request):
+def fn_view_atualizar_certificado(request):
     """Atualizar certificado digital da empresa"""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
-    cl_gdf = Cl_Gdf()
+    cl_gdf = ClGdf()
     
     # Pegar arquivo do certificado
     cert_file = request.FILES.get('m_file')
@@ -442,9 +449,9 @@ def Cert_upd(request):
         return redirect('Dm_Empresas')
     
     # Chamar método de atualização de certificado
-    resultado = cl_gdf.Cert_upd(
+    resultado = cl_gdf.upd_certificado(
         cert_file=cert_file,
-        cod_cliente=cod_cliente
+        i_v_cod_cliente=cod_cliente
     )
     
     if resultado.get("success"):
@@ -458,9 +465,9 @@ def Cert_upd(request):
 #--------------------------------------------------------------------
 @login_required(login_url='Login')
 @require_http_methods(["GET", "POST"])
-def Cliente_ins(request):
+def fn_view_inserir_cliente(request):
     """Inserir novo cliente - seguindo padrão Usuario_ins"""
-    cl_gdf = Cl_Gdf()
+    cl_gdf = ClGdf()
     if request.method == "GET":
         # Retornar dados para preencher o modal (opcionalmente listas de soluções, etc)
         return JsonResponse({"success": True})
@@ -481,7 +488,7 @@ def Cliente_ins(request):
             return JsonResponse({"erro": "CNPJ é obrigatório"}, status=400)
         
         # ✅ Chamar método de inserção na classe
-        resultado = cl_gdf.Cliente_ins(
+        resultado = cl_gdf.set_cliente(
             i_cliente=cliente_id,
             i_razao=razao,
             i_cnpj=cnpj
@@ -499,20 +506,16 @@ def Cliente_ins(request):
 
 @login_required(login_url='Login')
 @require_http_methods(["GET", "POST"])
-def Cliente_upd(request, cod_cliente):
+def fn_view_atualizar_cliente(request, cod_cliente):
     """Atualizar cliente existente - seguindo padrão Usuario_upd"""
     cod_cliente_sessao = request.session.get('cod_cliente', None)
     if not cod_cliente_sessao:
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
-    # ✅ VALIDAÇÃO IDOR: Só pode editar seu próprio cliente
-    if str(cod_cliente) != str(cod_cliente_sessao):
-        return JsonResponse({"erro": "Acesso negado: você só pode editar seu próprio cliente"}, status=403)
- 
-    cl_gdf = Cl_Gdf()
+    cl_gdf = ClGdf()
     if request.method == "GET":
         # Retornar dados do cliente em JSON (para modal)
-        data = cl_gdf.Get_Clientes_upd(cliente_id=cod_cliente)
+        data = cl_gdf.get_cliente_upd(i_v_cliente_id=cod_cliente)
         if not data or data.get('erro'):
             return JsonResponse({"erro": "Cliente não encontrado"}, status=404)
 
@@ -533,7 +536,7 @@ def Cliente_upd(request, cod_cliente):
         if not cnpj:
             return JsonResponse({"erro": "CNPJ é obrigatório"}, status=400)
 
-        resultado = cl_gdf.Cliente_upd(
+        resultado = cl_gdf.upd_cliente(
             i_cliente=cod_cliente_id,
             i_razao=razao,
             i_cnpj=cnpj,
@@ -549,19 +552,16 @@ def Cliente_upd(request, cod_cliente):
 
 @login_required(login_url='Login')
 @require_http_methods(["POST"])
-def Cliente_acesso_upd(request):
+def fn_view_atualizar_acesso_cliente(request):
     """Atualizar acessos do cliente existente"""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
-    cl_gdf = Cl_Gdf()
+    cl_gdf = ClGdf()
     ls_solucoes = request.POST.get("ls_solucoes", "").strip()  # Formato: "COD1:1,COD2:0"
     
-    print(f"[Cliente_acesso_upd POST] cod_cliente: {cod_cliente}")
-    print(f"[Cliente_acesso_upd POST] ls_solucoes: {ls_solucoes}")
-    
-    resultado = cl_gdf.Cliente_solucao(
+    resultado = cl_gdf.set_cliente_solucoes(
         i_Cod_cliente=cod_cliente,
         ls_solucoes=ls_solucoes
     )

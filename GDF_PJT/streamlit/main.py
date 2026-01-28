@@ -1,16 +1,24 @@
 import os
 import sys
-import streamlit       as st
-import pandas          as pd
-import tp_lists      as tl 
-import tp_graficos   as tg
-from datetime          import date
-from django.core.cache import cache
+import streamlit            as st
+import pandas               as pd
+import tp_graficos_Vendas   as tv 
+import tp_graficos_Compras  as tc
+import tp_lists_Compras     as lc
+import tp_lists_Vendas      as lv
+from datetime               import date
+from django.core.cache      import cache
 
 # ============================================================
 # Configuração inicial Streamlit
 # ============================================================
-st.set_page_config(page_title="Dashboard ProjectCusto", layout="wide")
+st.set_page_config(page_title="Dashboard GDF", layout="wide")
+
+# Título dinâmico baseado no tipo de relatório
+if "tipo_relatorio" in st.session_state:
+    st.title(f"📊 Dashboard de {st.session_state['tipo_relatorio']}")
+else:
+    st.title("📊 Dashboard GDF")
 
 # ============================================================
 # Inicializa o ambiente Django
@@ -29,7 +37,9 @@ init_django()
 
 # Imports Django depois do setup
 from django.contrib.auth.models import User
-from GDF_PJT.app.db_GDF.Public.models import RelatorioCusto, Bukrs, SapLog
+from django.contrib.auth.models import User, Group
+from GDF_PJT.app.db_GDF.Public.models import Empresas
+from GDF_PJT.app.db_GDF.NFe.models import NFe, NFe_Total, NFe_Produto
 from django.db.models import Q
 import jwt
 from django.conf import settings
@@ -44,9 +54,16 @@ if not token:
     st.stop()
 
 try:
-    #payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-    #username = payload["username"]
-    username = "test"
+    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+    username = payload["username"]
+    user_id = payload["user_id"]
+    tipo_relatorio = payload.get("tipo_relatorio", "Vendas")  # Default Vendas
+    
+    # Armazena no session_state
+    st.session_state["username"] = username
+    st.session_state["user_id"] = user_id
+    st.session_state["tipo_relatorio"] = tipo_relatorio
+    
 except jwt.ExpiredSignatureError:
     st.error("Sessão expirada")
     st.stop()
@@ -56,7 +73,7 @@ except jwt.ExpiredSignatureError:
     )
     
 except jwt.InvalidTokenError:
-    st.error("Sessão expirada")
+    st.error("Token inválido")
     st.stop()
     st.markdown(
         "<script>window.top.location.href='/login/'</script>",
@@ -65,10 +82,14 @@ except jwt.InvalidTokenError:
 
 
 try:
-    user_obj = User.objects.get(username=username)
-    bukrs_list = list(user_obj.user_bukrs.values_list("bukrs", flat=True))
+    l_q_User = User.objects.get(username=username)
+                # Empresas do usuário
+    g_q_Empresas = Empresas.objects.filter(
+        userempresas__user=l_q_User
+    ).distinct()
+    
 
-    if not bukrs_list:
+    if not g_q_Empresas:
         st.error("Usuário sem empresa vinculada (bukrs).")
         st.stop()
 
@@ -83,12 +104,17 @@ except User.DoesNotExist:
 # ============================================================
 # Filtros – Sidebar
 # ============================================================
-st.sidebar.header("Filtros")
-bukrs_options = list(Bukrs.objects.filter(bukrs__in=bukrs_list))
-bukrs_display = ["Todas"] + [f"{b.bukrs} - {b.butxt}" for b in bukrs_options]
+# Informações do usuário
+if "username" in st.session_state:
+    st.sidebar.markdown(f"👤 **Usuário:** {st.session_state['username']}")
+    st.sidebar.markdown(f"📄 **Relatório:** {st.session_state.get('tipo_relatorio', 'N/A')}")
+    st.sidebar.divider()
 
-selected_bukrs = st.sidebar.selectbox("Empresa (Bukrs):", options=bukrs_display)
-filial_input = st.sidebar.text_input("Filial (Werks)", placeholder="Ex: 1001")
+st.sidebar.header("Filtros")
+Empresas_options = list(Empresas.objects.filter(bukrs__in=g_q_Empresas.values_list('cod_empresa', flat=True)).order_by('cod_empresa'))
+Empresas_display = ["Todas"] + [f"{b.bukrs} - {b.butxt}" for b in Empresas_options]
+
+selected_Empresas = st.sidebar.selectbox("Empresa:", options=Empresas_display)
 
 st.sidebar.header("Periodo:")
 usar_periodo = st.sidebar.checkbox("Usar período", value=True)
@@ -108,15 +134,11 @@ data_fim = col_dt2.date_input(
 # Aplicação dos Filtros
 # ============================================================
 q_filtros = Q()
-q_filtros &= Q(bukrs_id__in=bukrs_list)
+q_filtros &= Q(cod_empresa__in=g_q_Empresas.values_list('cod_empresa', flat=True))
 
-if selected_bukrs != "Todas":
-    bukrs_codigo = selected_bukrs.split(" - ")[0]
-    q_filtros &= Q(bukrs__bukrs=bukrs_codigo)
-
-
-if filial_input:
-    q_filtros &= Q(werks=filial_input)
+if selected_Empresas != "Todas":
+    cod_empresa = selected_Empresas.split(" - ")[0]
+    q_filtros &= Q(cod_empresa=cod_empresa)
 
 if data_inicio and data_fim:
     if data_inicio > data_fim:
@@ -127,15 +149,28 @@ if data_inicio and data_fim:
 # ============================================================
 # QuerySet base (Sqlpostgres) select
 # ============================================================
-q_filtros &= Q(cfop__in=tl.cfop_list)
-queryset = RelatorioCusto.objects.filter(q_filtros).values(*tl.campos)
-            
+tipo_relatorio = st.session_state.get("tipo_relatorio", "Vendas")
+
+if tipo_relatorio == "Vendas":
+    q_filtros &= Q(cfop__in=lv.cfop_list)
+    queryset = NFe.objects.filter(q_filtros).values(*lv.campos)
+    colunas_amigaveis = lv.colunas_amigaveis
+
+elif tipo_relatorio == "Compras":
+    q_filtros &= Q(cfop__in=lc.cfop_list)
+    queryset = NFe.objects.filter(q_filtros).values(*lc.campos)
+    colunas_amigaveis = lc.colunas_amigaveis
+
+else:
+    st.error(f"Tipo de relatório inválido: {tipo_relatorio}")
+    st.stop()   
+
 # ============================================================
 # DataFrame
 # ============================================================
 if queryset.exists():
     df = pd.DataFrame.from_records(queryset)
-    df.rename(columns=tl.colunas_amigaveis, inplace=True)
+    df.rename(columns=colunas_amigaveis, inplace=True)
 else:
     st.warning("Nenhum dado encontrado.")
     df = pd.DataFrame()
@@ -146,51 +181,51 @@ if df.empty:
 # ============================================================
 # Notificação de log
 # ============================================================
-@st.cache_data(ttl=60)
-def tem_notificacao(bukrs_list):
-    return SapLog.objects.filter( 
-        bukrs_id__in=bukrs_list,
-        mgstype="E" 
-        ).exists()
+#@st.cache_data(ttl=60)
+#def tem_notificacao(bukrs_list):
+#    return SapLog.objects.filter( 
+#        bukrs_id__in=bukrs_list,
+#        mgstype="E" 
+#        ).exists()
 
-def render_log(log):
-    if log.mgstype == "E":
-        st.error(
-            f"""
-            **Empresa:** {log.bukrs}  
-            **Mensagem:** {log.mensagem}  
-            **Data:** {log.datahora:%d/%m/%Y %H:%M}
-            """
-        )
-    elif log.mgstype == "S":
-        st.success(
-            f"""
-            **Empresa:** {log.bukrs}  
-            **Mensagem:** {log.mensagem}  
-            **Data:** {log.datahora:%d/%m/%Y %H:%M}
-            """
-        )
-col1, col2 = st.columns([11, 2])
-with col2:
-    if tem_notificacao(bukrs_list):
-        label = "Status:🔴"   
-    else:
-        label = "Status:🟢"
+#def render_log(log):
+#    if log.mgstype == "E":
+#        st.error(
+#            f"""
+#            **Empresa:** {log.bukrs}  
+#            **Mensagem:** {log.mensagem}  
+#            **Data:** {log.datahora:%d/%m/%Y %H:%M}
+#            """
+#        )
+#    elif log.mgstype == "S":
+#        st.success(
+#            f"""
+#            **Empresa:** {log.bukrs}  
+#            **Mensagem:** {log.mensagem}  
+#            **Data:** {log.datahora:%d/%m/%Y %H:%M}
+#            """
+#        )
+#col1, col2 = st.columns([11, 2])
+#with col2:
+#    if tem_notificacao(g_q_Empresas.values_list('cod_empresa', flat=True)):
+#        label = "Status:🔴"   
+#    else:
+#        label = "Status:🟢"
 
-    with st.popover(label, help="Notificações do sistema"):
-        
-        st.markdown("### 📋 Notificação (últimos 7 dias)")
+#    with st.popover(label, help="Notificações do sistema"):
+#        
+#        st.markdown("### 📋 Notificação (últimos 7 dias)")
 
-        logs = SapLog.objects.filter(
-            bukrs_id__in=bukrs_list,
-            datahora__gte=pd.Timestamp.now() - pd.Timedelta(days=7),
-        ).order_by("-datahora")[:50]
+#        logs = SapLog.objects.filter(
+#            bukrs_id__in=bukrs_list,
+#            datahora__gte=pd.Timestamp.now() - pd.Timedelta(days=7),
+#        ).order_by("-datahora")[:50]
 
-        if logs.exists():
-            for log in logs:
-                render_log(log)
-        else:
-            st.info("Nenhum log encontrado.")
+#        if logs.exists():
+#            for log in logs:
+#                render_log(log)
+#        else:
+#            st.info("Nenhum log encontrado.")
 
 # ============================================================
 # Gráficos
@@ -226,7 +261,7 @@ with cx2:
     )
 
 cx3, cx4 = st.columns(2)
-periodo_value = cx3.selectbox(":", tl.periodo_list1, key="periodo")
+periodo_value = cx3.selectbox(":", lv.periodo_list1, key="periodo")
 
 if periodo_value == "Mensal":
     with cx4:
@@ -240,7 +275,7 @@ else:
     mes_inicial, mes_final = 1, 12  
 
 # Criar objeto da classe e chamar método único
-g = tg.Grafico_linha(df)
+g = tv.Grafico_linha(df)
 g.G_multiplas_metricas(
     coluna_data='mes_nome',
     coluna_ano='ano',
@@ -265,12 +300,12 @@ valor_y = "Faturamento"
 # Pizza
 col1, col2 = st.columns(2)
 with col1:
-    g = tg.Grafico_pizza(df)
+    g = tv.Grafico_pizza(df)
     g.G_pizza(valor_x=valor_x, valor_y=valor_y, titulo=f"{valor_y} por {valor_x}")
 
 # Barra
 with col2:
-    g = tg.Grafico_barra(df)
+    g = tv.Grafico_barra(df)
     g.G_barra(valor_x=valor_x, valor_y=valor_y,ordenacao=ordenacao, titulo=f"{valor_y} por {valor_x}")
 
 # ============================================================
@@ -291,7 +326,7 @@ elif Metrica_y == "Faturamento":
 elif Metrica_y == "Quantidade de Produto":
     valor_y = ["Quantidade de Produto"]
 
-g=tg.Grafico_barra(df)
+g=tv.Grafico_barra(df)
 g.G_barra_multicolunas(
     valor_x=valor_x,
     list_y=valor_y,

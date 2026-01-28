@@ -2,7 +2,7 @@
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
 
-      <form method="post" id="formUsuarioUpd" action="{% url 'Usuario_upd' user.id %}" onsubmit="validarFormularioUpd(event)">
+      <form method="post" id="formUsuarioUpd" action="{% url 'Usuario_upd' user.id %}" onsubmit="fn_validar_formulario_upd(event)">
         {% csrf_token %}
         <input type="hidden" name="user_id" id="upd_user_id">
 
@@ -71,7 +71,7 @@
                   <select id="upd_empresas_select" class="form-select">
                     <option value="">-- Selecione uma empresa --</option>
                   </select>
-                  <button type="button" class="btn btn-success" onclick="adicionarEmpresa()">
+                  <button type="button" class="btn btn-success" onclick="fn_adicionar_empresa()">
                     <i class="bi bi-plus-lg"></i> Adicionar
                   </button>
                 </div>
@@ -104,7 +104,7 @@
                   <select id="upd_grupos_select" class="form-select">
                     <option value="">-- Selecione um grupo --</option>
                   </select>
-                  <button type="button" class="btn btn-success" onclick="adicionarGrupo()">
+                  <button type="button" class="btn btn-success" onclick="fn_adicionar_grupo()">
                     <i class="bi bi-plus-lg"></i> Adicionar
                   </button>
                 </div>

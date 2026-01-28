@@ -2,7 +2,7 @@
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
 
-      <form method="post" action="{% url 'Cliente_ins' %}" onsubmit="validarFormularioIns(event)">
+      <form method="post" action="{% url 'Cliente_ins' %}" onsubmit="fn_validar_formulario_ins(event)">
         {% csrf_token %}
 
         <div class="modal-header">

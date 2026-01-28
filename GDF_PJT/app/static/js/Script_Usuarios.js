@@ -2,7 +2,7 @@
    GERENCIAR PAGINAÇÃO & BUSCA NO CLIENTE
 ================================ */
 
-const usuariosState = {
+const og_estado_usuarios = {
     allUsers: [],      // ✅ Todos os usuários carregados uma vez
     itemsPerPage: 30,
     currentPage: 1,
@@ -17,7 +17,7 @@ const usuariosState = {
 /* ===============================
    VALIDAÇÃO DO FORMULÁRIO INSERT
 ================================ */
-function validarFormularioIns(event) {
+function fn_validar_formulario_ins(event) {
     event.preventDefault(); // Previne submit automático
     
     const username = document.querySelector('input[name="username"]').value.trim();
@@ -53,36 +53,36 @@ function validarFormularioIns(event) {
 /* ===============================
    GERENCIAR MODAIS (prevenir múltiplos abertos)
 ================================ */
-function fecharModalAberto() {
-    if (!usuariosState.modalAberto) return;
+function fn_fechar_modal_aberto() {
+    if (!og_estado_usuarios.modalAberto) return;
     
-    const modalElement = document.getElementById(usuariosState.modalAberto);
+    const modalElement = document.getElementById(og_estado_usuarios.modalAberto);
     if (modalElement) {
         const modalInstance = bootstrap.Modal.getInstance(modalElement);
         if (modalInstance) {
-            console.log(`🔒 Fechando modal: ${usuariosState.modalAberto}`);
+            console.log(`🔒 Fechando modal: ${og_estado_usuarios.modalAberto}`);
             modalInstance.hide();
-            usuariosState.modalAberto = null;
+            og_estado_usuarios.modalAberto = null;
         }
     }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
     // ✅ Carregar dados da tabela no HTML e armazenar em memória
-    extrairUsuariosDoHTML();
+    fn_extrair_usuarios_html();
     
-    initPaginacao();
-    initBusca();
-    initUsuarioIns();
-    initUsuarioUpd();
+    fn_init_paginacao();
+    fn_init_busca();
+    fn_init_usuario_ins();
+    fn_init_usuario_upd();
 });
 
 /* ===============================
    EXTRAIR USUÁRIOS DO HTML (Enviados pelo Django)
 ================================ */
-function extrairUsuariosDoHTML() {
+function fn_extrair_usuarios_html() {
     const rows = document.querySelectorAll(".user-row");
-    usuariosState.allUsers = [];
+    og_estado_usuarios.allUsers = [];
     
     rows.forEach(row => {
         // ✅ Extrair dados estruturados da linha (seguindo ordem da tabela)
@@ -99,17 +99,17 @@ function extrairUsuariosDoHTML() {
             date_joined: cells[5]?.textContent.trim() || '',
             is_superuser: cells[6]?.textContent.trim() || ''
         };
-        usuariosState.allUsers.push(userData);
+        og_estado_usuarios.allUsers.push(userData);
     });
     
-    console.log(`✅ ${usuariosState.allUsers.length} usuários carregados em memória`);
-    console.log('📋 Primeiro usuário:', usuariosState.allUsers[0]);
+    console.log(`✅ ${og_estado_usuarios.allUsers.length} usuários carregados em memória`);
+    console.log('📋 Primeiro usuário:', og_estado_usuarios.allUsers[0]);
 }
 
 /* ===============================
    BUSCA (Client-side, sem fazer requests HTTP)
 ================================ */
-function initBusca() {
+function fn_init_busca() {
     const formBusca = document.querySelector("form");
     if (!formBusca) {
         console.warn("⚠️ Formulário de busca não encontrado");
@@ -130,34 +130,34 @@ function initBusca() {
         
         const query = inputBusca.value.trim().toLowerCase();
         console.log(`🔍 Buscando por: "${query}"`);
-        usuariosState.searchQuery = query;
-        usuariosState.currentPage = 1;  // Reset para página 1
+        og_estado_usuarios.searchQuery = query;
+        og_estado_usuarios.currentPage = 1;  // Reset para página 1
         
-        atualizarTabelaFiltrada();
+        fn_atualizar_tabela_filtrada();
     });
     
     // ✅ Busca em tempo real enquanto digita
     inputBusca.addEventListener("input", (e) => {
         const query = e.target.value.trim().toLowerCase();
-        usuariosState.searchQuery = query;
-        usuariosState.currentPage = 1;
+        og_estado_usuarios.searchQuery = query;
+        og_estado_usuarios.currentPage = 1;
         
-        atualizarTabelaFiltrada();
+        fn_atualizar_tabela_filtrada();
     });
 }
 
 /* ===============================
    FILTRAR USUÁRIOS
 ================================ */
-function filtrarUsuarios() {
-    if (!usuariosState.searchQuery) {
-        return usuariosState.allUsers;  // Sem filtro, retorna todos
+function fn_filtrar_usuarios() {
+    if (!og_estado_usuarios.searchQuery) {
+        return og_estado_usuarios.allUsers;  // Sem filtro, retorna todos
     }
     
-    const query = usuariosState.searchQuery.toLowerCase();
+    const query = og_estado_usuarios.searchQuery.toLowerCase();
     
     // ✅ Buscar em múltiplos campos
-    const filtrados = usuariosState.allUsers.filter(user => {
+    const filtrados = og_estado_usuarios.allUsers.filter(user => {
         return (
             user.username.toLowerCase().includes(query) ||
             user.email.toLowerCase().includes(query) ||
@@ -167,29 +167,29 @@ function filtrarUsuarios() {
         );
     });
     
-    console.log(`🔎 Filtrados: ${filtrados.length} de ${usuariosState.allUsers.length}`);
+    console.log(`🔎 Filtrados: ${filtrados.length} de ${og_estado_usuarios.allUsers.length}`);
     return filtrados;
 }
 
 /* ===============================
    CALCULAR PAGINAÇÃO
 ================================ */
-function calcularPaginacao(usuariosFiltrados) {
+function fn_calcular_paginacao(usuariosFiltrados) {
     const total = usuariosFiltrados.length;
-    const totalPages = Math.ceil(total / usuariosState.itemsPerPage);
+    const totalPages = Math.ceil(total / og_estado_usuarios.itemsPerPage);
     
     // ✅ Garantir que currentPage é válida
-    if (usuariosState.currentPage > totalPages) {
-        usuariosState.currentPage = Math.max(1, totalPages);
+    if (og_estado_usuarios.currentPage > totalPages) {
+        og_estado_usuarios.currentPage = Math.max(1, totalPages);
     }
     
-    const start = (usuariosState.currentPage - 1) * usuariosState.itemsPerPage;
-    const end = start + usuariosState.itemsPerPage;
+    const start = (og_estado_usuarios.currentPage - 1) * og_estado_usuarios.itemsPerPage;
+    const end = start + og_estado_usuarios.itemsPerPage;
     
     return {
         itemsNoInterval: usuariosFiltrados.slice(start, end),
         totalPages,
-        currentPage: usuariosState.currentPage,
+        currentPage: og_estado_usuarios.currentPage,
         total
     };
 }
@@ -197,9 +197,9 @@ function calcularPaginacao(usuariosFiltrados) {
 /* ===============================
    ATUALIZAR TABELA (após busca ou paginação)
 ================================ */
-function atualizarTabelaFiltrada() {
-    const usuariosFiltrados = filtrarUsuarios();
-    const paginacao = calcularPaginacao(usuariosFiltrados);
+function fn_atualizar_tabela_filtrada() {
+    const usuariosFiltrados = fn_filtrar_usuarios();
+    const paginacao = fn_calcular_paginacao(usuariosFiltrados);
     
     const tbody = document.querySelector("table tbody");
     if (!tbody) return;
@@ -220,17 +220,17 @@ function atualizarTabelaFiltrada() {
             .join('');
         
         // ✅ Re-adicionar listeners de clique após renderizar
-        adicionarListenersDaTabela();
+        fn_adicionar_listeners_tabela();
     }
     
     // ✅ Atualizar paginação
-    atualizarPaginacao(paginacao);
+    fn_atualizar_paginacao(paginacao);
 }
 
 /* ===============================
    ADICIONAR LISTENERS NA TABELA
 ================================ */
-function adicionarListenersDaTabela() {
+function fn_adicionar_listeners_tabela() {
     document.querySelectorAll(".user-row").forEach(row => {
         row.addEventListener("click", async (e) => {
             if (e.target.closest("a, button, input, label")) return;
@@ -238,7 +238,7 @@ function adicionarListenersDaTabela() {
             const userId = row.dataset.userId;
             if (!userId) return;
             
-            await loadUser(userId);
+            await fn_carregar_usuario(userId);
             const modal = new bootstrap.Modal(document.getElementById("modalUsuarioUpd"));
             modal.show();
         });
@@ -248,7 +248,7 @@ function adicionarListenersDaTabela() {
 /* ===============================
    ATUALIZAR CONTROLES DE PAGINAÇÃO
 ================================ */
-function atualizarPaginacao(paginacao) {
+function fn_atualizar_paginacao(paginacao) {
     const nav = document.querySelector("nav ul.pagination");
     if (!nav) return;
     
@@ -258,7 +258,7 @@ function atualizarPaginacao(paginacao) {
     if (paginacao.currentPage > 1) {
         html += `
             <li class="page-item">
-                <a class="page-link" href="#" onclick="irParaPagina(${paginacao.currentPage - 1}); return false;">
+                <a class="page-link" href="#" onclick="fn_ir_para_pagina(${paginacao.currentPage - 1}); return false;">
                     Anterior
                 </a>
             </li>
@@ -275,7 +275,7 @@ function atualizarPaginacao(paginacao) {
         } else {
             html += `
                 <li class="page-item">
-                    <a class="page-link" href="#" onclick="irParaPagina(${i}); return false;">
+                    <a class="page-link" href="#" onclick="fn_ir_para_pagina(${i}); return false;">
                         ${i}
                     </a>
                 </li>
@@ -287,7 +287,7 @@ function atualizarPaginacao(paginacao) {
     if (paginacao.currentPage < paginacao.totalPages) {
         html += `
             <li class="page-item">
-                <a class="page-link" href="#" onclick="irParaPagina(${paginacao.currentPage + 1}); return false;">
+                <a class="page-link" href="#" onclick="fn_ir_para_pagina(${paginacao.currentPage + 1}); return false;">
                     Próxima
                 </a>
             </li>
@@ -300,24 +300,24 @@ function atualizarPaginacao(paginacao) {
 /* ===============================
    IR PARA PÁGINA (Chamado pelos links)
 ================================ */
-function irParaPagina(pageNum) {
-    usuariosState.currentPage = pageNum;
-    atualizarTabelaFiltrada();
+function fn_ir_para_pagina(pageNum) {
+    og_estado_usuarios.currentPage = pageNum;
+    fn_atualizar_tabela_filtrada();
     window.scrollTo(0, 0);  // ✅ Scroll para o topo
 }
 
 /* ===============================
    INICIALIZAR PAGINAÇÃO
 ================================ */
-function initPaginacao() {
-    // ✅ Paginação já é gerenciada via irParaPagina()
+function fn_init_paginacao() {
+    // ✅ Paginação já é gerenciada via fn_ir_para_pagina()
     // Aqui apenas garantimos a primeira renderização
 }
 
 /* ===============================
    INS – INSERT USER
 ================================ */ 
-function initUsuarioIns() {
+function fn_init_usuario_ins() {
     const modalEl = document.getElementById("modalUsuarioIns");
     if (!modalEl) return;
 
@@ -325,10 +325,10 @@ function initUsuarioIns() {
     modalEl.addEventListener("show.bs.modal", async () => {
         try {
             // ✅ Fechar modal de UPDATE se estiver aberto
-            fecharModalAberto();
+            fn_fechar_modal_aberto();
             
             // ✅ Marcar como modal aberto
-            usuariosState.modalAberto = "modalUsuarioIns";
+            og_estado_usuarios.modalAberto = "modalUsuarioIns";
             
             const resp = await fetch('/usuario/inserir/', {
                 headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
@@ -338,8 +338,8 @@ function initUsuarioIns() {
                 // aceitar várias possíveis chaves retornadas pela view
                 const empresas = data.Todas_Empresas || data.todas_empresas || data.TodasEmpresas || [];
                 const grupos = data.Todos_Grupos || data.todos_grupos || data.TodosGrupos || [];
-                preencherSelectInsEmpresas(empresas);
-                preencherSelectInsGrupos(grupos);
+                fn_preencher_select_ins_empresas(empresas);
+                fn_preencher_select_ins_grupos(grupos);
                 console.log("✅ Modal INSERT: Dados carregados com sucesso");
             } else {
                 console.warn('Falha ao carregar dados para modal INSERT:', resp.status, resp.statusText);
@@ -354,16 +354,16 @@ function initUsuarioIns() {
         if (form) form.reset();
         
         // ✅ Limpar também os arrays de empresas e grupos
-        usuariosState.empresasSelecionadas = [];
-        usuariosState.gruposSelecionados = [];
+        og_estado_usuarios.empresasSelecionadas = [];
+        og_estado_usuarios.gruposSelecionados = [];
         
         // ✅ Limpar as tabelas e hidden inputs
-        renderizarEmpresasSelecionadasIns();
-        renderizarGruposSelecionadosIns();
+        fn_renderizar_empresas_selecionadas_ins();
+        fn_renderizar_grupos_selecionados_ins();
         
         // ✅ Desmarcar modal aberto
-        if (usuariosState.modalAberto === "modalUsuarioIns") {
-            usuariosState.modalAberto = null;
+        if (og_estado_usuarios.modalAberto === "modalUsuarioIns") {
+            og_estado_usuarios.modalAberto = null;
         }
     });
 }
@@ -371,7 +371,7 @@ function initUsuarioIns() {
 /* ===============================
    UPD – UPDATE USER
 ================================ */
-function initUsuarioUpd() {
+function fn_init_usuario_upd() {
     const modalEl = document.getElementById("modalUsuarioUpd");
     if (!modalEl) return;
     
@@ -401,13 +401,13 @@ function initUsuarioUpd() {
         if (!userId) return;
 
         // ✅ Fechar modal de INSERT se estiver aberto
-        fecharModalAberto();
+        fn_fechar_modal_aberto();
         
         // ✅ Marcar como modal aberto
-        usuariosState.modalAberto = "modalUsuarioUpd";
+        og_estado_usuarios.modalAberto = "modalUsuarioUpd";
         
         // ✅ Aguardar dados serem carregados ANTES de abrir o modal
-        const sucesso = await loadUser(userId);
+        const sucesso = await fn_carregar_usuario(userId);
         
         if (sucesso) {
             const modal = new bootstrap.Modal(modalEl, {
@@ -416,14 +416,14 @@ function initUsuarioUpd() {
             });
             modal.show();
         } else {
-            usuariosState.modalAberto = null;
+            og_estado_usuarios.modalAberto = null;
         }
     });
 
     // ✅ Desmarcar modal aberto ao fechar
     modalEl.addEventListener("hidden.bs.modal", () => {
-        if (usuariosState.modalAberto === "modalUsuarioUpd") {
-            usuariosState.modalAberto = null;
+        if (og_estado_usuarios.modalAberto === "modalUsuarioUpd") {
+            og_estado_usuarios.modalAberto = null;
         }
     });
 }
@@ -431,7 +431,7 @@ function initUsuarioUpd() {
 /* ===============================
    LOAD USER (API)
 ================================ */
-async function loadUser(userId) {
+async function fn_carregar_usuario(userId) {
     try {
         console.log(`📥 Iniciando carregamento do usuário ${userId}...`);
         
@@ -453,7 +453,7 @@ async function loadUser(userId) {
         console.log("📊 grupos_disponiveis:", data.grupos_disponiveis);
         
         // ✅ Preencher modal com dados
-        fillUserModal(data);
+        fn_preencher_modal_usuario(data);
         
         return true;  // ✅ Retornar true se sucesso
     } catch (error) {
@@ -466,7 +466,7 @@ async function loadUser(userId) {
 /* ===============================
    FILL MODAL
 ================================ */
-function fillUserModal(user) {
+function fn_preencher_modal_usuario(user) {
     document.getElementById("upd_user_id").value = user.id;
     document.getElementById("upd_username").value = user.username;
     document.getElementById("upd_email").value = user.email;
@@ -479,24 +479,24 @@ function fillUserModal(user) {
     }
 
     // ✅ Limpar e preencher empresas
-    usuariosState.empresasSelecionadas = [];
+    og_estado_usuarios.empresasSelecionadas = [];
     user.empresas.forEach(emp => {
-        usuariosState.empresasSelecionadas.push({
+        og_estado_usuarios.empresasSelecionadas.push({
             id: emp.cod_empresa,
             nome: emp.fantasia || emp.razao || emp.cod_empresa
         });
     });
-    renderizarEmpresasSelecionadas();
+    fn_renderizar_empresas_selecionadas();
     
     // ✅ Limpar e preencher grupos
-    usuariosState.gruposSelecionados = [];
+    og_estado_usuarios.gruposSelecionados = [];
     user.grupos.forEach(grp => {
-        usuariosState.gruposSelecionados.push({
+        og_estado_usuarios.gruposSelecionados.push({
             id: grp.id,
             nome: grp.name
         });
     });
-    renderizarGruposSelecionados();
+    fn_renderizar_grupos_selecionados();
     
     // ✅ Preencher selects com dados disponíveis (aceitar variações de key names)
     const empresasDisp = user.empresas_disponiveis || user.Empresas_Disponiveis || user.empresasDisponiveis || user.Empresas_Disponiveis || [];
@@ -507,14 +507,14 @@ function fillUserModal(user) {
 
     if (Array.isArray(empresasDisp) && empresasDisp.length > 0) {
         console.log("✅ Preenchendo empresas...");
-        preencherSelectEmpresas(empresasDisp);
+        fn_preencher_select_empresas(empresasDisp);
     } else {
         console.warn("⚠️ Nenhuma empresa disponível encontrada");
     }
 
     if (Array.isArray(gruposDisp) && gruposDisp.length > 0) {
         console.log("✅ Preenchendo grupos...");
-        preencherSelectGrupos(gruposDisp);
+        fn_preencher_select_grupos(gruposDisp);
     } else {
         console.warn("⚠️ Nenhum grupo disponível encontrado");
     }
@@ -523,7 +523,7 @@ function fillUserModal(user) {
 /* ===============================
    PREENCHER SELECT COM EMPRESAS DISPONÍVEIS
 ================================ */
-function preencherSelectEmpresas(empresas) {
+function fn_preencher_select_empresas(empresas) {
     const select = document.getElementById("upd_empresas_select");
     if (!select) return;
     
@@ -546,7 +546,7 @@ function preencherSelectEmpresas(empresas) {
 /* ===============================
    PREENCHER SELECT COM GRUPOS DISPONÍVEIS
 ================================ */
-function preencherSelectGrupos(grupos) {
+function fn_preencher_select_grupos(grupos) {
     const select = document.getElementById("upd_grupos_select");
     if (!select) {
         console.error("❌ Select 'upd_grupos_select' não encontrado!");
@@ -575,7 +575,7 @@ function preencherSelectGrupos(grupos) {
 /* ===============================
    INSERT: PREENCHER SELECTS (dados vindos da view /usuario_ins/)
 ================================ */
-function preencherSelectInsEmpresas(empresas) {
+function fn_preencher_select_ins_empresas(empresas) {
     const select = document.getElementById("ins_empresas_select");
     if (!select) return;
     while (select.options.length > 1) select.removeChild(select.lastChild);
@@ -589,7 +589,7 @@ function preencherSelectInsEmpresas(empresas) {
     });
 }
 
-function preencherSelectInsGrupos(grupos) {
+function fn_preencher_select_ins_grupos(grupos) {
     const select = document.getElementById("ins_grupos_select");
     if (!select) return;
     while (select.options.length > 1) select.removeChild(select.lastChild);
@@ -605,7 +605,7 @@ function preencherSelectInsGrupos(grupos) {
 /* ===============================
    ADICIONAR/REMOVER EMPRESAS
 ================================ */
-function adicionarEmpresa() {
+function fn_adicionar_empresa() {
     const select = document.getElementById("upd_empresas_select");
     if (!select.value) {
         alert("Selecione uma empresa!");
@@ -616,28 +616,28 @@ function adicionarEmpresa() {
     const empNome = select.options[select.selectedIndex].text;
     
     // ✅ Verificar se já foi adicionada
-    if (usuariosState.empresasSelecionadas.some(e => e.id == empId)) {
+    if (og_estado_usuarios.empresasSelecionadas.some(e => e.id == empId)) {
         alert("Esta empresa já foi adicionada!");
         return;
     }
     
-    usuariosState.empresasSelecionadas.push({
+    og_estado_usuarios.empresasSelecionadas.push({
         id: empId,
         nome: empNome
     });
     
     select.value = ""; // ✅ Limpar select
-    renderizarEmpresasSelecionadas();
+    fn_renderizar_empresas_selecionadas();
 }
 
-function removerEmpresa(empId) {
-    usuariosState.empresasSelecionadas = usuariosState.empresasSelecionadas.filter(
+function fn_remover_empresa(empId) {
+    og_estado_usuarios.empresasSelecionadas = og_estado_usuarios.empresasSelecionadas.filter(
         e => e.id != empId
     );
-    renderizarEmpresasSelecionadas();
+    fn_renderizar_empresas_selecionadas();
 }
 
-function renderizarEmpresasSelecionadas() {
+function fn_renderizar_empresas_selecionadas() {
     const tbody = document.getElementById("upd_empresas_tbody");
     const hidden = document.getElementById("upd_empresas_hidden");
     
@@ -647,13 +647,13 @@ function renderizarEmpresasSelecionadas() {
     tbody.innerHTML = "";
     
     // ✅ Adicionar linhas
-    usuariosState.empresasSelecionadas.forEach(emp => {
+    og_estado_usuarios.empresasSelecionadas.forEach(emp => {
         const row = document.createElement("tr");
         row.innerHTML = `
             <td>${emp.nome}</td>
             <td>
                 <button type="button" class="btn btn-sm btn-danger" 
-                        onclick="removerEmpresa(${emp.id})">
+                        onclick="fn_remover_empresa(${emp.id})">
                     Remover
                 </button>
             </td>
@@ -662,7 +662,7 @@ function renderizarEmpresasSelecionadas() {
     });
     
     // ✅ Atualizar hidden input com IDs separados por vírgula
-    hidden.value = usuariosState.empresasSelecionadas
+    hidden.value = og_estado_usuarios.empresasSelecionadas
         .map(e => e.id)
         .join(",");
 }
@@ -670,7 +670,7 @@ function renderizarEmpresasSelecionadas() {
 /* ===============================
    ADICIONAR/REMOVER GRUPOS
 ================================ */
-function adicionarGrupo() {
+function fn_adicionar_grupo() {
     const select = document.getElementById("upd_grupos_select");
     if (!select.value) {
         alert("Selecione um grupo!");
@@ -681,28 +681,28 @@ function adicionarGrupo() {
     const grupoNome = select.options[select.selectedIndex].text;
     
     // ✅ Verificar se já foi adicionado
-    if (usuariosState.gruposSelecionados.some(g => g.id == grupoId)) {
+    if (og_estado_usuarios.gruposSelecionados.some(g => g.id == grupoId)) {
         alert("Este grupo já foi adicionado!");
         return;
     }
     
-    usuariosState.gruposSelecionados.push({
+    og_estado_usuarios.gruposSelecionados.push({
         id: grupoId,
         nome: grupoNome
     });
     
     select.value = ""; // ✅ Limpar select
-    renderizarGruposSelecionados();
+    fn_renderizar_grupos_selecionados();
 }
 
-function removerGrupo(grupoId) {
-    usuariosState.gruposSelecionados = usuariosState.gruposSelecionados.filter(
+function fn_remover_grupo(grupoId) {
+    og_estado_usuarios.gruposSelecionados = og_estado_usuarios.gruposSelecionados.filter(
         g => g.id != grupoId
     );
-    renderizarGruposSelecionados();
+    fn_renderizar_grupos_selecionados();
 }
 
-function renderizarGruposSelecionados() {
+function fn_renderizar_grupos_selecionados() {
     const tbody = document.getElementById("upd_grupos_tbody");
     const hidden = document.getElementById("upd_grupos_hidden");
     
@@ -712,13 +712,13 @@ function renderizarGruposSelecionados() {
     tbody.innerHTML = "";
     
     // ✅ Adicionar linhas
-    usuariosState.gruposSelecionados.forEach(grp => {
+    og_estado_usuarios.gruposSelecionados.forEach(grp => {
         const row = document.createElement("tr");
         row.innerHTML = `
             <td>${grp.nome}</td>
             <td>
                 <button type="button" class="btn btn-sm btn-danger" 
-                        onclick="removerGrupo(${grp.id})">
+                        onclick="fn_remover_grupo(${grp.id})">
                     Remover
                 </button>
             </td>
@@ -727,7 +727,7 @@ function renderizarGruposSelecionados() {
     });
     
     // ✅ Atualizar hidden input com IDs separados por vírgula
-    hidden.value = usuariosState.gruposSelecionados
+    hidden.value = og_estado_usuarios.gruposSelecionados
         .map(g => g.id)
         .join(",");
 }
@@ -735,7 +735,7 @@ function renderizarGruposSelecionados() {
 /* ===============================
    INSERT: ADICIONAR/REMOVER EMPRESAS
 ================================ */
-function adicionarEmpresaIns() {
+function fn_adicionar_empresa_ins() {
     const select = document.getElementById("ins_empresas_select");
     if (!select.value) {
         alert("Selecione uma empresa!");
@@ -746,28 +746,28 @@ function adicionarEmpresaIns() {
     const empNome = select.options[select.selectedIndex].text;
     
     // ✅ Verificar se já foi adicionada
-    if (usuariosState.empresasSelecionadas.some(e => e.id == empId)) {
+    if (og_estado_usuarios.empresasSelecionadas.some(e => e.id == empId)) {
         alert("Esta empresa já foi adicionada!");
         return;
     }
     
-    usuariosState.empresasSelecionadas.push({
+    og_estado_usuarios.empresasSelecionadas.push({
         id: empId,
         nome: empNome
     });
     
     select.value = ""; // ✅ Limpar select
-    renderizarEmpresasSelecionadasIns();
+    fn_renderizar_empresas_selecionadas_ins();
 }
 
-function removerEmpresaIns(empId) {
-    usuariosState.empresasSelecionadas = usuariosState.empresasSelecionadas.filter(
+function fn_remover_empresa_ins(empId) {
+    og_estado_usuarios.empresasSelecionadas = og_estado_usuarios.empresasSelecionadas.filter(
         e => e.id != empId
     );
-    renderizarEmpresasSelecionadasIns();
+    fn_renderizar_empresas_selecionadas_ins();
 }
 
-function renderizarEmpresasSelecionadasIns() {
+function fn_renderizar_empresas_selecionadas_ins() {
     const tbody = document.getElementById("ins_empresas_tbody");
     const hidden = document.getElementById("ins_empresas_hidden");
     
@@ -777,13 +777,13 @@ function renderizarEmpresasSelecionadasIns() {
     tbody.innerHTML = "";
     
     // ✅ Adicionar linhas
-    usuariosState.empresasSelecionadas.forEach(emp => {
+    og_estado_usuarios.empresasSelecionadas.forEach(emp => {
         const row = document.createElement("tr");
         row.innerHTML = `
             <td>${emp.nome}</td>
             <td>
                 <button type="button" class="btn btn-sm btn-danger" 
-                        onclick="removerEmpresaIns(${emp.id})">
+                        onclick="fn_remover_empresa_ins(${emp.id})">
                     Remover
                 </button>
             </td>
@@ -792,12 +792,12 @@ function renderizarEmpresasSelecionadasIns() {
     });
     
     // ✅ Atualizar hidden input com IDs separados por vírgula
-    hidden.value = usuariosState.empresasSelecionadas
+    hidden.value = og_estado_usuarios.empresasSelecionadas
         .map(e => e.id)
         .join(",");
     
     // ✅ Feedback visual
-    const count = usuariosState.empresasSelecionadas.length;
+    const count = og_estado_usuarios.empresasSelecionadas.length;
     if (count > 0) {
         console.log(`✅ ${count} empresa(s) selecionada(s)`);
     }
@@ -806,7 +806,7 @@ function renderizarEmpresasSelecionadasIns() {
 /* ===============================
    INSERT: ADICIONAR/REMOVER GRUPOS
 ================================ */
-function adicionarGrupoIns() {
+function fn_adicionar_grupo_ins() {
     const select = document.getElementById("ins_grupos_select");
     if (!select.value) {
         alert("Selecione um grupo!");
@@ -817,28 +817,28 @@ function adicionarGrupoIns() {
     const grupoNome = select.options[select.selectedIndex].text;
     
     // ✅ Verificar se já foi adicionado
-    if (usuariosState.gruposSelecionados.some(g => g.id == grupoId)) {
+    if (og_estado_usuarios.gruposSelecionados.some(g => g.id == grupoId)) {
         alert("Este grupo já foi adicionado!");
         return;
     }
     
-    usuariosState.gruposSelecionados.push({
+    og_estado_usuarios.gruposSelecionados.push({
         id: grupoId,
         nome: grupoNome
     });
     
     select.value = ""; // ✅ Limpar select
-    renderizarGruposSelecionadosIns();
+    fn_renderizar_grupos_selecionados_ins();
 }
 
-function removerGrupoIns(grupoId) {
-    usuariosState.gruposSelecionados = usuariosState.gruposSelecionados.filter(
+function fn_remover_grupo_ins(grupoId) {
+    og_estado_usuarios.gruposSelecionados = og_estado_usuarios.gruposSelecionados.filter(
         g => g.id != grupoId
     );
-    renderizarGruposSelecionadosIns();
+    fn_renderizar_grupos_selecionados_ins();
 }
 
-function renderizarGruposSelecionadosIns() {
+function fn_renderizar_grupos_selecionados_ins() {
     const tbody = document.getElementById("ins_grupos_tbody");
     const hidden = document.getElementById("ins_grupos_hidden");
     
@@ -848,13 +848,13 @@ function renderizarGruposSelecionadosIns() {
     tbody.innerHTML = "";
     
     // ✅ Adicionar linhas
-    usuariosState.gruposSelecionados.forEach(grp => {
+    og_estado_usuarios.gruposSelecionados.forEach(grp => {
         const row = document.createElement("tr");
         row.innerHTML = `
             <td>${grp.nome}</td>
             <td>
                 <button type="button" class="btn btn-sm btn-danger" 
-                        onclick="removerGrupoIns(${grp.id})">
+                        onclick="fn_remover_grupo_ins(${grp.id})">
                     Remover
                 </button>
             </td>
@@ -863,7 +863,7 @@ function renderizarGruposSelecionadosIns() {
     });
     
     // ✅ Atualizar hidden input com IDs separados por vírgula
-    hidden.value = usuariosState.gruposSelecionados
+    hidden.value = og_estado_usuarios.gruposSelecionados
         .map(g => g.id)
         .join(",");
 }
@@ -871,7 +871,7 @@ function renderizarGruposSelecionadosIns() {
 /* ===============================
    INSERT: PREENCHER SELECTS (dados vindos da view /usuario/inserir/)
 ================================ */
-function preencherSelectInsEmpresas(empresas) {
+function fn_preencher_select_ins_empresas(empresas) {
     const select = document.getElementById('ins_empresas_select');
     if (!select) return;
     // manter placeholder e limpar demais options
@@ -888,7 +888,7 @@ function preencherSelectInsEmpresas(empresas) {
     });
 }
 
-function preencherSelectInsGrupos(grupos) {
+function fn_preencher_select_ins_grupos(grupos) {
     const select = document.getElementById('ins_grupos_select');
     if (!select) return;
     while (select.options.length > 1) select.removeChild(select.lastChild);
@@ -902,5 +902,6 @@ function preencherSelectInsGrupos(grupos) {
         select.appendChild(option);
     });
 }
+
 
 

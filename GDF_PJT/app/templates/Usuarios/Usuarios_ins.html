@@ -2,7 +2,7 @@
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
 
-      <form method="post" action="{% url 'Usuario_ins' %}" onsubmit="validarFormularioIns(event)">
+      <form method="post" action="{% url 'Usuario_ins' %}" onsubmit="fn_validar_formulario_ins(event)">
         {% csrf_token %}
 
         <div class="modal-header">
@@ -76,7 +76,7 @@
                   <select id="ins_empresas_select" class="form-select">
                     <option value="">-- Selecione uma empresa --</option>
                   </select>
-                  <button type="button" class="btn btn-success" onclick="adicionarEmpresaIns()">
+                  <button type="button" class="btn btn-success" onclick="fn_adicionar_empresa_ins()">
                     <i class="bi bi-plus-lg"></i> Adicionar
                   </button>
                 </div>
@@ -109,7 +109,7 @@
                   <select id="ins_grupos_select" class="form-select">
                     <option value="">-- Selecione um grupo --</option>
                   </select>
-                  <button type="button" class="btn btn-success" onclick="adicionarGrupoIns()">
+                  <button type="button" class="btn btn-success" onclick="fn_adicionar_grupo_ins()">
                     <i class="bi bi-plus-lg"></i> Adicionar
                   </button>
                 </div>

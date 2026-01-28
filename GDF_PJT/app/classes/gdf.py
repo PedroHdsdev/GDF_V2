@@ -16,7 +16,7 @@ from dataclasses                    import dataclass
 from typing                         import List, Dict
 import jwt
 
-class Cl_Gdf():
+class ClGdf():
     def __init__(self):
         self.Cliente: int = None
         self.Empresas: List[Dict] = []
@@ -29,13 +29,14 @@ class Cl_Gdf():
 #           Gerar - Token JWT (Dashboard) 
 #--------------------------------------------------------------------------------
     @staticmethod
-    def Gerar_Token(request, user): 
+    def gerar_token(request, user, tipo_relatorio='Vendas'): 
         if not user.is_active:
             return None 
         else:
             payload = {
                 "user_id": user.id,
                 "username": user.username,
+                "tipo_relatorio": tipo_relatorio,
                 "iat": timezone.now(),
                 "exp": timezone.now() + timedelta(minutes=30),
             }
@@ -46,7 +47,7 @@ class Cl_Gdf():
 #--------------------------------------------------------------------------------
 #           GET - Dados iniciais
 #--------------------------------------------------------------------------------
-    def Get_Dados(self, I_User):
+    def get_dados(self, I_User):
         self.Retorn = []
         try:
             l_v_query_user = User.objects.filter(id=I_User.id).first()
@@ -88,7 +89,7 @@ class Cl_Gdf():
 #--------------------------------------------------------------------------------
 #           GET - Soluções e Subsoluções
 #--------------------------------------------------------------------------------
-    def Get_Solucoes(self):
+    def get_solucoes(self):
         self.Retorn = []
         try:
             if not hasattr(self, 'subsolucoes_acesso') or not hasattr(self, 'solucoes_acesso'):
@@ -156,7 +157,7 @@ class Cl_Gdf():
 #--------------------------------------------------------------------------------
 #           GET - Clientes
 #--------------------------------------------------------------------------------
-    def Get_Clientes(self):
+    def get_clientes(self):
         self.Retorn = []
         try:
             lsl_dados_clientes = []
@@ -190,7 +191,7 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Retorna dados do cliente para edição no modal"""
-    def Get_Clientes_upd(self, i_v_cliente_id):
+    def get_cliente_upd(self, i_v_cliente_id):
         self.Retorn = {}
         try:
             l_v_cliente = Clientes.objects.get(cod_cliente=i_v_cliente_id)
@@ -234,7 +235,7 @@ class Cl_Gdf():
         return self.Retorn
 #--------------------------------------------------------------------------------
     """Cadastro de Clientes"""
-    def Cliente_ins(self, i_cliente, i_razao, i_cnpj):
+    def set_cliente(self, i_cliente, i_razao, i_cnpj):
         try:
             with transaction.atomic():
                 l_v_cliente_instance, l_v_created = Clientes.objects.get_or_create(
@@ -268,7 +269,7 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Atualiza cliente e seus vínculos de soluções com transação atômica"""
-    def Cliente_upd(self, i_cliente, i_razao, i_cnpj, i_is_active):   
+    def upd_cliente(self, i_cliente, i_razao, i_cnpj, i_is_active):   
         try:
             # ✅ Validações
             if not i_cliente or not i_razao or not i_cnpj:
@@ -291,11 +292,11 @@ class Cl_Gdf():
             print(f"[ERROR] Erro ao atualizar cliente: {str(e)}")
             return {"success": False, "message": f"Erro inesperado: {str(e)}"}
 
-    def Cliente_solucao(self, i_Cod_cliente, ls_solucoes):
+    def set_cliente_solucoes(self, i_v_cod_cliente, ls_solucoes):
         """Atualiza vínculos de soluções de um cliente a partir de string "COD:STATUS""" 
         try:
             # ✅ Buscar instância do cliente
-            cliente = Clientes.objects.get(cod_cliente=i_Cod_cliente)
+            cliente = Clientes.objects.get(cod_cliente=i_v_cod_cliente)
             # ✅ Se nada foi enviado, considerar sem alterações
             if not ls_solucoes:
                 return {"success": True, "message": "Nenhuma alteração de soluções"}
@@ -338,7 +339,7 @@ class Cl_Gdf():
 #--------------------------------------------------------------------------------
 # Empresas (Dm_Empresas)
 #--------------------------------------------------------------------------------
-    def Get_Empresas(self,i_cod_Cliente=None, i_busca=None):
+    def get_empresas(self,i_v_cod_cliente=None, i_busca=None):
         self.Retorn = []
         try:
             lsl_dados_empresas = []
@@ -346,67 +347,70 @@ class Cl_Gdf():
             # -------------------------------------------------
             # Empresas do cliente COM OTIMIZAÇÃO
             # -------------------------------------------------
-            # ✅ OTIMIZAÇÃO: prefetch_related evita N+1 queries de certificados
+            # ✅ OTIMIZAÇÃO: select_related evita N+1 queries (FK direto)
             l_v_queryset_empresas = Empresas.objects.filter(
-                cliente_id=i_cod_Cliente
-            ).prefetch_related('cert_set').distinct()
+                cliente_id=i_v_cod_cliente
+            ).select_related('cert').distinct()
+            
+            l_v_data_atual = datetime.today().date()
             
             for l_v_empresa in l_v_queryset_empresas:
-                # ✅ Agora os certificados já estão em cache (não faz nova query)
-                lsl_certificados = l_v_empresa.cert_set.all()
-                l_v_data_atual = datetime.today().date()
+                # ✅ Certificado é FK direto (objeto único, não queryset)
+                l_v_cert = l_v_empresa.cert
+                
+                # Montar dados do certificado se existir
+                l_v_cert_data = None
+                if l_v_cert:
+                    l_v_cert_data = {
+                        "raiz": l_v_cert.raiz_cnpj,
+                        "ini_validade": l_v_cert.ini_validade.strftime("%d/%m/%Y") if l_v_cert.ini_validade else None,
+                        "fim_validade": l_v_cert.fim_validade.strftime("%d/%m/%Y") if l_v_cert.fim_validade else None,
+                        "emissor": l_v_cert.proprietario,
+                        "cpf_cnpj": l_v_cert.cpf_cnpj,
+                        "cert_file": bool(l_v_cert.arquivo_cert),
+                        "status": (
+                            "VERMELHO" if (l_v_cert.fim_validade.date() - l_v_data_atual).days <= 15 else 
+                            "AMARELO" if (l_v_cert.fim_validade.date() - l_v_data_atual).days <= 30 else 
+                            "VERDE"  
+                        ) if l_v_cert.fim_validade else "INDEFINIDO"
+                    }
 
                 lsl_dados_empresas.append({
-                "cod_empresa": l_v_empresa.cod_empresa,
-                "cnpj": l_v_empresa.cnpj,
-                "razao": l_v_empresa.razao,
-                "fantasia": l_v_empresa.fantasia,
-                "ie": l_v_empresa.ie,
-                "im": l_v_empresa.im,
-                "tipo": l_v_empresa.tipo,
-                "matriz": l_v_empresa.matriz,
-                "crt": l_v_empresa.crt,
-                "cnae": l_v_empresa.cnae,
-                "iest": l_v_empresa.iest,
-                "suframa": l_v_empresa.suframa,
-                "chave_acesso": l_v_empresa.chave_acesso,
-                "cliente": l_v_empresa.cliente_id,
-                "cert_emp": [
-                    {
-                    "raiz": cert.raiz_cnpj,
-                    "ini_validade": cert.ini_validade.strftime("%d/%m/%Y") if cert.ini_validade else None,
-                    "fim_validade": cert.fim_validade.strftime("%d/%m/%Y") if cert.fim_validade else None,
-                    "emissor": cert.proprietario,
-                    "cpf_cnpj": cert.cpf_cnpj,
-                    "cert_file": cert.arquivo_cert,
-                    "status": (
-                        "VERMELHO" if (cert.fim_validade.date() - l_v_data_atual).days <= 15 else 
-                        "AMARELO" if (cert.fim_validade.date() - l_v_data_atual).days <= 30 else 
-                        "VERDE"  
-                        ) if cert.fim_validade else "INDEFINIDO"
-                }
-                for cert in lsl_certificados
-                ]
+                    "cod_empresa": l_v_empresa.cod_empresa,
+                    "cnpj": l_v_empresa.cnpj,
+                    "razao": l_v_empresa.razao,
+                    "fantasia": l_v_empresa.fantasia,
+                    "ie": l_v_empresa.ie,
+                    "im": l_v_empresa.im,
+                    "tipo": l_v_empresa.tipo,
+                    "matriz": l_v_empresa.matriz,
+                    "crt": l_v_empresa.crt,
+                    "cnae": l_v_empresa.cnae,
+                    "iest": l_v_empresa.iest,
+                    "suframa": l_v_empresa.suframa,
+                    "chave_acesso": l_v_empresa.chave_acesso,
+                    "cliente": l_v_empresa.cliente_id,
+                    "cert_emp": l_v_cert_data
                 })
             
             print(f"[Get_Empresas] Carregadas {len(lsl_dados_empresas)} empresas com certificados otimizados")
          
         except Empresas.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(f"[ERROR] Empresas nao encontradas: {str(e)}")
         except Cert.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(f"[ERROR] Certificados nao encontrados: {str(e)}")
         except GrpEmpresas.DoesNotExist as e:
-            self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
+            print(f"[ERROR] Grupos de empresas nao encontrados: {str(e)}")
         except IntegrityError as e:
-            self._registrar_log(type='E', id='E004',msg=f"Erro: {str(e)}")
+            print(f"[ERROR] Erro de integridade: {str(e)}")
         except Exception as e:
-            self._registrar_log(type='E', id='E000')
+            print(f"[ERROR] Erro ao buscar empresas: {str(e)}")
   
         return lsl_dados_empresas 
     
 #--------------------------------------------------------------------------------
     """Retorna todas as empresas e grupos disponíveis para o cliente"""
-    def Get_Empresas_ins(self, i_v_cod_cliente):
+    def get_empresa_dados_ins(self, i_v_cod_cliente):
         try:
             # ✅ Validação
             if not i_v_cod_cliente:
@@ -442,7 +446,7 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Retorna dados da empresa para edição no modal"""
-    def Get_Empresas_upd(self, i_v_cod_empresa, i_v_cod_cliente):
+    def get_empresa_upd(self, i_v_cod_empresa, i_v_cod_cliente):
         """Buscar detalhes da empresa para modal - seguindo padrão Usuario/Cliente"""
         try:
             # ✅ Validações
@@ -492,71 +496,71 @@ class Cl_Gdf():
         
 #--------------------------------------------------------------------------------
     """Cadastro de Empresas"""
-    def Empresa_ins(
+    def set_empresa(
         self,
-        cod_empresa,
-        razao,
-        cnpj,
-        fantasia,
-        grp_empresa,
-        cod_cliente,
-        matriz=False,
-        ie="",
-        im="",
-        iest="",
-        crt="",
-        cnae="",
-        suframa="",
-        chave_acesso=""
+        i_v_cod_empresa,
+        i_v_razao,
+        i_v_cnpj,
+        i_v_fantasia,
+        i_v_grp_empresa,
+        i_v_cod_cliente,
+        i_b_matriz=False,
+        i_v_ie="",
+        i_v_im="",
+        i_v_iest="",
+        i_v_crt="",
+        i_v_cnae="",
+        i_v_suframa="",
+        i_v_chave_acesso=""
     ) -> dict:
 
         try:
             # ✅ Validações obrigatórias
-            if not cod_empresa or not razao or not cnpj or not fantasia or not grp_empresa:
+            if not i_v_cod_empresa or not i_v_razao or not i_v_cnpj or not i_v_fantasia or not i_v_grp_empresa:
                 raise ValueError("Todos os campos são obrigatórios")
             
-            if not cod_cliente:
+            if not i_v_cod_cliente:
                 raise ValueError("Cliente não identificado")
             
             # ✅ Verificar se grupo de empresa existe
             try:
-                q_grpempresa = GrpEmpresas.objects.get(grp_empresa=grp_empresa)
+                q_grpempresa = GrpEmpresas.objects.get(grp_empresa=i_v_grp_empresa)
             except GrpEmpresas.DoesNotExist:
-                raise ValueError(f"Grupo de empresa '{grp_empresa}' não encontrado")
+                raise ValueError(f"Grupo de empresa '{i_v_grp_empresa}' não encontrado")
             
             # ✅ Transação atômica: certificado + empresa
             with transaction.atomic():
                 # Buscar ou criar certificado (baseado nos 8 primeiros dígitos do CNPJ)
                 cert_obj, created = Cert.objects.get_or_create(
-                    raiz_cnpj=cnpj[:8],
+                    raiz_cnpj=i_v_cnpj[:8],
                     defaults={
-                        'cpf_cnpj': cnpj,
+                        'cpf_cnpj': i_v_cnpj,
                     }
                 )
                 
                 # Buscar cliente
                 try:
-                    cliente = Clientes.objects.get(cod_cliente=cod_cliente)
+                    cliente = Clientes.objects.get(cod_cliente=i_v_cod_cliente)
                 except Clientes.DoesNotExist:
                     raise ValueError("Cliente não encontrado")
                 
                 # Criar nova empresa
                 empresa = Empresas.objects.create(
-                    cod_empresa=cod_empresa,
-                    razao=razao,
-                    cnpj=cnpj,
-                    fantasia=fantasia,
+                    cod_empresa=i_v_cod_empresa,
+                    razao=i_v_razao,
+                    cnpj=i_v_cnpj,
+                    fantasia=i_v_fantasia,
                     grp_empresa=q_grpempresa,
                     cliente=cliente,
                     cert=cert_obj,
-                    matriz=matriz,
-                    ie=ie,
-                    im=im,
-                    iest=iest,
-                    crt=crt,
-                    cnae=cnae,
-                    suframa=suframa,
-                    chave_acesso=chave_acesso
+                    matriz=i_b_matriz,
+                    ie=i_v_ie,
+                    im=i_v_im,
+                    iest=i_v_iest,
+                    crt=i_v_crt,
+                    cnae=i_v_cnae,
+                    suframa=i_v_suframa,
+                    chave_acesso=i_v_chave_acesso
                 )
                 empresa.save()
 
@@ -570,68 +574,68 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Atualização de Empresas"""
-    def Empresa_upd(
+    def upd_empresa(
         self,
-        cod_empresa,
-        razao,
-        fantasia,
-        grp_empresa,
-        cod_cliente,
-        matriz=False,
-        ie="",
-        im="",
-        iest="",
-        crt="",
-        cnae="",
-        suframa="",
-        chave_acesso=""
+        i_v_cod_empresa,
+        i_v_razao,
+        i_v_fantasia,
+        i_v_grp_empresa,
+        i_v_cod_cliente,
+        i_b_matriz=False,
+        i_v_ie="",
+        i_v_im="",
+        i_v_iest="",
+        i_v_crt="",
+        i_v_cnae="",
+        i_v_suframa="",
+        i_v_chave_acesso=""
     ) -> dict:
         try:
-            print(f"[DEBUG] Empresa_upd - cod_empresa: {cod_empresa}, cod_cliente: {cod_cliente}")
+            print(f"[DEBUG] Empresa_upd - cod_empresa: {i_v_cod_empresa}, cod_cliente: {i_v_cod_cliente}")
             
             # ✅ Validações obrigatórias
-            if not cod_empresa or not razao or not fantasia:
+            if not i_v_cod_empresa or not i_v_razao or not i_v_fantasia:
                 raise ValueError("Código, razão social e fantasia são obrigatórios")
             
-            if not cod_cliente:
+            if not i_v_cod_cliente:
                 raise ValueError("Cliente não identificado")
             
             # ✅ Validar IDOR: Empresa deve pertencer ao cliente
             empresa = Empresas.objects.get(
-                cod_empresa=cod_empresa,
-                cliente__cod_cliente=cod_cliente
+                cod_empresa=i_v_cod_empresa,
+                cliente__cod_cliente=i_v_cod_cliente
             )
             
             # ✅ Se grupo foi informado, validar
-            if grp_empresa:
+            if i_v_grp_empresa:
                 try:
-                    q_grpempresa = GrpEmpresas.objects.get(grp_empresa=grp_empresa)
+                    q_grpempresa = GrpEmpresas.objects.get(grp_empresa=i_v_grp_empresa)
                     empresa.grp_empresa = q_grpempresa
                 except GrpEmpresas.DoesNotExist:
-                    raise ValueError(f"Grupo de empresa '{grp_empresa}' não encontrado")
+                    raise ValueError(f"Grupo de empresa '{i_v_grp_empresa}' não encontrado")
             
             # ✅ Atualizar campos
-            empresa.razao = razao
-            empresa.fantasia = fantasia
-            empresa.matriz = matriz
-            empresa.ie = ie or None
-            empresa.im = im or None
-            empresa.iest = iest or None
-            empresa.crt = crt or None
-            empresa.cnae = cnae or None
-            empresa.suframa = suframa or None
-            empresa.chave_acesso = chave_acesso or None
+            empresa.razao = i_v_razao
+            empresa.fantasia = i_v_fantasia
+            empresa.matriz = i_b_matriz
+            empresa.ie = i_v_ie or None
+            empresa.im = i_v_im or None
+            empresa.iest = i_v_iest or None
+            empresa.crt = i_v_crt or None
+            empresa.cnae = i_v_cnae or None
+            empresa.suframa = i_v_suframa or None
+            empresa.chave_acesso = i_v_chave_acesso or None
             
             empresa.save(update_fields=[
                 'razao', 'fantasia', 'matriz', 'ie', 'im', 'iest', 
                 'crt', 'cnae', 'suframa', 'chave_acesso', 'grp_empresa'
             ])
             
-            print(f"[OK] Empresa {cod_empresa} atualizada com sucesso")
+            print(f"[OK] Empresa {i_v_cod_empresa} atualizada com sucesso")
             return {"success": True, "message": "Empresa atualizada com sucesso"}
         
         except Empresas.DoesNotExist:
-            print(f"[ERROR] Empresa {cod_empresa} não encontrada para cliente {cod_cliente}")
+            print(f"[ERROR] Empresa {i_v_cod_empresa} não encontrada para cliente {i_v_cod_cliente}")
             return {"success": False, "message": "Empresa não encontrada"}
         except ValueError as e:
             print(f"[ERROR] Empresa_upd - Validação: {str(e)}")
@@ -642,7 +646,7 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Atualizar certificado digital"""
-    def Cert_upd(self, i_v_arquivo_cert, i_v_cod_cliente):
+    def upd_certificado(self, i_v_arquivo_cert, i_v_cod_cliente):
         try:
             print(f"[DEBUG] Cert_upd chamado - arquivo: {i_v_arquivo_cert.name if i_v_arquivo_cert else 'None'}")
             
@@ -718,9 +722,9 @@ class Cl_Gdf():
 # Usuarios (DM_Usuarios)
 #--------------------------------------------------------------------------------
     """ Lista de Usuários vinculados às empresas do cliente """
-    def Get_Usuarios(self, i_cod_Cliente=None):
+    def get_usuarios(self, i_v_cod_cliente=None):
         try:
-            if not i_cod_Cliente:
+            if not i_v_cod_cliente:
                 self._registrar_log(type='E', id='E001', Values='Cliente')
                 return []
 
@@ -728,7 +732,7 @@ class Cl_Gdf():
             # Empresas do cliente (para tabela e modal)
             # -------------------------------------------------
             l_v_queryset_empresas = Empresas.objects.filter(
-                cliente_id=i_cod_Cliente
+                cliente_id=i_v_cod_cliente
             ).distinct()
 
             # -------------------------------------------------
@@ -756,7 +760,7 @@ class Cl_Gdf():
                     "email": l_v_usuario.email,
                     "is_active": l_v_usuario.is_active,
                     "date_joined": l_v_usuario.date_joined,
-                    "Aglomerado": i_cod_Cliente,
+                    "Aglomerado": i_v_cod_cliente,
                 })
 
             return lsl_dados_usuarios
@@ -767,7 +771,7 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Retorna todas as empresas e grupos disponíveis para o cliente"""
-    def Get_Usuario_ins(self, i_v_cod_cliente):
+    def get_usuario_dados_ins(self, i_v_cod_cliente):
         self.Retorn = {}
         try:
             # ✅ Empresas do cliente
@@ -799,7 +803,7 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Retorna dados do usuário para edição no modal"""
-    def Get_Usuario_upd(self, i_v_user_id, i_v_cod_cliente):
+    def get_usuario_upd(self, i_v_user_id, i_v_cod_cliente):
         self.Retorn = {}
         try:
             # ✅ Validar user_id
@@ -808,25 +812,25 @@ class Cl_Gdf():
 
             # ✅ Empresas do cliente
             l_v_queryset_todas_empresas = Empresas.objects.filter(
-                cliente__cod_cliente=cod_cliente
+                cliente__cod_cliente=i_v_cod_cliente
             ).distinct()
 
             # ✅ Todos os grupos do cliente (via relacionamento Group)
             todos_grupos = GrupoCliente.objects.filter(
-                cliente__cod_cliente=cod_cliente
+                cliente__cod_cliente=i_v_cod_cliente
             ).distinct()
 
-            q_user = User.objects.get(id=user_id)
+            q_user = User.objects.get(id=i_v_user_id)
             q_groups = q_user.groups.all()
             
             # ✅ Buscar APENAS as empresas do usuário
             q_empresas = Empresas.objects.filter(
                 userempresas__user_id=q_user.id,
-                cliente_id=cod_cliente
+                cliente_id=i_v_cod_cliente
             ).distinct()
 
             # ✅ Empresas DISPONÍVEIS (não atribuídas)
-            empresas_disponiveis = todas_empresas.exclude(
+            empresas_disponiveis = l_v_queryset_todas_empresas.exclude(
                 cod_empresa__in=q_empresas.values_list('cod_empresa', flat=True)
             )
 
@@ -857,7 +861,7 @@ class Cl_Gdf():
             }
 
         except User.DoesNotExist as e:
-            print(f"[ERROR] Usuário {user_id} não encontrado: {str(e)}")
+            print(f"[ERROR] Usuário {i_v_user_id} não encontrado: {str(e)}")
             self.Retorn = {"erro": "Usuário não encontrado"}
         except ValueError as e:
             print(f"[ERROR] Validação falhou: {str(e)}")
@@ -870,7 +874,7 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Método legado - manter para compatibilidade"""
-    def Usuario_ins(self, i_v_username, i_v_email, i_v_password, i_v_first_name="", i_v_last_name="", 
+    def set_usuario(self, i_v_username, i_v_email, i_v_password, i_v_first_name="", i_v_last_name="", 
                     i_lsl_empresas_ids=None, i_lsl_grupos_ids=None, i_v_cod_cliente=None):
        
         self.Retorn = {"success": False, "message": ""}
@@ -959,7 +963,7 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Atualiza usuário, suas empresas e grupos com transação atômica"""
-    def Usuario_upd(self, i_v_user_id: int, i_v_first_name: str, i_v_last_name: str, i_v_email: str, 
+    def upd_usuario(self, i_v_user_id: int, i_v_first_name: str, i_v_last_name: str, i_v_email: str, 
                     i_v_is_active: bool, i_lsl_empresa_ids: list[str], i_lsl_grupo_ids: list[int], 
                     i_v_cod_cliente: str) -> dict:
         self.Retorn = []

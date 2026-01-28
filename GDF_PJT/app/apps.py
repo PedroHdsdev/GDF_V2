@@ -28,3 +28,4 @@ class AppConfig(AppConfig):
             )
 
         #threading.Thread(target=run_streamlit, daemon=True).start()
+

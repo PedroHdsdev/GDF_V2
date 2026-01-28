@@ -2,7 +2,7 @@
    GERENCIAR PAGINAÇÃO & BUSCA NO CLIENTE
 ================================ */
 
-const empresasState = {
+const og_estado_empresas = {
     allEmpresas: [],      // ✅ Todas as empresas carregadas uma vez
     itemsPerPage: 30,
     currentPage: 1,
@@ -13,20 +13,20 @@ const empresasState = {
 
 document.addEventListener("DOMContentLoaded", () => {
     // ✅ Carregar dados da tabela no HTML e armazenar em memória
-    extrairEmpresasDoHTML();
+    fn_extrair_empresas_html();
     
-    initPaginacao();
-    initBusca();
-    initEmpresaIns();
-    initEmpresaUpd();
+    fn_init_paginacao();
+    fn_init_busca();
+    fn_init_empresa_ins();
+    fn_init_empresa_upd();
 });
 
 /* ===============================
    EXTRAIR EMPRESAS DO HTML (Enviadas pelo Django)
 ================================ */
-function extrairEmpresasDoHTML() {
+function fn_extrair_empresas_html() {
     const rows = document.querySelectorAll(".empresa-row");
-    empresasState.allEmpresas = [];
+    og_estado_empresas.allEmpresas = [];
     
     rows.forEach(row => {
         // ✅ Extrair dados estruturados da linha (seguindo ordem da tabela)
@@ -43,17 +43,17 @@ function extrairEmpresasDoHTML() {
             validade: cells[5]?.textContent.trim() || ''
         };
         
-        empresasState.allEmpresas.push(empresaData);
+        og_estado_empresas.allEmpresas.push(empresaData);
     });
     
-    console.log(`✅ ${empresasState.allEmpresas.length} empresas carregadas em memória`);
-    console.log('📋 Primeira empresa:', empresasState.allEmpresas[0]);
+    console.log(`✅ ${og_estado_empresas.allEmpresas.length} empresas carregadas em memória`);
+    console.log('📋 Primeira empresa:', og_estado_empresas.allEmpresas[0]);
 }
 
 /* ===============================
    BUSCA (Client-side, sem fazer requests HTTP)
 ================================ */
-function initBusca() {
+function fn_init_busca() {
     const formBusca = document.querySelector("form");
     if (!formBusca) {
         console.warn("⚠️ Formulário de busca não encontrado");
@@ -74,34 +74,34 @@ function initBusca() {
         
         const query = inputBusca.value.trim().toLowerCase();
         console.log(`🔍 Buscando por: "${query}"`);
-        empresasState.searchQuery = query;
-        empresasState.currentPage = 1;  // Reset para página 1
+        og_estado_empresas.searchQuery = query;
+        og_estado_empresas.currentPage = 1;  // Reset para página 1
         
-        atualizarTabelaFiltrada();
+        fn_atualizar_tabela_filtrada();
     });
     
     // ✅ Busca em tempo real enquanto digita
     inputBusca.addEventListener("input", (e) => {
         const query = e.target.value.trim().toLowerCase();
-        empresasState.searchQuery = query;
-        empresasState.currentPage = 1;
+        og_estado_empresas.searchQuery = query;
+        og_estado_empresas.currentPage = 1;
         
-        atualizarTabelaFiltrada();
+        fn_atualizar_tabela_filtrada();
     });
 }
 
 /* ===============================
    FILTRAR EMPRESAS
 ================================ */
-function filtrarEmpresas() {
-    if (!empresasState.searchQuery) {
-        return empresasState.allEmpresas;  // Sem filtro, retorna todas
+function fn_filtrar_empresas() {
+    if (!og_estado_empresas.searchQuery) {
+        return og_estado_empresas.allEmpresas;  // Sem filtro, retorna todas
     }
     
-    const query = empresasState.searchQuery.toLowerCase();
+    const query = og_estado_empresas.searchQuery.toLowerCase();
     
     // ✅ Buscar em múltiplos campos
-    const filtradas = empresasState.allEmpresas.filter(empresa => {
+    const filtradas = og_estado_empresas.allEmpresas.filter(empresa => {
         return (
             empresa.codigo.toLowerCase().includes(query) ||
             empresa.empresa.toLowerCase().includes(query) ||
@@ -110,29 +110,29 @@ function filtrarEmpresas() {
         );
     });
     
-    console.log(`🔎 Filtradas: ${filtradas.length} de ${empresasState.allEmpresas.length}`);
+    console.log(`🔎 Filtradas: ${filtradas.length} de ${og_estado_empresas.allEmpresas.length}`);
     return filtradas;
 }
 
 /* ===============================
    CALCULAR PAGINAÇÃO
 ================================ */
-function calcularPaginacao(empresasFiltradas) {
+function fn_calcular_paginacao(empresasFiltradas) {
     const total = empresasFiltradas.length;
-    const totalPages = Math.ceil(total / empresasState.itemsPerPage);
+    const totalPages = Math.ceil(total / og_estado_empresas.itemsPerPage);
     
     // ✅ Garantir que currentPage é válida
-    if (empresasState.currentPage > totalPages) {
-        empresasState.currentPage = Math.max(1, totalPages);
+    if (og_estado_empresas.currentPage > totalPages) {
+        og_estado_empresas.currentPage = Math.max(1, totalPages);
     }
     
-    const start = (empresasState.currentPage - 1) * empresasState.itemsPerPage;
-    const end = start + empresasState.itemsPerPage;
+    const start = (og_estado_empresas.currentPage - 1) * og_estado_empresas.itemsPerPage;
+    const end = start + og_estado_empresas.itemsPerPage;
     
     return {
         itemsNoInterval: empresasFiltradas.slice(start, end),
         totalPages,
-        currentPage: empresasState.currentPage,
+        currentPage: og_estado_empresas.currentPage,
         total
     };
 }
@@ -140,9 +140,9 @@ function calcularPaginacao(empresasFiltradas) {
 /* ===============================
    ATUALIZAR TABELA (após busca ou paginação)
 ================================ */
-function atualizarTabelaFiltrada() {
-    const empresasFiltradas = filtrarEmpresas();
-    const paginacao = calcularPaginacao(empresasFiltradas);
+function fn_atualizar_tabela_filtrada() {
+    const empresasFiltradas = fn_filtrar_empresas();
+    const paginacao = fn_calcular_paginacao(empresasFiltradas);
     
     const tbody = document.querySelector("table tbody");
     if (!tbody) return;
@@ -162,18 +162,17 @@ function atualizarTabelaFiltrada() {
             .map(empresa => `<tr class="empresa-row" data-empresa-id="${empresa.id}">${empresa.html}</tr>`)
             .join('');
         
-        // ✅ Re-adicionar listeners de clique após renderizar
-        adicionarListenersDaTabela();
+        // Nota: Listeners de clique são gerenciados via delegação em fn_init_empresa_upd()
     }
     
     // ✅ Atualizar paginação
-    atualizarPaginacao(paginacao);
+    fn_atualizar_paginacao(paginacao);
 }
 
 /* ===============================
    ADICIONAR LISTENERS NA TABELA
 ================================ */
-function adicionarListenersDaTabela() {
+function fn_adicionar_listeners_tabela() {
     document.querySelectorAll(".empresa-row").forEach(row => {
         row.addEventListener("click", async (e) => {
             if (e.target.closest("a, button, input, label")) return;
@@ -181,7 +180,7 @@ function adicionarListenersDaTabela() {
             const empresaId = row.dataset.empresaId;
             if (!empresaId) return;
             
-            await loadEmpresa(empresaId);
+            await fn_carregar_empresa(empresaId);
             const modal = new bootstrap.Modal(document.getElementById("modalEmpresaUpd"));
             modal.show();
         });
@@ -191,7 +190,7 @@ function adicionarListenersDaTabela() {
 /* ===============================
    ATUALIZAR CONTROLES DE PAGINAÇÃO
 ================================ */
-function atualizarPaginacao(paginacao) {
+function fn_atualizar_paginacao(paginacao) {
     const nav = document.querySelector("nav ul.pagination");
     if (!nav) return;
     
@@ -201,7 +200,7 @@ function atualizarPaginacao(paginacao) {
     if (paginacao.currentPage > 1) {
         html += `
             <li class="page-item">
-                <a class="page-link" href="#" onclick="irParaPagina(${paginacao.currentPage - 1}); return false;">
+                <a class="page-link" href="#" onclick="fn_ir_pagina(${paginacao.currentPage - 1}); return false;">
                     Anterior
                 </a>
             </li>
@@ -218,7 +217,7 @@ function atualizarPaginacao(paginacao) {
         } else {
             html += `
                 <li class="page-item">
-                    <a class="page-link" href="#" onclick="irParaPagina(${i}); return false;">
+                    <a class="page-link" href="#" onclick="fn_ir_pagina(${i}); return false;">
                         ${i}
                     </a>
                 </li>
@@ -230,7 +229,7 @@ function atualizarPaginacao(paginacao) {
     if (paginacao.currentPage < paginacao.totalPages) {
         html += `
             <li class="page-item">
-                <a class="page-link" href="#" onclick="irParaPagina(${paginacao.currentPage + 1}); return false;">
+                <a class="page-link" href="#" onclick="fn_ir_pagina(${paginacao.currentPage + 1}); return false;">
                     Próxima
                 </a>
             </li>
@@ -243,24 +242,26 @@ function atualizarPaginacao(paginacao) {
 /* ===============================
    IR PARA PÁGINA (Chamado pelos links)
 ================================ */
-function irParaPagina(pageNum) {
-    empresasState.currentPage = pageNum;
-    atualizarTabelaFiltrada();
+function fn_ir_pagina(pageNum) {
+    og_estado_empresas.currentPage = pageNum;
+    fn_atualizar_tabela_filtrada();
     window.scrollTo(0, 0);  // ✅ Scroll para o topo
 }
 
 /* ===============================
    INICIALIZAR PAGINAÇÃO
 ================================ */
-function initPaginacao() {
-    // ✅ Paginação já é gerenciada via irParaPagina()
-    // Aqui apenas garantimos a primeira renderização
+function fn_init_paginacao() {
+    // ✅ Renderizar paginação inicial
+    fn_atualizar_tabela_filtrada();
+    
+    // Nota: Listeners de clique são gerenciados via delegação em fn_init_empresa_upd()
 }
 
 /* ===============================
    INS – INSERT EMPRESA
 ================================ */ 
-function initEmpresaIns() {
+function fn_init_empresa_ins() {
     const btnAbrirModal = document.getElementById("btnAbrirModalEmpresaIns");
     const modalEl = document.getElementById("modalEmpresaIns");
     
@@ -275,7 +276,7 @@ function initEmpresaIns() {
         console.log("🔄 Clique no botão Cadastrar - buscando grupos...");
         
         // Fechar modal de UPDATE se estiver aberto
-        fecharModalAbertoEmpresa();
+        fn_fechar_modal_aberto();
         
         // Buscar grupos ANTES de abrir o modal
         try {
@@ -302,10 +303,10 @@ function initEmpresaIns() {
                 }
                 
                 // PREENCHER select ANTES de abrir modal
-                preencherSelectGrupos(grupos);
+                fn_preencher_select_grupos(grupos);
                 
                 // AGORA SIM, abrir o modal
-                empresasState.modalAberto = "modalEmpresaIns";
+                og_estado_empresas.modalAberto = "modalEmpresaIns";
                 const modal = new bootstrap.Modal(modalEl, {
                     backdrop: "static",
                     keyboard: false
@@ -327,8 +328,8 @@ function initEmpresaIns() {
         const form = modalEl.querySelector("form");
         if (form) form.reset();
         
-        if (empresasState.modalAberto === "modalEmpresaIns") {
-            empresasState.modalAberto = null;
+        if (og_estado_empresas.modalAberto === "modalEmpresaIns") {
+            og_estado_empresas.modalAberto = null;
         }
     });
 }
@@ -336,8 +337,8 @@ function initEmpresaIns() {
 /* ===============================
    PREENCHER SELECT DE GRUPOS
 ================================ */
-function preencherSelectGrupos(grupos) {
-    console.log("🎯 preencherSelectGrupos chamado com:", grupos);
+function fn_preencher_select_grupos(grupos) {
+    console.log("🎯 fn_preencher_select_grupos chamado com:", grupos);
     
     const select = document.getElementById("ins_grpempresas");
     if (!select) {
@@ -382,7 +383,7 @@ function preencherSelectGrupos(grupos) {
 /* ===============================
    UPD – UPDATE EMPRESA
 ================================ */
-function initEmpresaUpd() {
+function fn_init_empresa_upd() {
     const modalEl = document.getElementById("modalEmpresaUpd");
     if (!modalEl) return;
 
@@ -396,13 +397,13 @@ function initEmpresaUpd() {
         if (!empresaId) return;
 
         // ✅ Fechar modal de INSERT se estiver aberto
-        fecharModalAbertoEmpresa();
+        fn_fechar_modal_aberto();
         
         // ✅ Marcar como modal aberto
-        empresasState.modalAberto = "modalEmpresaUpd";
+        og_estado_empresas.modalAberto = "modalEmpresaUpd";
         
         // ✅ Aguardar dados serem carregados ANTES de abrir o modal
-        const sucesso = await loadEmpresa(empresaId);
+        const sucesso = await fn_carregar_empresa(empresaId);
         
         if (sucesso) {
             const modal = new bootstrap.Modal(modalEl, {
@@ -411,16 +412,16 @@ function initEmpresaUpd() {
             });
             modal.show();
         } else {
-            empresasState.modalAberto = null;
+            og_estado_empresas.modalAberto = null;
         }
     });
 
     modalEl.addEventListener("hidden.bs.modal", () => {
-        resetarFormularioUpd();
+        fn_resetar_formulario();
         
         // ✅ Desmarcar modal aberto
-        if (empresasState.modalAberto === "modalEmpresaUpd") {
-            empresasState.modalAberto = null;
+        if (og_estado_empresas.modalAberto === "modalEmpresaUpd") {
+            og_estado_empresas.modalAberto = null;
         }
     });
 }
@@ -428,16 +429,16 @@ function initEmpresaUpd() {
 /* ===============================
    GERENCIAR MODAIS (prevenir múltiplos abertos)
 ================================ */
-function fecharModalAbertoEmpresa() {
-    if (!empresasState.modalAberto) return;
+function fn_fechar_modal_aberto() {
+    if (!og_estado_empresas.modalAberto) return;
     
-    const modalElement = document.getElementById(empresasState.modalAberto);
+    const modalElement = document.getElementById(og_estado_empresas.modalAberto);
     if (modalElement) {
         const modalInstance = bootstrap.Modal.getInstance(modalElement);
         if (modalInstance) {
-            console.log(`🔒 Fechando modal: ${empresasState.modalAberto}`);
+            console.log(`🔒 Fechando modal: ${og_estado_empresas.modalAberto}`);
             modalInstance.hide();
-            empresasState.modalAberto = null;
+            og_estado_empresas.modalAberto = null;
         }
     }
 }
@@ -445,7 +446,7 @@ function fecharModalAbertoEmpresa() {
 /* ===============================
    LOAD EMPRESA (API)
 ================================ */
-async function loadEmpresa(empresaId) {
+async function fn_carregar_empresa(empresaId) {
     try {
         console.log(`📥 Iniciando carregamento da empresa ${empresaId}...`);
         
@@ -466,7 +467,7 @@ async function loadEmpresa(empresaId) {
         console.log("✅ Dados da empresa recebidos com sucesso");
 
         // ✅ Preencher o formulário modal
-        preencherFormularioEmpresa(data);
+        fn_preencher_formulario(data);
         
         return true;  // ✅ Retornar true se sucesso
 
@@ -480,7 +481,7 @@ async function loadEmpresa(empresaId) {
 /* ===============================
    PREENCHER FORMULÁRIO UPDATE
 ================================ */
-function preencherFormularioEmpresa(data) {
+function fn_preencher_formulario(data) {
   // Atualizar action dos forms com o ID da empresa
   document.getElementById('formEmpresaUpd').action = `/empresa/${data.cod_empresa}/`;
   document.getElementById('formCertUpd').action = `/empresa/${data.cod_empresa}/`;
@@ -515,7 +516,7 @@ function preencherFormularioEmpresa(data) {
     document.getElementById('upd_dt_inicial').value = data.cert_empresa.ini_validade || '';
     document.getElementById('upd_dt_fim').value = data.cert_empresa.fim_validade || '';
   } else {
-    limparCamposCertificado();
+    fn_limpar_certificado();
   }
   
   // Salvar estado original
@@ -525,7 +526,7 @@ function preencherFormularioEmpresa(data) {
 /* ===============================
    LIMPAR CAMPOS DO CERTIFICADO
 ================================ */
-function limparCamposCertificado() {
+function fn_limpar_certificado() {
   document.getElementById('upd_emissor').value = '';
   document.getElementById('upd_cert_cnpj').value = '';
   document.getElementById('upd_dt_inicial').value = '';
@@ -535,7 +536,7 @@ function limparCamposCertificado() {
 /* ===============================
    RESETAR FORMULÁRIO UPDATE
 ================================ */
-function resetarFormularioUpd() {
+function fn_resetar_formulario() {
   // Resetar para aba inicial
   const firstTab = document.querySelector('#empresaTabs .nav-link:first-child');
   if (firstTab) {
@@ -587,7 +588,7 @@ function resetarFormularioUpd() {
 }
 
 // Função para tornar campos editáveis na aba Empresa
-function makeEditableEmpresa() {
+function fn_editar_empresa() {
   // Campos que podem ser editados
   const editableFields = [
     'upd_razao',
@@ -622,7 +623,7 @@ function makeEditableEmpresa() {
 }
 
 // Função para cancelar edição na aba Empresa
-function cancelChangesEmpresa() {
+function fn_cancelar_edicao_empresa() {
   // Restaurar valores originais
   restoreOriginalFormData();
 
@@ -660,7 +661,7 @@ function cancelChangesEmpresa() {
 }
 
 // Função para tornar campos editáveis na aba Certificado
-function makeEditableCert() {
+function fn_editar_certificado() {
   // Habilitar upload de arquivo
   const fileInput = document.getElementById('upd_cert_file');
   if (fileInput) {
@@ -674,7 +675,7 @@ function makeEditableCert() {
 }
 
 // Função para cancelar edição na aba Certificado
-function cancelChangesCert() {
+function fn_cancelar_edicao_certificado() {
   // Desabilitar upload de arquivo
   const fileInput = document.getElementById('upd_cert_file');
   if (fileInput) {
@@ -690,7 +691,7 @@ function cancelChangesCert() {
 
 // Salvar estado original do formulário
 function saveOriginalFormData() {
-  empresasState.originalFormData = {
+  og_estado_empresas.originalFormData = {
     razao: document.getElementById('upd_razao').value,
     fantasia: document.getElementById('upd_fantasia').value,
     ie: document.getElementById('upd_ie').value,
@@ -707,23 +708,23 @@ function saveOriginalFormData() {
 
 // Restaurar estado original do formulário
 function restoreOriginalFormData() {
-  if (Object.keys(empresasState.originalFormData).length === 0) return;
+  if (Object.keys(og_estado_empresas.originalFormData).length === 0) return;
 
-  document.getElementById('upd_razao').value = empresasState.originalFormData.razao || '';
-  document.getElementById('upd_fantasia').value = empresasState.originalFormData.fantasia || '';
-  document.getElementById('upd_ie').value = empresasState.originalFormData.ie || '';
-  document.getElementById('upd_im').value = empresasState.originalFormData.im || '';
-  document.getElementById('upd_iest').value = empresasState.originalFormData.iest || '';
-  document.getElementById('upd_crt').value = empresasState.originalFormData.crt || '';
-  document.getElementById('upd_cnae').value = empresasState.originalFormData.cnae || '';
-  document.getElementById('upd_suframa').value = empresasState.originalFormData.suframa || '';
-  document.getElementById('upd_grpEmpresa_id').value = empresasState.originalFormData.grpEmpresa || '';
-  document.getElementById('upd_chave_acesso').value = empresasState.originalFormData.chaveAcesso || '';
-  document.getElementById('upd_matriz').checked = empresasState.originalFormData.matriz || false;
+  document.getElementById('upd_razao').value = og_estado_empresas.originalFormData.razao || '';
+  document.getElementById('upd_fantasia').value = og_estado_empresas.originalFormData.fantasia || '';
+  document.getElementById('upd_ie').value = og_estado_empresas.originalFormData.ie || '';
+  document.getElementById('upd_im').value = og_estado_empresas.originalFormData.im || '';
+  document.getElementById('upd_iest').value = og_estado_empresas.originalFormData.iest || '';
+  document.getElementById('upd_crt').value = og_estado_empresas.originalFormData.crt || '';
+  document.getElementById('upd_cnae').value = og_estado_empresas.originalFormData.cnae || '';
+  document.getElementById('upd_suframa').value = og_estado_empresas.originalFormData.suframa || '';
+  document.getElementById('upd_grpEmpresa_id').value = og_estado_empresas.originalFormData.grpEmpresa || '';
+  document.getElementById('upd_chave_acesso').value = og_estado_empresas.originalFormData.chaveAcesso || '';
+  document.getElementById('upd_matriz').checked = og_estado_empresas.originalFormData.matriz || false;
 }
 
 // Função para formatar CNPJ (opcional)
-function formatCNPJ(input) {
+function fn_formatar_cnpj(input) {
   let value = input.value.replace(/\D/g, '');
   
   if (value.length <= 14) {
@@ -740,6 +741,54 @@ function formatCNPJ(input) {
 const cnpjInput = document.getElementById('ins_cnpj');
 if (cnpjInput) {
   cnpjInput.addEventListener('input', function() {
-    formatCNPJ(this);
+    fn_formatar_cnpj(this);
   });
+}
+
+/* ===============================
+   VALIDAÇÃO FORMULÁRIO INSERT
+================================ */
+function fn_validar_formulario_ins(event) {
+    event.preventDefault();
+    
+    const cod_empresa = document.getElementById('ins_codempresa').value.trim();
+    const cnpj = document.getElementById('ins_cnpj').value.trim();
+    const razao = document.getElementById('ins_razao').value.trim();
+    const fantasia = document.getElementById('ins_fantasia').value.trim();
+    const grp_empresa = document.getElementById('ins_grpempresas').value;
+    
+    const errors = [];
+    if (!cod_empresa) errors.push("Código da empresa é obrigatório");
+    if (!cnpj) errors.push("CNPJ é obrigatório");
+    if (!razao) errors.push("Razão Social é obrigatória");
+    if (!fantasia) errors.push("Nome Fantasia é obrigatório");
+    if (!grp_empresa) errors.push("Selecione um Grupo de Empresas");
+    
+    if (errors.length > 0) {
+        alert("❌ Erros:\n\n" + errors.join("\n"));
+        return false;
+    }
+    
+    event.target.submit();
+}
+
+/* ===============================
+   VALIDAÇÃO FORMULÁRIO UPDATE
+================================ */
+function fn_validar_formulario_upd(event) {
+    event.preventDefault();
+    
+    const razao = document.getElementById('upd_razao').value.trim();
+    const fantasia = document.getElementById('upd_fantasia').value.trim();
+    
+    const errors = [];
+    if (!razao) errors.push("Razão Social é obrigatória");
+    if (!fantasia) errors.push("Nome Fantasia é obrigatório");
+    
+    if (errors.length > 0) {
+        alert("❌ Erros:\n\n" + errors.join("\n"));
+        return false;
+    }
+    
+    event.target.submit();
 }

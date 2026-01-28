@@ -2,7 +2,7 @@
    GERENCIAR PAGINAÇÃO & BUSCA NO CLIENTE
 ================================ */
 
-const clientesState = {
+const og_estado_clientes = {
     allClientes: [],      // ✅ Todos os clientes carregados uma vez
     itemsPerPage: 30,
     currentPage: 1,
@@ -15,21 +15,21 @@ const clientesState = {
 
 document.addEventListener("DOMContentLoaded", () => {
     // ✅ Carregar dados da tabela no HTML e armazenar em memória
-    extrairClientesDoHTML();
+    fn_extrair_clientes_html();
     
-    initPaginacao();
-    initBusca();
-    initClienteIns();
-    initClienteUpd();
-    initModalMessageCleanup();  // ✅ NOVO: Limpar messages ao abrir/fechar modal
+    fn_init_paginacao();
+    fn_init_busca();
+    fn_init_cliente_ins();
+    fn_init_cliente_upd();
+    fn_init_modal_message_cleanup();  // ✅ NOVO: Limpar messages ao abrir/fechar modal
 });
 
 /* ===============================
    EXTRAIR CLIENTES DO HTML (Enviados pelo Django)
 ================================ */
-function extrairClientesDoHTML() {
+function fn_extrair_clientes_html() {
     const rows = document.querySelectorAll(".cliente-row");
-    clientesState.allClientes = [];
+    og_estado_clientes.allClientes = [];
     
     rows.forEach(row => {
         // ✅ Extrair dados estruturados da linha (seguindo ordem da tabela)
@@ -44,17 +44,18 @@ function extrairClientesDoHTML() {
             ativo: cells[3]?.textContent.trim() || '',
             data_cadastro: cells[4]?.textContent.trim() || ''
         };
-        clientesState.allClientes.push(clienteData);
+        og_estado_clientes.allClientes.push(clienteData);
     });
     
-    console.log(`✅ ${clientesState.allClientes.length} clientes carregados em memória`);
-    console.log('📋 Primeiro cliente:', clientesState.allClientes[0]);
+    console.log(`✅ ${og_estado_clientes.allClientes.length} clientes carregados em memória`);
+    console.log('📋 IDs extraídos:', og_estado_clientes.allClientes.map(c => c.id));
+    console.log('📋 Primeiro cliente:', og_estado_clientes.allClientes[0]);
 }
 
 /* ===============================
    BUSCA (Client-side, sem fazer requests HTTP)
 ================================ */
-function initBusca() {
+function fn_init_busca() {
     const formBusca = document.querySelector("form");
     if (!formBusca) {
         console.warn("⚠️ Formulário de busca não encontrado");
@@ -75,34 +76,34 @@ function initBusca() {
         
         const query = inputBusca.value.trim().toLowerCase();
         console.log(`🔍 Buscando por: "${query}"`);
-        clientesState.searchQuery = query;
-        clientesState.currentPage = 1;  // Reset para página 1
+        og_estado_clientes.searchQuery = query;
+        og_estado_clientes.currentPage = 1;  // Reset para página 1
         
-        atualizarTabelaFiltrada();
+        fn_atualizar_tabela_filtrada();
     });
     
     // ✅ Busca em tempo real enquanto digita
     inputBusca.addEventListener("input", (e) => {
         const query = e.target.value.trim().toLowerCase();
-        clientesState.searchQuery = query;
-        clientesState.currentPage = 1;
+        og_estado_clientes.searchQuery = query;
+        og_estado_clientes.currentPage = 1;
         
-        atualizarTabelaFiltrada();
+        fn_atualizar_tabela_filtrada();
     });
 }
 
 /* ===============================
    FILTRAR CLIENTES
 ================================ */
-function filtrarClientes() {
-    if (!clientesState.searchQuery) {
-        return clientesState.allClientes;  // Sem filtro, retorna todos
+function fn_filtrar_clientes() {
+    if (!og_estado_clientes.searchQuery) {
+        return og_estado_clientes.allClientes;  // Sem filtro, retorna todos
     }
     
-    const query = clientesState.searchQuery.toLowerCase();
+    const query = og_estado_clientes.searchQuery.toLowerCase();
     
     // ✅ Buscar em múltiplos campos
-    const filtrados = clientesState.allClientes.filter(cliente => {
+    const filtrados = og_estado_clientes.allClientes.filter(cliente => {
         return (
             cliente.codigo.toLowerCase().includes(query) ||
             cliente.razao.toLowerCase().includes(query) ||
@@ -111,29 +112,29 @@ function filtrarClientes() {
         );
     });
     
-    console.log(`🔎 Filtrados: ${filtrados.length} de ${clientesState.allClientes.length}`);
+    console.log(`🔎 Filtrados: ${filtrados.length} de ${og_estado_clientes.allClientes.length}`);
     return filtrados;
 }
 
 /* ===============================
    CALCULAR PAGINAÇÃO
 ================================ */
-function calcularPaginacao(clientesFiltrados) {
+function fn_calcular_paginacao(clientesFiltrados) {
     const total = clientesFiltrados.length;
-    const totalPages = Math.ceil(total / clientesState.itemsPerPage);
+    const totalPages = Math.ceil(total / og_estado_clientes.itemsPerPage);
     
     // ✅ Garantir que currentPage é válida
-    if (clientesState.currentPage > totalPages) {
-        clientesState.currentPage = Math.max(1, totalPages);
+    if (og_estado_clientes.currentPage > totalPages) {
+        og_estado_clientes.currentPage = Math.max(1, totalPages);
     }
     
-    const start = (clientesState.currentPage - 1) * clientesState.itemsPerPage;
-    const end = start + clientesState.itemsPerPage;
+    const start = (og_estado_clientes.currentPage - 1) * og_estado_clientes.itemsPerPage;
+    const end = start + og_estado_clientes.itemsPerPage;
     
     return {
         itemsNoInterval: clientesFiltrados.slice(start, end),
         totalPages,
-        currentPage: clientesState.currentPage,
+        currentPage: og_estado_clientes.currentPage,
         total
     };
 }
@@ -141,9 +142,9 @@ function calcularPaginacao(clientesFiltrados) {
 /* ===============================
    ATUALIZAR TABELA (após busca ou paginação)
 ================================ */
-function atualizarTabelaFiltrada() {
-    const clientesFiltrados = filtrarClientes();
-    const paginacao = calcularPaginacao(clientesFiltrados);
+function fn_atualizar_tabela_filtrada() {
+    const clientesFiltrados = fn_filtrar_clientes();
+    const paginacao = fn_calcular_paginacao(clientesFiltrados);
     
     const tbody = document.querySelector("table tbody");
     if (!tbody) return;
@@ -163,18 +164,19 @@ function atualizarTabelaFiltrada() {
             .map(cliente => `<tr class="cliente-row" data-cliente-id="${cliente.id}">${cliente.html}</tr>`)
             .join('');
         
-        // ✅ Re-adicionar listeners de clique após renderizar
-        adicionarListenersDaTabela();
+        // Nota: Listeners de clique são gerenciados via delegação em fn_init_cliente_upd()
     }
     
     // ✅ Atualizar paginação
-    atualizarPaginacao(paginacao);
+    fn_atualizar_paginacao(paginacao);
 }
 
 /* ===============================
-   ADICIONAR LISTENERS NA TABELA
+   ADICIONAR LISTENERS NA TABELA (não usado - usar delegação)
 ================================ */
-function adicionarListenersDaTabela() {
+function fn_adicionar_listeners_tabela() {
+    // NOTA: Função mantida para compatibilidade mas não usada
+    // Event listeners são gerenciados via delegação em fn_init_cliente_upd()
     document.querySelectorAll(".cliente-row").forEach(row => {
         row.addEventListener("click", async (e) => {
             if (e.target.closest("a, button, input, label")) return;
@@ -182,7 +184,7 @@ function adicionarListenersDaTabela() {
             const clienteId = row.dataset.clienteId;
             if (!clienteId) return;
             
-            await loadCliente(clienteId);
+            await fn_carregar_cliente(clienteId);
             const modal = new bootstrap.Modal(document.getElementById("modalClienteUpd"));
             modal.show();
         });
@@ -192,7 +194,7 @@ function adicionarListenersDaTabela() {
 /* ===============================
    ATUALIZAR CONTROLES DE PAGINAÇÃO
 ================================ */
-function atualizarPaginacao(paginacao) {
+function fn_atualizar_paginacao(paginacao) {
     const nav = document.querySelector("nav ul.pagination");
     if (!nav) return;
     
@@ -202,7 +204,7 @@ function atualizarPaginacao(paginacao) {
     if (paginacao.currentPage > 1) {
         html += `
             <li class="page-item">
-                <a class="page-link" href="#" onclick="irParaPagina(${paginacao.currentPage - 1}); return false;">
+                <a class="page-link" href="#" onclick="fn_ir_pagina(${paginacao.currentPage - 1}); return false;">
                     Anterior
                 </a>
             </li>
@@ -219,7 +221,7 @@ function atualizarPaginacao(paginacao) {
         } else {
             html += `
                 <li class="page-item">
-                    <a class="page-link" href="#" onclick="irParaPagina(${i}); return false;">
+                    <a class="page-link" href="#" onclick="fn_ir_pagina(${i}); return false;">
                         ${i}
                     </a>
                 </li>
@@ -231,7 +233,7 @@ function atualizarPaginacao(paginacao) {
     if (paginacao.currentPage < paginacao.totalPages) {
         html += `
             <li class="page-item">
-                <a class="page-link" href="#" onclick="irParaPagina(${paginacao.currentPage + 1}); return false;">
+                <a class="page-link" href="#" onclick="fn_ir_pagina(${paginacao.currentPage + 1}); return false;">
                     Próxima
                 </a>
             </li>
@@ -244,33 +246,33 @@ function atualizarPaginacao(paginacao) {
 /* ===============================
    IR PARA PÁGINA (Chamado pelos links)
 ================================ */
-function irParaPagina(pageNum) {
-    clientesState.currentPage = pageNum;
-    atualizarTabelaFiltrada();
+function fn_ir_pagina(pageNum) {
+    og_estado_clientes.currentPage = pageNum;
+    fn_atualizar_tabela_filtrada();
     window.scrollTo(0, 0);  // ✅ Scroll para o topo
 }
 
 /* ===============================
    INICIALIZAR PAGINAÇÃO
 ================================ */
-function initPaginacao() {
-    // ✅ Paginação já é gerenciada via irParaPagina()
-    // Aqui apenas garantimos a primeira renderização
+function fn_init_paginacao() {
+    // ✅ Renderizar paginação inicial
+    fn_atualizar_tabela_filtrada();
 }
 
 /* ===============================
    INS – INSERT CLIENTE
 ================================ */ 
-function initClienteIns() {
+function fn_init_cliente_ins() {
     const modalEl = document.getElementById("modalClienteIns");
     if (!modalEl) return;
 
     modalEl.addEventListener("show.bs.modal", () => {
         // ✅ Fechar modal de UPDATE se estiver aberto
-        fecharModalAbertoCliente();
+        fn_fechar_modal_aberto();
         
         // ✅ Marcar como modal aberto
-        clientesState.modalAberto = "modalClienteIns";
+        og_estado_clientes.modalAberto = "modalClienteIns";
         console.log("✅ Modal INSERT aberto");
     });
 
@@ -279,8 +281,8 @@ function initClienteIns() {
         if (form) form.reset();
         
         // ✅ Desmarcar modal aberto
-        if (clientesState.modalAberto === "modalClienteIns") {
-            clientesState.modalAberto = null;
+        if (og_estado_clientes.modalAberto === "modalClienteIns") {
+            og_estado_clientes.modalAberto = null;
         }
     });
 }
@@ -288,27 +290,47 @@ function initClienteIns() {
 /* ===============================
    UPD – UPDATE CLIENTE
 ================================ */
-function initClienteUpd() {
+function fn_init_cliente_upd() {
     const modalEl = document.getElementById("modalClienteUpd");
-    if (!modalEl) return;
+    if (!modalEl) {
+        console.warn("⚠️ Modal modalClienteUpd não encontrado");
+        return;
+    }
 
     document.addEventListener("click", async (e) => {
-        const row = e.target.closest(".cliente-row");
-        if (!row) return;
+        console.log("🖱️ Clique geral detectado:", e.target);
         
-        if (e.target.closest("a, button, input, label")) return;
+        const row = e.target.closest(".cliente-row");
+        if (!row) {
+            console.log("❌ Não é uma linha de cliente");
+            return;
+        }
+        
+        console.log("✅ Linha de cliente encontrada:", row);
+        
+        // ✅ Ignorar cliques em elementos interativos (exceto imagens)
+        if (e.target.closest("a, button, input, label, .btn")) {
+            console.log("⛔ Clique em elemento interativo, ignorando");
+            return;
+        }
 
         const clienteId = row.dataset.clienteId;
-        if (!clienteId) return;
+        console.log(`🎯 Cliente ID capturado: "${clienteId}"`);
+        
+        if (!clienteId) {
+            console.warn("⚠️ clienteId não encontrado no dataset da row");
+            console.log("Dataset completo:", row.dataset);
+            return;
+        }
 
         // ✅ Fechar modal de INSERT se estiver aberto
-        fecharModalAbertoCliente();
+        fn_fechar_modal_aberto();
         
         // ✅ Marcar como modal aberto
-        clientesState.modalAberto = "modalClienteUpd";
+        og_estado_clientes.modalAberto = "modalClienteUpd";
         
         // ✅ Aguardar dados serem carregados ANTES de abrir o modal
-        const sucesso = await loadCliente(clienteId);
+        const sucesso = await fn_carregar_cliente(clienteId);
         
         if (sucesso) {
             const modal = new bootstrap.Modal(modalEl, {
@@ -317,16 +339,16 @@ function initClienteUpd() {
             });
             modal.show();
         } else {
-            clientesState.modalAberto = null;
+            og_estado_clientes.modalAberto = null;
         }
     });
 
     modalEl.addEventListener("hidden.bs.modal", () => {
-        resetarFormularioUpd();
+        fn_resetar_formulario();
         
         // ✅ Desmarcar modal aberto
-        if (clientesState.modalAberto === "modalClienteUpd") {
-            clientesState.modalAberto = null;
+        if (og_estado_clientes.modalAberto === "modalClienteUpd") {
+            og_estado_clientes.modalAberto = null;
         }
     });
 }
@@ -334,16 +356,16 @@ function initClienteUpd() {
 /* ===============================
    GERENCIAR MODAIS (prevenir múltiplos abertos)
 ================================ */
-function fecharModalAbertoCliente() {
-    if (!clientesState.modalAberto) return;
+function fn_fechar_modal_aberto() {
+    if (!og_estado_clientes.modalAberto) return;
     
-    const modalElement = document.getElementById(clientesState.modalAberto);
+    const modalElement = document.getElementById(og_estado_clientes.modalAberto);
     if (modalElement) {
         const modalInstance = bootstrap.Modal.getInstance(modalElement);
         if (modalInstance) {
-            console.log(`🔒 Fechando modal: ${clientesState.modalAberto}`);
+            console.log(`🔒 Fechando modal: ${og_estado_clientes.modalAberto}`);
             modalInstance.hide();
-            clientesState.modalAberto = null;
+            og_estado_clientes.modalAberto = null;
         }
     }
 }
@@ -351,7 +373,7 @@ function fecharModalAbertoCliente() {
 /* ===============================
    LOAD CLIENTE (API)
 ================================ */
-async function loadCliente(clienteId) {
+async function fn_carregar_cliente(clienteId) {
     try {
         console.log(`📥 Iniciando carregamento do cliente ${clienteId}...`);
         
@@ -372,7 +394,7 @@ async function loadCliente(clienteId) {
         console.log("✅ Dados do cliente recebidos com sucesso");
 
         // ✅ Preencher o formulário modal
-        preencherFormularioCliente(data);
+        fn_preencher_formulario(data);
         
         return true;  // ✅ Retornar true se sucesso
 
@@ -386,7 +408,7 @@ async function loadCliente(clienteId) {
 /* ===============================
    PREENCHER FORMULÁRIO UPDATE
 ================================ */
-function preencherFormularioCliente(data) {
+function fn_preencher_formulario(data) {
   // Atualizar action dos forms com o ID do cliente
   document.getElementById('formClienteUpd').action = `/cliente/${data.cod_cliente}/`;
   document.getElementById('formAcessoUpd').action = `/cliente/Acesso/`;
@@ -400,11 +422,11 @@ function preencherFormularioCliente(data) {
   document.getElementById('upd_clie_active').checked = Boolean(data.is_active) || false;
   
   // ✅ Processar soluções já vinculadas ao cliente
-  clientesState.solucoesSelecionadas = [];
-  clientesState.solucoesDisponiveis = [];
+  og_estado_clientes.solucoesSelecionadas = [];
+  og_estado_clientes.solucoesDisponiveis = [];
   
   if (data.solucoes_acesso && Array.isArray(data.solucoes_acesso)) {
-    clientesState.solucoesSelecionadas = data.solucoes_acesso.map(sol => ({
+    og_estado_clientes.solucoesSelecionadas = data.solucoes_acesso.map(sol => ({
       cod_solucao: sol.cod_solucao,
       descricao: sol.solucao_descricao,
       is_active: sol.is_active
@@ -413,20 +435,20 @@ function preencherFormularioCliente(data) {
   
   // ✅ Processar soluções disponíveis (não vinculadas ainda)
   if (data.solucoes_disponiveis && Array.isArray(data.solucoes_disponiveis)) {
-    clientesState.solucoesDisponiveis = data.solucoes_disponiveis.map(sol => ({
+    og_estado_clientes.solucoesDisponiveis = data.solucoes_disponiveis.map(sol => ({
       cod_solucao: sol.cod_solucao,
       descricao: sol.descricao
     }));
   }
   
-  renderizarSolucoesSelecionadas();
-  preencherSelectSolucoes();
+  fn_renderizar_solucoes();
+  fn_preencher_select_solucoes();
 }
 
 /* ===============================
    PREENCHER SELECT DE SOLUÇÕES DISPONÍVEIS
 ================================ */
-function preencherSelectSolucoes() {
+function fn_preencher_select_solucoes() {
   const select = document.getElementById('upd_solucoes_select');
   if (!select) return;
   
@@ -436,7 +458,7 @@ function preencherSelectSolucoes() {
   }
   
   // Adicionar soluções disponíveis
-  clientesState.solucoesDisponiveis.forEach(sol => {
+  og_estado_clientes.solucoesDisponiveis.forEach(sol => {
     const option = document.createElement('option');
     option.value = sol.cod_solucao;
     option.textContent = `${sol.cod_solucao} - ${sol.descricao}`;
@@ -448,7 +470,7 @@ function preencherSelectSolucoes() {
 /* ===============================
    ADICIONAR SOLUÇÃO
 ================================ */
-function adicionarSolucao() {
+function fn_adicionar_solucao() {
   const select = document.getElementById('upd_solucoes_select');
   if (!select.value) {
     alert('Selecione uma solução!');
@@ -459,63 +481,63 @@ function adicionarSolucao() {
   const solDescricao = select.options[select.selectedIndex].dataset.descricao;
   
   // ✅ Verificar se já foi adicionada
-  if (clientesState.solucoesSelecionadas.some(s => s.cod_solucao === solCod)) {
+  if (og_estado_clientes.solucoesSelecionadas.some(s => s.cod_solucao === solCod)) {
     alert('Esta solução já foi adicionada!');
     return;
   }
   
   // Mover de disponíveis para selecionadas
-  clientesState.solucoesSelecionadas.push({
+  og_estado_clientes.solucoesSelecionadas.push({
     cod_solucao: solCod,
     descricao: solDescricao,
     is_active: true
   });
   
-  clientesState.solucoesDisponiveis = clientesState.solucoesDisponiveis.filter(
+  og_estado_clientes.solucoesDisponiveis = og_estado_clientes.solucoesDisponiveis.filter(
     s => s.cod_solucao !== solCod
   );
   
   select.value = '';
-  renderizarSolucoesSelecionadas();
-  preencherSelectSolucoes();
+  fn_renderizar_solucoes();
+  fn_preencher_select_solucoes();
 }
 
 /* ===============================
    REMOVER SOLUÇÃO
 ================================ */
-function removerSolucao(codSolucao) {
-  const solucao = clientesState.solucoesSelecionadas.find(s => s.cod_solucao === codSolucao);
+function fn_remover_solucao(codSolucao) {
+  const solucao = og_estado_clientes.solucoesSelecionadas.find(s => s.cod_solucao === codSolucao);
   if (!solucao) return;
   
   // Mover de volta para disponíveis
-  clientesState.solucoesDisponiveis.push({
+  og_estado_clientes.solucoesDisponiveis.push({
     cod_solucao: solucao.cod_solucao,
     descricao: solucao.descricao
   });
   
-  clientesState.solucoesSelecionadas = clientesState.solucoesSelecionadas.filter(
+  og_estado_clientes.solucoesSelecionadas = og_estado_clientes.solucoesSelecionadas.filter(
     s => s.cod_solucao !== codSolucao
   );
   
-  renderizarSolucoesSelecionadas();
-  preencherSelectSolucoes();
+  fn_renderizar_solucoes();
+  fn_preencher_select_solucoes();
 }
 
 /* ===============================
    TOGGLE STATUS SOLUÇÃO
 ================================ */
-function toggleSolucaoStatus(codSolucao) {
-  const solucao = clientesState.solucoesSelecionadas.find(s => s.cod_solucao === codSolucao);
+function fn_toggle_solucao_status(codSolucao) {
+  const solucao = og_estado_clientes.solucoesSelecionadas.find(s => s.cod_solucao === codSolucao);
   if (solucao) {
     solucao.is_active = !solucao.is_active;
-    renderizarSolucoesSelecionadas();
+    fn_renderizar_solucoes();
   }
 }
 
 /* ===============================
    RENDERIZAR SOLUÇÕES SELECIONADAS
 ================================ */
-function renderizarSolucoesSelecionadas() {
+function fn_renderizar_solucoes() {
   const tbody = document.getElementById('upd_solucoes_tbody');
   const hidden = document.getElementById('upd_solucoes_hidden');
   
@@ -524,7 +546,7 @@ function renderizarSolucoesSelecionadas() {
   // ✅ Limpar tbody
   tbody.innerHTML = '';
   
-  if (clientesState.solucoesSelecionadas.length === 0) {
+  if (og_estado_clientes.solucoesSelecionadas.length === 0) {
     tbody.innerHTML = `
       <tr>
         <td colspan="4" class="text-center text-muted">
@@ -537,7 +559,7 @@ function renderizarSolucoesSelecionadas() {
   }
   
   // ✅ Adicionar linhas
-  clientesState.solucoesSelecionadas.forEach(sol => {
+  og_estado_clientes.solucoesSelecionadas.forEach(sol => {
     const row = document.createElement('tr');
     row.innerHTML = `
       <td>${sol.cod_solucao}</td>
@@ -548,14 +570,14 @@ function renderizarSolucoesSelecionadas() {
             class="form-check-input" 
             type="checkbox" 
             ${sol.is_active ? 'checked' : ''}
-            onchange="toggleSolucaoStatus('${sol.cod_solucao}')">
+            onchange="fn_toggle_solucao_status('${sol.cod_solucao}')">
         </div>
       </td>
       <td class="text-center">
         <button 
           type="button" 
           class="btn btn-sm btn-danger" 
-          onclick="removerSolucao('${sol.cod_solucao}')">
+          onclick="fn_remover_solucao('${sol.cod_solucao}')">
           Remover
         </button>
       </td>
@@ -564,7 +586,7 @@ function renderizarSolucoesSelecionadas() {
   });
   
   // ✅ Atualizar hidden input no formato: cod1:status,cod2:status
-  hidden.value = clientesState.solucoesSelecionadas
+  hidden.value = og_estado_clientes.solucoesSelecionadas
     .map(s => `${s.cod_solucao}:${s.is_active ? '1' : '0'}`)
     .join(',');
 }
@@ -572,7 +594,7 @@ function renderizarSolucoesSelecionadas() {
 /* ===============================
    RESETAR FORMULÁRIO UPDATE
 ================================ */
-function resetarFormularioUpd() {
+function fn_resetar_formulario() {
   // Resetar para aba inicial
   const firstTab = document.querySelector('#clienteTabs .nav-link:first-child');
   if (firstTab) {
@@ -581,7 +603,7 @@ function resetarFormularioUpd() {
 }
 
 // Função para formatar CNPJ
-function formatCNPJ(input) {
+function fn_formatar_cnpj(input) {
   let value = input.value.replace(/\D/g, '');
   
   if (value.length <= 14) {
@@ -599,12 +621,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const cnpjInputs = document.querySelectorAll('input[name="m_cnpj"], input[name="upd_cnpj"]');
   cnpjInputs.forEach(input => {
     input.addEventListener('input', function() {
-      formatCNPJ(this);
+      fn_formatar_cnpj(this);
     });
   });
 });
 
-function validarFormularioIns(event) {
+function fn_validar_formulario_ins(event) {
     event.preventDefault();
     
     const cnpj = document.querySelector('input[name="m_cnpj"]').value.trim();
@@ -622,7 +644,7 @@ function validarFormularioIns(event) {
     event.target.submit();
 }
 
-function validarFormularioUpd(event) {
+function fn_validar_formulario_upd(event) {
     event.preventDefault();
     
     const razao = document.getElementById('upd_razao').value.trim();
@@ -658,7 +680,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ✅ NOVO: Limpar messages ao abrir/fechar modais
-function initModalMessageCleanup() {
+function fn_init_modal_message_cleanup() {
   const modalIns = document.getElementById('modalClienteIns');
   const modalUpd = document.getElementById('modalClienteUpd');
   

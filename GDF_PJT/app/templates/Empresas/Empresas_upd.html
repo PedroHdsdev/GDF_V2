@@ -53,7 +53,7 @@
 
           <!-- TAB 1: DADOS DA EMPRESA -->
           <div class="tab-pane fade show active" id="tab-empresa" role="tabpanel">
-            <form method="post" id="formEmpresaUpd" action="/empresa/" onsubmit="validarFormularioUpd(event)">
+            <form method="post" id="formEmpresaUpd" action="/empresa/" onsubmit="fn_validar_formulario_upd(event)">
               {% csrf_token %}
               <input type="hidden" id="upd_empresa_id_hidden" name="m_empresa_id" value="">
 
@@ -219,7 +219,7 @@
                   type="button"
                   id="btn-edit-empresa"
                   class="btn btn-primary"
-                  onclick="makeEditableEmpresa()">
+                  onclick="fn_editar_empresa()">
                   Editar
                 </button>
                 <button
@@ -234,7 +234,7 @@
                   id="btn-cancel-empresa"
                   class="btn btn-secondary"
                   style="display: none;"
-                  onclick="cancelChangesEmpresa()">
+                  onclick="fn_cancelar_edicao_empresa()">
                   Cancelar
                 </button>
               </div>
@@ -304,7 +304,7 @@
                   type="button"
                   id="btn-edit-cert"
                   class="btn btn-primary"
-                  onclick="makeEditableCert()">
+                  onclick="fn_editar_certificado()">
                   Editar
                 </button>
                 <button
@@ -319,7 +319,7 @@
                   id="btn-cancel-cert"
                   class="btn btn-secondary"
                   style="display: none;"
-                  onclick="cancelChangesCert()">
+                  onclick="fn_cancelar_edicao_certificado()">
                   Cancelar
                 </button>
               </div>

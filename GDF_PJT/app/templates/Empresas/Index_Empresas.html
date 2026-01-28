@@ -47,17 +47,16 @@
             <th>Empresa</th>
             <th>CNPJ</th>
             <th>Validade Cert.</th>
-            <th>Grupo </th>
           </tr>
         </thead>
         <tbody>
           {% for emp in t_empresas %}
           <tr class="empresa-row" data-empresa-id="{{ emp.cod_empresa }}" role="button">
             <td class="text-center">
-              {% if emp.cert_emp.0.status %}
-                {% if emp.cert_emp.0.status == "VERMELHO" or emp.cert_emp.0.status == "INDEFINIDO" %}
+              {% if emp.cert_emp.status %}
+                {% if emp.cert_emp.status == "VERMELHO" or emp.cert_emp.status == "INDEFINIDO" %}
                   <img src="{% static 'img/icon_status_vermelho.png' %}" alt="Vermelho" width="20" height="20">
-                {% elif emp.cert_emp.0.status == "AMARELO" %}
+                {% elif emp.cert_emp.status == "AMARELO" %}
                   <img src="{% static 'img/icon_status_amarelo.png' %}" alt="Amarelo" width="20" height="20">
                 {% else %}
                   <img src="{% static 'img/icon_status_verde.png' %}" alt="Verde" width="20" height="20">
@@ -76,15 +75,14 @@
             <td>{{ emp.cnpj }}</td>
             <td>
               {% if emp.cert_emp %}
-                {{ emp.cert_emp.0.fim_validade|default:"-" }}
+                {{ emp.cert_emp.fim_validade|default:"-" }}
               {% else %}
                 -
               {% endif %}
             </td>
-            <td>{{ emp.grupo }}</td>
           {% empty %}
           <tr>
-            <td colspan="7" class="text-center text-muted">Nenhuma empresa cadastrada.</td>
+            <td colspan="6" class="text-center text-muted">Nenhuma empresa cadastrada.</td>
           </tr>
           {% endfor %}
         </tbody>
