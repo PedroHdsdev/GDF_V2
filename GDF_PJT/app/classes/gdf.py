@@ -49,16 +49,16 @@ class Cl_Gdf():
     def Get_Dados(self, I_User):
         self.Retorn = []
         try:
-            Q_user = User.objects.filter(id=I_User.id).first()
+            l_v_query_user = User.objects.filter(id=I_User.id).first()
 
             # Empresas do usuário
             self.Empresas = Empresas.objects.filter(
-                userempresas__user=Q_user
+                userempresas__user=l_v_query_user
             ).distinct()
 
             # Grupos do usuário
             self.Groups = Group.objects.filter(
-                user=Q_user
+                user=l_v_query_user
             )
 
             # Cliente associado às empresas do usuário
@@ -94,39 +94,39 @@ class Cl_Gdf():
             if not hasattr(self, 'subsolucoes_acesso') or not hasattr(self, 'solucoes_acesso'):
                 return []
 
-            solucoes_data = []
+            lsl_dados_solucoes = []
 
             # 🔹 Subsoluções permitidas via grupo
-            sub_ids = {
+            lsl_ids_subsolucoes = {
                 acesso.subsolucao.cod_subsolucao
                 for acesso in self.subsolucoes_acesso
                 if getattr(acesso, "subsolucao", None) is not None
             }
 
-            if not sub_ids:
+            if not lsl_ids_subsolucoes:
                 return []
 
             # 🔹 Soluções liberadas para o cliente
-            solucoes = Solucoes.objects.filter(
+            l_v_queryset_solucoes = Solucoes.objects.filter(
                 solucoesacesso__in=self.solucoes_acesso
             ).distinct()
 
-            for solucao in solucoes:
-                subsolucoes = Subsolucoes.objects.filter(
-                    solucao=solucao,
-                    cod_subsolucao__in=sub_ids
+            for l_v_solucao in l_v_queryset_solucoes:
+                l_v_queryset_subsolucoes = Subsolucoes.objects.filter(
+                    solucao=l_v_solucao,
+                    cod_subsolucao__in=lsl_ids_subsolucoes
                 ).values(
                     'cod_subsolucao',
                     'descricao'
                 )
 
-                if not subsolucoes:
+                if not l_v_queryset_subsolucoes:
                     continue
 
-                solucoes_data.append({
-                    "codigo": solucao.cod_solucao,
-                    "descricao": solucao.descricao,
-                    "sub_solucoes": list(subsolucoes)
+                lsl_dados_solucoes.append({
+                    "codigo": l_v_solucao.cod_solucao,
+                    "descricao": l_v_solucao.descricao,
+                    "sub_solucoes": list(l_v_queryset_subsolucoes)
                 })
 
             #Ordenação customizada: "Soluções ADM" primeiro, "Dashboard" último
@@ -137,10 +137,10 @@ class Cl_Gdf():
                     return 9999  # maior que tudo → último
                 return 0  # o resto fica no meio
 
-            solucoes_data.sort(key=sort_key)
+            lsl_dados_solucoes.sort(key=sort_key)
 
-            print(solucoes_data)
-            return solucoes_data
+            print(lsl_dados_solucoes)
+            return lsl_dados_solucoes
 
         except AttributeError as e:
             print(str(e))
@@ -159,18 +159,18 @@ class Cl_Gdf():
     def Get_Clientes(self):
         self.Retorn = []
         try:
-            clientes_data = []
+            lsl_dados_clientes = []
 
             # Buscar todos os clientes
-            q_clientes = Clientes.objects.all()
+            l_v_query_clientes = Clientes.objects.all()
 
-            for clie in q_clientes:
-                clientes_data.append({
-                    "cod_cliente": clie.cod_cliente,
-                    "razao": clie.razao,
-                    "cnpj": clie.cnpj,
-                    "is_active": clie.is_active,
-                    "date_joined": clie.date_joined, 
+            for l_v_cliente in l_v_query_clientes:
+                lsl_dados_clientes.append({
+                    "cod_cliente": l_v_cliente.cod_cliente,
+                    "razao": l_v_cliente.razao,
+                    "cnpj": l_v_cliente.cnpj,
+                    "is_active": l_v_cliente.is_active,
+                    "date_joined": l_v_cliente.date_joined, 
                 })
 
         except Clientes.DoesNotExist as e:
@@ -186,42 +186,42 @@ class Cl_Gdf():
             print(f"[ERROR] Erro ao buscar clientes: {str(e)}")
             return []
         
-        return clientes_data
+        return lsl_dados_clientes
 
 #--------------------------------------------------------------------------------
     """Retorna dados do cliente para edição no modal"""
     def Get_Clientes_upd(self, cliente_id):
         self.Retorn = {}
         try:
-            q_cliente = Clientes.objects.get(cod_cliente=cliente_id)
+            l_v_cliente = Clientes.objects.get(cod_cliente=cliente_id)
 
             # Soluções já atribuídas ao cliente
-            q_solucoes_acesso = SolucoesAcesso.objects.filter(
-                    cliente=q_cliente
+            l_v_query_solucoes_acesso = SolucoesAcesso.objects.filter(
+                    cliente=l_v_cliente
             ).select_related('solucao')
             
             # Todas as soluções cadastradas
-            todas_solucoes = Solucoes.objects.all()
+            l_v_queryset_todas_solucoes = Solucoes.objects.all()
             
             # Soluções disponíveis (não atribuídas)
-            solucoes_disponiveis = todas_solucoes.exclude(
-                cod_solucao__in=q_solucoes_acesso.values_list('solucao__cod_solucao', flat=True)
+            l_v_queryset_solucoes_disponiveis = l_v_queryset_todas_solucoes.exclude(
+                cod_solucao__in=l_v_query_solucoes_acesso.values_list('solucao__cod_solucao', flat=True)
             )
             
             self.Retorn = {
-                "cod_cliente": q_cliente.cod_cliente,
-                "razao": q_cliente.razao,
-                "cnpj": q_cliente.cnpj,
-                "is_active": q_cliente.is_active,
+                "cod_cliente": l_v_cliente.cod_cliente,
+                "razao": l_v_cliente.razao,
+                "cnpj": l_v_cliente.cnpj,
+                "is_active": l_v_cliente.is_active,
                 "solucoes_acesso": [
                         {
                             "cod_solucao": sa.solucao.cod_solucao,
                             "solucao_descricao": sa.solucao.descricao,
                             "is_active": sa.is_active
                         }
-                        for sa in q_solucoes_acesso
+                        for sa in l_v_query_solucoes_acesso
                     ],
-                "solucoes_disponiveis": list(solucoes_disponiveis.values('cod_solucao', 'descricao'))
+                "solucoes_disponiveis": list(l_v_queryset_solucoes_disponiveis.values('cod_solucao', 'descricao'))
             }
 
         except Clientes.DoesNotExist as e:
@@ -237,7 +237,7 @@ class Cl_Gdf():
     def Cliente_ins(self, i_cliente, i_razao, i_cnpj):
         try:
             with transaction.atomic():
-                cliente_instance, created = Clientes.objects.get_or_create(
+                l_v_cliente_instance, l_v_created = Clientes.objects.get_or_create(
                     cod_cliente=i_cliente,
                     defaults={
                         'razao': i_razao,
@@ -247,14 +247,14 @@ class Cl_Gdf():
                     }
                 )
 
-                if not created:
+                if not l_v_created:
                     return {"success": False, "message": "Cliente já existe"}
 
                 # Criar vínculos de soluções (todas inativas inicialmente)
-                q_solucoes = Solucoes.objects.all()
+                l_v_queryset_solucoes = Solucoes.objects.all()
                 SolucoesAcesso.objects.bulk_create([
-                    SolucoesAcesso(cliente=cliente_instance, solucao=sol, is_active=False)
-                    for sol in q_solucoes
+                    SolucoesAcesso(cliente=l_v_cliente_instance, solucao=sol, is_active=False)
+                    for sol in l_v_queryset_solucoes
                 ])
 
             return {"success": True, "message": "Cliente cadastrado com sucesso"}
@@ -341,36 +341,36 @@ class Cl_Gdf():
     def Get_Empresas(self,i_cod_Cliente=None, i_busca=None):
         self.Retorn = []
         try:
-            Empresas_Data    = []
+            lsl_dados_empresas = []
 
             # -------------------------------------------------
             # Empresas do cliente COM OTIMIZAÇÃO
             # -------------------------------------------------
             # ✅ OTIMIZAÇÃO: prefetch_related evita N+1 queries de certificados
-            tl_empresas = Empresas.objects.filter(
+            l_v_queryset_empresas = Empresas.objects.filter(
                 cliente_id=i_cod_Cliente
             ).prefetch_related('cert_set').distinct()
             
-            for emp in tl_empresas:
+            for l_v_empresa in l_v_queryset_empresas:
                 # ✅ Agora os certificados já estão em cache (não faz nova query)
-                list_cert = emp.cert_set.all()
-                dt_atual = datetime.today().date()
+                lsl_certificados = l_v_empresa.cert_set.all()
+                l_v_data_atual = datetime.today().date()
 
-                Empresas_Data.append({
-                "cod_empresa": emp.cod_empresa,
-                "cnpj": emp.cnpj,
-                "razao": emp.razao,
-                "fantasia": emp.fantasia,
-                "ie": emp.ie,
-                "im": emp.im,
-                "tipo": emp.tipo,
-                "matriz": emp.matriz,
-                "crt": emp.crt,
-                "cnae": emp.cnae,
-                "iest": emp.iest,
-                "suframa": emp.suframa,
-                "chave_acesso": emp.chave_acesso,
-                "cliente": emp.cliente_id,
+                lsl_dados_empresas.append({
+                "cod_empresa": l_v_empresa.cod_empresa,
+                "cnpj": l_v_empresa.cnpj,
+                "razao": l_v_empresa.razao,
+                "fantasia": l_v_empresa.fantasia,
+                "ie": l_v_empresa.ie,
+                "im": l_v_empresa.im,
+                "tipo": l_v_empresa.tipo,
+                "matriz": l_v_empresa.matriz,
+                "crt": l_v_empresa.crt,
+                "cnae": l_v_empresa.cnae,
+                "iest": l_v_empresa.iest,
+                "suframa": l_v_empresa.suframa,
+                "chave_acesso": l_v_empresa.chave_acesso,
+                "cliente": l_v_empresa.cliente_id,
                 "cert_emp": [
                     {
                     "raiz": cert.raiz_cnpj,
@@ -380,16 +380,16 @@ class Cl_Gdf():
                     "cpf_cnpj": cert.cpf_cnpj,
                     "cert_file": cert.arquivo_cert,
                     "status": (
-                        "VERMELHO" if (cert.fim_validade.date() - dt_atual).days <= 15 else 
-                        "AMARELO" if (cert.fim_validade.date() - dt_atual).days <= 30 else 
+                        "VERMELHO" if (cert.fim_validade.date() - l_v_data_atual).days <= 15 else 
+                        "AMARELO" if (cert.fim_validade.date() - l_v_data_atual).days <= 30 else 
                         "VERDE"  
                         ) if cert.fim_validade else "INDEFINIDO"
                 }
-                for cert in list_cert
+                for cert in lsl_certificados
                 ]
                 })
             
-            print(f"[Get_Empresas] Carregadas {len(Empresas_Data)} empresas com certificados otimizados")
+            print(f"[Get_Empresas] Carregadas {len(lsl_dados_empresas)} empresas com certificados otimizados")
          
         except Empresas.DoesNotExist as e:
             self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
@@ -402,7 +402,7 @@ class Cl_Gdf():
         except Exception as e:
             self._registrar_log(type='E', id='E000')
   
-        return Empresas_Data 
+        return lsl_dados_empresas 
     
 #--------------------------------------------------------------------------------
     """Retorna todas as empresas e grupos disponíveis para o cliente"""
