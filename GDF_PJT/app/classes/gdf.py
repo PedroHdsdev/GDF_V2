@@ -190,10 +190,10 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Retorna dados do cliente para edição no modal"""
-    def Get_Clientes_upd(self, cliente_id):
+    def Get_Clientes_upd(self, i_v_cliente_id):
         self.Retorn = {}
         try:
-            l_v_cliente = Clientes.objects.get(cod_cliente=cliente_id)
+            l_v_cliente = Clientes.objects.get(cod_cliente=i_v_cliente_id)
 
             # Soluções já atribuídas ao cliente
             l_v_query_solucoes_acesso = SolucoesAcesso.objects.filter(
@@ -225,7 +225,7 @@ class Cl_Gdf():
             }
 
         except Clientes.DoesNotExist as e:
-            print(f"[ERROR] Cliente {cliente_id} não encontrado: {str(e)}")
+            print(f"[ERROR] Cliente {i_v_cliente_id} não encontrado: {str(e)}")
             return {"erro": "Cliente não encontrado"}
         except Exception as e:
             print(f"[ERROR] Erro ao buscar cliente: {str(e)}")
@@ -406,35 +406,35 @@ class Cl_Gdf():
     
 #--------------------------------------------------------------------------------
     """Retorna todas as empresas e grupos disponíveis para o cliente"""
-    def Get_Empresas_ins(self, cod_cliente):
+    def Get_Empresas_ins(self, i_v_cod_cliente):
         try:
             # ✅ Validação
-            if not cod_cliente:
+            if not i_v_cod_cliente:
                 raise ValueError("Cliente não identificado")
             
-            print(f"[DEBUG] Get_Empresas_ins - cod_cliente: {cod_cliente}")
+            print(f"[DEBUG] Get_Empresas_ins - cod_cliente: {i_v_cod_cliente}")
 
             # ✅ Todos os grupos do cliente
-            todos_grupos = GrpEmpresas.objects.filter(
-                cliente__cod_cliente=cod_cliente
+            l_v_queryset_todos_grupos = GrpEmpresas.objects.filter(
+                cliente__cod_cliente=i_v_cod_cliente
             ).values('grp_empresa', 'descricao').distinct()
             
-            print(f"[DEBUG] Grupos encontrados: {todos_grupos.count()}")
-            for g in todos_grupos:
-                print(f"  - {g['grp_empresa']}: {g['descricao']}")
+            print(f"[DEBUG] Grupos encontrados: {l_v_queryset_todos_grupos.count()}")
+            for l_v_grupo in l_v_queryset_todos_grupos:
+                print(f"  - {l_v_grupo['grp_empresa']}: {l_v_grupo['descricao']}")
 
-            grupos_list = [
+            lsl_grupos = [
                 {
                     "grp_empresa": g['grp_empresa'],
                     "descricao": g['descricao']
                 }
-                for g in todos_grupos
+                for g in l_v_queryset_todos_grupos
             ]
             
-            resultado = {"todos_grupos": grupos_list}
-            print(f"[DEBUG] Retornando: {resultado}")
+            ol_resultado = {"todos_grupos": lsl_grupos}
+            print(f"[DEBUG] Retornando: {ol_resultado}")
             
-            return resultado
+            return ol_resultado
 
         except Exception as e:
             print(f"[ERROR] Erro ao buscar dados para inscrição de empresa: {str(e)}")
@@ -442,44 +442,44 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Retorna dados da empresa para edição no modal"""
-    def Get_Empresas_upd(self, i_Cod_empresas, cod_cliente):
+    def Get_Empresas_upd(self, i_v_cod_empresa, i_v_cod_cliente):
         """Buscar detalhes da empresa para modal - seguindo padrão Usuario/Cliente"""
         try:
             # ✅ Validações
-            if not i_Cod_empresas or not cod_cliente:
+            if not i_v_cod_empresa or not i_v_cod_cliente:
                 raise ValueError("Empresa não informada")
             
             # ✅ IDOR: Empresa deve pertencer ao cliente
-            empresa = Empresas.objects.select_related(
+            l_v_empresa = Empresas.objects.select_related(
                 'cert', 'grp_empresa', 'cliente'
             ).get(
-                cod_empresa=i_Cod_empresas,
-                cliente__cod_cliente=cod_cliente
+                cod_empresa=i_v_cod_empresa,
+                cliente__cod_cliente=i_v_cod_cliente
             )
             
             # ✅ Retornar dados completos da empresa
             return {
-                "cod_empresa": empresa.cod_empresa,
-                "razao": empresa.razao,
-                "cnpj": empresa.cnpj,
-                "fantasia": empresa.fantasia,
-                "ie": empresa.ie or "",
-                "im": empresa.im or "",
-                "iest": empresa.iest or "",
-                "tipo": empresa.tipo or "",
-                "crt": empresa.crt or "",
-                "cnae": empresa.cnae or "",
-                "suframa": empresa.suframa or "",
-                "chave_acesso": empresa.chave_acesso or "",
-                "matriz": empresa.matriz or False,
-                "grp_empresa": empresa.grp_empresa.grp_empresa if empresa.grp_empresa else None,
+                "cod_empresa": l_v_empresa.cod_empresa,
+                "razao": l_v_empresa.razao,
+                "cnpj": l_v_empresa.cnpj,
+                "fantasia": l_v_empresa.fantasia,
+                "ie": l_v_empresa.ie or "",
+                "im": l_v_empresa.im or "",
+                "iest": l_v_empresa.iest or "",
+                "tipo": l_v_empresa.tipo or "",
+                "crt": l_v_empresa.crt or "",
+                "cnae": l_v_empresa.cnae or "",
+                "suframa": l_v_empresa.suframa or "",
+                "chave_acesso": l_v_empresa.chave_acesso or "",
+                "matriz": l_v_empresa.matriz or False,
+                "grp_empresa": l_v_empresa.grp_empresa.grp_empresa if l_v_empresa.grp_empresa else None,
                 "cert_empresa": {
-                    "raiz": empresa.cert.raiz_cnpj if empresa.cert else None,
-                    "ini_validade": empresa.cert.ini_validade.strftime("%d/%m/%Y") if empresa.cert and empresa.cert.ini_validade else None,
-                    "fim_validade": empresa.cert.fim_validade.strftime("%d/%m/%Y") if empresa.cert and empresa.cert.fim_validade else None,
-                    "emissor": empresa.cert.proprietario if empresa.cert else None,
-                    "cpf_cnpj": empresa.cert.cpf_cnpj if empresa.cert else None,
-                } if empresa.cert else None
+                    "raiz": l_v_empresa.cert.raiz_cnpj if l_v_empresa.cert else None,
+                    "ini_validade": l_v_empresa.cert.ini_validade.strftime("%d/%m/%Y") if l_v_empresa.cert and l_v_empresa.cert.ini_validade else None,
+                    "fim_validade": l_v_empresa.cert.fim_validade.strftime("%d/%m/%Y") if l_v_empresa.cert and l_v_empresa.cert.fim_validade else None,
+                    "emissor": l_v_empresa.cert.proprietario if l_v_empresa.cert else None,
+                    "cpf_cnpj": l_v_empresa.cert.cpf_cnpj if l_v_empresa.cert else None,
+                } if l_v_empresa.cert else None
             }
             
         except Empresas.DoesNotExist:
@@ -642,38 +642,38 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Atualizar certificado digital"""
-    def Cert_upd(self, cert_file, cod_cliente):
+    def Cert_upd(self, i_v_arquivo_cert, i_v_cod_cliente):
         try:
-            print(f"[DEBUG] Cert_upd chamado - arquivo: {cert_file.name if cert_file else 'None'}")
+            print(f"[DEBUG] Cert_upd chamado - arquivo: {i_v_arquivo_cert.name if i_v_arquivo_cert else 'None'}")
             
-            if not cert_file:
+            if not i_v_arquivo_cert:
                 raise ValueError("Arquivo de certificado não fornecido")
             
-            if not cod_cliente:
+            if not i_v_cod_cliente:
                 raise ValueError("Cliente não identificado")
             
             # ✅ Ler conteúdo do arquivo
-            cert_content = cert_file.read()
+            l_v_cert_content = i_v_arquivo_cert.read()
             
             # ✅ Extrair nome do arquivo
-            file_name = cert_file.name
-            print(f"[DEBUG] Processando certificado: {file_name}, tamanho: {len(cert_content)} bytes")
+            l_v_file_name = i_v_arquivo_cert.name
+            print(f"[DEBUG] Processando certificado: {l_v_file_name}, tamanho: {len(l_v_cert_content)} bytes")
             
             # ✅ Usar nome do arquivo como identificador (primeiros 8 caracteres sem extensão)
-            raiz_cnpj = file_name.replace('.pfx', '').replace('.p12', '')[:8]
+            l_v_raiz_cnpj = l_v_file_name.replace('.pfx', '').replace('.p12', '')[:8]
             
-            cert_obj, created = Cert.objects.update_or_create(
-                raiz_cnpj=raiz_cnpj,
+            l_v_cert_obj, l_v_created = Cert.objects.update_or_create(
+                raiz_cnpj=l_v_raiz_cnpj,
                 defaults={
-                    'nm_arquivo_pfx': file_name,
-                    'arquivo_cert': cert_content,
+                    'nm_arquivo_pfx': l_v_file_name,
+                    'arquivo_cert': l_v_cert_content,
                 }
             )
             
-            status = "criado" if created else "atualizado"
-            print(f"[OK] Certificado {status}: raiz_cnpj={raiz_cnpj}, arquivo={file_name}")
+            l_v_status = "criado" if l_v_created else "atualizado"
+            print(f"[OK] Certificado {l_v_status}: raiz_cnpj={l_v_raiz_cnpj}, arquivo={l_v_file_name}")
             
-            return {"success": True, "message": f"Certificado {status} com sucesso"}
+            return {"success": True, "message": f"Certificado {l_v_status} com sucesso"}
         
         except ValueError as e:
             print(f"[ERROR] Cert_upd - Validação: {str(e)}")
@@ -767,17 +767,17 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Retorna todas as empresas e grupos disponíveis para o cliente"""
-    def Get_Usuario_ins(self, cod_cliente):
+    def Get_Usuario_ins(self, i_v_cod_cliente):
         self.Retorn = {}
         try:
             # ✅ Empresas do cliente
             l_v_queryset_todas_empresas = Empresas.objects.filter(
-                cliente__cod_cliente=cod_cliente
+                cliente__cod_cliente=i_v_cod_cliente
             ).distinct()
 
             # ✅ Todos os grupos do cliente (via relacionamento Group)
             l_v_queryset_todos_grupos = GrupoCliente.objects.filter(
-                cliente__cod_cliente=cod_cliente
+                cliente__cod_cliente=i_v_cod_cliente
             ).values('group__id', 'group__name').distinct()
 
             # ✅ Formatando grupos para retorno
@@ -799,15 +799,15 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Retorna dados do usuário para edição no modal"""
-    def Get_Usuario_upd(self, user_id, cod_cliente):
+    def Get_Usuario_upd(self, i_v_user_id, i_v_cod_cliente):
         self.Retorn = {}
         try:
             # ✅ Validar user_id
-            if not user_id or not isinstance(user_id, int):
-                raise ValueError(f"ID de usuário inválido: {user_id}")
+            if not i_v_user_id or not isinstance(i_v_user_id, int):
+                raise ValueError(f"ID de usuário inválido: {i_v_user_id}")
 
             # ✅ Empresas do cliente
-            todas_empresas = Empresas.objects.filter(
+            l_v_queryset_todas_empresas = Empresas.objects.filter(
                 cliente__cod_cliente=cod_cliente
             ).distinct()
 
@@ -870,14 +870,14 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Método legado - manter para compatibilidade"""
-    def Usuario_ins(self, username, email, password, first_name="", last_name="", 
-                    empresas_ids=None, grupos_ids=None, cod_cliente=None):
+    def Usuario_ins(self, i_v_username, i_v_email, i_v_password, i_v_first_name="", i_v_last_name="", 
+                    i_lsl_empresas_ids=None, i_lsl_grupos_ids=None, i_v_cod_cliente=None):
        
         self.Retorn = {"success": False, "message": ""}
         
         try:
             # ✅ Validações obrigatórias
-            if not username or not email or not password:
+            if not i_v_username or not i_v_email or not i_v_password:
                 raise ValueError("Username, email e senha são obrigatórios")
             
             if not empresas_ids or not grupos_ids:
@@ -959,13 +959,13 @@ class Cl_Gdf():
 
 #--------------------------------------------------------------------------------
     """Atualiza usuário, suas empresas e grupos com transação atômica"""
-    def Usuario_upd(self, user_id: int, first_name: str, last_name: str, email: str, 
-                    is_active: bool, empresa_ids: list[str], grupo_ids: list[int], 
-                    cod_cliente: str) -> dict:
+    def Usuario_upd(self, i_v_user_id: int, i_v_first_name: str, i_v_last_name: str, i_v_email: str, 
+                    i_v_is_active: bool, i_lsl_empresa_ids: list[str], i_lsl_grupo_ids: list[int], 
+                    i_v_cod_cliente: str) -> dict:
         self.Retorn = []
         try:
             # ✅ Validações
-            if not cod_cliente:
+            if not i_v_cod_cliente:
                 raise ValueError("Cliente não informado")
             
             if not user_id or not isinstance(user_id, int):
