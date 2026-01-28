@@ -727,39 +727,39 @@ class Cl_Gdf():
             # -------------------------------------------------
             # Empresas do cliente (para tabela e modal)
             # -------------------------------------------------
-            empresas_data = Empresas.objects.filter(
+            l_v_queryset_empresas = Empresas.objects.filter(
                 cliente_id=i_cod_Cliente
             ).distinct()
 
             # -------------------------------------------------
             # Usuários vinculados às empresas do cliente
             # -------------------------------------------------
-            user_ids = UserEmpresas.objects.filter(
-                empresa__in=empresas_data
+            lsl_ids_usuarios = UserEmpresas.objects.filter(
+                empresa__in=l_v_queryset_empresas
             ).values_list('user_id', flat=True)
 
-            usuarios_qs = User.objects.filter(
-                id__in=user_ids
+            l_v_queryset_usuarios = User.objects.filter(
+                id__in=lsl_ids_usuarios
             ).distinct()
 
             # -------------------------------------------------
             # Montagem da tabela de usuários
             # -------------------------------------------------
-            usuarios_data = []
+            lsl_dados_usuarios = []
 
-            for u in usuarios_qs:
-                usuarios_data.append({
-                    "id": u.id,
-                    "username": u.username,
-                    "first_name": u.first_name,
-                    "last_name": u.last_name,
-                    "email": u.email,
-                    "is_active": u.is_active,
-                    "date_joined": u.date_joined,
+            for l_v_usuario in l_v_queryset_usuarios:
+                lsl_dados_usuarios.append({
+                    "id": l_v_usuario.id,
+                    "username": l_v_usuario.username,
+                    "first_name": l_v_usuario.first_name,
+                    "last_name": l_v_usuario.last_name,
+                    "email": l_v_usuario.email,
+                    "is_active": l_v_usuario.is_active,
+                    "date_joined": l_v_usuario.date_joined,
                     "Aglomerado": i_cod_Cliente,
                 })
 
-            return usuarios_data
+            return lsl_dados_usuarios
 
         except Exception as e:
             print(str(e))
@@ -771,24 +771,24 @@ class Cl_Gdf():
         self.Retorn = {}
         try:
             # ✅ Empresas do cliente
-            todas_empresas = Empresas.objects.filter(
+            l_v_queryset_todas_empresas = Empresas.objects.filter(
                 cliente__cod_cliente=cod_cliente
             ).distinct()
 
             # ✅ Todos os grupos do cliente (via relacionamento Group)
-            todos_grupos = GrupoCliente.objects.filter(
+            l_v_queryset_todos_grupos = GrupoCliente.objects.filter(
                 cliente__cod_cliente=cod_cliente
             ).values('group__id', 'group__name').distinct()
 
             # ✅ Formatando grupos para retorno
-            grupos_formatted = [
+            lsl_grupos_formatados = [
                 {"id": g['group__id'], "name": g['group__name']}
-                for g in todos_grupos
+                for g in l_v_queryset_todos_grupos
             ]
 
             self.Retorn = {
-                "todas_empresas": list(todas_empresas.values('cod_empresa', 'fantasia', 'razao')),
-                "todos_grupos": grupos_formatted
+                "todas_empresas": list(l_v_queryset_todas_empresas.values('cod_empresa', 'fantasia', 'razao')),
+                "todos_grupos": lsl_grupos_formatados
             }
 
         except Exception as e:
