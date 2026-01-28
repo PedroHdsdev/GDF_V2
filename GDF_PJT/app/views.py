@@ -460,10 +460,6 @@ def Cert_upd(request):
 @require_http_methods(["GET", "POST"])
 def Cliente_ins(request):
     """Inserir novo cliente - seguindo padrão Usuario_ins"""
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
-        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
-    
     cl_gdf = Cl_Gdf()
     if request.method == "GET":
         # Retornar dados para preencher o modal (opcionalmente listas de soluções, etc)
@@ -493,7 +489,9 @@ def Cliente_ins(request):
         
         # ✅ Verificar resultado
         if not resultado.get("success"):
-            return JsonResponse({"erro": resultado.get("message")}, status=400)
+            messages.error(request, resultado.get("message", "Erro ao criar cliente"), extra_tags='MODAL_INS')
+        else:
+            messages.success(request, resultado.get("message", "Cliente cadastrado!"), extra_tags='MODAL_INS')
 
         return redirect('Dm_Clientes')
     
@@ -506,6 +504,10 @@ def Cliente_upd(request, cod_cliente):
     cod_cliente_sessao = request.session.get('cod_cliente', None)
     if not cod_cliente_sessao:
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+    
+    # ✅ VALIDAÇÃO IDOR: Só pode editar seu próprio cliente
+    if str(cod_cliente) != str(cod_cliente_sessao):
+        return JsonResponse({"erro": "Acesso negado: você só pode editar seu próprio cliente"}, status=403)
  
     cl_gdf = Cl_Gdf()
     if request.method == "GET":
@@ -517,44 +519,58 @@ def Cliente_upd(request, cod_cliente):
         return JsonResponse(data)
 
     elif request.method == "POST":
-        modal_upd = request.POST.get("modal_upd", "").strip()
         cod_cliente_id = request.POST.get("upd_cliente_id", "").strip()
         
-        if not cod_cliente_id:
-            cod_cliente_id = request.POST.get("Acesso_cliente_id", "").strip()
-
-        # Atualização dos dados do cliente (aba Dados)
-        if modal_upd == "C" or modal_upd == "":
-            # ✅ Extrair dados do formulário
-            razao = request.POST.get("upd_razao", "").strip()
-            cnpj = request.POST.get("upd_cnpj", "").strip()
-            cnpj = re.sub(r"\D", "", cnpj)
-            is_active = request.POST.get("upd_is_active") == "on"
+        # ✅ Extrair dados do formulário
+        razao = request.POST.get("upd_razao", "").strip()
+        cnpj = request.POST.get("upd_cnpj", "").strip()
+        cnpj = re.sub(r"\D", "", cnpj)
+        is_active = request.POST.get("upd_is_active") == "on"
         
-            # ✅ Validações básicas
-            if not razao:
-                return JsonResponse({"erro": "Razão social é obrigatória"}, status=400)
-            if not cnpj:
-                return JsonResponse({"erro": "CNPJ é obrigatório"}, status=400)
+        # ✅ Validações básicas
+        if not razao:
+            return JsonResponse({"erro": "Razão social é obrigatória"}, status=400)
+        if not cnpj:
+            return JsonResponse({"erro": "CNPJ é obrigatório"}, status=400)
 
-            resultado = cl_gdf.Cliente_upd(
-                i_cliente=cod_cliente_id,
-                i_razao=razao,
-                i_cnpj=cnpj,
-                i_is_active=is_active
-            )
-            if not resultado.get("success"):
-                return JsonResponse({"erro": resultado.get("message")}, status=400)
+        resultado = cl_gdf.Cliente_upd(
+            i_cliente=cod_cliente_id,
+            i_razao=razao,
+            i_cnpj=cnpj,
+            i_is_active=is_active
+        )
+            
+        if not resultado.get("success"):
+            messages.error(request, resultado.get("message", "Erro ao atualizar"), extra_tags='MODAL_UPD')
+        else:
+            messages.success(request, resultado.get("message", "Cliente atualizado!"), extra_tags='MODAL_UPD')
 
-        # Atualização dos acessos (aba Direitos de Acesso)
-        if modal_upd == "S" or modal_upd == "":
-            ls_solucoes = request.POST.get("ls_solucoes", "").strip()  # Formato: "COD1:1,COD2:0"
-            resultado = cl_gdf.Cliente_solucao(
-                i_Cod_cliente=cod_cliente_id,
-                ls_solucoes=ls_solucoes
-            )
-            if not resultado.get("success"):
-                return JsonResponse({"erro": resultado.get("message")}, status=400)
-        
         return redirect('Dm_Clientes')
-    return JsonResponse({"erro": "Método não permitido"}, status=405)
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def Cliente_acesso_upd(request):
+    """Atualizar acessos do cliente existente"""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+    
+    cl_gdf = Cl_Gdf()
+    ls_solucoes = request.POST.get("ls_solucoes", "").strip()  # Formato: "COD1:1,COD2:0"
+    
+    print(f"[Cliente_acesso_upd POST] cod_cliente: {cod_cliente}")
+    print(f"[Cliente_acesso_upd POST] ls_solucoes: {ls_solucoes}")
+    
+    resultado = cl_gdf.Cliente_solucao(
+        i_Cod_cliente=cod_cliente,
+        ls_solucoes=ls_solucoes
+    )
+
+    print(f"[Cliente_acesso_upd] resultado: {resultado}")
+
+    if not resultado.get("success"):
+        messages.error(request, resultado.get("message", "Erro ao atualizar acessos"), extra_tags='MODAL_UPD')
+    else:
+        messages.success(request, resultado.get("message", "Acessos atualizados!"), extra_tags='MODAL_UPD')
+
+    return redirect('Dm_Clientes')

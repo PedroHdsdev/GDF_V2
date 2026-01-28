@@ -53,10 +53,9 @@
 
           <!-- TAB 1: DADOS DO CLIENTE -->
           <div class="tab-pane fade show active" id="tab-cliente" role="tabpanel">
-            <form method="post" id="formClienteUpd" action="/cliente/" onsubmit="validarFormularioUpd(event)">
+            <form method="post" id="formClienteUpd" action="" onsubmit="validarFormularioUpd(event)">
               {% csrf_token %}
               <input type="hidden" id="upd_cliente_id" name="upd_cliente_id" value="">
-              <input type="hidden" id="modal_upd" name="modal_upd" value="C">
               <div class="row g-3">
                 
                 <div class="col-md-6">
@@ -119,10 +118,9 @@
 
           <!-- TAB 2: DIREITOS DE ACESSO -->
           <div class="tab-pane fade" id="tab-acesso" role="tabpanel">
-            <form method="post" id="formAcessoUpd" action="/cliente/">
+            <form method="post" id="formAcessoUpd" action="/cliente/Acesso/">
               {% csrf_token %}
               <input type="hidden" id="Acesso_cliente_id" name="Acesso_cliente_id" value="">
-              <input type="hidden" id="modal_upd" name="modal_upd" value="S">
               <div class="mb-3">
                 <label class="form-label">Adicionar Solução</label>
                 <div class="input-group">

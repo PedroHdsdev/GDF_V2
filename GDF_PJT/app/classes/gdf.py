@@ -191,7 +191,7 @@ class Cl_Gdf():
 #--------------------------------------------------------------------------------
     """Retorna dados do cliente para edição no modal"""
     def Get_Clientes_upd(self, cliente_id):
-        self.Retorn = []
+        self.Retorn = {}
         try:
             q_cliente = Clientes.objects.get(cod_cliente=cliente_id)
 
@@ -225,9 +225,11 @@ class Cl_Gdf():
             }
 
         except Clientes.DoesNotExist as e:
-            print(str(e))
+            print(f"[ERROR] Cliente {cliente_id} não encontrado: {str(e)}")
+            return {"erro": "Cliente não encontrado"}
         except Exception as e:
-            print(str(e))
+            print(f"[ERROR] Erro ao buscar cliente: {str(e)}")
+            return {"erro": str(e)}
         
         return self.Retorn
 #--------------------------------------------------------------------------------
@@ -342,16 +344,16 @@ class Cl_Gdf():
             Empresas_Data    = []
 
             # -------------------------------------------------
-            # Empresas do cliente 
+            # Empresas do cliente COM OTIMIZAÇÃO
             # -------------------------------------------------
+            # ✅ OTIMIZAÇÃO: prefetch_related evita N+1 queries de certificados
             tl_empresas = Empresas.objects.filter(
                 cliente_id=i_cod_Cliente
-            ).distinct()
+            ).prefetch_related('cert_set').distinct()
             
-            #q_empresas = Empresas.objects.filter(cliente=i_cod_Cliente).distinct()
             for emp in tl_empresas:
-        
-                list_cert = Cert.objects.filter(raiz_cnpj=emp.cert_id)
+                # ✅ Agora os certificados já estão em cache (não faz nova query)
+                list_cert = emp.cert_set.all()
                 dt_atual = datetime.today().date()
 
                 Empresas_Data.append({
@@ -387,7 +389,7 @@ class Cl_Gdf():
                 ]
                 })
             
-            #tl_GrpEmpresas = GrpEmpresas.objects.filter(cliente=i_cod_Cliente).distinct() 
+            print(f"[Get_Empresas] Carregadas {len(Empresas_Data)} empresas com certificados otimizados")
          
         except Empresas.DoesNotExist as e:
             self._registrar_log(type='E', id='E001', msg=f"Erro: {str(e)}")
@@ -562,17 +564,124 @@ class Cl_Gdf():
         
         except ValueError as e:
             return {"success": False, "message": str(e)}
-
         except Exception as e:
-            print(f"[ERROR] Erro ao buscar dados para edição de empresa: {str(e)}")
-            return {"erro": f"Erro ao buscar dados: {str(e)}"}
-
-        
-        return self.Retorn   
+            print(f"[ERROR] Empresa_ins - Erro: {str(e)}")
+            return {"success": False, "message": f"Erro ao criar empresa: {str(e)}"}
 
 #--------------------------------------------------------------------------------
-    """Alteração de Certificado"""
-    def Cert_upd(self, raiz, cert_file, emissor, cnpj, dt_inicial,dt_fim ):
+    """Atualização de Empresas"""
+    def Empresa_upd(
+        self,
+        cod_empresa,
+        razao,
+        fantasia,
+        grp_empresa,
+        cod_cliente,
+        matriz=False,
+        ie="",
+        im="",
+        iest="",
+        crt="",
+        cnae="",
+        suframa="",
+        chave_acesso=""
+    ) -> dict:
+        try:
+            print(f"[DEBUG] Empresa_upd - cod_empresa: {cod_empresa}, cod_cliente: {cod_cliente}")
+            
+            # ✅ Validações obrigatórias
+            if not cod_empresa or not razao or not fantasia:
+                raise ValueError("Código, razão social e fantasia são obrigatórios")
+            
+            if not cod_cliente:
+                raise ValueError("Cliente não identificado")
+            
+            # ✅ Validar IDOR: Empresa deve pertencer ao cliente
+            empresa = Empresas.objects.get(
+                cod_empresa=cod_empresa,
+                cliente__cod_cliente=cod_cliente
+            )
+            
+            # ✅ Se grupo foi informado, validar
+            if grp_empresa:
+                try:
+                    q_grpempresa = GrpEmpresas.objects.get(grp_empresa=grp_empresa)
+                    empresa.grp_empresa = q_grpempresa
+                except GrpEmpresas.DoesNotExist:
+                    raise ValueError(f"Grupo de empresa '{grp_empresa}' não encontrado")
+            
+            # ✅ Atualizar campos
+            empresa.razao = razao
+            empresa.fantasia = fantasia
+            empresa.matriz = matriz
+            empresa.ie = ie or None
+            empresa.im = im or None
+            empresa.iest = iest or None
+            empresa.crt = crt or None
+            empresa.cnae = cnae or None
+            empresa.suframa = suframa or None
+            empresa.chave_acesso = chave_acesso or None
+            
+            empresa.save(update_fields=[
+                'razao', 'fantasia', 'matriz', 'ie', 'im', 'iest', 
+                'crt', 'cnae', 'suframa', 'chave_acesso', 'grp_empresa'
+            ])
+            
+            print(f"[OK] Empresa {cod_empresa} atualizada com sucesso")
+            return {"success": True, "message": "Empresa atualizada com sucesso"}
+        
+        except Empresas.DoesNotExist:
+            print(f"[ERROR] Empresa {cod_empresa} não encontrada para cliente {cod_cliente}")
+            return {"success": False, "message": "Empresa não encontrada"}
+        except ValueError as e:
+            print(f"[ERROR] Empresa_upd - Validação: {str(e)}")
+            return {"success": False, "message": str(e)}
+        except Exception as e:
+            print(f"[ERROR] Empresa_upd - Erro: {str(e)}")
+            return {"success": False, "message": f"Erro ao atualizar empresa: {str(e)}"}
+
+#--------------------------------------------------------------------------------
+    """Atualizar certificado digital"""
+    def Cert_upd(self, cert_file, cod_cliente):
+        try:
+            print(f"[DEBUG] Cert_upd chamado - arquivo: {cert_file.name if cert_file else 'None'}")
+            
+            if not cert_file:
+                raise ValueError("Arquivo de certificado não fornecido")
+            
+            if not cod_cliente:
+                raise ValueError("Cliente não identificado")
+            
+            # ✅ Ler conteúdo do arquivo
+            cert_content = cert_file.read()
+            
+            # ✅ Extrair nome do arquivo
+            file_name = cert_file.name
+            print(f"[DEBUG] Processando certificado: {file_name}, tamanho: {len(cert_content)} bytes")
+            
+            # ✅ Usar nome do arquivo como identificador (primeiros 8 caracteres sem extensão)
+            raiz_cnpj = file_name.replace('.pfx', '').replace('.p12', '')[:8]
+            
+            cert_obj, created = Cert.objects.update_or_create(
+                raiz_cnpj=raiz_cnpj,
+                defaults={
+                    'nm_arquivo_pfx': file_name,
+                    'arquivo_cert': cert_content,
+                }
+            )
+            
+            status = "criado" if created else "atualizado"
+            print(f"[OK] Certificado {status}: raiz_cnpj={raiz_cnpj}, arquivo={file_name}")
+            
+            return {"success": True, "message": f"Certificado {status} com sucesso"}
+        
+        except ValueError as e:
+            print(f"[ERROR] Cert_upd - Validação: {str(e)}")
+            return {"success": False, "message": str(e)}
+        except Exception as e:
+            print(f"[ERROR] Cert_upd - Erro: {str(e)}")
+            return {"success": False, "message": f"Erro ao salvar certificado: {str(e)}"}
+
         self.Retorn = []
         try:
             if isinstance(dt_inicial, str):

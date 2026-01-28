@@ -28,9 +28,12 @@ urlpatterns = [
     # Empresas
     path('empresa/inserir/', views.Empresa_ins, name='Empresa_ins'),
     path('empresa/<str:cod_empresa>/', views.Empresa_upd, name='Empresa_upd'),
+    path('empresa/Cert/', views.Cert_upd, name='Cert_upd'),
 
     # Clientes
     path('cliente/inserir/', views.Cliente_ins, name='Cliente_ins'),
+    path('cliente/Acesso/', views.Cliente_acesso_upd, name='Cliente_acesso_upd'),
     path('cliente/<str:cod_cliente>/', views.Cliente_upd, name='Cliente_upd'),
+    
     path('',views.Login_view),
 ]

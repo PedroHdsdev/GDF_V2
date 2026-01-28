@@ -21,6 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initBusca();
     initClienteIns();
     initClienteUpd();
+    initModalMessageCleanup();  // ✅ NOVO: Limpar messages ao abrir/fechar modal
 });
 
 /* ===============================
@@ -388,7 +389,7 @@ async function loadCliente(clienteId) {
 function preencherFormularioCliente(data) {
   // Atualizar action dos forms com o ID do cliente
   document.getElementById('formClienteUpd').action = `/cliente/${data.cod_cliente}/`;
-  document.getElementById('formAcessoUpd').action = `/cliente/${data.cod_cliente}/`;
+  document.getElementById('formAcessoUpd').action = `/cliente/Acesso/`;
   
   // Dados do cliente
   document.getElementById('upd_cliente_id').value = data.cod_cliente || '';
@@ -637,4 +638,56 @@ function validarFormularioUpd(event) {
     }
     
     event.target.submit();
+}
+
+// ✅ Handler para enviar acessos
+document.addEventListener('DOMContentLoaded', () => {
+  const formAcesso = document.getElementById('formAcessoUpd');
+  if (formAcesso) {
+    formAcesso.addEventListener('submit', function(event) {
+      event.preventDefault();
+      
+      console.log('[formAcessoUpd] Enviando dados de acesso...');
+      console.log('[formAcessoUpd] Action:', this.action);
+      console.log('[formAcessoUpd] ls_solucoes:', document.getElementById('upd_solucoes_hidden').value);
+      
+      // Submit do formulário
+      this.submit();
+    });
+  }
+});
+
+// ✅ NOVO: Limpar messages ao abrir/fechar modais
+function initModalMessageCleanup() {
+  const modalIns = document.getElementById('modalClienteIns');
+  const modalUpd = document.getElementById('modalClienteUpd');
+  
+  if (modalIns) {
+    // Limpar messages do INSERT ao fechar
+    modalIns.addEventListener('hidden.bs.modal', function() {
+      const alerts = this.querySelectorAll('.alert');
+      alerts.forEach(alert => {
+        alert.remove();  // Remove da DOM
+      });
+      console.log('✅ Messages do INSERT limpas');
+    });
+    
+    // Limpar formulário ao abrir
+    modalIns.addEventListener('show.bs.modal', function() {
+      const form = this.querySelector('form');
+      if (form) form.reset();
+      console.log('✅ Formulário INSERT resetado');
+    });
+  }
+  
+  if (modalUpd) {
+    // Limpar messages do UPDATE ao fechar
+    modalUpd.addEventListener('hidden.bs.modal', function() {
+      const alerts = this.querySelectorAll('.alert');
+      alerts.forEach(alert => {
+        alert.remove();  // Remove da DOM
+      });
+      console.log('✅ Messages do UPDATE limpas');
+    });
+  }
 }
