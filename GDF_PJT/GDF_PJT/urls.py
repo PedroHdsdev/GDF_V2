@@ -13,12 +13,20 @@ urlpatterns = [
     path('Logout/', views.fn_view_sair, name='Logout'),
 
     #Sub-soluções paths
+    #ADM
     path('usuarios/', views.fn_view_listar_usuarios, name='Dm_Usuarios'),
     path('empresas/', views.fn_view_listar_empresas, name='Dm_Empresas'),
     path('clientes/', views.fn_view_listar_clientes, name='Dm_Clientes'),
+    
+    #PROCESSAMENTO
+    path('CargaXml/', views.fn_view_CargaXml, name='Pro_CargaXml'),
+    path('Reprocessamento/', views.fn_view_Reprocessamento, name='Pro_Reproc.'),
+
+    #Dashboard
     path('dashboard/vendas/', views.fn_view_dashboard_vendas, name='Db_Vendas'),
     path('dashboard/compras/', views.fn_view_dashboard_compras, name='Db_Compras'),
     
+        
 #--------------------------------------------------------------------
     # modal path
 #--------------------------------------------------------------------

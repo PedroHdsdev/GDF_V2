@@ -585,7 +585,13 @@ class NFe(models.Model):
     data_criacao = models.DateTimeField(auto_now_add=True)
     data_atualizacao = models.DateTimeField(auto_now=True)
     usuario_criacao = models.CharField(max_length=120, blank=True, null=True)
-    
+    origem_dados = models.CharField(max_length=8, choices=[
+        ('LOCAL', 'Maquina Local'),
+        ('SAP', 'Importação SAP'),
+        ('SPED', 'Importação SPED'),
+        ('OUTROS', 'Outros'),
+    ], default='LOCAL')
+
     class Meta:
         managed = True
         db_table = '"nfe"."nfe"'

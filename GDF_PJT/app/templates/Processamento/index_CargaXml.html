@@ -1,0 +1,229 @@
+{% extends 'Index_Base.html' %}
+{% load static %}
+
+{% block title %}Carga XML{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/Style_CargaXml.css' %}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+
+{% block titlepage %}Carga de XML{% endblock %}
+
+{% block container %}
+<div class="container-fluid py-4">
+    <div class="container-carga-xml">
+
+        <!-- ALERTAS -->
+        <div id="alertas-container"></div>
+
+        <!-- CONTROLES SUPERIORES -->
+        <div class="row mb-4 align-items-center">
+            <div class="col-md-8">
+                <h4 class="mb-0"><i class="fas fa-file-upload"></i> Gerenciador de Carga XML</h4>
+            </div>
+            <div class="col-md-4 text-end">
+                <button class="btn btn-success btn-lg" data-bs-toggle="modal" data-bs-target="#modalCargaXml">
+                    <i class="fas fa-folder-open"></i> Carregar XMLs
+                </button>
+            </div>
+        </div>
+
+        <!-- FILTROS -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row align-items-end">
+                    <div class="col-md-6">
+                        <label class="form-label fw-500">Buscar:</label>
+                        <input type="text" id="filtro-busca" class="form-control" placeholder="Nome do arquivo, número, empresa...">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-500">Tipo de Documento:</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="filtro-nfe" value="NFe" checked>
+                                <label class="form-check-label" for="filtro-nfe">
+                                    <i class="fas fa-file-invoice"></i> NFe
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="filtro-cte" value="CTe" checked>
+                                <label class="form-check-label" for="filtro-cte">
+                                    <i class="fas fa-truck"></i> CTe
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="filtro-nfse" value="NFSe" checked>
+                                <label class="form-check-label" for="filtro-nfse">
+                                    <i class="fas fa-receipt"></i> NFSe
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TABELA DE CARGAS -->
+        <div class="card">
+            <div class="table-responsive">
+                <table id="tabela-cargas" class="table table-uploads table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width: 35%;">Arquivo</th>
+                            <th style="width: 12%;">Tipo</th>
+                            <th style="width: 15%;">Número</th>
+                            <th style="width: 15%;">Empresa</th>
+                            <th style="width: 12%;">Data</th>
+                            <th style="width: 11%;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">
+                                <i class="fas fa-inbox" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
+                                Nenhum arquivo carregado
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- PAGINAÇÃO -->
+        <nav aria-label="Paginação" class="mt-4">
+            <ul id="paginacao-cargas" class="pagination justify-content-center"></ul>
+        </nav>
+
+    </div>
+</div>
+
+<!-- MODAL - CARGA DE XML -->
+<div class="modal fade" id="modalCargaXml" tabindex="-1" aria-labelledby="modalCargaXmlLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalCargaXmlLabel">
+                    <i class="fas fa-upload"></i> Carregar Arquivos XML
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Abas -->
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-diretorio" data-bs-toggle="tab" data-bs-target="#diretorio" type="button" role="tab" aria-controls="diretorio" aria-selected="true">
+                            <i class="fas fa-folder"></i> Por Diretório
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-arquivo" data-bs-toggle="tab" data-bs-target="#arquivo" type="button" role="tab" aria-controls="arquivo" aria-selected="false">
+                            <i class="fas fa-file-upload"></i> Arquivo Individual
+                        </button>
+                    </li>
+                </ul>
+
+                <!-- Conteúdo das abas -->
+                <div class="tab-content">
+                    <!-- Aba: Por Diretório -->
+                    <div class="tab-pane fade show active" id="diretorio" role="tabpanel" aria-labelledby="tab-diretorio">
+                        <div class="card-upload-xml">
+                            <div class="drop-zone" id="drop-zone-diretorio">
+                                <div class="drop-zone-icon">
+                                    <i class="fas fa-folder-open"></i>
+                                </div>
+                                <div class="drop-zone-text">Selecione a pasta com XMLs</div>
+                                <div class="drop-zone-subtext">Clique ou arraste a pasta aqui</div>
+                                <input type="file" id="file-input-diretorio" webkitdirectory directory multiple style="display: none;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Aba: Arquivo Individual -->
+                    <div class="tab-pane fade" id="arquivo" role="tabpanel" aria-labelledby="tab-arquivo">
+                        <div class="card-upload-xml">
+                            <div class="drop-zone" id="drop-zone-arquivo">
+                                <div class="drop-zone-icon">
+                                    <i class="fas fa-file-code"></i>
+                                </div>
+                                <div class="drop-zone-text">Selecione arquivos XML</div>
+                                <div class="drop-zone-subtext">Clique ou arraste os arquivos aqui</div>
+                                <input type="file" id="file-input-arquivo" accept=".xml" multiple style="display: none;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview de arquivos -->
+                <div class="mt-4">
+                    <h6 class="fw-600 mb-3">Arquivos Selecionados:</h6>
+                    <table id="tabela-uploads" class="table table-sm table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Arquivo</th>
+                                <th>Tamanho</th>
+                                <th>Status</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="4" class="text-center text-muted">Nenhum arquivo selecionado</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Informações -->
+                <div class="info-section">
+                    <h5>ℹ️ Informações</h5>
+                    <ul>
+                        <li>Formatos aceitos: <strong>.xml</strong></li>
+                        <li>Tamanho máximo por arquivo: <strong>50MB</strong></li>
+                        <li>Tipos suportados: <strong>NFe, CTe, NFSe</strong></li>
+                        <li>Arquivos inválidos serão ignorados automaticamente</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-enviar-xml">
+                    <i class="fas fa-check"></i> Carregar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SCRIPTS -->
+<script src="{% static 'js/Script_CargaXml.js' %}"></script>
+<script>
+    // CSRF Token
+    function getCSRFToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+    }
+
+    // Inicializar drag & drop para diretório
+    const dropZoneDiretorio = document.getElementById('drop-zone-diretorio');
+    const inputDiretorio = document.getElementById('file-input-diretorio');
+
+    dropZoneDiretorio.addEventListener('click', () => inputDiretorio.click());
+
+    // Inicializar drag & drop para arquivo
+    const dropZoneArquivo = document.getElementById('drop-zone-arquivo');
+    const inputArquivo = document.getElementById('file-input-arquivo');
+
+    dropZoneArquivo.addEventListener('click', () => inputArquivo.click());
+
+    inputArquivo.addEventListener('change', function(e) {
+        exibirPreviewArquivos(e.target.files);
+    });
+
+    inputDiretorio.addEventListener('change', function(e) {
+        exibirPreviewArquivos(e.target.files);
+    });
+
+    // Botão enviar
+    document.getElementById('btn-enviar-xml').addEventListener('click', iniciarUpload);
+</script>
+{% endblock %}

@@ -574,3 +574,23 @@ def fn_view_atualizar_acesso_cliente(request):
         messages.success(request, resultado.get("message", "Acessos atualizados!"), extra_tags='MODAL_UPD')
 
     return redirect('Dm_Clientes')
+
+@login_required(login_url='Login')
+def fn_view_CargaXml(request):
+    """View para carregamento de XML"""
+    cod_cliente = request.session.get('cod_cliente', None)
+    
+    context = {
+        'cod_cliente': cod_cliente,
+    }
+    return render(request, 'Processamento/index_CargaXml.html', context)
+
+@login_required(login_url='Login')
+def fn_view_Reprocessamento(request):
+    """View para reprocessamento de dados"""
+    cod_cliente = request.session.get('cod_cliente', None)
+    
+    context = {
+        'cod_cliente': cod_cliente,
+    }
+    return render(request, 'Processamento/index_Reprocessamento.html', context)
