@@ -159,9 +159,6 @@ class EmpresasAdmin(admin.ModelAdmin):
         ('Certificado e Chave', {
             'fields': ('cert', 'chave_acesso')
         }),
-        ('Interno', {
-            'fields': ('id_user',)
-        }),
     )
 
 

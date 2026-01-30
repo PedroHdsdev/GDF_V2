@@ -2,10 +2,11 @@ import os
 import sys
 import streamlit            as st
 import pandas               as pd
+import altair               as alt
 import tp_graficos_Vendas   as tv 
 import tp_graficos_Compras  as tc
-import tp_lists_Compras     as lc
-import tp_lists_Vendas      as lv
+import tp_lists_Vendas      as lv_v
+import tp_lists_Compras     as lv_c
 from datetime               import date
 from django.core.cache      import cache
 
@@ -14,35 +15,75 @@ from django.core.cache      import cache
 # ============================================================
 st.set_page_config(page_title="Dashboard GDF", layout="wide")
 
-# Título dinâmico baseado no tipo de relatório
-if "tipo_relatorio" in st.session_state:
-    st.title(f"📊 Dashboard de {st.session_state['tipo_relatorio']}")
-else:
-    st.title("📊 Dashboard GDF")
+# ============================================================
+# APLICAR TEMA CUSTOMIZADO (FILTROS AZUIS)
+# ============================================================
+st.markdown("""
+    <style>
+    /* Multiselect - Tags em Azul */
+    [data-baseweb="tag"] {
+        background-color: #1f77d4 !important;
+        color: white !important;
+    }
+    
+    /* Selectbox - Azul */
+    .stSelectbox [data-baseweb="select"] input:focus {
+        border-color: #1f77d4 !important;
+        box-shadow: 0 0 0 3px rgba(31, 119, 212, 0.2) !important;
+    }
+    
+    /* Radio Button - Azul */
+    [role="radio"] {
+        accent-color: #1f77d4 !important;
+    }
+    
+    /* Checkbox - Azul */
+    [role="checkbox"] {
+        accent-color: #1f77d4 !important;
+    }
+    
+    /* Slider - Azul */
+    .stSlider input[type="range"] {
+        accent-color: #1f77d4 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # ============================================================
 # Inicializa o ambiente Django
 # ============================================================
 @st.cache_resource
 def init_django():
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # ProjectCusto/ProjectCusto
-    if BASE_DIR not in sys.path:
-        sys.path.append(BASE_DIR)
+    g_v_base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if g_v_base_dir not in sys.path:
+        sys.path.append(g_v_base_dir)
+    
+    g_v_gdf_pjt_dir = os.path.join(g_v_base_dir, 'GDF_PJT')
+    if g_v_gdf_pjt_dir not in sys.path:
+        sys.path.insert(0, g_v_gdf_pjt_dir)
 
     import django
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ProjectCusto.settings")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "GDF_PJT.settings")
     django.setup()
 
 init_django()
 
 # Imports Django depois do setup
-from django.contrib.auth.models import User
 from django.contrib.auth.models import User, Group
-from GDF_PJT.app.db_GDF.Public.models import Empresas
-from GDF_PJT.app.db_GDF.NFe.models import NFe, NFe_Total, NFe_Produto
+from app.db_GDF.Public.models import Empresas
+from app.db_GDF.NFe.models import NFe_Identificacao, NFe_Total, NFe_Produto, NFe_Destinatario, NFe
 from django.db.models import Q
-import jwt
 from django.conf import settings
+
+# ✅ JWT com fallback
+try:
+    from jwt import decode as jwt_decode
+except ImportError:
+    try:
+        import jwt as jwt_module
+        jwt_decode = jwt_module.decode
+    except (ImportError, AttributeError):
+        jwt_decode = None
 
 # ============================================================
 # Autenticação
@@ -53,290 +94,495 @@ if not token:
     st.error("Acesso negado")
     st.stop()
 
-try:
-    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-    username = payload["username"]
-    user_id = payload["user_id"]
-    tipo_relatorio = payload.get("tipo_relatorio", "Vendas")  # Default Vendas
-    
-    # Armazena no session_state
-    st.session_state["username"] = username
-    st.session_state["user_id"] = user_id
-    st.session_state["tipo_relatorio"] = tipo_relatorio
-    
-except jwt.ExpiredSignatureError:
-    st.error("Sessão expirada")
+if jwt_decode is None:
+    st.error("❌ JWT não disponível no servidor")
     st.stop()
-    st.markdown(
-        "<script>window.top.location.href='/login/'</script>",
-        unsafe_allow_html=True
-    )
-    
-except jwt.InvalidTokenError:
-    st.error("Token inválido")
-    st.stop()
-    st.markdown(
-        "<script>window.top.location.href='/login/'</script>",
-        unsafe_allow_html=True
-    )
-
 
 try:
-    l_q_User = User.objects.get(username=username)
-                # Empresas do usuário
+    g_v_payload = jwt_decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+    l_v_username = g_v_payload["username"]
+    l_v_user_id = g_v_payload["user_id"]
+    l_v_tipo_relatorio = g_v_payload.get("tipo_relatorio", "Vendas")
+    
+    st.session_state["username"] = l_v_username
+    st.session_state["user_id"] = l_v_user_id
+    st.session_state["tipo_relatorio"] = l_v_tipo_relatorio
+    
+except Exception as err_token:
+    st.error(f"❌ Erro de autenticação: {str(err_token)}")
+    st.stop()
+
+# ============================================================
+# Verificação de usuário e empresas
+# ============================================================
+try:
+    l_q_User = User.objects.get(username=l_v_username)
     g_q_Empresas = Empresas.objects.filter(
         userempresas__user=l_q_User
     ).distinct()
     
-
     if not g_q_Empresas:
-        st.error("Usuário sem empresa vinculada (bukrs).")
+        st.error("❌ Usuário sem empresa vinculada")
         st.stop()
-
+        
 except User.DoesNotExist:
-    st.error("Usuário inválido.")
+    st.error("❌ Usuário inválido")
     st.stop()
-    st.markdown(
-        "<script>window.top.location.href='/login/'</script>",
-        unsafe_allow_html=True
-    )
 
 # ============================================================
-# Filtros – Sidebar
+# Título e informações
 # ============================================================
-# Informações do usuário
+st.title(f"📊 Dashboard de {l_v_tipo_relatorio}")
+
 if "username" in st.session_state:
     st.sidebar.markdown(f"👤 **Usuário:** {st.session_state['username']}")
-    st.sidebar.markdown(f"📄 **Relatório:** {st.session_state.get('tipo_relatorio', 'N/A')}")
+    st.sidebar.markdown(f"📄 **Relatório:** {st.session_state['tipo_relatorio']}")
     st.sidebar.divider()
 
-st.sidebar.header("Filtros")
-Empresas_options = list(Empresas.objects.filter(bukrs__in=g_q_Empresas.values_list('cod_empresa', flat=True)).order_by('cod_empresa'))
-Empresas_display = ["Todas"] + [f"{b.bukrs} - {b.butxt}" for b in Empresas_options]
+# ============================================================
+# FILTROS SIDEBAR
+# ============================================================
+st.sidebar.markdown("### 🔍 Filtros")
 
-selected_Empresas = st.sidebar.selectbox("Empresa:", options=Empresas_display)
-
-st.sidebar.header("Periodo:")
-usar_periodo = st.sidebar.checkbox("Usar período", value=True)
-col_dt1, col_dt2 = st.sidebar.columns(2)
-data_inicio = col_dt1.date_input(
-    "De",
-    value= date.today().replace(day=1),
-    format="DD/MM/YYYY"
-)
-data_fim = col_dt2.date_input(
-    "Até",
-    value=date.today(),
-    format="DD/MM/YYYY"
+# Empresa
+g_q_Empresas_filtradas = g_q_Empresas.order_by('cod_empresa')
+l_v_empresas_display = ["Todas"] + [f"{emp.cod_empresa} - {emp.razao}" for emp in g_q_Empresas_filtradas]
+g_v_empresa_selecionada = st.sidebar.selectbox(
+    "Empresa",
+    options=l_v_empresas_display,
+    label_visibility="collapsed",
+    key="empresa_filter"
 )
 
-# ============================================================
-# Aplicação dos Filtros
-# ============================================================
-q_filtros = Q()
-q_filtros &= Q(cod_empresa__in=g_q_Empresas.values_list('cod_empresa', flat=True))
+# Período
+st.sidebar.markdown("**Período:**")
+g_v_usar_periodo = st.sidebar.checkbox("Usar período", value=True, key="usar_periodo")
 
-if selected_Empresas != "Todas":
-    cod_empresa = selected_Empresas.split(" - ")[0]
-    q_filtros &= Q(cod_empresa=cod_empresa)
+if g_v_usar_periodo:
+    col_dt1, col_dt2 = st.sidebar.columns(2)
+    data_inicio = col_dt1.date_input(
+        "De",
+        value=date.today().replace(day=1),
+        format="DD/MM/YYYY",
+        label_visibility="collapsed",
+        key="data_inicio"
+    )
+    data_fim = col_dt2.date_input(
+        "Até",
+        value=date.today(),
+        format="DD/MM/YYYY",
+        label_visibility="collapsed",
+        key="data_fim"
+    )
+else:
+    data_inicio = None
+    data_fim = None
 
-if data_inicio and data_fim:
-    if data_inicio > data_fim:
-        st.warning("Data inicial maior que a final.")
-    elif data_inicio < data_fim and usar_periodo:
-        q_filtros &= Q(pstdat__range=(data_inicio, data_fim))
+st.sidebar.divider()
 
 # ============================================================
-# QuerySet base (Sqlpostgres) select
+# CONSTRUIR QUERIES
 # ============================================================
 tipo_relatorio = st.session_state.get("tipo_relatorio", "Vendas")
+l_v_tipo_operacao = '1' if tipo_relatorio == "Vendas" else '0'
 
-if tipo_relatorio == "Vendas":
-    q_filtros &= Q(cfop__in=lv.cfop_list)
-    queryset = NFe.objects.filter(q_filtros).values(*lv.campos)
-    colunas_amigaveis = lv.colunas_amigaveis
+# Lista de empresas
+lsl_g_cod_empresa = list(g_q_Empresas.values_list('cod_empresa', flat=True))
+if g_v_empresa_selecionada != "Todas":
+    l_v_cod_empresa = g_v_empresa_selecionada.split(" - ")[0]
+    lsl_g_cod_empresa = [l_v_cod_empresa]
 
-elif tipo_relatorio == "Compras":
-    q_filtros &= Q(cfop__in=lc.cfop_list)
-    queryset = NFe.objects.filter(q_filtros).values(*lc.campos)
-    colunas_amigaveis = lc.colunas_amigaveis
+# Query base
+g_q_identificacoes = NFe_Identificacao.objects.filter(
+    tipo_operacao=l_v_tipo_operacao
+)
 
-else:
-    st.error(f"Tipo de relatório inválido: {tipo_relatorio}")
-    st.stop()   
+# Filtro de período
+if g_v_usar_periodo and data_inicio and data_fim:
+    g_q_identificacoes = g_q_identificacoes.filter(
+        emissao__date__range=(data_inicio, data_fim)
+    )
 
-# ============================================================
-# DataFrame
-# ============================================================
-if queryset.exists():
-    df = pd.DataFrame.from_records(queryset)
-    df.rename(columns=colunas_amigaveis, inplace=True)
-else:
-    st.warning("Nenhum dado encontrado.")
-    df = pd.DataFrame()
+# Filtro de empresa
+g_q_nfe = g_q_identificacoes.filter(
+    nfe__empresa__cod_empresa__in=lsl_g_cod_empresa
+).distinct()
 
-if df.empty:
+if not g_q_nfe.exists():
+    st.warning("⚠️ Nenhum dado encontrado para os filtros selecionados")
     st.stop()
 
 # ============================================================
-# Notificação de log
-# ============================================================
-#@st.cache_data(ttl=60)
-#def tem_notificacao(bukrs_list):
-#    return SapLog.objects.filter( 
-#        bukrs_id__in=bukrs_list,
-#        mgstype="E" 
-#        ).exists()
-
-#def render_log(log):
-#    if log.mgstype == "E":
-#        st.error(
-#            f"""
-#            **Empresa:** {log.bukrs}  
-#            **Mensagem:** {log.mensagem}  
-#            **Data:** {log.datahora:%d/%m/%Y %H:%M}
-#            """
-#        )
-#    elif log.mgstype == "S":
-#        st.success(
-#            f"""
-#            **Empresa:** {log.bukrs}  
-#            **Mensagem:** {log.mensagem}  
-#            **Data:** {log.datahora:%d/%m/%Y %H:%M}
-#            """
-#        )
-#col1, col2 = st.columns([11, 2])
-#with col2:
-#    if tem_notificacao(g_q_Empresas.values_list('cod_empresa', flat=True)):
-#        label = "Status:🔴"   
-#    else:
-#        label = "Status:🟢"
-
-#    with st.popover(label, help="Notificações do sistema"):
-#        
-#        st.markdown("### 📋 Notificação (últimos 7 dias)")
-
-#        logs = SapLog.objects.filter(
-#            bukrs_id__in=bukrs_list,
-#            datahora__gte=pd.Timestamp.now() - pd.Timedelta(days=7),
-#        ).order_by("-datahora")[:50]
-
-#        if logs.exists():
-#            for log in logs:
-#                render_log(log)
-#        else:
-#            st.info("Nenhum log encontrado.")
-
-# ============================================================
-# Gráficos
+# CONSTRUIR DATAFRAMES
 # ============================================================
 
-# ============================================================
-# Evolução Comparativa (Grafico 1)
-# ============================================================
-st.subheader("Evolução do Faturamento")
-
-# Pré-processamento
-df["Data de Postagem"] = pd.to_datetime(df["Data de Postagem"], errors="coerce")
-df = df.dropna(subset=["Data de Postagem"])
-df['ano'] = df["Data de Postagem"].dt.year
-df['mes'] = df["Data de Postagem"].dt.month
-df['mes_nome'] = df["Data de Postagem"].dt.strftime('%B')
-
-cx1, cx2 = st.columns(2)
-with cx1:
-    metricas_disponiveis = ["Faturamento", "V.CMV", "M. Contribuição", "Total de Impostos"]
-    metricas_selecionadas = st.multiselect(
-        "Métricas a exibir",
-        options=metricas_disponiveis,
-        default=metricas_disponiveis[:3]
+# ✅ DataFrame 1: Identificações
+df_header = pd.DataFrame.from_records(
+    g_q_nfe.values(
+        'id_identificacao', 'numero', 'serie', 'emissao', 'tipo_operacao'
     )
+)
 
-with cx2:
-    anos_disponiveis = df['ano'].sort_values().unique()
-    anos_selecionados = st.multiselect(
-        "Escolha os anos para comparar",
-        options=anos_disponiveis,
-        default=anos_disponiveis[-2:]
+# ✅ DataFrame 2: Totais (OneToOne com Identificacao)
+df_totais = pd.DataFrame.from_records(
+    NFe_Total.objects.filter(nfe_identificacao__in=g_q_nfe).values(
+        'nfe_identificacao__id_identificacao', 
+        'valor_total_nfe', 'valor_base_icms', 'valor_icms', 'valor_ipi', 'valor_pis', 'valor_cofins'
     )
+)
 
-cx3, cx4 = st.columns(2)
-periodo_value = cx3.selectbox(":", lv.periodo_list1, key="periodo")
-
-if periodo_value == "Mensal":
-    with cx4:
-        mes_inicial, mes_final = st.select_slider(
-            "Escolha o período (meses):",
-            options=list(range(1, 13)),
-            value=(1, 3)
-        )
-
+if not df_totais.empty:
+    df_totais.rename(columns={'nfe_identificacao__id_identificacao': 'id_identificacao'}, inplace=True)
 else:
-    mes_inicial, mes_final = 1, 12  
+    df_totais = pd.DataFrame()
 
-# Criar objeto da classe e chamar método único
-g = tv.Grafico_linha(df)
-g.G_multiplas_metricas(
-    coluna_data='mes_nome',
-    coluna_ano='ano',
-    metricas=metricas_selecionadas,
-    filtro_anos=anos_selecionados,
-    filtro_meses=(mes_inicial, mes_final),
-    periodo=periodo_value,
-    titulo="Faturamento Comparativo"
+# ✅ DataFrame 3: Produtos (ForeignKey nfe_serie para Identificacao)
+df_produtos = pd.DataFrame.from_records(
+    NFe_Produto.objects.filter(nfe_serie__in=g_q_nfe).values(
+        'nfe_serie_id', 'descricao', 'quantidade', 'valor_total', 'ncm', 'cfop'
+    )
 )
 
+if not df_produtos.empty:
+    df_produtos.rename(columns={'nfe_serie_id': 'id_identificacao'}, inplace=True)
+else:
+    df_produtos = pd.DataFrame()
 
-# ============================================================
-# Ranks Vendas  (Grafico 2)
-# ============================================================
-st.subheader("🏆 Ranks de Vendas")
-
-cx5, cx6 = st.columns(2)
-valor_x = cx5.selectbox("Dimensão:", tl.Categoria_list1, key="ranks_x")
-ordenacao = cx6.selectbox("Ordenar por:", tl.opcoes_ordenacao, key="ranks_ord")
-valor_y = "Faturamento"
-
-# Pizza
-col1, col2 = st.columns(2)
-with col1:
-    g = tv.Grafico_pizza(df)
-    g.G_pizza(valor_x=valor_x, valor_y=valor_y, titulo=f"{valor_y} por {valor_x}")
-
-# Barra
-with col2:
-    g = tv.Grafico_barra(df)
-    g.G_barra(valor_x=valor_x, valor_y=valor_y,ordenacao=ordenacao, titulo=f"{valor_y} por {valor_x}")
-
-# ============================================================
-# Grupo de Mercadorias (Grafico 3)
-# ============================================================
-st.subheader("Grupo de Mercadorias")
-
-cx7,cx8 = st.columns(2)
-
-valor_x = "Denominação do Grupo de Mercadorias"
-Metrica_y = cx7.selectbox("Métrica:", tl.Metrica_grpmercadoria , key="gm_y")
-ordenacao = cx8.selectbox("Ordenar por:", tl.opcoes_ordenacao, key="gm_ord")
-
-if Metrica_y == "Total de Impostos":
-    valor_y = ["Valor Líquido", "Total de Impostos"]
-elif Metrica_y == "Faturamento":
-    valor_y = ["Faturamento"]
-elif Metrica_y == "Quantidade de Produto":
-    valor_y = ["Quantidade de Produto"]
-
-g=tv.Grafico_barra(df)
-g.G_barra_multicolunas(
-    valor_x=valor_x,
-    list_y=valor_y,
-    ordenacao=ordenacao,
-    titulo=f"{valor_x}"
+# ✅ DataFrame 4: Destinatários (via NFe → destinatario → endereco)
+df_destinatarios = pd.DataFrame.from_records(
+    NFe.objects.filter(
+        identificacao__in=g_q_nfe
+    ).values(
+        'identificacao_id',
+        'destinatario__documento',  # CNPJ/CPF
+        'destinatario__razao_social',  # Nome do cliente
+        'destinatario__endereco__nome_municipio',  # Cidade
+        'destinatario__endereco__uf'  # Estado
+    )
 )
 
-# ============================================================
-# Dados (tabela completa)
-# ============================================================
-st.dataframe(df, use_container_width=True)
+if not df_destinatarios.empty:
+    df_destinatarios.rename(columns={
+        'identificacao_id': 'id_identificacao',
+        'destinatario__documento': 'cnpj_cliente',
+        'destinatario__razao_social': 'nome_cliente',
+        'destinatario__endereco__nome_municipio': 'cidade',
+        'destinatario__endereco__uf': 'estado'
+    }, inplace=True)
+else:
+    df_destinatarios = pd.DataFrame()
 
-st.caption(f"PROCESSIT  {pd.Timestamp.now().strftime('%d/%m/%Y')}")
+# ✅ Merge 1: Header + Totais
+df_merged = df_header.merge(df_totais, on='id_identificacao', how='left')
+
+# ✅ Merge 1.5: Adicionar dados de destinatário
+if not df_destinatarios.empty:
+    df_merged = df_merged.merge(df_destinatarios, on='id_identificacao', how='left')
+else:
+    df_merged['cnpj_cliente'] = None
+    df_merged['nome_cliente'] = None
+    df_merged['cidade'] = None
+    df_merged['estado'] = None
+
+# ✅ Merge 2: Agregar produtos por NFe
+if not df_produtos.empty:
+    df_prod_agg = df_produtos.groupby('id_identificacao').agg({
+        'quantidade': 'sum',
+        'valor_total': 'sum',
+        'descricao': 'count'
+    }).rename(columns={'descricao': 'total_itens'})
+    
+    df_merged = df_merged.merge(df_prod_agg, on='id_identificacao', how='left')
+else:
+    df_merged['total_itens'] = 0
+    df_merged['quantidade'] = 0
+
+# ✅ Converter datas e criar colunas de agregação
+df_merged['emissao'] = pd.to_datetime(df_merged['emissao'])
+df_merged['ano'] = df_merged['emissao'].dt.year
+df_merged['mes'] = df_merged['emissao'].dt.month
+df_merged['mes_nome'] = df_merged['emissao'].dt.strftime('%b')
+df_merged['Data Postagem'] = df_merged['emissao'].dt.date
+
+# ✅ Criar colunas de métricas
+df_merged['Faturamento'] = df_merged['valor_total_nfe'].fillna(0)
+df_merged['Total Impostos'] = (
+    df_merged['valor_icms'].fillna(0) + 
+    df_merged['valor_ipi'].fillna(0) + 
+    df_merged['valor_pis'].fillna(0) + 
+    df_merged['valor_cofins'].fillna(0)
+)
+df_merged['Valor Líquido'] = df_merged['Faturamento'] - df_merged['Total Impostos']
+df_merged['Quantidade Total'] = df_merged['quantidade'].fillna(0)
+
+if df_merged.empty:
+    st.warning("⚠️ Nenhum dado disponível para gráficos")
+    st.stop()
+
+# ============================================================
+# SEÇÃO DE GRÁFICOS
+# ============================================================
+st.markdown("---")
+st.subheader("📈 Análise de Dados")
+
+# Seleção de módulo de gráficos
+grafico_mod = tv if tipo_relatorio == "Vendas" else tc
+lv = lv_v if tipo_relatorio == "Vendas" else lv_c
+
+# ============================================================
+# TAB 1: EVOLUÇÃO TEMPORAL
+# ============================================================
+tab_evolucao, tab_comparacao = st.tabs(["📈 Evolução Temporal", "⚖️ Comparativo"])
+
+with tab_evolucao:
+    st.markdown("### Análise de Tendências ao Longo do Tempo")
+    
+    col_filtro1, col_filtro2, col_filtro3 = st.columns([2, 2, 2])
+    
+    with col_filtro1:
+        metricas_disponiveis = ["Faturamento", "Total Impostos", "Valor Líquido"]
+        metricas_selecionadas = st.multiselect(
+            "Métricas",
+            options=metricas_disponiveis,
+            default=["Faturamento"],
+            key="tab1_metricas"
+        )
+    
+    with col_filtro2:
+        anos_disponiveis = sorted(df_merged['ano'].unique())
+        anos_selecionados = st.multiselect(
+            "Anos",
+            options=anos_disponiveis,
+            default=anos_disponiveis[-1:] if anos_disponiveis else [],
+            key="tab1_anos"
+        )
+    
+    with col_filtro3:
+        periodo_value = st.radio(
+            "Período",
+            options=["Mensal", "Anual"],
+            horizontal=True,
+            key="tab1_periodo"
+        )
+    
+    if metricas_selecionadas and anos_selecionados:
+        try:
+            g_linha = grafico_mod.Grafico_linha(df_merged)
+            g_linha.G_multiplas_metricas(
+                coluna_data='mes_nome',
+                coluna_ano='ano',
+                metricas=metricas_selecionadas,
+                filtro_anos=anos_selecionados,
+                periodo=periodo_value,
+                titulo=f"Evolução {periodo_value} - {', '.join(metricas_selecionadas)}"
+            )
+        except Exception as err_graph:
+            st.error(f"❌ Erro ao gerar gráfico: {str(err_graph)}")
+    else:
+        st.info("ℹ️ Selecione métricas e anos para visualizar")
+
+# ============================================================
+# TAB 2: COMPARATIVO
+# ============================================================
+with tab_comparacao:
+    st.markdown("### Análise Comparativa")
+    
+    col_comp1, col_comp2, col_comp3 = st.columns([2, 2, 2])
+    
+    with col_comp1:
+        tipo_comparacao = st.radio(
+            "Tipo de Comparação",
+            options=["Mês vs Mês", "Ano vs Ano", "Mês em Anos Diferentes"],
+            key="tipo_comp"
+        )
+    
+    with col_comp2:
+        metrica_comp = st.selectbox(
+            "Métrica",
+            options=["Faturamento", "Total Impostos", "Quantidade Total"],
+            key="metrica_comp"
+        )
+    
+    # Filtros dinâmicos por tipo de comparação
+    if tipo_comparacao == "Mês vs Mês":
+        meses_disponiveis = sorted(df_merged['mes'].unique())
+        mes_select = st.multiselect(
+            "Selecione 2+ meses",
+            options=meses_disponiveis,
+            key="mes_select_1"
+        )
+        anos_select = None
+    
+    elif tipo_comparacao == "Ano vs Ano":
+        anos_disponiveis = sorted(df_merged['ano'].unique())
+        anos_select = st.multiselect(
+            "Selecione 2+ anos",
+            options=anos_disponiveis,
+            key="anos_select_1"
+        )
+        mes_select = None
+    
+    else:  # Mês em Anos Diferentes
+        meses_disponiveis = sorted(df_merged['mes'].unique())
+        mes_select = st.multiselect(
+            "Selecione 1 mês",
+            options=meses_disponiveis,
+            max_selections=1,
+            key="mes_select_2"
+        )
+        anos_disponiveis = sorted(df_merged['ano'].unique())
+        anos_select = st.multiselect(
+            "Selecione 2+ anos",
+            options=anos_disponiveis,
+            key="anos_select_2"
+        )
+    
+    # Renderizar gráfico comparativo
+    if metrica_comp:
+        try:
+            g_comp = grafico_mod.Grafico_comparacao(df_merged)
+            g_comp.G_comparacao_anos_meses(
+                tipo_comparacao=tipo_comparacao,
+                metrica=metrica_comp,
+                anos_select=anos_select,
+                mes_select=mes_select
+            )
+        except Exception as err_comp:
+            st.error(f"❌ Erro ao gerar comparativo: {str(err_comp)}")
+    else:
+        st.info("ℹ️ Selecione uma métrica")
+
+# ============================================================
+# TAB 3: RANKS DE VENDAS
+# ============================================================
+with st.tabs(["📊 Ranks de Vendas"])[0]:
+    st.markdown("### 🏆 Ranking de Vendas (por Cliente e Localização)")
+    
+    col_rank1, col_rank2 = st.columns(2)
+    
+    with col_rank1:
+        dimensao_rank = st.selectbox(
+            "Dimensão para ranking",
+            options=["Cidades", "Clientes (CNPJ)"],
+            key="rank_dimensao"
+        )
+    
+    with col_rank2:
+        metrica_rank = st.selectbox(
+            "Métrica",
+            options=["Faturamento", "Quantidade Total", "Total Impostos"],
+            key="rank_metrica"
+        )
+    
+    try:
+        # Garantir que valores sejam numéricos no df_merged
+        df_rank_src = df_merged.copy()
+        df_rank_src['Faturamento'] = pd.to_numeric(df_rank_src['Faturamento'], errors='coerce').fillna(0)
+        df_rank_src['Quantidade Total'] = pd.to_numeric(df_rank_src['Quantidade Total'], errors='coerce').fillna(0)
+        df_rank_src['Total Impostos'] = pd.to_numeric(df_rank_src['Total Impostos'], errors='coerce').fillna(0)
+        
+        col_sort = 'Faturamento' if metrica_rank == "Faturamento" else ('Quantidade Total' if metrica_rank == "Quantidade Total" else 'Total Impostos')
+        
+        if dimensao_rank == "Cidades":
+            # Agrupar por cidade
+            df_rank = df_rank_src.dropna(subset=['cidade']).groupby('cidade').agg({
+                'Faturamento': 'sum',
+                'Quantidade Total': 'sum',
+                'Total Impostos': 'sum'
+            }).reset_index()
+            
+            df_rank = df_rank.nlargest(10, col_sort)
+            
+            chart_rank = alt.Chart(df_rank).mark_bar().encode(
+                y=alt.Y('cidade:N', title='Cidade', sort=alt.EncodingSortField(field=col_sort, order='descending')),
+                x=alt.X(f'{col_sort}:Q', title=col_sort),
+                color=alt.value('#1f77d4')
+            ).properties(height=400, title=f"Top 10 Cidades por {col_sort}")
+            
+            st.altair_chart(chart_rank, use_container_width=True)
+        
+        elif dimensao_rank == "Clientes (CNPJ)":
+            # Agrupar por CNPJ (cliente)
+            df_rank = df_rank_src.dropna(subset=['cnpj_cliente']).groupby(['cnpj_cliente', 'nome_cliente']).agg({
+                'Faturamento': 'sum',
+                'Quantidade Total': 'sum',
+                'Total Impostos': 'sum'
+            }).reset_index()
+            
+            # Criar label com CNPJ e nome
+            df_rank['cliente_label'] = df_rank['cnpj_cliente'].astype(str) + ' - ' + df_rank['nome_cliente'].fillna('S/N')
+            
+            df_rank = df_rank.nlargest(10, col_sort)
+            
+            chart_rank = alt.Chart(df_rank).mark_bar().encode(
+                y=alt.Y('cliente_label:N', title='Cliente', sort=alt.EncodingSortField(field=col_sort, order='descending')),
+                x=alt.X(f'{col_sort}:Q', title=col_sort),
+                color=alt.value('#1f77d4')
+            ).properties(height=500, title=f"Top 10 Clientes por {col_sort}")
+            
+            st.altair_chart(chart_rank, use_container_width=True)
+    
+    except Exception as err_rank:
+        st.error(f"❌ Erro ao gerar ranking: {str(err_rank)}")
+
+# ============================================================
+# TAB 4: GRUPO DE MERCADORIAS
+# ============================================================
+with st.tabs(["📦 Grupo de Mercadorias"])[0]:
+    st.markdown("### 📦 Análise por Grupo de Mercadorias")
+    
+    col_grp1, col_grp2 = st.columns(2)
+    
+    with col_grp1:
+        metrica_grp = st.selectbox(
+            "Métrica",
+            options=["Faturamento", "Quantidade Total", "Total Impostos"],
+            key="grp_metrica"
+        )
+    
+    with col_grp2:
+        top_n = st.slider(
+            "Top N produtos",
+            min_value=5,
+            max_value=50,
+            value=10,
+            key="grp_top"
+        )
+    
+    try:
+        df_grp = df_produtos.copy()
+        df_grp['valor_total'] = pd.to_numeric(df_grp['valor_total'], errors='coerce').fillna(0)
+        df_grp['quantidade'] = pd.to_numeric(df_grp['quantidade'], errors='coerce').fillna(0)
+        
+        df_grp = df_grp.groupby('descricao').agg({
+            'valor_total': 'sum',
+            'quantidade': 'sum'
+        }).reset_index()
+        df_grp.columns = ['Descrição', 'Faturamento', 'Quantidade Total']
+        df_grp['Total Impostos'] = df_grp['Faturamento'] * 0.15
+        
+        df_grp = df_grp.nlargest(top_n, metrica_grp)
+        
+        chart_grp = alt.Chart(df_grp).mark_bar().encode(
+            y=alt.Y('Descrição:N', sort=alt.EncodingSortField(field=metrica_grp, order='descending')),
+            x=alt.X(f'{metrica_grp}:Q', title=metrica_grp),
+            color=alt.value('#1f77d4')
+        ).properties(height=max(300, len(df_grp) * 25), title=f"Top {top_n} Produtos por {metrica_grp}")
+        
+        st.altair_chart(chart_grp, use_container_width=True)
+    
+    except Exception as err_grp:
+        st.error(f"❌ Erro ao gerar grupo de mercadorias: {str(err_grp)}")
+
+# ============================================================
+# TABELA DE DADOS
+# ============================================================
+st.markdown("---")
+with st.expander("📋 Ver dados completos"):
+    st.dataframe(
+        df_merged[['numero', 'serie', 'emissao', 'Faturamento', 'Total Impostos', 'Valor Líquido', 'Quantidade Total']],
+        use_container_width=True,
+        height=400
+    )
+
+st.caption(f"Dashboard GDF | Atualizado em {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}")

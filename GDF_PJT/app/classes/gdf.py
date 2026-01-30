@@ -14,7 +14,18 @@ from django.utils                   import timezone
 from django.db                      import transaction
 from dataclasses                    import dataclass
 from typing                         import List, Dict
-import jwt
+import time
+
+# ✅ PyJWT import com fallback
+try:
+    from jwt import encode as jwt_encode
+except ImportError:
+    try:
+        # Fallback para PyJWT se a primeira falhar
+        import jwt as jwt_module
+        jwt_encode = jwt_module.encode
+    except (ImportError, AttributeError):
+        jwt_encode = None                          
 
 class ClGdf():
     def __init__(self):
@@ -32,16 +43,29 @@ class ClGdf():
     def gerar_token(request, user, tipo_relatorio='Vendas'): 
         if not user.is_active:
             return None 
-        else:
-            payload = {
-                "user_id": user.id,
-                "username": user.username,
-                "tipo_relatorio": tipo_relatorio,
-                "iat": timezone.now(),
-                "exp": timezone.now() + timedelta(minutes=30),
-            }
+        
+        if jwt_encode is None:
+            print("[ERROR] PyJWT não disponível")
+            return None
+        
+        # Timestamps Unix (segundos) - obrigatório para JWT
+        g_v_iat = int(time.time())
+        g_v_exp = g_v_iat + (30 * 60)  # +30 minutos em segundos
+        
+        payload = {
+            "user_id": user.id,
+            "username": user.username,
+            "tipo_relatorio": tipo_relatorio,
+            "iat": g_v_iat,
+            "exp": g_v_exp,
+        }
 
-            return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+        try:
+            g_og_token = jwt_encode(payload, settings.SECRET_KEY, algorithm='HS256')
+            return g_og_token
+        except Exception as fn_e:
+            print(f"[ERROR] JWT encode failed: {str(fn_e)}")
+            return None
         
 #********************************************************************************
 #--------------------------------------------------------------------------------

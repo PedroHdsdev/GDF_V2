@@ -126,6 +126,9 @@ SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=True)
 SESSION_COOKIE_HTTPONLY = env.bool('SESSION_COOKIE_HTTPONLY', default=True)
 CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=True)
 
+# Upload limits
+DATA_UPLOAD_MAX_NUMBER_FILES = env.int('DATA_UPLOAD_MAX_NUMBER_FILES', default=2000)
+
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 

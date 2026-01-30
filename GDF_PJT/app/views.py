@@ -6,7 +6,8 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http   import require_http_methods
 from django.conf                    import settings
 from django.contrib                 import messages
-from app.classes.Gdf                import ClGdf
+from app.classes.gdf                import ClGdf
+from app.classes.CargaXml           import Carga_xml
 from django.core.paginator          import Paginator
 from app.db_GDF.Public.models       import UserEmpresas, Empresas
 import re
@@ -576,14 +577,49 @@ def fn_view_atualizar_acesso_cliente(request):
     return redirect('Dm_Clientes')
 
 @login_required(login_url='Login')
+@require_http_methods(["GET"])
 def fn_view_CargaXml(request):
     """View para carregamento de XML"""
     cod_cliente = request.session.get('cod_cliente', None)
+    
+    if not cod_cliente:
+        return render(request, 'Index_Login.html', {'error_message': 'Cliente não identificado'})
     
     context = {
         'cod_cliente': cod_cliente,
     }
     return render(request, 'Processamento/index_CargaXml.html', context)
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_api_processar_xml(request):
+    """API para processar upload de XMLs"""
+    cod_cliente = request.session.get('cod_cliente', None)
+    
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    
+    try:
+        # Processar upload de XML aqui
+        cl_xml = Carga_xml()
+
+        lsl_Xml          = request.FILES.getlist('arquivo')
+        l_v_type_xml     = request.POST.get('type_xml', 'NFe')
+        l_v_origem_dados = request.POST.get('origem_dados', 'LOCAL')
+
+        if not lsl_Xml:
+            return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo selecionado'}, status=400)
+
+        upload_result = cl_xml.set_upload_xml(lsl_Xml, l_v_type_xml, l_v_origem_dados, request.user.username)
+        
+        return JsonResponse({
+            'sucesso': len(upload_result['errors']) == 0,
+            'mensagem': f"{len(upload_result['success'])} arquivo(s) processado(s), {len(upload_result['errors'])} erro(s)",
+            'detalhes': upload_result
+        }, status=200)
+    
+    except Exception as e:
+        return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao processar: {str(e)}'}, status=500)
 
 @login_required(login_url='Login')
 def fn_view_Reprocessamento(request):

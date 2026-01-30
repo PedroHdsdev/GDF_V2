@@ -113,7 +113,25 @@ cfop_list = [
 
 periodo_list1 = [
     "Mensal",
-    "anual"
+    "Anual"
+]
+
+# Listas alinhadas ao novo modelo (NFe)
+Categoria_list1_nfe = [
+    "numero",
+    "serie"
+]
+
+Metrica_header_nfe = [
+    "Faturamento",
+    "Total de Impostos"
+]
+
+Metrica_item_nfe = [
+    "Valor Líquido",
+    "Total de Impostos",
+    "Faturamento",
+    "Quantidade de Produto"
 ]
 
 opcoes_ordenacao = [
@@ -121,28 +139,21 @@ opcoes_ordenacao = [
     "Do menor para o maior",
 ]
 
-Categoria_list1 = [
-    "Cliente",
-    "Cidade",
-    "Local de Negócios"
+# ============================================================
+# COMPARAÇÃO - Novo Sistema de Filtros
+# ============================================================
+tipo_comparacao = [
+    "Mês vs Mês",
+    "Ano vs Ano",
+    "Mês em Anos Diferentes"
 ]
 
-Metrica_list1 = [
-    "Valor ICMS",
-    "Valor ICMS ST",
-    "Valor IPI",
-    "Valor PIS",
-    "Valor COFINS"
-]
-Metrica_list2 = [
+metricas_comparacao = [
     "Faturamento",
-    "V.CMV",
-    "M. Contribuição",
-    "Total de Impostos"
+    "Total de Impostos",
+    "Quantidade Total"
 ]
-Categoria_grpmercadoria = [
-    "Denominação do Grupo de Mercadorias",
-]
+
 
 Metrica_grpmercadoria = [
     "Faturamento",

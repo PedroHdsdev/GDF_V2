@@ -1,8 +1,8 @@
-import altair        as alt
-import streamlit     as st
-import pandas        as pd
-import type_lists    as tl 
-import numpy         as np
+import altair           as alt
+import streamlit        as st
+import pandas           as pd
+import tp_lists_Compras as tl
+import numpy            as np
 import calendar
 
 
@@ -678,3 +678,140 @@ class Grafico_linha(GraficoBase):
 
             final_chart = (chart + labels).properties(height=400, title=titulo)
             st.altair_chart(final_chart, use_container_width=True)
+
+
+# ============================================================
+# NOVO MÉTODO: COMPARAÇÃO ANO vs ANO / MÊS vs MÊS
+# ============================================================
+class Grafico_comparacao(GraficoBase):
+    """Gráfico de comparação para análises de Ano vs Ano, Mês vs Mês"""
+    
+    def G_comparacao_anos_meses(self, tipo_comparacao="Mês vs Mês", metrica="Faturamento", 
+                                 anos_select=None, mes_select=None, titulo=None):
+        """
+        Gráfico de comparação flexível
+        
+        Args:
+            tipo_comparacao: "Mês vs Mês", "Ano vs Ano", "Mês em Anos Diferentes"
+            metrica: Nome da métrica para comparar
+            anos_select: Lista de anos
+            mes_select: Lista de meses
+            titulo: Título customizado
+        """
+        
+        df = self.df.copy()
+        
+        if metrica not in df.columns:
+            st.error(f"Métrica '{metrica}' não existe.")
+            return
+        
+        if titulo is None:
+            titulo = f"{tipo_comparacao} - {metrica}"
+        
+        # ============================================================
+        # COMPARAÇÃO: MÊS VS MÊS
+        # ============================================================
+        if tipo_comparacao == "Mês vs Mês":
+            if not mes_select or len(mes_select) < 2:
+                st.warning("Selecione 2+ meses.")
+                return
+            
+            df_comp = df[df['mes'].isin(mes_select)].copy()
+            df_agg = df_comp.groupby('mes', as_index=False)[metrica].sum()
+            df_agg['mes_nome'] = df_agg['mes'].apply(
+                lambda x: ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][x-1]
+            )
+            
+            chart = (
+                alt.Chart(df_agg)
+                .mark_bar(cornerRadius=8)
+                .encode(
+                    x=alt.X('mes_nome:N', title='Mês', sort=df_agg['mes_nome'].tolist()),
+                    y=alt.Y(f'{metrica}:Q', title=metrica),
+                    color=alt.Color('mes_nome:N', scale=alt.Scale(scheme='blues'), legend=None),
+                    tooltip=[
+                        alt.Tooltip('mes_nome:N', title='Mês'),
+                        alt.Tooltip(f'{metrica}:Q', title=metrica, format=',.0f')
+                    ]
+                )
+                .properties(height=400, title=titulo)
+            )
+            
+            text = chart.mark_text(align='center', baseline='bottom', dy=-5).encode(
+                text=alt.Text(f'{metrica}:Q', format=',.0f')
+            )
+            
+            st.altair_chart((chart + text), use_container_width=True)
+        
+        # ============================================================
+        # COMPARAÇÃO: ANO VS ANO
+        # ============================================================
+        elif tipo_comparacao == "Ano vs Ano":
+            if not anos_select or len(anos_select) < 2:
+                st.warning("Selecione 2+ anos.")
+                return
+            
+            df_comp = df[df['ano'].isin(anos_select)].copy()
+            df_agg = df_comp.groupby('ano', as_index=False)[metrica].sum()
+            
+            chart = (
+                alt.Chart(df_agg)
+                .mark_bar(cornerRadius=8)
+                .encode(
+                    x=alt.X('ano:N', title='Ano'),
+                    y=alt.Y(f'{metrica}:Q', title=metrica),
+                    color=alt.Color('ano:N', scale=alt.Scale(scheme='blues'), legend=None),
+                    tooltip=[
+                        alt.Tooltip('ano:N', title='Ano'),
+                        alt.Tooltip(f'{metrica}:Q', title=metrica, format=',.0f')
+                    ]
+                )
+                .properties(height=400, title=titulo)
+            )
+            
+            text = chart.mark_text(align='center', baseline='bottom', dy=-5).encode(
+                text=alt.Text(f'{metrica}:Q', format=',.0f')
+            )
+            
+            st.altair_chart((chart + text), use_container_width=True)
+        
+        # ============================================================
+        # COMPARAÇÃO: MÊS EM ANOS DIFERENTES
+        # ============================================================
+        elif tipo_comparacao == "Mês em Anos Diferentes":
+            if not mes_select or len(mes_select) != 1:
+                st.warning("Selecione exatamente 1 mês.")
+                return
+            
+            if not anos_select or len(anos_select) < 2:
+                st.warning("Selecione 2+ anos.")
+                return
+            
+            l_v_mes = mes_select[0]
+            df_comp = df[(df['mes'] == l_v_mes) & (df['ano'].isin(anos_select))].copy()
+            df_agg = df_comp.groupby('ano', as_index=False)[metrica].sum()
+            
+            l_v_mes_nome = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                           'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][l_v_mes-1]
+            l_v_titulo = f"{l_v_mes_nome} - Comparação Anual: {metrica}"
+            
+            chart = (
+                alt.Chart(df_agg)
+                .mark_bar(cornerRadius=8)
+                .encode(
+                    x=alt.X('ano:N', title='Ano'),
+                    y=alt.Y(f'{metrica}:Q', title=metrica),
+                    color=alt.Color('ano:N', scale=alt.Scale(scheme='blues'), legend=None),
+                    tooltip=[
+                        alt.Tooltip('ano:N', title='Ano'),
+                        alt.Tooltip(f'{metrica}:Q', title=metrica, format=',.0f')
+                    ]
+                )
+                .properties(height=400, title=l_v_titulo)
+            )
+            
+            text = chart.mark_text(align='center', baseline='bottom', dy=-5).encode(
+                text=alt.Text(f'{metrica}:Q', format=',.0f')
+            )
+            
+            st.altair_chart((chart + text), use_container_width=True)

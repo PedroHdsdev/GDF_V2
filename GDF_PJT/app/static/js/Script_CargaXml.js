@@ -14,7 +14,9 @@ const estadoCargaXml = {
         tipos: ['NFe', 'CTe', 'NFSe']
     },
     currentPage: 1,
-    itemsPerPage: 10
+    itemsPerPage: 10,
+    modoDiretorio: false,
+    nomePasta: ''
 };
 
 /* ===============================
@@ -288,13 +290,54 @@ function iniciarUpload() {
 /* ===============================
    EXIBIR PREVIEW DOS ARQUIVOS
 ================================ */
-function exibirPreviewArquivos() {
+function exibirPreviewArquivos(files) {
+    if (files) {
+        processarArquivos(files);
+    }
+    
     const tbody = document.querySelector('#tabela-uploads tbody');
+    const contador = document.getElementById('contador-arquivos');
 
     if (!tbody) return;
+    
+    if (contador) {
+        contador.textContent = estadoCargaXml.arquivos.length;
+    }
 
     tbody.innerHTML = '';
 
+    if (estadoCargaXml.arquivos.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Nenhum arquivo selecionado</td></tr>';
+        return;
+    }
+
+    // MODO DIRETÓRIO: Mostrar apenas resumo da pasta
+    if (estadoCargaXml.modoDiretorio) {
+        const linha = document.createElement('tr');
+        linha.id = 'linha-diretorio';
+        linha.innerHTML = `
+            <td>
+                <i class="fas fa-folder" style="color: #ffc107; margin-right: 8px;"></i>
+                <strong>${estadoCargaXml.nomePasta}</strong>
+            </td>
+            <td>${estadoCargaXml.arquivos.length} arquivo(s)</td>
+            <td>
+                <span class="badge-status badge-info">
+                    <span class="spinner-carga" style="margin-right: 5px;"></span>
+                    Aguardando
+                </span>
+            </td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="limparSelecao()">
+                    <i class="fas fa-times"></i> Limpar
+                </button>
+            </td>
+        `;
+        tbody.appendChild(linha);
+        return;
+    }
+
+    // MODO INDIVIDUAL: Mostrar cada arquivo
     estadoCargaXml.arquivos.forEach((file, index) => {
         const linha = document.createElement('tr');
         linha.innerHTML = `
@@ -324,29 +367,45 @@ function exibirPreviewArquivos() {
 ================================ */
 function iniciarUpload() {
     if (estadoCargaXml.uploadEmProgresso || estadoCargaXml.arquivos.length === 0) {
+        mostrarAlerta('⚠️ Selecione pelo menos um arquivo XML', 'warning');
         return;
     }
 
-    estadoCargaXml.uploadEmProgresso = true;
-    estadoCargaXml.uploadosRealizados = 0;
+    // Obter tipo de documento e origem
+    const tipoDocumento = document.getElementById('select-tipo-documento')?.value || 'NFe';
+    const origemDados = document.getElementById('select-origem-dados')?.value || 'LOCAL';
 
+    estadoCargaXml.uploadEmProgresso = true;
+    
+    // Marcar todos como processando
     estadoCargaXml.arquivos.forEach((file, index) => {
-        uploadArquivo(file, index);
+        atualizarStatusUpload(index, 'processing', 'Processando...');
     });
+
+    // Enviar todos os arquivos de uma vez
+    uploadArquivosLote(estadoCargaXml.arquivos, tipoDocumento, origemDados);
 }
 
 /* ===============================
-   UPLOAD INDIVIDUAL
+   UPLOAD EM LOTE
 ================================ */
-function uploadArquivo(file, index) {
+function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
     const formData = new FormData();
-    formData.append('arquivo', file);
+    
+    // Adicionar todos os arquivos
+    arquivos.forEach(file => {
+        formData.append('arquivo', file);
+    });
+    
+    // Adicionar tipo e origem
+    formData.append('type_xml', tipoDocumento);
+    formData.append('origem_dados', origemDados);
 
     // Obter CSRF token
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-    if (csrfToken) {
-        formData.append('csrfmiddlewaretoken', csrfToken);
-    }
+
+    // Marcar como processando
+    atualizarStatusUpload(0, 'processing', 'Enviando arquivos...');
 
     fetch('/api/processar-xml/', {
         method: 'POST',
@@ -357,24 +416,63 @@ function uploadArquivo(file, index) {
     })
         .then(response => response.json())
         .then(data => {
-            atualizarStatusUpload(index, data.sucesso ? 'success' : 'error', data.mensagem);
-            estadoCargaXml.uploadosRealizados++;
-
-            // Se todos os uploads foram realizados
-            if (estadoCargaXml.uploadosRealizados === estadoCargaXml.arquivos.length) {
-                estadoCargaXml.uploadEmProgresso = false;
-                finalizarCargas();
+            if (data.sucesso) {
+                // MODO DIRETÓRIO: Atualizar status geral
+                if (estadoCargaXml.modoDiretorio) {
+                    const totalSucesso = data.detalhes?.success?.length || 0;
+                    const totalErro = data.detalhes?.errors?.length || 0;
+                    const mensagemStatus = `${totalSucesso} processado(s), ${totalErro} erro(s)`;
+                    
+                    if (totalErro === 0) {
+                        atualizarStatusUpload(arquivos.length - 1, 'success', `✓ ${mensagemStatus}`);
+                    } else {
+                        atualizarStatusUpload(arquivos.length - 1, 'error', `⚠️ ${mensagemStatus}`);
+                    }
+                } else {
+                    // MODO INDIVIDUAL: Atualizar cada arquivo
+                    if (data.detalhes && data.detalhes.success) {
+                        data.detalhes.success.forEach((fileName, idx) => {
+                            const index = arquivos.findIndex(f => f.name === fileName);
+                            if (index !== -1) {
+                                atualizarStatusUpload(index, 'success', '✓ Processado');
+                            }
+                        });
+                    }
+                    
+                    // Atualizar status de arquivos com erro
+                    if (data.detalhes && data.detalhes.errors) {
+                        data.detalhes.errors.forEach(erro => {
+                            const index = arquivos.findIndex(f => f.name === erro.file);
+                            if (index !== -1) {
+                                atualizarStatusUpload(index, 'error', `✗ ${erro.error}`);
+                            }
+                        });
+                    }
+                }
+                
+                mostrarAlerta(data.mensagem, 'success');
+            } else {
+                mostrarAlerta(data.mensagem || 'Erro ao processar XMLs', 'error');
+                // Marcar todos como erro
+                arquivos.forEach((file, index) => {
+                    atualizarStatusUpload(index, 'error', '✗ Erro no processamento');
+                });
             }
+            
+            estadoCargaXml.uploadEmProgresso = false;
+            finalizarCargas();
         })
         .catch(error => {
             console.error('Erro ao fazer upload:', error);
-            atualizarStatusUpload(index, 'error', 'Erro ao enviar arquivo');
-            estadoCargaXml.uploadosRealizados++;
-
-            if (estadoCargaXml.uploadosRealizados === estadoCargaXml.arquivos.length) {
-                estadoCargaXml.uploadEmProgresso = false;
-                finalizarCargas();
-            }
+            mostrarAlerta('Erro ao enviar arquivos: ' + error.message, 'error');
+            
+            // Marcar todos como erro
+            arquivos.forEach((file, index) => {
+                atualizarStatusUpload(index, 'error', '✗ Erro de conexão');
+            });
+            
+            estadoCargaXml.uploadEmProgresso = false;
+            finalizarCargas();
         });
 }
 
@@ -382,25 +480,66 @@ function uploadArquivo(file, index) {
    ATUALIZAR STATUS
 ================================ */
 function atualizarStatusUpload(index, status, mensagem) {
+    // MODO DIRETÓRIO: Atualizar linha única
+    if (estadoCargaXml.modoDiretorio) {
+        const linhaDiretorio = document.getElementById('linha-diretorio');
+        if (linhaDiretorio) {
+            const statusCell = linhaDiretorio.querySelector('td:nth-child(3)');
+            
+            let badgeClass = 'badge-info';
+            let statusTexto = 'Aguardando';
+            let iconHtml = '<span class="spinner-carga" style="margin-right: 5px;"></span>';
+
+            if (status === 'processing') {
+                badgeClass = 'badge-warning';
+                statusTexto = `Processando... (${index + 1}/${estadoCargaXml.arquivos.length})`;
+                iconHtml = '<span class="spinner-carga" style="margin-right: 5px;"></span>';
+            } else if (status === 'success') {
+                badgeClass = 'badge-success';
+                statusTexto = mensagem || '✓ Concluído';
+                iconHtml = '';
+            } else if (status === 'error') {
+                badgeClass = 'badge-danger';
+                statusTexto = mensagem || '✗ Concluído com erros';
+                iconHtml = '';
+            }
+
+            statusCell.innerHTML = `
+                <span class="badge-status ${badgeClass}" title="${mensagem}">
+                    ${iconHtml}${statusTexto}
+                </span>
+            `;
+        }
+        return;
+    }
+
+    // MODO INDIVIDUAL: Atualizar linha específica
     const linhas = document.querySelectorAll('#tabela-uploads tbody tr');
 
     if (linhas[index]) {
         const statusCell = linhas[index].querySelector('td:nth-child(3)');
 
         let badgeClass = 'badge-info';
-        let statusTexto = 'Processando';
+        let statusTexto = 'Aguardando';
+        let iconHtml = '<span class="spinner-carga" style="margin-right: 5px;"></span>';
 
-        if (status === 'success') {
+        if (status === 'processing') {
+            badgeClass = 'badge-warning';
+            statusTexto = mensagem || 'Processando...';
+            iconHtml = '<span class="spinner-carga" style="margin-right: 5px;"></span>';
+        } else if (status === 'success') {
             badgeClass = 'badge-success';
-            statusTexto = '✓ Sucesso';
+            statusTexto = mensagem || '✓ Sucesso';
+            iconHtml = '';
         } else if (status === 'error') {
             badgeClass = 'badge-danger';
-            statusTexto = '✗ Erro';
+            statusTexto = mensagem || '✗ Erro';
+            iconHtml = '';
         }
 
         statusCell.innerHTML = `
             <span class="badge-status ${badgeClass}" title="${mensagem}">
-                ${statusTexto}
+                ${iconHtml}${statusTexto}
             </span>
         `;
     }
@@ -423,9 +562,43 @@ function finalizarCargas() {
 
     // Limpar após 3 segundos
     setTimeout(() => {
-        document.getElementById('file-input-xml').value = '';
-        estadoCargaXml.arquivos = [];
+        limparSelecao();
     }, 3000);
+}
+
+/* ===============================
+   LIMPAR SELEÇÃO
+================================ */
+function limparSelecao() {
+    const inputDiretorio = document.getElementById('file-input-diretorio');
+    const inputArquivo = document.getElementById('file-input-arquivo');
+    
+    if (inputDiretorio) inputDiretorio.value = '';
+    if (inputArquivo) inputArquivo.value = '';
+    
+    estadoCargaXml.arquivos = [];
+    estadoCargaXml.modoDiretorio = false;
+    estadoCargaXml.nomePasta = '';
+    
+    exibirPreviewArquivos();
+}
+
+/* ===============================
+   EXTRAIR NOME DA PASTA
+================================ */
+function extrairNomePasta(files) {
+    if (!files || files.length === 0) return '';
+    
+    // Pegar o caminho do primeiro arquivo
+    const primeiroArquivo = files[0];
+    
+    // Se tem webkitRelativePath, extrair nome da pasta
+    if (primeiroArquivo.webkitRelativePath) {
+        const partes = primeiroArquivo.webkitRelativePath.split('/');
+        return partes[0] || 'Pasta selecionada';
+    }
+    
+    return 'Arquivos selecionados';
 }
 
 /* ===============================

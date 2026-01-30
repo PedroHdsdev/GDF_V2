@@ -11,9 +11,11 @@ class NFe_Endereco(models.Model):
     complemento = models.CharField(max_length=60, blank=True, null=True)
     bairro = models.CharField(max_length=60, blank=True, null=True)
     codigo_municipio = models.CharField(max_length=7, blank=True, null=True)
+    nome_municipio = models.CharField(max_length=60, blank=True, null=True)
     uf = models.CharField(max_length=2, blank=True, null=True)
     cep = models.CharField(max_length=8, blank=True, null=True)
     pais = models.CharField(max_length=4, default='1058', blank=True, null=True)  # Código IBGE para Brasil
+    nome_pais = models.CharField(max_length=60, default='Brasil', blank=True, null=True)
     telefone = models.CharField(max_length=14, blank=True, null=True)
     email = models.EmailField(max_length=60, blank=True, null=True)
     data_criacao = models.DateTimeField(auto_now_add=True)
@@ -42,6 +44,7 @@ class NFe_Emitente(models.Model):
     crt = models.CharField(max_length=1, choices=[('1', 'Simples Nacional'), ('2', 'Simples Nacional com Excesso'), ('3', 'Regime Normal')], blank=True, null=True)
     endereco = models.OneToOneField(NFe_Endereco, on_delete=models.SET_NULL, null=True, blank=True)
     data_criacao = models.DateTimeField(auto_now_add=True)
+    data_atualizacao = models.DateTimeField(auto_now=True)
 
     class Meta:
         managed = True
@@ -62,11 +65,13 @@ class NFe_Destinatario(models.Model):
     razao_social = models.CharField(max_length=120, blank=True, null=True)
     nome_fantasia = models.CharField(max_length=60, blank=True, null=True)
     ie = models.CharField(max_length=14, blank=True, null=True)  # Opcional para CPF
+    isuf = models.CharField(max_length=9, blank=True, null=True)  # Inscrição SUFRAMA
     im = models.CharField(max_length=60, blank=True, null=True)
     email = models.EmailField(max_length=60, blank=True, null=True)
     endereco = models.OneToOneField(NFe_Endereco, on_delete=models.SET_NULL, null=True, blank=True)
     indicador_ie = models.CharField(max_length=1, choices=[('1', 'Contribuinte ICMS'), ('2', 'Não contribuinte'), ('9', 'Exterior')], default='1')
     data_criacao = models.DateTimeField(auto_now_add=True)
+    data_atualizacao = models.DateTimeField(auto_now=True)
 
     class Meta:
         managed = True
@@ -99,6 +104,15 @@ class NFe_Identificacao(models.Model):
     dv_chave = models.CharField(max_length=1)
     digito_rastreamento = models.CharField(max_length=1, blank=True, null=True)
     referencia_nfe = models.CharField(max_length=44, blank=True, null=True)  # Para NF-e de referência
+    codigo_municipio = models.CharField(max_length=7, blank=True, null=True)
+    natureza_operacao = models.CharField(max_length=60, blank=True, null=True)
+    uf = models.CharField(max_length=2, blank=True, null=True)
+    modelo = models.CharField(max_length=2, default='55', blank=True, null=True)
+    forma_emissao = models.CharField(max_length=1, blank=True, null=True)
+    finalidade_emissao = models.CharField(max_length=1, blank=True, null=True)
+    consumidor_final = models.CharField(max_length=1, blank=True, null=True)
+    presenca_comprador = models.CharField(max_length=1, blank=True, null=True)
+    data_atualizacao = models.DateTimeField(auto_now=True)
     
     class Meta:
         managed = True
@@ -117,6 +131,8 @@ class NFe_Produto(models.Model):
     id_produto = models.AutoField(primary_key=True)
     descricao = models.CharField(max_length=120)
     ncm = models.CharField(max_length=8, blank=True, null=True)  # Nomenclatura Comum do Mercosul
+    cfop = models.CharField(max_length=4, blank=True, null=True)  # Código Fiscal de Operações
+    cest = models.CharField(max_length=7, blank=True, null=True)  # Código Especificador da Substituição Tributária
     nfe_serie = models.ForeignKey(NFe_Identificacao, on_delete=models.CASCADE, related_name='produtos')
     numero_item = models.IntegerField()
     
@@ -585,6 +601,7 @@ class NFe(models.Model):
     data_criacao = models.DateTimeField(auto_now_add=True)
     data_atualizacao = models.DateTimeField(auto_now=True)
     usuario_criacao = models.CharField(max_length=120, blank=True, null=True)
+    usuario_atualizacao = models.CharField(max_length=120, blank=True, null=True)
     origem_dados = models.CharField(max_length=8, choices=[
         ('LOCAL', 'Maquina Local'),
         ('SAP', 'Importação SAP'),

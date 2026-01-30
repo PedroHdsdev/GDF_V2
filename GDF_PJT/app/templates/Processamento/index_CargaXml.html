@@ -11,6 +11,7 @@
 {% block titlepage %}Carga de XML{% endblock %}
 
 {% block container %}
+{% csrf_token %}
 <div class="container-fluid py-4">
     <div class="container-carga-xml">
 
@@ -154,9 +155,32 @@
                     </div>
                 </div>
 
+                <!-- Configurações de Upload -->
+                <div class="mt-4 mb-3">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label fw-600">Tipo de Documento:</label>
+                            <select id="select-tipo-documento" class="form-select">
+                                <option value="NFe" selected>NFe - Nota Fiscal Eletrônica</option>
+                                <option value="CTe">CTe - Conhecimento de Transporte</option>
+                                <option value="NFSe">NFSe - Nota Fiscal de Serviço</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-600">Origem dos Dados:</label>
+                            <select id="select-origem-dados" class="form-select">
+                                <option value="LOCAL" selected>Máquina Local</option>
+                                <option value="SAP">Importação SAP</option>
+                                <option value="SPED">Importação SPED</option>
+                                <option value="OUTROS">Outros</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Preview de arquivos -->
                 <div class="mt-4">
-                    <h6 class="fw-600 mb-3">Arquivos Selecionados:</h6>
+                    <h6 class="fw-600 mb-3">Arquivos Selecionados: <span id="contador-arquivos" class="text-muted">0</span></h6>
                     <table id="tabela-uploads" class="table table-sm table-hover">
                         <thead class="table-light">
                             <tr>
@@ -216,14 +240,26 @@
     dropZoneArquivo.addEventListener('click', () => inputArquivo.click());
 
     inputArquivo.addEventListener('change', function(e) {
-        exibirPreviewArquivos(e.target.files);
+        if (e.target.files && e.target.files.length > 0) {
+            estadoCargaXml.modoDiretorio = false;
+            estadoCargaXml.nomePasta = '';
+            processarArquivos(e.target.files);
+            exibirPreviewArquivos();
+        }
     });
 
     inputDiretorio.addEventListener('change', function(e) {
-        exibirPreviewArquivos(e.target.files);
+        if (e.target.files && e.target.files.length > 0) {
+            estadoCargaXml.modoDiretorio = true;
+            estadoCargaXml.nomePasta = extrairNomePasta(e.target.files);
+            processarArquivos(e.target.files);
+            exibirPreviewArquivos();
+        }
     });
 
     // Botão enviar
-    document.getElementById('btn-enviar-xml').addEventListener('click', iniciarUpload);
+    document.getElementById('btn-enviar-xml').addEventListener('click', function() {
+        iniciarUpload();
+    });
 </script>
 {% endblock %}
