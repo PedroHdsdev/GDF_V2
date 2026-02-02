@@ -37,6 +37,31 @@ class ClGdf():
 
 #********************************************************************************
 #--------------------------------------------------------------------------------
+#           Calcular Status Certificado
+#--------------------------------------------------------------------------------
+    @staticmethod
+    def calcular_status_certificado(fim_validade):
+        if not fim_validade:
+            return "INDEFINIDO"
+        
+        # Normalizar para date se for datetime
+        if hasattr(fim_validade, 'date'):
+            data_validade = fim_validade.date()
+        else:
+            data_validade = fim_validade
+        
+        data_atual = datetime.today().date()
+        dias_restantes = (data_validade - data_atual).days
+        
+        if dias_restantes <= 0:
+            return "VERMELHO"  # Vencido ou vence hoje
+        elif dias_restantes <= 30:
+            return "AMARELO"   # Vence nos próximos 30 dias
+        else:
+            return "VERDE"     # Mais de 30 dias para vencer
+
+#********************************************************************************
+#--------------------------------------------------------------------------------
 #           Gerar - Token JWT (Dashboard) 
 #--------------------------------------------------------------------------------
     @staticmethod
@@ -392,11 +417,7 @@ class ClGdf():
                         "emissor": l_v_cert.proprietario,
                         "cpf_cnpj": l_v_cert.cpf_cnpj,
                         "cert_file": bool(l_v_cert.arquivo_cert),
-                        "status": (
-                            "VERMELHO" if (l_v_cert.fim_validade.date() - l_v_data_atual).days <= 15 else 
-                            "AMARELO" if (l_v_cert.fim_validade.date() - l_v_data_atual).days <= 30 else 
-                            "VERDE"  
-                        ) if l_v_cert.fim_validade else "INDEFINIDO"
+                        "status": ClGdf.calcular_status_certificado(l_v_cert.fim_validade)
                     }
 
                 lsl_dados_empresas.append({
@@ -618,8 +639,8 @@ class ClGdf():
             print(f"[DEBUG] Empresa_upd - cod_empresa: {i_v_cod_empresa}, cod_cliente: {i_v_cod_cliente}")
             
             # ✅ Validações obrigatórias
-            if not i_v_cod_empresa or not i_v_razao or not i_v_fantasia:
-                raise ValueError("Código, razão social e fantasia são obrigatórios")
+            if not i_v_razao or not i_v_fantasia:
+                raise ValueError("Razão social e fantasia são obrigatórios")
             
             if not i_v_cod_cliente:
                 raise ValueError("Cliente não identificado")
@@ -670,76 +691,87 @@ class ClGdf():
 
 #--------------------------------------------------------------------------------
     """Atualizar certificado digital"""
-    def upd_certificado(self, i_v_arquivo_cert, i_v_cod_cliente):
+    def upd_certificado(self, i_v_arquivo_cert=None, i_v_cod_empresa=None, i_v_emissor="", i_v_cpf_cnpj="", i_v_ini_validade="", i_v_fim_validade=""):
+        
         try:
-            print(f"[DEBUG] Cert_upd chamado - arquivo: {i_v_arquivo_cert.name if i_v_arquivo_cert else 'None'}")
-            
-            if not i_v_arquivo_cert:
-                raise ValueError("Arquivo de certificado não fornecido")
-            
-            if not i_v_cod_cliente:
-                raise ValueError("Cliente não identificado")
-            
-            # ✅ Ler conteúdo do arquivo
-            l_v_cert_content = i_v_arquivo_cert.read()
-            
-            # ✅ Extrair nome do arquivo
-            l_v_file_name = i_v_arquivo_cert.name
-            print(f"[DEBUG] Processando certificado: {l_v_file_name}, tamanho: {len(l_v_cert_content)} bytes")
-            
-            # ✅ Usar nome do arquivo como identificador (primeiros 8 caracteres sem extensão)
-            l_v_raiz_cnpj = l_v_file_name.replace('.pfx', '').replace('.p12', '')[:8]
-            
-            l_v_cert_obj, l_v_created = Cert.objects.update_or_create(
-                raiz_cnpj=l_v_raiz_cnpj,
-                defaults={
-                    'nm_arquivo_pfx': l_v_file_name,
-                    'arquivo_cert': l_v_cert_content,
-                }
+
+            if not i_v_cod_empresa:
+                raise ValueError("Empresa não identificada")
+
+            empresa = Empresas.objects.get(
+                cod_empresa=i_v_cod_empresa,
             )
             
-            l_v_status = "criado" if l_v_created else "atualizado"
-            print(f"[OK] Certificado {l_v_status}: raiz_cnpj={l_v_raiz_cnpj}, arquivo={l_v_file_name}")
+            # ✅ Se nenhum dado foi fornecido, erro
+            if not i_v_arquivo_cert and not (i_v_emissor or i_v_cpf_cnpj or i_v_ini_validade or i_v_fim_validade):
+                raise ValueError("Nenhum dado para atualizar")
             
-            return {"success": True, "message": f"Certificado {l_v_status} com sucesso"}
+            # ✅ Empresa deve ter certificado (criado junto com a empresa)
+            if not empresa.cert:
+                raise ValueError("Empresa não possui certificado vinculado")
+            
+            # ✅ Preparar dados para atualizar
+            l_v_defaults = {}
+            
+            # ✅ Processar arquivo se fornecido
+            if i_v_arquivo_cert:
+                l_v_cert_content = i_v_arquivo_cert.read()
+                l_v_file_name = i_v_arquivo_cert.name
+                print(f"[DEBUG] Processando certificado: {l_v_file_name}, tamanho: {len(l_v_cert_content)} bytes")
+                l_v_defaults['nm_arquivo_pfx'] = l_v_file_name
+                l_v_defaults['arquivo_cert'] = l_v_cert_content
+            
+            # ✅ Adicionar campos opcionais se fornecidos
+            if i_v_emissor:
+                l_v_defaults['emissor'] = i_v_emissor
+            if i_v_cpf_cnpj:
+                l_v_defaults['cpf_cnpj'] = i_v_cpf_cnpj
+            
+            # ✅ Converter datas se fornecidas
+            if i_v_ini_validade:
+                try:
+                    # Tentar formato DD/MM/YYYY primeiro
+                    if "/" in i_v_ini_validade:
+                        dt_ini = datetime.strptime(i_v_ini_validade[:10], "%d/%m/%Y").date()
+                    else:
+                        dt_ini = datetime.strptime(i_v_ini_validade[:10], "%Y-%m-%d").date()
+                    l_v_defaults['ini_validade'] = dt_ini
+                    print(f"[OK] Data início convertida: {dt_ini}")
+                except Exception as e:
+                    print(f"[WARN] Data início inválida: {i_v_ini_validade} - {str(e)}")
+            
+            if i_v_fim_validade:
+                try:
+                    # Tentar formato DD/MM/YYYY primeiro
+                    if "/" in i_v_fim_validade:
+                        dt_fim = datetime.strptime(i_v_fim_validade[:10], "%d/%m/%Y").date()
+                    else:
+                        dt_fim = datetime.strptime(i_v_fim_validade[:10], "%Y-%m-%d").date()
+                    l_v_defaults['fim_validade'] = dt_fim
+                    print(f"[OK] Data fim convertida: {dt_fim}")
+                except Exception as e:
+                    print(f"[WARN] Data fim inválida: {i_v_fim_validade} - {str(e)}")
+            
+            # ✅ Atualizar APENAS o certificado existente da empresa
+            certificado = empresa.cert
+            for campo, valor in l_v_defaults.items():
+                setattr(certificado, campo, valor)
+            certificado.save()
+            
+            print(f"[OK] Certificado atualizado: raiz_cnpj={certificado.raiz_cnpj}")
+            print(f"[OK] Dados salvos - Emissor: {i_v_emissor}, CNPJ: {i_v_cpf_cnpj}, Datas: {i_v_ini_validade} a {i_v_fim_validade}")
+            
+            return {"success": True, "message": "Certificado atualizado com sucesso"}
         
         except ValueError as e:
             print(f"[ERROR] Cert_upd - Validação: {str(e)}")
             return {"success": False, "message": str(e)}
+        except Empresas.DoesNotExist:
+            print("[ERROR] Cert_upd - Empresa não encontrada")
+            return {"success": False, "message": "Empresa não encontrada"}
         except Exception as e:
             print(f"[ERROR] Cert_upd - Erro: {str(e)}")
             return {"success": False, "message": f"Erro ao salvar certificado: {str(e)}"}
-
-        self.Retorn = []
-        try:
-            if isinstance(dt_inicial, str):
-                dt_inicial = datetime.strptime(dt_inicial[:10], "%d/%m/%Y").date()
-
-            if isinstance(dt_fim, str):
-                dt_fim = datetime.strptime(dt_fim[:10], "%d/%m/%Y").date()
-
-            created = Cert.objects.update_or_create(
-                raiz_cnpj=raiz,
-                defaults={
-                    'proprietario': emissor,  
-                    'cpf_cnpj': cnpj,
-                    'ini_validade': dt_inicial,  
-                    'fim_validade': dt_fim,
-                    'conteudo_certificado': cert_file,  
-                }
-            )
-
-        except IntegrityError as e:
-            print(str(e))
-        except Cert.DoesNotExist as e:
-            print(str(e))
-        except ValueError as e:
-            print(str(e))
-        except OperationalError as e:
-            print(str(e))
-        except Exception as e:
-            print(str(e))
-        
 
 #********************************************************************************
 #--------------------------------------------------------------------------------

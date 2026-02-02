@@ -51,8 +51,104 @@ function fn_validar_formulario_ins(event) {
 }
 
 /* ===============================
-   GERENCIAR MODAIS (prevenir múltiplos abertos)
+   VALIDAÇÃO DO FORMULÁRIO UPDATE
 ================================ */
+function fn_validar_formulario_upd(event) {
+    event.preventDefault();
+    
+    const email = document.getElementById('upd_email').value.trim();
+    const empresas_hidden = document.getElementById('upd_empresas_hidden').value.trim();
+    const grupos_hidden = document.getElementById('upd_grupos_hidden').value.trim();
+    
+    const errors = [];
+    if (!email) errors.push("Email é obrigatório");
+    if (!empresas_hidden) errors.push("Selecione pelo menos 1 empresa");
+    if (!grupos_hidden) errors.push("Selecione pelo menos 1 grupo");
+    
+    if (errors.length > 0) {
+        fn_exibir_alerta_modal("❌ Erros:\n\n" + errors.join("\n"), 'danger');
+        return false;
+    }
+    
+    // ✅ Submeter via AJAX
+    fn_submit_form_ajax(event.target, 'Usuario');
+}
+
+// ✅ Submeter formulário via AJAX e mostrar mensagem no modal
+function fn_submit_form_ajax(form, tipo) {
+  const formData = new FormData(form);
+  const action = form.action;
+  
+  console.log(`[fn_submit_form_ajax] Enviando ${tipo}...`);
+  
+  fetch(action, {
+    method: 'POST',
+    body: formData,
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest'
+    }
+  })
+  .then(response => {
+    console.log(`[fn_submit_form_ajax] Response status: ${response.status}`);
+    return response.json().catch(() => response.text());
+  })
+  .then(data => {
+    console.log(`[fn_submit_form_ajax] Resposta:`, data);
+    
+    // ✅ Se for JSON com success/message
+    if (typeof data === 'object' && data.success !== undefined) {
+      const tipoAlert = data.success ? 'success' : 'danger';
+      fn_exibir_alerta_modal(data.message, tipoAlert);
+      
+      // ✅ Se sucesso, recarregar tabela após 2 segundos
+      if (data.success) {
+        setTimeout(() => {
+          location.reload();
+        }, 2000);
+      }
+    } else {
+      // ✅ Se não for JSON, considerar erro
+      fn_exibir_alerta_modal('Erro ao processar requisição', 'danger');
+    }
+  })
+  .catch(error => {
+    console.error(`[fn_submit_form_ajax] Erro:`, error);
+    fn_exibir_alerta_modal('Erro ao processar requisição', 'danger');
+  });
+}
+
+// ✅ Exibir alerta dentro do modal
+function fn_exibir_alerta_modal(mensagem, tipo = 'info') {
+  const container = document.getElementById('modalUsuarioUpdAlerts');
+  if (!container) {
+    console.warn('[fn_exibir_alerta_modal] Container não encontrado, usando alert do navegador');
+    alert(mensagem);
+    return;
+  }
+  
+  // Limpar alertas anteriores
+  container.innerHTML = '';
+  
+  // Criar novo alerta
+  const alertDiv = document.createElement('div');
+  alertDiv.className = `alert alert-${tipo} alert-dismissible fade show`;
+  alertDiv.role = 'alert';
+  alertDiv.innerHTML = `
+    ${mensagem}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  `;
+  
+  container.appendChild(alertDiv);
+  console.log(`[fn_exibir_alerta_modal] Alerta exibido: ${tipo}`);
+  
+  // Auto-fechar após 5 segundos se for sucesso
+  if (tipo === 'success') {
+    setTimeout(() => {
+      const alert = bootstrap.Alert.getOrCreateInstance(alertDiv);
+      if (alert) alert.close();
+    }, 5000);
+  }
+}
 function fn_fechar_modal_aberto() {
     if (!og_estado_usuarios.modalAberto) return;
     
@@ -476,6 +572,12 @@ function fn_preencher_modal_usuario(user) {
     const checkbox = document.getElementById("upd_is_active");
     if (checkbox) {
         checkbox.checked = Boolean(user.is_active);
+    }
+    
+    // ✅ Atualizar action do formulário dinamicamente
+    const form = document.getElementById("formUsuarioUpd");
+    if (form) {
+        form.action = `/usuario/${user.id}/`;
     }
 
     // ✅ Limpar e preencher empresas

@@ -15,15 +15,11 @@
   <!-- BUSCA E CADASTRAR -->
   <div class="row mb-3 align-items-center">
     <div class="col-md-6">
-      <form method="get" action="{% url 'Dm_Empresas' %}" class="d-flex gap-2">
-        <input
-          type="text"
-          name="Buscar"
-          class="form-control"
-          placeholder="Pesquisar..."
-          value="{{ query }}">
-        <button class="btn btn-primary" type="submit" style="display: none;">Buscar</button>
-      </form>
+      <input
+        type="text"
+        id="searchBox"
+        class="form-control"
+        placeholder="Pesquisar empresa, CNPJ ou código...">
     </div>
 
     <div class="col-md-6 text-end">

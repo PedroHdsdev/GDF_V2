@@ -180,37 +180,33 @@ def fn_view_inserir_usuario(request):
         
         if errors:
             t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
-            return render(request, 'usuarios/Usuarios.html', {
+            return render(request, 'Usuarios/Index_Usuarios.html', {
                 't_user': t_user,
                 'error_message': ' | '.join(errors)
             })
         
         # ✅ Chamar método de inserção na classe
         resultado = cl_gdf.set_usuario(
-            username=username,
-            email=email,
-            password=password,
-            first_name=first_name,
-            last_name=last_name,
-            empresas_ids=empresas_str,  # "1,2,3"
-            grupos_ids=grupos_str,      # "4,5,6"
+            i_v_username=username,
+            i_v_email=email,
+            i_v_password=password,
+            i_v_first_name=first_name,
+            i_v_last_name=last_name,
+            i_lsl_empresas_ids=empresas_str,  # "1,2,3"
+            i_lsl_grupos_ids=grupos_str,      # "4,5,6"
             i_v_cod_cliente=cod_cliente
         )
         
         # ✅ Verificar resultado
         if not resultado.get("success"):
             t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
-            return render(request, 'usuarios/Usuarios.html', {
+            return render(request, 'Usuarios/Index_Usuarios.html', {
                 't_user': t_user,
                 'error_message': resultado.get("message", "Erro ao criar usuário")
             })
         
         # ✅ Sucesso! Redirecionar com mensagem
-        t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
-        return render(request, 'usuarios/Usuarios.html', {
-            't_user': t_user,
-            'success_message': resultado.get("message")
-        })
+        return redirect('Dm_Usuarios')
 
 @login_required(login_url='Login')
 @require_http_methods(["GET", "POST"])
@@ -261,20 +257,33 @@ def fn_view_atualizar_usuario(request, user_id):
 
         resultado = cl_gdf.upd_usuario(
             i_v_user_id=int(user_id),
-            first_name=first_name,
-            last_name=last_name,
-            email=email,
-            is_active=is_active,
-            empresa_ids=empresa_ids,
-            grupo_ids=grupo_ids,
+            i_v_first_name=first_name,
+            i_v_last_name=last_name,
+            i_v_email=email,
+            i_v_is_active=is_active,
+            i_lsl_empresa_ids=empresa_ids,
+            i_lsl_grupo_ids=grupo_ids,
             i_v_cod_cliente=cod_cliente
         )
         
+        # ✅ Detectar se é requisição AJAX
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        
         # ✅ Verificar resultado
         if not resultado.get("success"):
-            return JsonResponse({"erro": resultado.get("message")}, status=400)
-
-        return redirect('Dm_Usuarios')
+            mensagem = resultado.get("message", "Erro ao atualizar")
+            if is_ajax:
+                return JsonResponse({"success": False, "message": mensagem}, status=400)
+            else:
+                messages.error(request, mensagem, extra_tags='MODAL_UPD')
+                return redirect('Dm_Usuarios')
+        
+        mensagem = resultado.get("message", "Usuário atualizado com sucesso!")
+        if is_ajax:
+            return JsonResponse({"success": True, "message": mensagem}, status=200)
+        else:
+            messages.success(request, mensagem, extra_tags='MODAL_UPD')
+            return redirect('Dm_Usuarios')
     
     return JsonResponse({"erro": "Método não permitido"}, status=405)
     
@@ -419,12 +428,23 @@ def fn_view_atualizar_empresa(request, cod_empresa):
             i_v_cod_cliente=cod_cliente
         )
         
-        if resultado.get("success"):
-            messages.success(request, resultado.get("message", "Empresa atualizada!"), extra_tags='MODAL_UPD')
-        else:
-            messages.error(request, resultado.get("message", "Erro ao atualizar"), extra_tags='MODAL_UPD')
+        # ✅ Detectar se é requisição AJAX
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         
-        return redirect('Dm_Empresas')
+        if not resultado.get("success"):
+            mensagem = resultado.get("message", "Erro ao atualizar")
+            if is_ajax:
+                return JsonResponse({"success": False, "message": mensagem}, status=400)
+            else:
+                messages.error(request, mensagem, extra_tags='MODAL_UPD')
+                return redirect('Dm_Empresas')
+        else:
+            mensagem = resultado.get("message", "Empresa atualizada com sucesso!")
+            if is_ajax:
+                return JsonResponse({"success": True, "message": mensagem}, status=200)
+            else:
+                messages.success(request, mensagem, extra_tags='MODAL_UPD')
+                return redirect('Dm_Empresas')
     
     return JsonResponse({"erro": "Método não permitido"}, status=405)
 
@@ -432,27 +452,38 @@ def fn_view_atualizar_empresa(request, cod_empresa):
 @require_http_methods(["POST"])
 def fn_view_atualizar_certificado(request):
     """Atualizar certificado digital da empresa"""
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
-        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
     cl_gdf = ClGdf()
     
-    # Pegar arquivo do certificado
+    cod_empresa = request.POST.get('m_codempresa', '').strip()
+
+    # ✅ Pegar arquivo (OPCIONAL - pode atualizar só metadados)
     cert_file = request.FILES.get('m_file')
-    if not cert_file:
-        messages.error(request, "Nenhum arquivo selecionado", extra_tags='MODAL_UPD')
+    
+    # ✅ Validar extensão só se arquivo foi enviado
+    if cert_file and not cert_file.name.endswith(('.crt', '.txt')):
+        messages.error(request, "Formato inválido. Use .crt ou .txt", extra_tags='MODAL_UPD')
         return redirect('Dm_Empresas')
     
-    # Validar extensão
-    if not cert_file.name.endswith(('.pfx', '.p12')):
-        messages.error(request, "Formato inválido. Use .pfx ou .p12", extra_tags='MODAL_UPD')
+    # ✅ Extrair dados adicionais do certificado
+    emissor = request.POST.get('m_emissor', '').strip()
+    cnpj = request.POST.get('m_cnpj', '').strip()
+    dt_inicial = request.POST.get('m_dt_inicial', '').strip()
+    dt_fim = request.POST.get('m_dt_fim', '').strip()
+    
+    # ✅ Se nenhum dado foi enviado, erro
+    if not cert_file and not (emissor or cnpj or dt_inicial or dt_fim):
+        messages.error(request, "Selecione um arquivo ou preencha os dados do certificado", extra_tags='MODAL_UPD')
         return redirect('Dm_Empresas')
     
     # Chamar método de atualização de certificado
     resultado = cl_gdf.upd_certificado(
-        cert_file=cert_file,
-        i_v_cod_cliente=cod_cliente
+        i_v_arquivo_cert=cert_file,
+        i_v_emissor=emissor,
+        i_v_cpf_cnpj=cnpj,
+        i_v_ini_validade=dt_inicial,
+        i_v_fim_validade=dt_fim,
+        i_v_cod_empresa=cod_empresa
     )
     
     if resultado.get("success"):
@@ -543,38 +574,71 @@ def fn_view_atualizar_cliente(request, cod_cliente):
             i_cnpj=cnpj,
             i_is_active=is_active
         )
-            
+        
+        # ✅ Detectar se é requisição AJAX
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        
         if not resultado.get("success"):
-            messages.error(request, resultado.get("message", "Erro ao atualizar"), extra_tags='MODAL_UPD')
+            mensagem = resultado.get("message", "Erro ao atualizar")
+            if is_ajax:
+                return JsonResponse({"success": False, "message": mensagem}, status=400)
+            else:
+                messages.error(request, mensagem, extra_tags='MODAL_UPD')
         else:
-            messages.success(request, resultado.get("message", "Cliente atualizado!"), extra_tags='MODAL_UPD')
+            mensagem = resultado.get("message", "Cliente atualizado com sucesso!")
+            if is_ajax:
+                return JsonResponse({"success": True, "message": mensagem}, status=200)
+            else:
+                messages.success(request, mensagem, extra_tags='MODAL_UPD')
 
-        return redirect('Dm_Clientes')
+        if not is_ajax:
+            return redirect('Dm_Clientes')
 
 @login_required(login_url='Login')
 @require_http_methods(["POST"])
 def fn_view_atualizar_acesso_cliente(request):
     """Atualizar acessos do cliente existente"""
-    cod_cliente = request.session.get('cod_cliente', None)
+    cod_cliente_sessao = request.session.get('cod_cliente', None)
+    if not cod_cliente_sessao:
+        return JsonResponse({"erro": "Cliente não identificado na sessão"}, status=403)
+    
+    # ✅ Obter o cod_cliente do formulário (cliente sendo editado)
+    cod_cliente = request.POST.get("Acesso_cliente_id", "").strip()
     if not cod_cliente:
-        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+        messages.error(request, "Cliente não identificado no formulário", extra_tags='MODAL_UPD')
+        return redirect('Dm_Clientes')
     
     cl_gdf = ClGdf()
     ls_solucoes = request.POST.get("ls_solucoes", "").strip()  # Formato: "COD1:1,COD2:0"
     
+    print(f"[Cliente_acesso_upd] cod_cliente: {cod_cliente}")
+    print(f"[Cliente_acesso_upd] ls_solucoes: {ls_solucoes}")
+    
     resultado = cl_gdf.set_cliente_solucoes(
-        i_Cod_cliente=cod_cliente,
+        i_v_cod_cliente=cod_cliente,
         ls_solucoes=ls_solucoes
     )
 
     print(f"[Cliente_acesso_upd] resultado: {resultado}")
 
+    # ✅ Detectar se é requisição AJAX
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    
     if not resultado.get("success"):
-        messages.error(request, resultado.get("message", "Erro ao atualizar acessos"), extra_tags='MODAL_UPD')
+        mensagem = resultado.get("message", "Erro ao atualizar acessos")
+        if is_ajax:
+            return JsonResponse({"success": False, "message": mensagem}, status=400)
+        else:
+            messages.error(request, mensagem, extra_tags='MODAL_UPD')
     else:
-        messages.success(request, resultado.get("message", "Acessos atualizados!"), extra_tags='MODAL_UPD')
+        mensagem = resultado.get("message", "Acessos atualizados com sucesso!")
+        if is_ajax:
+            return JsonResponse({"success": True, "message": mensagem}, status=200)
+        else:
+            messages.success(request, mensagem, extra_tags='MODAL_UPD')
 
-    return redirect('Dm_Clientes')
+    if not is_ajax:
+        return redirect('Dm_Clientes')
 
 @login_required(login_url='Login')
 @require_http_methods(["GET"])

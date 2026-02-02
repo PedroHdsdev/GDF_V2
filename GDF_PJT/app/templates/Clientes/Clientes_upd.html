@@ -10,6 +10,9 @@
 
       <div class="modal-body">
 
+        <!-- CONTAINER DE MENSAGENS DO MODAL -->
+        <div id="modalClienteUpdAlerts"></div>
+
         <!-- NAV TABS -->
         <ul class="nav nav-tabs mb-3" id="clienteTabs" role="tablist">
           <li class="nav-item">
@@ -36,14 +39,11 @@
           </li>
         </ul>
 
-        <!-- MENSAGENS -->
+        <!-- REMOVER MENSAGENS ANTIGAS DO DJANGO -->
         {% if messages %}
           {% for message in messages %}
             {% if message.extra_tags == 'MODAL_UPD' %}
-              <div class="alert alert-{{ message.level_tag }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-              </div>
+              <!-- Mensagens serão renderizadas pelo JavaScript -->
             {% endif %}
           {% endfor %}
         {% endif %}

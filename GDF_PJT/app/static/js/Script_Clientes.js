@@ -527,10 +527,15 @@ function fn_remover_solucao(codSolucao) {
    TOGGLE STATUS SOLUÇÃO
 ================================ */
 function fn_toggle_solucao_status(codSolucao) {
+  console.log(`[fn_toggle_solucao_status] Toggling: ${codSolucao}`);
   const solucao = og_estado_clientes.solucoesSelecionadas.find(s => s.cod_solucao === codSolucao);
   if (solucao) {
+    console.log(`[fn_toggle_solucao_status] Estado antes: ${solucao.is_active}`);
     solucao.is_active = !solucao.is_active;
+    console.log(`[fn_toggle_solucao_status] Estado depois: ${solucao.is_active}`);
     fn_renderizar_solucoes();
+  } else {
+    console.warn(`[fn_toggle_solucao_status] Solução ${codSolucao} não encontrada`);
   }
 }
 
@@ -589,6 +594,9 @@ function fn_renderizar_solucoes() {
   hidden.value = og_estado_clientes.solucoesSelecionadas
     .map(s => `${s.cod_solucao}:${s.is_active ? '1' : '0'}`)
     .join(',');
+  
+  console.log('[fn_renderizar_solucoes] hidden.value:', hidden.value);
+  console.log('[fn_renderizar_solucoes] solucoesSelecionadas:', JSON.stringify(og_estado_clientes.solucoesSelecionadas));
 }
 
 /* ===============================
@@ -655,11 +663,12 @@ function fn_validar_formulario_upd(event) {
     if (!cnpj) errors.push("CNPJ é obrigatório");
     
     if (errors.length > 0) {
-        alert("❌ Erros:\n\n" + errors.join("\n"));
+        fn_exibir_alerta_modal("❌ Erros:\n\n" + errors.join("\n"), 'danger');
         return false;
     }
     
-    event.target.submit();
+    // ✅ Submeter via AJAX ao invés de form.submit()
+    fn_submit_form_ajax(event.target, 'Cliente');
 }
 
 // ✅ Handler para enviar acessos
@@ -673,11 +682,87 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('[formAcessoUpd] Action:', this.action);
       console.log('[formAcessoUpd] ls_solucoes:', document.getElementById('upd_solucoes_hidden').value);
       
-      // Submit do formulário
-      this.submit();
+      // ✅ Submeter via AJAX
+      fn_submit_form_ajax(this, 'Acesso');
     });
   }
 });
+
+// ✅ Submeter formulário via AJAX e mostrar mensagem no modal
+function fn_submit_form_ajax(form, tipo) {
+  const formData = new FormData(form);
+  const action = form.action;
+  
+  console.log(`[fn_submit_form_ajax] Enviando ${tipo}...`);
+  
+  fetch(action, {
+    method: 'POST',
+    body: formData,
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest'
+    }
+  })
+  .then(response => {
+    console.log(`[fn_submit_form_ajax] Response status: ${response.status}`);
+    return response.json().catch(() => response.text());
+  })
+  .then(data => {
+    console.log(`[fn_submit_form_ajax] Resposta:`, data);
+    
+    // ✅ Se for JSON com success/message
+    if (typeof data === 'object' && data.success !== undefined) {
+      const tipoAlert = data.success ? 'success' : 'danger';
+      fn_exibir_alerta_modal(data.message, tipoAlert);
+      
+      // ✅ Se sucesso, recarregar tabela após 2 segundos
+      if (data.success) {
+        setTimeout(() => {
+          location.reload();
+        }, 2000);
+      }
+    } else {
+      // ✅ Se não for JSON, considerar erro
+      fn_exibir_alerta_modal('Erro ao processar requisição', 'danger');
+    }
+  })
+  .catch(error => {
+    console.error(`[fn_submit_form_ajax] Erro:`, error);
+    fn_exibir_alerta_modal('Erro ao processar requisição', 'danger');
+  });
+}
+
+// ✅ Exibir alerta dentro do modal
+function fn_exibir_alerta_modal(mensagem, tipo = 'info') {
+  const container = document.getElementById('modalClienteUpdAlerts');
+  if (!container) {
+    console.warn('[fn_exibir_alerta_modal] Container não encontrado, usando alert do navegador');
+    alert(mensagem);
+    return;
+  }
+  
+  // Limpar alertas anteriores
+  container.innerHTML = '';
+  
+  // Criar novo alerta
+  const alertDiv = document.createElement('div');
+  alertDiv.className = `alert alert-${tipo} alert-dismissible fade show`;
+  alertDiv.role = 'alert';
+  alertDiv.innerHTML = `
+    ${mensagem}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  `;
+  
+  container.appendChild(alertDiv);
+  console.log(`[fn_exibir_alerta_modal] Alerta exibido: ${tipo}`);
+  
+  // Auto-fechar após 5 segundos se for sucesso
+  if (tipo === 'success') {
+    setTimeout(() => {
+      const alert = bootstrap.Alert.getOrCreateInstance(alertDiv);
+      if (alert) alert.close();
+    }, 5000);
+  }
+}
 
 // ✅ NOVO: Limpar messages ao abrir/fechar modais
 function fn_init_modal_message_cleanup() {

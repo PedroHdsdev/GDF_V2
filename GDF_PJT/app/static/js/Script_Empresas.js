@@ -54,13 +54,7 @@ function fn_extrair_empresas_html() {
    BUSCA (Client-side, sem fazer requests HTTP)
 ================================ */
 function fn_init_busca() {
-    const formBusca = document.querySelector("form");
-    if (!formBusca) {
-        console.warn("⚠️ Formulário de busca não encontrado");
-        return;
-    }
-    
-    const inputBusca = formBusca.querySelector("input[name='Buscar']");
+    const inputBusca = document.getElementById("searchBox");
     if (!inputBusca) {
         console.warn("⚠️ Input de busca não encontrado");
         return;
@@ -68,23 +62,12 @@ function fn_init_busca() {
     
     console.log("✅ Busca inicializada");
     
-    // ✅ Prevenir form submit tradicional, usar busca no cliente
-    formBusca.addEventListener("submit", (e) => {
-        e.preventDefault();
-        
-        const query = inputBusca.value.trim().toLowerCase();
-        console.log(`🔍 Buscando por: "${query}"`);
-        og_estado_empresas.searchQuery = query;
-        og_estado_empresas.currentPage = 1;  // Reset para página 1
-        
-        fn_atualizar_tabela_filtrada();
-    });
-    
     // ✅ Busca em tempo real enquanto digita
     inputBusca.addEventListener("input", (e) => {
         const query = e.target.value.trim().toLowerCase();
+        console.log(`🔍 Buscando por: "${query}"`);
         og_estado_empresas.searchQuery = query;
-        og_estado_empresas.currentPage = 1;
+        og_estado_empresas.currentPage = 1;  // Reset para página 1
         
         fn_atualizar_tabela_filtrada();
     });
@@ -482,9 +465,9 @@ async function fn_carregar_empresa(empresaId) {
    PREENCHER FORMULÁRIO UPDATE
 ================================ */
 function fn_preencher_formulario(data) {
-  // Atualizar action dos forms com o ID da empresa
+  // Atualizar action do form de empresa com o ID da empresa
   document.getElementById('formEmpresaUpd').action = `/empresa/${data.cod_empresa}/`;
-  document.getElementById('formCertUpd').action = `/empresa/${data.cod_empresa}/`;
+  // Certificado tem action estático no HTML: /empresa/Cert/
   document.getElementById('upd_empresa_id_hidden').value = data.cod_empresa || '';
   
   // Dados da empresa
@@ -502,6 +485,7 @@ function fn_preencher_formulario(data) {
   document.getElementById('upd_grpEmpresa_id').value = data.grp_empresa || '';
   document.getElementById('upd_chave_acesso').value = data.chave_acesso || '';
   document.getElementById('upd_cliente_id').value = data.cod_cliente || '';
+    document.getElementById('upd_cert_codempresa').value = data.cod_empresa || '';
   
   // Checkbox de matriz
   const matrizCheckbox = document.getElementById('upd_matriz');
@@ -543,152 +527,57 @@ function fn_resetar_formulario() {
     firstTab.click();
   }
   
-  // Resetar botões
-  document.getElementById('btn-edit-empresa').style.display = 'inline-block';
-  document.getElementById('btn-save-empresa').style.display = 'none';
-  document.getElementById('btn-cancel-empresa').style.display = 'none';
-  
-  document.getElementById('btn-edit-cert').style.display = 'inline-block';
-  document.getElementById('btn-save-cert').style.display = 'none';
-  document.getElementById('btn-cancel-cert').style.display = 'none';
-  
-  // Tornar campos readonly novamente
-  const editableFields = [
-    'upd_razao',
-    'upd_fantasia',
-    'upd_ie',
-    'upd_im',
-    'upd_iest',
-    'upd_crt',
-    'upd_cnae',
-    'upd_suframa',
-    'upd_grpEmpresa_id',
-    'upd_chave_acesso'
-  ];
-  
-  editableFields.forEach(fieldId => {
-    const field = document.getElementById(fieldId);
-    if (field) {
-      field.setAttribute('readonly', 'readonly');
-    }
-  });
-  
-  // Desabilitar checkbox matriz
-  const matrizCheckbox = document.getElementById('upd_matriz');
-  if (matrizCheckbox) {
-    matrizCheckbox.setAttribute('disabled', 'disabled');
-  }
-  
-  // Desabilitar upload de arquivo
+  // Limpar arquivo de certificado
   const fileInput = document.getElementById('upd_cert_file');
   if (fileInput) {
-    fileInput.setAttribute('disabled', 'disabled');
     fileInput.value = '';
   }
 }
 
-// Função para tornar campos editáveis na aba Empresa
-function fn_editar_empresa() {
-  // Campos que podem ser editados
-  const editableFields = [
-    'upd_razao',
-    'upd_fantasia',
-    'upd_ie',
-    'upd_im',
-    'upd_iest',
-    'upd_crt',
-    'upd_cnae',
-    'upd_suframa',
-    'upd_grpEmpresa_id',
-    'upd_chave_acesso'
-  ];
-
-  editableFields.forEach(fieldId => {
-    const field = document.getElementById(fieldId);
-    if (field) {
-      field.removeAttribute('readonly');
-    }
-  });
-
-  // Habilitar checkbox matriz
-  const matrizCheckbox = document.getElementById('upd_matriz');
-  if (matrizCheckbox) {
-    matrizCheckbox.removeAttribute('disabled');
-  }
-
-  // Trocar botões
-  document.getElementById('btn-edit-empresa').style.display = 'none';
-  document.getElementById('btn-save-empresa').style.display = 'inline-block';
-  document.getElementById('btn-cancel-empresa').style.display = 'inline-block';
-}
-
-// Função para cancelar edição na aba Empresa
-function fn_cancelar_edicao_empresa() {
-  // Restaurar valores originais
-  restoreOriginalFormData();
-
-  // Tornar campos readonly novamente
-  const editableFields = [
-    'upd_razao',
-    'upd_fantasia',
-    'upd_ie',
-    'upd_im',
-    'upd_iest',
-    'upd_crt',
-    'upd_cnae',
-    'upd_suframa',
-    'upd_grpEmpresa_id',
-    'upd_chave_acesso'
-  ];
-
-  editableFields.forEach(fieldId => {
-    const field = document.getElementById(fieldId);
-    if (field) {
-      field.setAttribute('readonly', 'readonly');
-    }
-  });
-
-  // Desabilitar checkbox matriz
-  const matrizCheckbox = document.getElementById('upd_matriz');
-  if (matrizCheckbox) {
-    matrizCheckbox.setAttribute('disabled', 'disabled');
-  }
-
-  // Trocar botões
-  document.getElementById('btn-edit-empresa').style.display = 'inline-block';
-  document.getElementById('btn-save-empresa').style.display = 'none';
-  document.getElementById('btn-cancel-empresa').style.display = 'none';
-}
-
-// Função para tornar campos editáveis na aba Certificado
-function fn_editar_certificado() {
-  // Habilitar upload de arquivo
+/* ===============================
+   VALIDAÇÃO FORMULÁRIO CERTIFICADO
+================================ */
+function fn_validar_certificado(event) {
+  event.preventDefault();
+  
   const fileInput = document.getElementById('upd_cert_file');
-  if (fileInput) {
-    fileInput.removeAttribute('disabled');
+  const emissor = document.getElementById('upd_emissor').value.trim();
+  const dtInicial = document.getElementById('upd_dt_inicial').value.trim();
+  const dtFim = document.getElementById('upd_dt_fim').value.trim();
+  
+  // Validar se algo foi enviado
+  if (!fileInput.files.length && !emissor && !dtInicial && !dtFim) {
+    alert('Selecione um arquivo ou preencha os dados do certificado');
+    return false;
   }
-
-  // Trocar botões
-  document.getElementById('btn-edit-cert').style.display = 'none';
-  document.getElementById('btn-save-cert').style.display = 'inline-block';
-  document.getElementById('btn-cancel-cert').style.display = 'inline-block';
+  
+  // Se há datas, validar formato
+  if (dtInicial && !fn_validar_data(dtInicial)) {
+    alert('Formato de data inválido para Data Início. Use DD/MM/YYYY ou YYYY-MM-DD');
+    return false;
+  }
+  
+  if (dtFim && !fn_validar_data(dtFim)) {
+    alert('Formato de data inválido para Data Fim. Use DD/MM/YYYY ou YYYY-MM-DD');
+    return false;
+  }
+  
+  // Se passou na validação, enviar formulário
+  document.getElementById('formCertUpd').submit();
 }
 
-// Função para cancelar edição na aba Certificado
-function fn_cancelar_edicao_certificado() {
-  // Desabilitar upload de arquivo
-  const fileInput = document.getElementById('upd_cert_file');
-  if (fileInput) {
-    fileInput.setAttribute('disabled', 'disabled');
-    fileInput.value = '';
-  }
-
-  // Trocar botões
-  document.getElementById('btn-edit-cert').style.display = 'inline-block';
-  document.getElementById('btn-save-cert').style.display = 'none';
-  document.getElementById('btn-cancel-cert').style.display = 'none';
+/* ===============================
+   VALIDADOR DE DATAS
+================================ */
+function fn_validar_data(data) {
+  // Aceita formatos DD/MM/YYYY ou YYYY-MM-DD
+  const regex = /^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})$/;
+  return regex.test(data);
 }
 
+/* ===============================
+   SALVAR/RESTAURAR ESTADO ORIGINAL
+================================ */
 // Salvar estado original do formulário
 function saveOriginalFormData() {
   og_estado_empresas.originalFormData = {
@@ -786,9 +675,86 @@ function fn_validar_formulario_upd(event) {
     if (!fantasia) errors.push("Nome Fantasia é obrigatório");
     
     if (errors.length > 0) {
-        alert("❌ Erros:\n\n" + errors.join("\n"));
+        fn_exibir_alerta_modal("❌ Erros:\n\n" + errors.join("\n"), 'danger');
         return false;
     }
     
-    event.target.submit();
+    // ✅ Submeter via AJAX
+    fn_submit_form_ajax(event.target, 'Empresa');
+}
+
+// ✅ Submeter formulário via AJAX e mostrar mensagem no modal
+function fn_submit_form_ajax(form, tipo) {
+  const formData = new FormData(form);
+  const action = form.action;
+  
+  console.log(`[fn_submit_form_ajax] Enviando ${tipo}...`);
+  
+  fetch(action, {
+    method: 'POST',
+    body: formData,
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest'
+    }
+  })
+  .then(response => {
+    console.log(`[fn_submit_form_ajax] Response status: ${response.status}`);
+    return response.json().catch(() => response.text());
+  })
+  .then(data => {
+    console.log(`[fn_submit_form_ajax] Resposta:`, data);
+    
+    // ✅ Se for JSON com success/message
+    if (typeof data === 'object' && data.success !== undefined) {
+      const tipoAlert = data.success ? 'success' : 'danger';
+      fn_exibir_alerta_modal(data.message, tipoAlert);
+      
+      // ✅ Se sucesso, recarregar tabela após 2 segundos
+      if (data.success) {
+        setTimeout(() => {
+          location.reload();
+        }, 2000);
+      }
+    } else {
+      // ✅ Se não for JSON, considerar erro
+      fn_exibir_alerta_modal('Erro ao processar requisição', 'danger');
+    }
+  })
+  .catch(error => {
+    console.error(`[fn_submit_form_ajax] Erro:`, error);
+    fn_exibir_alerta_modal('Erro ao processar requisição', 'danger');
+  });
+}
+
+// ✅ Exibir alerta dentro do modal
+function fn_exibir_alerta_modal(mensagem, tipo = 'info') {
+  const container = document.getElementById('modalEmpresaUpdAlerts');
+  if (!container) {
+    console.warn('[fn_exibir_alerta_modal] Container não encontrado, usando alert do navegador');
+    alert(mensagem);
+    return;
+  }
+  
+  // Limpar alertas anteriores
+  container.innerHTML = '';
+  
+  // Criar novo alerta
+  const alertDiv = document.createElement('div');
+  alertDiv.className = `alert alert-${tipo} alert-dismissible fade show`;
+  alertDiv.role = 'alert';
+  alertDiv.innerHTML = `
+    ${mensagem}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  `;
+  
+  container.appendChild(alertDiv);
+  console.log(`[fn_exibir_alerta_modal] Alerta exibido: ${tipo}`);
+  
+  // Auto-fechar após 5 segundos se for sucesso
+  if (tipo === 'success') {
+    setTimeout(() => {
+      const alert = bootstrap.Alert.getOrCreateInstance(alertDiv);
+      if (alert) alert.close();
+    }, 5000);
+  }
 }

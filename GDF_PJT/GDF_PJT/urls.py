@@ -39,8 +39,8 @@ urlpatterns = [
     
     # Empresas
     path('empresa/inserir/', views.fn_view_inserir_empresa, name='Empresa_ins'),
-    path('empresa/<str:cod_empresa>/', views.fn_view_atualizar_empresa, name='Empresa_upd'),
     path('empresa/Cert/', views.fn_view_atualizar_certificado, name='Cert_upd'),
+    path('empresa/<str:cod_empresa>/', views.fn_view_atualizar_empresa, name='Empresa_upd'),
 
     # Clientes
     path('cliente/inserir/', views.fn_view_inserir_cliente, name='Cliente_ins'),
