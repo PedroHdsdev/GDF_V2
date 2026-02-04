@@ -31,7 +31,17 @@ SECRET_KEY = env('SECRET_KEY', default='django-insecure-)+_kx-l8g8iu@t@k3y=mswm^
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '10.0.1.19', '0.0.0.0'])
+
+# HTTPS & Security Configuration
+SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=False)  # True em produção
+SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=False)  # True em produção
+CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=False)  # True em produção
+SECURE_HSTS_SECONDS = env.int('SECURE_HSTS_SECONDS', default=31536000)  # 1 ano
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=True)
+SECURE_HSTS_PRELOAD = env.bool('SECURE_HSTS_PRELOAD', default=True)
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_SECURITY_POLICY_REPORT_ONLY = False
 
 
 # Application definition
@@ -44,6 +54,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'app',
+    'csp',  # Django CSP for Content-Security-Policy
 ]
 
 MIDDLEWARE = [
@@ -54,6 +65,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'csp.middleware.CSPMiddleware',  # Content-Security-Policy
+    'app.middlewares.rate_limit.RateLimitMiddleware',  # Rate limiting
+    'app.middlewares.session_fixation.SessionFixationMiddleware',  # Session security
+    'app.middlewares.security_headers.SecurityHeadersMiddleware',  # XSS & Security headers
 ]
 
 ROOT_URLCONF = 'GDF_PJT.urls'
@@ -75,6 +90,18 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'GDF_PJT.wsgi.application'
+
+# Cache - Local memory (development)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'gdf-cache',
+    }
+}
+
+# Session - Django default database sessions
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+SESSION_CACHE_ALIAS = 'default'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
@@ -129,6 +156,66 @@ CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=True)
 # Upload limits
 DATA_UPLOAD_MAX_NUMBER_FILES = env.int('DATA_UPLOAD_MAX_NUMBER_FILES', default=2000)
 
+# Logging - Security & Audit
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'security': {
+            'format': '[{asctime}] {levelname} - User: {username} | IP: {ip} | Action: {action} | Details: {details}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'security_file': {
+            'level': 'WARNING',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'security.log'),
+            'maxBytes': 1024 * 1024 * 10,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'security',
+        },
+        'audit_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'audit.log'),
+            'maxBytes': 1024 * 1024 * 10,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'security': {
+            'handlers': ['security_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'audit': {
+            'handlers': ['audit_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+# Criar diretório de logs se não existir
+import os
+os.makedirs(os.path.join(BASE_DIR, 'logs'), exist_ok=True)
+
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
@@ -154,4 +241,30 @@ STATICFILES_DIRS = [
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Content Security Policy (django-csp 4.0+)
+CONTENT_SECURITY_POLICY = {
+    'DIRECTIVES': {
+        'default-src': ("'self'",),
+        'script-src': (
+            "'self'",
+            "'unsafe-inline'",  # Apenas para desenvolvimento
+            "https://cdn.jsdelivr.net",
+            "https://code.jquery.com",
+        ),
+        'style-src': (
+            "'self'",
+            "'unsafe-inline'",  # Apenas para desenvolvimento
+            "https://cdn.jsdelivr.net",
+            "https://fonts.googleapis.com",
+        ),
+        'img-src': ("'self'", "data:", "https:"),
+        'font-src': ("'self'", "https://fonts.gstatic.com"),
+        'connect-src': ("'self'", "https:"),
+        'frame-ancestors': ("'none'",),
+        'base-uri': ("'self'",),
+        'form-action': ("'self'",),
+    }
+}
+
 

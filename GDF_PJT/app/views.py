@@ -3,6 +3,7 @@ from django.shortcuts               import get_object_or_404, render
 from django.shortcuts               import render, redirect
 from django.contrib.auth            import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from app.decorators                 import validate_idor_empresa, validate_idor_usuario, validate_session_required
 from django.views.decorators.http   import require_http_methods
 from django.conf                    import settings
 from django.contrib                 import messages
@@ -379,6 +380,7 @@ def fn_view_inserir_empresa(request):
         return redirect('Dm_Empresas')
 
 @login_required(login_url='Login')
+@validate_idor_empresa
 @require_http_methods(["GET", "POST"])
 def fn_view_atualizar_empresa(request, cod_empresa):
     """Atualizar empresa existente"""
@@ -543,6 +545,12 @@ def fn_view_atualizar_cliente(request, cod_cliente):
     cod_cliente_sessao = request.session.get('cod_cliente', None)
     if not cod_cliente_sessao:
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+    
+    # ✅ VALIDAÇÃO IDOR: cliente só pode atualizar a si mesmo
+    if str(cod_cliente) != str(cod_cliente_sessao):
+        return JsonResponse({
+            "erro": "Acesso negado: você não pode editar outro cliente"
+        }, status=403)
     
     cl_gdf = ClGdf()
     if request.method == "GET":
