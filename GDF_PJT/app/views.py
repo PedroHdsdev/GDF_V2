@@ -306,6 +306,95 @@ def fn_view_dashboard_compras(request):
     return render(request, "Dashboard/Index_Compras.html", {"token": token })
 
 #--------------------------------------------------------------------
+#       Sub-soluções Views (Manifesto)
+#--------------------------------------------------------------------
+@login_required(login_url='Login')
+def fn_view_manifesto_painel(request):
+    manifesto_data = {
+        "notas": [
+            {
+                "id": "NFE-2026-0001",
+                "tipo": "NFe",
+                "numero": "15432",
+                "serie": "001",
+                "emissao": "2026-02-10 09:22",
+                "emitente": "Industrias Atlas",
+                "destinatario": "Supermercado Central",
+                "valor": "152340.80",
+                "status": "AUTORIZADA",
+                "documentos": [
+                    {
+                        "tipo": "COMPRA",
+                        "numero": "4500012391",
+                        "data": "2026-02-10",
+                        "status": "CRIADO",
+                        "itens": [
+                            {"seq": 10, "nfe_item_seq": 1, "material": "MAT-1001", "descricao": "Acucar cristal", "qtd": "100", "un": "KG", "valor": "3400.00"},
+                            {"seq": 20, "nfe_item_seq": 2, "material": "MAT-2004", "descricao": "Leite integral", "qtd": "220", "un": "CX", "valor": "6600.00"},
+                        ],
+                    },
+                    {
+                        "tipo": "MIRO",
+                        "numero": "5100004890",
+                        "data": "2026-02-10",
+                        "status": "PENDENTE",
+                        "itens": [
+                            {"seq": 10, "nfe_item_seq": 1, "material": "MAT-1001", "descricao": "Acucar cristal", "qtd": "100", "un": "KG", "valor": "3400.00"},
+                        ],
+                    },
+                ],
+                "itens": [
+                    {"seq": 1, "codigo": "7891001", "descricao": "Acucar cristal 5kg", "qtd": "100", "un": "KG", "valor": "3400.00"},
+                    {"seq": 2, "codigo": "7892004", "descricao": "Leite integral 1L", "qtd": "220", "un": "CX", "valor": "6600.00"},
+                    {"seq": 3, "codigo": "7893011", "descricao": "Cafe torrado 500g", "qtd": "80", "un": "CX", "valor": "4200.00"},
+                ],
+            },
+            {
+                "id": "CTE-2026-0102",
+                "tipo": "CTe",
+                "numero": "8851",
+                "serie": "002",
+                "emissao": "2026-02-09 16:08",
+                "emitente": "Logistica Norte",
+                "destinatario": "Farmacia Vida",
+                "valor": "19800.00",
+                "status": "EM_ANALISE",
+                "documentos": [
+                    {
+                        "tipo": "MIGO",
+                        "numero": "4900007712",
+                        "data": "2026-02-09",
+                        "status": "CRIADO",
+                        "itens": [
+                            {"seq": 10, "nfe_item_seq": 1, "material": "FRETE", "descricao": "Servico de transporte", "qtd": "1", "un": "SV", "valor": "19800.00"},
+                        ],
+                    }
+                ],
+                "itens": [
+                    {"seq": 1, "codigo": "FRETE", "descricao": "Servico de transporte", "qtd": "1", "un": "SV", "valor": "19800.00"},
+                ],
+            },
+            {
+                "id": "NFSE-2026-0431",
+                "tipo": "NFSe",
+                "numero": "431",
+                "serie": "A1",
+                "emissao": "2026-02-08 11:45",
+                "emitente": "Tech Servicios",
+                "destinatario": "Industria Nova",
+                "valor": "4520.50",
+                "status": "PENDENTE",
+                "documentos": [],
+                "itens": [
+                    {"seq": 1, "codigo": "SVC-100", "descricao": "Suporte mensal", "qtd": "1", "un": "SV", "valor": "4520.50"},
+                ],
+            },
+        ]
+    }
+
+    return render(request, "Manifesto/Index_Manifesto.html", {"manifesto_data": manifesto_data})
+
+#--------------------------------------------------------------------
 #       Empresas - Modais
 #--------------------------------------------------------------------
 @login_required(login_url='Login')

@@ -1,0 +1,140 @@
+{% extends 'Index_Base.html' %}
+{% load static %}
+
+{% block title %}Manifesto{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/Style_Manifesto.css' %}">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block titlepage %}Manifesto{% endblock %}
+
+{% block container %}
+<div class="manifesto-page">
+  <section class="manifesto-hero">
+    <div class="manifesto-hero-content">
+      <h1 class="manifesto-title">Painel Manifesto</h1>
+      <p class="manifesto-subtitle">
+        Gerencie Notas de Entrada com agilidade. Acesse os detalhes e gere os documentos necessários em poucos cliques. 
+      </p>
+      <div class="manifesto-hero-actions">  
+        <div class="dropdown">
+          <button class="btn btn-light manifesto-btn dropdown-toggle" type="button" data-bs-toggle="dropdown">Parametros</button>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="#">NFe</a></li>
+            <li><a class="dropdown-item" href="#">CTe</a></li>
+            <li><a class="dropdown-item" href="#">NFSe</a></li>
+            <li><a class="dropdown-item" href="#">Writer</a></li>
+          </ul>
+        </div>
+        <button class="btn btn-outline-light manifesto-btn" type="button">Ferramentas</button>
+      </div>
+    </div>
+  </section>  
+  <section class="manifesto-panel">
+    <div class="manifesto-table-card">
+      <div class="manifesto-table-head">
+        <div class="manifesto-filters">
+          <button class="manifesto-chip is-active" data-filter="ALL" type="button">Todos</button>
+          <button class="manifesto-chip" data-filter="NFe" type="button">NFe</button>
+          <button class="manifesto-chip" data-filter="CTe" type="button">CTe</button>
+          <button class="manifesto-chip" data-filter="NFSe" type="button">NFSe</button>
+        </div>
+        <div class="manifesto-search">
+          <input id="manifesto-search" type="text" class="form-control" placeholder="Buscar por numero, emitente, destinatario">
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table manifesto-table align-middle">
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Numero</th>
+              <th>Serie</th>
+              <th>Emissao</th>
+              <th>Emitente</th>
+              <th>Destinatario</th>
+              <th class="text-end">Valor</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="manifesto-notas-body"></tbody>
+        </table>
+      </div>
+      <div class="manifesto-table-footer">
+        <nav id="manifesto-pagination"></nav>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="modal fade" id="manifestoModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content manifesto-modal">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title" id="manifesto-modal-title">Detalhe da nota</h5>
+          <p class="manifesto-modal-meta" id="manifesto-modal-meta"></p>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="manifesto-modal-actions">
+          <div class="dropdown">
+            <button class="btn btn-dark dropdown-toggle" type="button" data-bs-toggle="dropdown">Gerar documento</button>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="#">Ped. Compras</a></li>
+              <li><a class="dropdown-item" href="#">MIGO</a></li>
+              <li><a class="dropdown-item" href="#">MIRO</a></li>
+              <li><a class="dropdown-item" href="#">Remessa</a></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="manifesto-section">
+          <div class="manifesto-section-head">
+            <h6>Documentos vinculados</h6>
+            <span class="manifesto-section-sub">Clique para expandir • Compra, MIRO e MIGO</span>
+          </div>
+          <div id="manifesto-docs"></div>
+        </div>
+
+        <div class="manifesto-modal-actions secondary">
+          <button class="btn btn-outline-primary" type="button">Rateio de item</button>
+          <button class="btn btn-outline-primary" type="button">Alterar dados</button>
+          <button class="btn btn-outline-primary" type="button">Conciliar</button>
+        </div>
+
+        <div class="manifesto-section">
+          <div class="manifesto-section-head">
+            <h6>Itens da nota</h6>
+            <span class="manifesto-section-sub">Todos os itens capturados da nota</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table manifesto-table">
+              <thead>
+                <tr>
+                  <th>Seq</th>
+                  <th>Codigo</th>
+                  <th>Descricao</th>
+                  <th class="text-end">Qtd</th>
+                  <th>Un</th>
+                  <th class="text-end">Valor</th>
+                </tr>
+              </thead>
+              <tbody id="manifesto-itens-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{ manifesto_data|json_script:"manifesto-data" }}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/Script_Manifesto.js' %}"></script>
+{% endblock %}

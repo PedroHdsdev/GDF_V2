@@ -29,9 +29,10 @@ environ.Env.read_env(os.path.join(BASE_DIR.parent, '.env'))
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-)+_kx-l8g8iu@t@k3y=mswm^+s#%)yu_d=kevi0vac+y#m0oc^')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env.bool('DEBUG', default=False)
-
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '10.0.1.19', '0.0.0.0'])
+DEBUG = env.bool('DEBUG', default=True)
+                                            #localhost', '10.0.1.19', '0.0.0.0
+#ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
+ALLOWED_HOSTS = ["*"]
 
 # HTTPS & Security Configuration
 SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=False)  # True em produção

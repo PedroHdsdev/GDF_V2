@@ -622,3 +622,68 @@ class NFe(models.Model):
 
     def __str__(self):
         return f"NF-e {self.identificacao.numero}/{self.identificacao.serie} - {self.status}"
+
+
+class NFe_Documento(models.Model):
+    """Documentos vinculados a uma NF-e (ex: Compra, MIRO, MIGO)."""
+    id_documento = models.AutoField(primary_key=True)
+    nfe = models.ForeignKey(NFe, on_delete=models.CASCADE, related_name='documentos')
+    tipo_documento = models.CharField(
+        max_length=20,
+        choices=[
+            ('COMPRA', 'Compra'),
+            ('MIRO', 'MIRO'),
+            ('MIGO', 'MIGO'),
+            ('OUTROS', 'Outros'),
+        ],
+        default='COMPRA'
+    )
+    numero_documento = models.CharField(max_length=40)
+    data_documento = models.DateField(blank=True, null=True)
+    status = models.CharField(max_length=20, default='PENDENTE')
+    observacao = models.CharField(max_length=255, blank=True, null=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        managed = True
+        db_table = '"nfe"."nfe_documento"'
+        indexes = [
+            models.Index(fields=['nfe', 'tipo_documento']),
+            models.Index(fields=['numero_documento']),
+        ]
+
+    def __str__(self):
+        return f"{self.tipo_documento} - {self.numero_documento}"
+
+
+class NFe_DocumentoItem(models.Model):
+    """Itens dos documentos vinculados a uma NF-e."""
+    id_item = models.AutoField(primary_key=True)
+    documento = models.ForeignKey(NFe_Documento, on_delete=models.CASCADE, related_name='itens')
+    nfe_produto = models.ForeignKey(
+        NFe_Produto,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='documento_itens'
+    )
+    sequencia = models.IntegerField()
+    material = models.CharField(max_length=60, blank=True, null=True)
+    descricao = models.CharField(max_length=120, blank=True, null=True)
+    quantidade = models.DecimalField(max_digits=15, decimal_places=4, default=0)
+    unidade = models.CharField(max_length=10, blank=True, null=True)
+    valor_unitario = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    valor_total = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        managed = True
+        db_table = '"nfe"."nfe_documento_item"'
+        indexes = [
+            models.Index(fields=['documento', 'sequencia']),
+            models.Index(fields=['nfe_produto']),
+        ]
+
+    def __str__(self):
+        return f"Item {self.sequencia} - {self.descricao or ''}"

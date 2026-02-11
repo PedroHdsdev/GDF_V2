@@ -5,52 +5,148 @@
 
 {% block styles %}
 <link rel="stylesheet" href="{% static 'css/Style_Home.css' %}">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
 {% endblock %}
 
 {% block titlepage %}Início{% endblock %}
 
 {% block container %}
-<div class="container py-5">
-
-    <!-- TEXTO PRINCIPAL -->
-    <div class="row justify-content-center mb-5">
-        <div class="col-lg-8 text-center">
-            <h2 class="fw-bold mb-3">
-                Parcerias que geram resultados
-            </h2>
-            <p class="text-muted fs-5">
-                No mundo atual, ter um parceiro de negócios é fundamental para o sucesso
-                empresarial. Empresas que investem em tecnologia têm vantagem competitiva,
-                melhorando a eficiência e oferecendo ganhos significativos, como a
-                expansão dos negócios e aumento da lucratividade.
+<div class="home-page">
+    <section class="home-hero">
+        <div class="home-hero-content">
+            <p class="home-eyebrow">Central de operacoes</p>
+            <h1 class="home-title">Painel inicial com foco no que pede acao</h1>
+            <p class="home-subtitle">
+                Acompanhe alertas criticos, atalhos de rotina e o resumo das operacoes em um unico
+                lugar.
             </p>
         </div>
-    </div>
-
-    <!-- LOGOS DOS PARCEIROS -->
-    <div class="row g-4 justify-content-center align-items-center">
-        <div class="col-6 col-sm-4 col-md-3 col-lg-2 text-center">
-            <img src="https://processit.com.br/wp-content/themes/processit-theme/images/parceiros/jundia.png"
-                 class="img-fluid"
-                 style="max-height: 80px;"
-                 alt="Jundiá Sorvetes">
+        <div class="home-hero-actions">
+            <a class="btn btn-light home-btn" href="{% url 'Mnf_Painel' %}">Abrir painel manifesto</a>
+            <a class="btn btn-outline-light home-btn" href="{% url 'Db_Compras' %}">Dashboard compras</a>
         </div>
+    </section>
 
-        <div class="col-6 col-sm-4 col-md-3 col-lg-2 text-center">
-            <img src="https://processit.com.br/wp-content/themes/processit-theme/images/parceiros/peruzzo.png"
-                 class="img-fluid"
-                 style="max-height: 80px;"
-                 alt="Peruzzo">
+    <section class="home-grid">
+        <article class="home-card home-alerts">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Agora</p>
+                    <h3>Alertas e avisos</h3>
+                </div>
+                <div class="home-chips">
+                    <span class="home-chip is-active">Hoje</span>
+                    <span class="home-chip">Semana</span>
+                </div>
+            </div>
+            <ul class="home-alert-list">
+                <li class="home-alert is-critical">
+                    <span class="home-alert-dot"></span>
+                    <div>
+                        <p class="home-alert-title">7 notas aguardando validacao</p>
+                        <p class="home-alert-meta">Manifesto • Ultima atualizacao ha 12 min</p>
+                    </div>
+                    <span class="home-alert-tag">Urgente</span>
+                </li>
+                <li class="home-alert is-warning">
+                    <span class="home-alert-dot"></span>
+                    <div>
+                        <p class="home-alert-title">Certificados expirando em 15 dias</p>
+                        <p class="home-alert-meta">Empresas • 3 pendencias</p>
+                    </div>
+                    <span class="home-alert-tag">Atenção</span>
+                </li>
+                <li class="home-alert is-info">
+                    <span class="home-alert-dot"></span>
+                    <div>
+                        <p class="home-alert-title">Fila de reprocessamento pronta</p>
+                        <p class="home-alert-meta">Reprocessamento • 128 arquivos</p>
+                    </div>
+                    <span class="home-alert-tag">Pronto</span>
+                </li>
+            </ul>
+            <div class="home-alert-actions">
+                <button class="btn btn-dark" type="button">Revisar alertas</button>
+                <button class="btn btn-outline-dark" type="button">Ver historico</button>
+            </div>
+        </article>
+
+        <article class="home-card home-quick">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Atalhos</p>
+                    <h3>Acesso rapido</h3>
+                </div>
+            </div>
+            <div class="home-quick-grid">
+                <a class="home-quick-item" href="{% url 'Pro_CargaXml' %}">
+                    <span>Importar XML</span>
+                    <small>Carga diaria</small>
+                </a>
+                <a class="home-quick-item" href="{% url 'Pro_Reproc.' %}">
+                    <span>Reprocessar fila</span>
+                    <small>Regras e ajustes</small>
+                </a>
+                <a class="home-quick-item" href="{% url 'Dm_Empresas' %}">
+                    <span>Empresas</span>
+                    <small>Cadastros</small>
+                </a>
+                <a class="home-quick-item" href="{% url 'Dm_Usuarios' %}">
+                    <span>Usuarios</span>
+                    <small>Acessos</small>
+                </a>
+            </div>
+        </article>
+
+        <article class="home-card home-metrics">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Resumo</p>
+                    <h3>Indicadores chave</h3>
+                </div>
+            </div>
+            <div class="home-metric-grid">
+                <div class="home-metric">
+                    <span class="home-metric-label">Notas pendentes</span>
+                    <span class="home-metric-value">32</span>
+                    <span class="home-metric-note">+6 desde ontem</span>
+                </div>
+                <div class="home-metric">
+                    <span class="home-metric-label">Envios concluidos</span>
+                    <span class="home-metric-value">428</span>
+                    <span class="home-metric-note">Ultimas 24h</span>
+                </div>
+                <div class="home-metric">
+                    <span class="home-metric-label">Tempo medio</span>
+                    <span class="home-metric-value">18 min</span>
+                    <span class="home-metric-note">Manifesto</span>
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <section class="home-partners">
+        <div class="home-card home-partners-card">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Parcerias</p>
+                    <h3>Empresas que confiam no GDF</h3>
+                </div>
+                <span class="home-chip">Ativo</span>
+            </div>
+            <div class="home-partner-logos">
+                <img src="https://processit.com.br/wp-content/themes/processit-theme/images/parceiros/jundia.png"
+                     class="img-fluid"
+                     alt="Jundia Sorvetes">
+                <img src="https://processit.com.br/wp-content/themes/processit-theme/images/parceiros/peruzzo.png"
+                     class="img-fluid"
+                     alt="Peruzzo">
+                <img src="https://processit.com.br/wp-content/themes/processit-theme/images/parceiros/tenda.png"
+                     class="img-fluid"
+                     alt="Tenda Atacado">
+            </div>
         </div>
-
-        <div class="col-6 col-sm-4 col-md-3 col-lg-2 text-center">
-            <img src="https://processit.com.br/wp-content/themes/processit-theme/images/parceiros/tenda.png"
-                 class="img-fluid"
-                 style="max-height: 80px;"
-                 alt="Tenda Atacado">
-        </div>
-
-    </div>
+    </section>
 </div>
 {% endblock %}
 

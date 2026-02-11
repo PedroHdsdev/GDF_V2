@@ -25,6 +25,9 @@ urlpatterns = [
     #Dashboard
     path('dashboard/vendas/', views.fn_view_dashboard_vendas, name='Db_Vendas'),
     path('dashboard/compras/', views.fn_view_dashboard_compras, name='Db_Compras'),
+
+    #Manifesto
+    path('manifesto/painel/', views.fn_view_manifesto_painel, name='Mnf_Painel'),
     
     #APIs
     path('api/processar-xml/', views.fn_api_processar_xml, name='API_ProcessarXml'),
