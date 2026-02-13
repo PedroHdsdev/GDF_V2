@@ -2,12 +2,12 @@
    ESTILO - REPROCESSAMENTO
 ================================ */
 
-/* Container principal */
+/* Container principal (mantido para compatibilidade) */
 .container-reprocessamento {
-    padding: 20px;
-    background: #f8f9fa;
-    border-radius: 8px;
-    margin-top: 20px;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    margin-top: 0;
 }
 
 /* Card de filtros */
@@ -17,6 +17,12 @@
     padding: 20px;
     margin-bottom: 20px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.layout-subcard h5 {
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: #0f172a;
 }
 
 .card-filtros h5 {
@@ -126,15 +132,15 @@
 
 /* Tabela de reprocessamento */
 .table-reprocessamento {
-    background: white;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    margin-top: 20px;
+    background: transparent;
+    border-radius: 0;
+    overflow: visible;
+    box-shadow: none;
+    margin-top: 0;
 }
 
 .table-reprocessamento thead {
-    background: linear-gradient(135deg, #f1f3f5 0%, #e9ecef 100%);
+    background: transparent;
 }
 
 .table-reprocessamento thead th {

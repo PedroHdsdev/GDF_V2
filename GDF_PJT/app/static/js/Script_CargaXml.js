@@ -25,7 +25,14 @@ const estadoCargaXml = {
 document.addEventListener('DOMContentLoaded', function () {
     carregarTodasAsCargas();
     inicializarEventosFiltros();
+    inicializarEventosParametros();
+    carregarParametrosAtivos();
 });
+
+function obterCsrfToken() {
+    const token = document.querySelector('[name=csrfmiddlewaretoken]');
+    return token ? token.value : '';
+}
 
 /* ===============================
    CARREGAR TODAS AS CARGAS
@@ -219,6 +226,141 @@ function renderizarPaginacaoCarga(totalItems) {
         link.appendChild(btn);
         container.appendChild(link);
     }
+}
+
+/* ===============================
+   PARAMETROS DE CARGA
+================================ */
+function inicializarEventosParametros() {
+    const form = document.getElementById('form-parametros');
+    if (form) {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            criarParametroCarga();
+        });
+    }
+
+    const btnRecarregar = document.getElementById('btn-recarregar-parametros');
+    if (btnRecarregar) {
+        btnRecarregar.addEventListener('click', function () {
+            carregarParametrosAtivos();
+        });
+    }
+
+    const modal = document.getElementById('modalCargaXml');
+    if (modal) {
+        modal.addEventListener('shown.bs.modal', function () {
+            carregarParametrosAtivos();
+        });
+    }
+}
+
+function criarParametroCarga() {
+    const horario = document.getElementById('param-horario')?.value || '';
+    const origemDados = document.getElementById('param-origem-dados')?.value || 'LOCAL';
+    const diretorio = document.getElementById('param-diretorio')?.value || '';
+    const ativo = document.getElementById('param-ativo')?.checked || false;
+
+    const modelosSelecionados = Array.from(document.querySelectorAll('.param-modelo'))
+        .filter(item => item.checked)
+        .map(item => item.value);
+
+    const modelos = modelosSelecionados.join(',');
+
+    if (!horario || !diretorio) {
+        mostrarAlerta('⚠️ Preencha horario e diretorio', 'warning');
+        return;
+    }
+
+    fetch('/api/cargaxml/parametros/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': obterCsrfToken(),
+        },
+        body: JSON.stringify({
+            horario: horario,
+            origem_dados: origemDados,
+            diretorio: diretorio,
+            modelos: modelos,
+            ativo: ativo,
+        })
+    })
+        .then(response => response.json().then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+            if (!ok || !data.sucesso) {
+                mostrarAlerta(`❌ ${data.mensagem || 'Erro ao salvar parametros'}`, 'error');
+                return;
+            }
+            mostrarAlerta('✅ Parametros salvos com sucesso', 'success');
+            carregarParametrosAtivos();
+        })
+        .catch(() => {
+            mostrarAlerta('❌ Falha ao salvar parametros', 'error');
+        });
+}
+
+function carregarParametrosAtivos() {
+    const tabela = document.querySelector('#tabela-parametros tbody');
+    if (!tabela) return;
+
+    fetch('/api/cargaxml/parametros/?ativo=1')
+        .then(response => response.json())
+        .then(data => {
+            tabela.innerHTML = '';
+            const items = data.items || [];
+
+            if (!data.sucesso || items.length === 0) {
+                tabela.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum parametro ativo</td></tr>';
+                return;
+            }
+
+            items.forEach(item => {
+                const linha = document.createElement('tr');
+                linha.innerHTML = `
+                    <td>${item.horario}</td>
+                    <td>${item.origem_dados}</td>
+                    <td>${item.diretorio}</td>
+                    <td>${item.modelos || '-'}</td>
+                    <td>
+                        <span class="badge-status ${item.ativo ? 'badge-success' : 'badge-warning'}">
+                            ${item.ativo ? 'Ativo' : 'Inativo'}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="toggleParametro(${item.id}, ${item.ativo})">
+                            ${item.ativo ? 'Desativar' : 'Ativar'}
+                        </button>
+                    </td>
+                `;
+                tabela.appendChild(linha);
+            });
+        })
+        .catch(() => {
+            tabela.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Erro ao carregar parametros</td></tr>';
+        });
+}
+
+function toggleParametro(paramId, ativoAtual) {
+    fetch(`/api/cargaxml/parametros/${paramId}/toggle/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': obterCsrfToken(),
+        },
+        body: JSON.stringify({ ativo: !ativoAtual })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.sucesso) {
+                mostrarAlerta('❌ Erro ao atualizar parametro', 'error');
+                return;
+            }
+            carregarParametrosAtivos();
+        })
+        .catch(() => {
+            mostrarAlerta('❌ Erro ao atualizar parametro', 'error');
+        });
 }
 
 /* ===============================

@@ -243,7 +243,30 @@ STATICFILES_DIRS = [
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Celery
+CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://localhost:6379/1')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_TRACK_STARTED = True
+CELERY_BEAT_SCHEDULE = {
+    'cargaxml-scan-params-every-minute': {
+        'task': 'app.tasks.scan_cargaxml_params',
+        'schedule': 60.0,
+    },
+}
+
 # Content Security Policy (django-csp 4.0+)
+STREAMLIT_FRAME_ORIGINS = env.list(
+    'STREAMLIT_FRAME_ORIGINS',
+    default=[
+        'http://localhost:8502',
+        'http://127.0.0.1:8502',
+    ],
+)
+
 CONTENT_SECURITY_POLICY = {
     'DIRECTIVES': {
         'default-src': ("'self'",),
@@ -262,6 +285,7 @@ CONTENT_SECURITY_POLICY = {
         'img-src': ("'self'", "data:", "https:"),
         'font-src': ("'self'", "https://fonts.gstatic.com"),
         'connect-src': ("'self'", "https:"),
+        'frame-src': ("'self'", *STREAMLIT_FRAME_ORIGINS),
         'frame-ancestors': ("'none'",),
         'base-uri': ("'self'",),
         'form-action': ("'self'",),

@@ -3,6 +3,7 @@ XSS Protection & Security Headers
 Adiciona headers de segurança contra XSS, clickjacking, MIME sniffing
 """
 
+from django.conf import settings
 from django.utils.deprecation import MiddlewareMixin
 
 
@@ -37,7 +38,15 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
             'xr-spatial-tracking=(), vr=(), wake-lock=()'
         )
         
-        # Content-Security-Policy: Proteção avançada contra XSS
+        # Content-Security-Policy: Protecao avancada contra XSS
+        frame_sources = getattr(
+            settings,
+            'STREAMLIT_FRAME_ORIGINS',
+            [
+                'http://localhost:8502',
+                'http://127.0.0.1:8502',
+            ],
+        )
         csp_directives = [
             "default-src 'self'",  # Só aceitar recursos da origem
             "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://code.jquery.com",  # Scripts
@@ -45,6 +54,7 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
             "img-src 'self' data: https:",  # Imagens
             "font-src 'self' https://fonts.gstatic.com",  # Fontes
             "connect-src 'self' https:",  # AJAX/WebSocket
+            "frame-src 'self' " + ' '.join(frame_sources),  # Iframe Streamlit
             "frame-ancestors 'none'",  # Não embeded em frames
             "base-uri 'self'",  # Restringe <base> tag
             "form-action 'self'",  # Restringe <form> action

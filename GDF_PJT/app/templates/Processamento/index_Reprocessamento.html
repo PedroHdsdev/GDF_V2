@@ -11,120 +11,129 @@
 {% block titlepage %}Reprocessamento de Dados{% endblock %}
 
 {% block container %}
-<div class="container-fluid py-4">
-    <div class="container-reprocessamento">
+<div class="layout-page">
+    <section class="layout-hero">
+        <div class="layout-hero-content">
+            <p class="layout-eyebrow">Processamento</p>
+            <h1 class="layout-title">Reprocessamento</h1>
+            <p class="layout-subtitle">Monitore filas, ajuste filtros e execute reprocessamentos.</p>
+        </div>
+        <div class="layout-hero-actions">
+            <button class="btn btn-light layout-btn" id="btn-processar">
+                <i class="fas fa-play"></i> Reprocessar
+            </button>
+            <button class="btn btn-outline-light layout-btn" id="btn-exportar">
+                <i class="fas fa-download"></i> Exportar
+            </button>
+            <button class="btn btn-outline-light layout-btn" id="btn-limpar">
+                <i class="fas fa-eraser"></i> Limpar filtros
+            </button>
+        </div>
+    </section>
 
-        <!-- ALERTAS -->
-        <div id="alertas-container"></div>
+    <section class="layout-panel">
+        <div class="layout-card">
+            <!-- ALERTAS -->
+            <div id="alertas-container"></div>
 
-        <!-- HEADER -->
-        <div class="row mb-4 align-items-center">
-            <div class="col-md-8">
-                <h4 class="mb-0"><i class="fas fa-sync-alt"></i> Gerenciar Reprocessamento</h4>
-                <small class="text-muted">Monitore e reprocesse dados já carregados</small>
+            <div class="layout-card-head">
+                <div>
+                    <h2 class="layout-card-title">Gerenciar reprocessamento</h2>
+                    <p class="layout-card-subtitle">Aplique filtros e visualize o status de cada lote.</p>
+                </div>
             </div>
-            <div class="col-md-4 text-end">
-                <button class="btn btn-success me-2" id="btn-processar">
-                    <i class="fas fa-play"></i> Reprocessar
-                </button>
-                <button class="btn btn-info me-2" id="btn-exportar">
-                    <i class="fas fa-download"></i> Exportar
-                </button>
-                <button class="btn btn-secondary" id="btn-limpar">
-                    <i class="fas fa-eraser"></i> Limpar Filtros
-                </button>
+
+            <!-- FILTROS -->
+            <div class="layout-subcard">
+                <h5>Filtros</h5>
+                <div class="row g-3">
+                    <!-- Busca -->
+                    <div class="col-md-3">
+                        <div class="filtro-item">
+                            <label for="filtro-busca" class="form-label">Buscar:</label>
+                            <input type="text" id="filtro-busca" class="form-control" placeholder="ID, Número, Descrição...">
+                        </div>
+                    </div>
+
+                    <!-- Status -->
+                    <div class="col-md-3">
+                        <div class="filtro-item">
+                            <label for="filtro-status" class="form-label">Status:</label>
+                            <select id="filtro-status" class="form-select">
+                                <option value="todos">Todos</option>
+                                <option value="pendente">⏳ Pendente</option>
+                                <option value="processando">🔄 Processando</option>
+                                <option value="concluido">✓ Concluído</option>
+                                <option value="erro">✗ Erro</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Empresa -->
+                    <div class="col-md-2">
+                        <div class="filtro-item">
+                            <label for="filtro-empresa" class="form-label">Empresa:</label>
+                            <select id="filtro-empresa" class="form-select">
+                                <option value="">Todas</option>
+                                <option value="1">Empresa A</option>
+                                <option value="2">Empresa B</option>
+                                <option value="3">Empresa C</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Data Início -->
+                    <div class="col-md-2">
+                        <div class="filtro-item">
+                            <label for="filtro-data-inicio" class="form-label">De:</label>
+                            <input type="date" id="filtro-data-inicio" class="form-control">
+                        </div>
+                    </div>
+
+                    <!-- Data Fim -->
+                    <div class="col-md-2">
+                        <div class="filtro-item">
+                            <label for="filtro-data-fim" class="form-label">Até:</label>
+                            <input type="date" id="filtro-data-fim" class="form-control">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TABELA -->
+            <div class="layout-subcard table-reprocessamento">
+                <div class="table-responsive">
+                    <table id="tabela-reprocessamento" class="table table-hover mb-0 layout-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 8%;">ID</th>
+                                <th style="width: 15%;">Número</th>
+                                <th style="width: 20%;">Empresa</th>
+                                <th style="width: 15%;">Data</th>
+                                <th style="width: 15%;">Status</th>
+                                <th style="width: 12%; text-align: center;">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-5">
+                                    <i class="fas fa-inbox" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
+                                    Nenhum registro encontrado
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PAGINAÇÃO -->
+            <div class="layout-card-footer">
+                <nav aria-label="Paginação">
+                    <ul id="paginacao-reprocessamento" class="pagination justify-content-end"></ul>
+                </nav>
             </div>
         </div>
-
-        <!-- FILTROS -->
-        <div class="card-filtros">
-            <h5>Filtros</h5>
-            <div class="row g-3">
-                <!-- Busca -->
-                <div class="col-md-3">
-                    <div class="filtro-item">
-                        <label for="filtro-busca" class="form-label">Buscar:</label>
-                        <input type="text" id="filtro-busca" class="form-control" placeholder="ID, Número, Descrição...">
-                    </div>
-                </div>
-
-                <!-- Status -->
-                <div class="col-md-3">
-                    <div class="filtro-item">
-                        <label for="filtro-status" class="form-label">Status:</label>
-                        <select id="filtro-status" class="form-select">
-                            <option value="todos">Todos</option>
-                            <option value="pendente">⏳ Pendente</option>
-                            <option value="processando">🔄 Processando</option>
-                            <option value="concluido">✓ Concluído</option>
-                            <option value="erro">✗ Erro</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Empresa -->
-                <div class="col-md-2">
-                    <div class="filtro-item">
-                        <label for="filtro-empresa" class="form-label">Empresa:</label>
-                        <select id="filtro-empresa" class="form-select">
-                            <option value="">Todas</option>
-                            <option value="1">Empresa A</option>
-                            <option value="2">Empresa B</option>
-                            <option value="3">Empresa C</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Data Início -->
-                <div class="col-md-2">
-                    <div class="filtro-item">
-                        <label for="filtro-data-inicio" class="form-label">De:</label>
-                        <input type="date" id="filtro-data-inicio" class="form-control">
-                    </div>
-                </div>
-
-                <!-- Data Fim -->
-                <div class="col-md-2">
-                    <div class="filtro-item">
-                        <label for="filtro-data-fim" class="form-label">Até:</label>
-                        <input type="date" id="filtro-data-fim" class="form-control">
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- TABELA -->
-        <div class="table-reprocessamento">
-            <div class="table-responsive">
-                <table id="tabela-reprocessamento" class="table table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th style="width: 8%;">ID</th>
-                            <th style="width: 15%;">Número</th>
-                            <th style="width: 20%;">Empresa</th>
-                            <th style="width: 15%;">Data</th>
-                            <th style="width: 15%;">Status</th>
-                            <th style="width: 12%; text-align: center;">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td colspan="6" class="text-center text-muted py-5">
-                                <i class="fas fa-inbox" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
-                                Nenhum registro encontrado
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- PAGINAÇÃO -->
-        <nav aria-label="Paginação" class="mt-4">
-            <ul id="paginacao-reprocessamento" class="pagination-reprocessamento"></ul>
-        </nav>
-
-    </div>
+    </section>
 </div>
 
 <!-- MODAL - DETALHES -->

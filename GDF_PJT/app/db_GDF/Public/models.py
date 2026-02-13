@@ -139,3 +139,61 @@ class UserEmpresas(models.Model):
         managed  = True
         db_table = 'user_empresas'
         unique_together = ('empresa', 'user')
+
+
+class CargaXmlParam(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    cliente = models.ForeignKey(Clientes, models.CASCADE)
+    ativo = models.BooleanField(default=True)
+    horario = models.TimeField()
+    origem_dados = models.CharField(
+        max_length=10,
+        choices=[
+            ('LOCAL', 'Maquina Local'),
+            ('SAP', 'Importacao SAP'),
+            ('SPED', 'Importacao SPED'),
+            ('OUTROS', 'Outros'),
+        ],
+        default='LOCAL'
+    )
+    diretorio = models.CharField(max_length=500)
+    modelos = models.CharField(max_length=200, blank=True, null=True)
+    usuario_criacao = models.ForeignKey(User, models.SET_NULL, null=True, blank=True, related_name='cargaxml_params')
+    data_criacao = models.DateTimeField(auto_now_add=True)
+    data_atualizacao = models.DateTimeField(auto_now=True)
+    ultima_execucao = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = True
+        db_table = 'cargaxml_param'
+        indexes = [
+            models.Index(fields=['cliente', 'ativo']),
+        ]
+
+
+class CargaXmlJob(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pendente'),
+        ('RUNNING', 'Executando'),
+        ('SUCCESS', 'Sucesso'),
+        ('ERROR', 'Erro'),
+    ]
+
+    id = models.BigAutoField(primary_key=True)
+    cliente = models.ForeignKey(Clientes, models.CASCADE)
+    parametro = models.ForeignKey(CargaXmlParam, models.SET_NULL, null=True, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    total_arquivos = models.IntegerField(default=0)
+    total_sucesso = models.IntegerField(default=0)
+    total_erro = models.IntegerField(default=0)
+    mensagem = models.TextField(blank=True, null=True)
+    started_at = models.DateTimeField(blank=True, null=True)
+    finished_at = models.DateTimeField(blank=True, null=True)
+    usuario_execucao = models.ForeignKey(User, models.SET_NULL, null=True, blank=True, related_name='cargaxml_jobs')
+
+    class Meta:
+        managed = True
+        db_table = 'cargaxml_job'
+        indexes = [
+            models.Index(fields=['cliente', 'status']),
+        ]

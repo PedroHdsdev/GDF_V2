@@ -11,28 +11,35 @@
 {% block titlepage %}Carga de XML{% endblock %}
 
 {% block container %}
-{% csrf_token %}
-<div class="container-fluid py-4">
-    <div class="container-carga-xml">
-
-        <!-- ALERTAS -->
-        <div id="alertas-container"></div>
-
-        <!-- CONTROLES SUPERIORES -->
-        <div class="row mb-4 align-items-center">
-            <div class="col-md-8">
-                <h4 class="mb-0"><i class="fas fa-file-upload"></i> Gerenciador de Carga XML</h4>
-            </div>
-            <div class="col-md-4 text-end">
-                <button class="btn btn-success btn-lg" data-bs-toggle="modal" data-bs-target="#modalCargaXml">
-                    <i class="fas fa-folder-open"></i> Carregar XMLs
-                </button>
-            </div>
+<div class="layout-page">
+    {% csrf_token %}
+    <section class="layout-hero">
+        <div class="layout-hero-content">
+            <p class="layout-eyebrow">Processamento</p>
+            <h1 class="layout-title">Carga de XML</h1>
+            <p class="layout-subtitle">Importe, acompanhe e valide arquivos em um fluxo unico.</p>
         </div>
+        <div class="layout-hero-actions">
+            <button class="btn btn-light layout-btn" data-bs-toggle="modal" data-bs-target="#modalCargaXml">
+                <i class="fas fa-folder-open"></i> Carregar XMLs
+            </button>
+        </div>
+    </section>
 
-        <!-- FILTROS -->
-        <div class="card mb-4">
-            <div class="card-body">
+    <section class="layout-panel">
+        <div class="layout-card">
+            <!-- ALERTAS -->
+            <div id="alertas-container"></div>
+
+            <div class="layout-card-head">
+                <div>
+                    <h2 class="layout-card-title">Gerenciador de carga XML</h2>
+                    <p class="layout-card-subtitle">Filtre por tipo, empresa ou numero do documento.</p>
+                </div>
+            </div>
+
+            <!-- FILTROS -->
+            <div class="layout-subcard">
                 <div class="row align-items-end">
                     <div class="col-md-6">
                         <label class="form-label fw-500">Buscar:</label>
@@ -63,40 +70,41 @@
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- TABELA DE CARGAS -->
-        <div class="card">
-            <div class="table-responsive">
-                <table id="tabela-cargas" class="table table-uploads table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th style="width: 35%;">Arquivo</th>
-                            <th style="width: 12%;">Tipo</th>
-                            <th style="width: 15%;">Número</th>
-                            <th style="width: 15%;">Empresa</th>
-                            <th style="width: 12%;">Data</th>
-                            <th style="width: 11%;">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td colspan="6" class="text-center text-muted py-4">
-                                <i class="fas fa-inbox" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
-                                Nenhum arquivo carregado
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            <!-- TABELA DE CARGAS -->
+            <div class="layout-subcard">
+                <div class="table-responsive">
+                    <table id="tabela-cargas" class="table table-uploads table-hover mb-0 layout-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 35%;">Arquivo</th>
+                                <th style="width: 12%;">Tipo</th>
+                                <th style="width: 15%;">Número</th>
+                                <th style="width: 15%;">Empresa</th>
+                                <th style="width: 12%;">Data</th>
+                                <th style="width: 11%;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">
+                                    <i class="fas fa-inbox" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
+                                    Nenhum arquivo carregado
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PAGINAÇÃO -->
+            <div class="layout-card-footer">
+                <nav aria-label="Paginação">
+                    <ul id="paginacao-cargas" class="pagination justify-content-end"></ul>
+                </nav>
             </div>
         </div>
-
-        <!-- PAGINAÇÃO -->
-        <nav aria-label="Paginação" class="mt-4">
-            <ul id="paginacao-cargas" class="pagination justify-content-center"></ul>
-        </nav>
-
-    </div>
+    </section>
 </div>
 
 <!-- MODAL - CARGA DE XML -->
@@ -120,6 +128,16 @@
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="tab-arquivo" data-bs-toggle="tab" data-bs-target="#arquivo" type="button" role="tab" aria-controls="arquivo" aria-selected="false">
                             <i class="fas fa-file-upload"></i> Arquivo Individual
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-parametros" data-bs-toggle="tab" data-bs-target="#parametros" type="button" role="tab" aria-controls="parametros" aria-selected="false">
+                            <i class="fas fa-sliders-h"></i> Criar Parametros
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-parametros-ativos" data-bs-toggle="tab" data-bs-target="#parametros-ativos" type="button" role="tab" aria-controls="parametros-ativos" aria-selected="false">
+                            <i class="fas fa-list"></i> Parametros Ativos
                         </button>
                     </li>
                 </ul>
@@ -153,23 +171,112 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Aba: Criar Parametros -->
+                    <div class="tab-pane fade" id="parametros" role="tabpanel" aria-labelledby="tab-parametros">
+                        <div class="layout-subcard">
+                            <form id="form-parametros" class="param-form">
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-600">Horario:</label>
+                                        <input type="time" id="param-horario" class="form-control" required>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-600">Origem dos Dados:</label>
+                                        <select id="param-origem-dados" class="form-select">
+                                            <option value="SAP">Importacao SAP</option>
+                                            <option value="SPED">Importacao SPED</option>
+                                            <option value="OUTROS">Outros</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 d-flex align-items-end">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="param-ativo" checked>
+                                            <label class="form-check-label" for="param-ativo">Ativo</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label fw-600">Diretorio Base:</label>
+                                        <input type="text" id="param-diretorio" class="form-control" placeholder="C:\\dados\\xmls" required>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label fw-600">Modelos:</label>
+                                        <div class="d-flex flex-wrap gap-3">
+                                            <div class="form-check">
+                                                <input class="form-check-input param-modelo" type="checkbox" value="55" id="param-modelo-55" checked>
+                                                <label class="form-check-label" for="param-modelo-55">55</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input param-modelo" type="checkbox" value="57" id="param-modelo-57" checked>
+                                                <label class="form-check-label" for="param-modelo-57">57</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input param-modelo" type="checkbox" value="67" id="param-modelo-67" checked>
+                                                <label class="form-check-label" for="param-modelo-67">67</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input param-modelo" type="checkbox" value="13" id="param-modelo-13" checked>
+                                                <label class="form-check-label" for="param-modelo-13">13</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input param-modelo" type="checkbox" value="SPC" id="param-modelo-spc" checked>
+                                                <label class="form-check-label" for="param-modelo-spc">SPC</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input param-modelo" type="checkbox" value="SPF" id="param-modelo-spf" checked>
+                                                <label class="form-check-label" for="param-modelo-spf">SPF</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex justify-content-end mt-3">
+                                    <button type="submit" class="btn btn-primary" id="btn-salvar-param">
+                                        <i class="fas fa-save"></i> Salvar Parametros
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Aba: Parametros Ativos -->
+                    <div class="tab-pane fade" id="parametros-ativos" role="tabpanel" aria-labelledby="tab-parametros-ativos">
+                        <div class="layout-subcard">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="fw-600 mb-0">Parametros Ativos</h6>
+                                <button class="btn btn-outline-primary btn-sm" id="btn-recarregar-parametros">
+                                    <i class="fas fa-sync"></i> Recarregar
+                                </button>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover" id="tabela-parametros">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Horario</th>
+                                            <th>Origem</th>
+                                            <th>Diretorio</th>
+                                            <th>Modelos</th>
+                                            <th>Status</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="6" class="text-center text-muted">Nenhum parametro ativo</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Configurações de Upload -->
                 <div class="mt-4 mb-3">
                     <div class="row">
                         <div class="col-md-6">
-                            <label class="form-label fw-600">Tipo de Documento:</label>
-                            <select id="select-tipo-documento" class="form-select">
-                                <option value="NFe" selected>NFe - Nota Fiscal Eletrônica</option>
-                                <option value="CTe">CTe - Conhecimento de Transporte</option>
-                                <option value="NFSe">NFSe - Nota Fiscal de Serviço</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
                             <label class="form-label fw-600">Origem dos Dados:</label>
                             <select id="select-origem-dados" class="form-select">
-                                <option value="LOCAL" selected>Máquina Local</option>
                                 <option value="SAP">Importação SAP</option>
                                 <option value="SPED">Importação SPED</option>
                                 <option value="OUTROS">Outros</option>

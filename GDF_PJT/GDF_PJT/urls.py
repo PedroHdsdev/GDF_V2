@@ -31,6 +31,8 @@ urlpatterns = [
     
     #APIs
     path('api/processar-xml/', views.fn_api_processar_xml, name='API_ProcessarXml'),
+    path('api/cargaxml/parametros/', views.fn_api_cargaxml_parametros, name='API_CargaXmlParams'),
+    path('api/cargaxml/parametros/<int:param_id>/toggle/', views.fn_api_cargaxml_param_toggle, name='API_CargaXmlParamsToggle'),
     
         
 #--------------------------------------------------------------------

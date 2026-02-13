@@ -10,8 +10,11 @@ from django.contrib                 import messages
 from app.classes.gdf                import ClGdf
 from app.classes.CargaXml           import Carga_xml
 from django.core.paginator          import Paginator
-from app.db_GDF.Public.models       import UserEmpresas, Empresas
+from app.db_GDF.Public.models       import UserEmpresas, Empresas, Clientes, CargaXmlParam, CargaXmlJob
 import re
+import json
+from datetime import datetime
+from django.utils import timezone
 
 def fn_view_login(request):
     if request.method == "POST":
@@ -781,6 +784,122 @@ def fn_api_processar_xml(request):
     
     except Exception as e:
         return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao processar: {str(e)}'}, status=500)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET", "POST"])
+def fn_api_cargaxml_parametros(request):
+    cod_cliente = request.session.get('cod_cliente', None)
+
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
+
+    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
+
+    if request.method == "GET":
+        apenas_ativos = request.GET.get('ativo')
+        parametros = CargaXmlParam.objects.filter(cliente=cliente)
+
+        if apenas_ativos in ['1', 'true', 'True', 'yes', 'sim']:
+            parametros = parametros.filter(ativo=True)
+
+        items = []
+        for param in parametros.order_by('-data_criacao'):
+            items.append({
+                'id': param.id,
+                'ativo': param.ativo,
+                'horario': param.horario.strftime('%H:%M'),
+                'origem_dados': param.origem_dados,
+                'diretorio': param.diretorio,
+                'modelos': param.modelos or '',
+                'ultima_execucao': param.ultima_execucao.isoformat() if param.ultima_execucao else None,
+            })
+
+        return JsonResponse({'sucesso': True, 'items': items}, status=200)
+
+    payload = None
+    if request.content_type and 'application/json' in request.content_type:
+        payload = json.loads(request.body.decode('utf-8'))
+    else:
+        payload = request.POST
+
+    horario_raw = (payload.get('horario') or '').strip()
+    origem_dados = (payload.get('origem_dados') or 'LOCAL').strip().upper()
+    diretorio = (payload.get('diretorio') or '').strip()
+    modelos = (payload.get('modelos') or '').strip()
+    ativo_raw = payload.get('ativo', True)
+
+    if not horario_raw or not diretorio:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Horario e diretorio sao obrigatorios'}, status=400)
+
+    try:
+        horario = datetime.strptime(horario_raw, '%H:%M').time()
+    except ValueError:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Horario invalido. Use HH:MM'}, status=400)
+
+    ativo = True
+    if isinstance(ativo_raw, str):
+        ativo = ativo_raw.lower() in ['1', 'true', 'yes', 'sim', 'on']
+    else:
+        ativo = bool(ativo_raw)
+
+    param = CargaXmlParam.objects.create(
+        cliente=cliente,
+        ativo=ativo,
+        horario=horario,
+        origem_dados=origem_dados,
+        diretorio=diretorio,
+        modelos=modelos,
+        usuario_criacao=request.user,
+        data_atualizacao=timezone.localtime(),
+    )
+
+    return JsonResponse({
+        'sucesso': True,
+        'item': {
+            'id': param.id,
+            'ativo': param.ativo,
+            'horario': param.horario.strftime('%H:%M'),
+            'origem_dados': param.origem_dados,
+            'diretorio': param.diretorio,
+            'modelos': param.modelos or '',
+        }
+    }, status=201)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_api_cargaxml_param_toggle(request, param_id):
+    cod_cliente = request.session.get('cod_cliente', None)
+
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
+
+    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
+    param = get_object_or_404(CargaXmlParam, id=param_id, cliente=cliente)
+
+    ativo_raw = None
+    if request.content_type and 'application/json' in request.content_type:
+        body = json.loads(request.body.decode('utf-8'))
+        ativo_raw = body.get('ativo')
+    else:
+        ativo_raw = request.POST.get('ativo')
+
+    if ativo_raw is None:
+        param.ativo = not param.ativo
+    else:
+        if isinstance(ativo_raw, str):
+            param.ativo = ativo_raw.lower() in ['1', 'true', 'yes', 'sim', 'on']
+        else:
+            param.ativo = bool(ativo_raw)
+
+    param.save(update_fields=['ativo', 'data_atualizacao'])
+
+    return JsonResponse({
+        'sucesso': True,
+        'id': param.id,
+        'ativo': param.ativo,
+    }, status=200)
 
 @login_required(login_url='Login')
 def fn_view_Reprocessamento(request):
