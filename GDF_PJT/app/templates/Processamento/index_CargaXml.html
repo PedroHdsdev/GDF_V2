@@ -34,7 +34,6 @@
             <div class="layout-card-head">
                 <div>
                     <h2 class="layout-card-title">Gerenciador de carga XML</h2>
-                    <p class="layout-card-subtitle">Filtre por tipo, empresa ou numero do documento.</p>
                 </div>
             </div>
 
@@ -46,50 +45,37 @@
                         <input type="text" id="filtro-busca" class="form-control" placeholder="Nome do arquivo, número, empresa...">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-500">Tipo de Documento:</label>
+                        <label class="form-label fw-500">Tipo de Job:</label>
                         <div class="d-flex gap-3">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="filtro-nfe" value="NFe" checked>
-                                <label class="form-check-label" for="filtro-nfe">
-                                    <i class="fas fa-file-invoice"></i> NFe
-                                </label>
+                                <input class="form-check-input" type="checkbox" id="filtro-automatico" checked>
+                                <label class="form-check-label" for="filtro-automatico">Automático</label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="filtro-cte" value="CTe" checked>
-                                <label class="form-check-label" for="filtro-cte">
-                                    <i class="fas fa-truck"></i> CTe
-                                </label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="filtro-nfse" value="NFSe" checked>
-                                <label class="form-check-label" for="filtro-nfse">
-                                    <i class="fas fa-receipt"></i> NFSe
-                                </label>
+                                <input class="form-check-input" type="checkbox" id="filtro-manual" checked>
+                                <label class="form-check-label" for="filtro-manual">Manual</label>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-
             <!-- TABELA DE CARGAS -->
             <div class="layout-subcard">
                 <div class="table-responsive">
                     <table id="tabela-cargas" class="table table-uploads table-hover mb-0 layout-table">
                         <thead>
                             <tr>
-                                <th style="width: 35%;">Arquivo</th>
-                                <th style="width: 12%;">Tipo</th>
-                                <th style="width: 15%;">Número</th>
-                                <th style="width: 15%;">Empresa</th>
-                                <th style="width: 12%;">Data</th>
-                                <th style="width: 11%;">Status</th>
+                                <th style="width: 40%;">Job</th>
+                                <th style="width: 20%;">Tipo</th>
+                                <th style="width: 20%;">Data</th>
+                                <th style="width: 20%;">Status</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
-                                <td colspan="6" class="text-center text-muted py-4">
+                                <td colspan="4" class="text-center text-muted py-4">
                                     <i class="fas fa-inbox" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
-                                    Nenhum arquivo carregado
+                                    Nenhum job registrado
                                 </td>
                             </tr>
                         </tbody>
@@ -118,34 +104,25 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <!-- Abas -->
+                <!-- Abas simplificadas -->
                 <ul class="nav nav-tabs mb-3" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="tab-diretorio" data-bs-toggle="tab" data-bs-target="#diretorio" type="button" role="tab" aria-controls="diretorio" aria-selected="true">
-                            <i class="fas fa-folder"></i> Por Diretório
+                        <button class="nav-link active" id="tab-manual" data-bs-toggle="tab" data-bs-target="#manual" type="button" role="tab" aria-controls="manual" aria-selected="true">
+                            <i class="fas fa-hand-paper"></i> Carga Manual
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="tab-arquivo" data-bs-toggle="tab" data-bs-target="#arquivo" type="button" role="tab" aria-controls="arquivo" aria-selected="false">
-                            <i class="fas fa-file-upload"></i> Arquivo Individual
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="tab-parametros" data-bs-toggle="tab" data-bs-target="#parametros" type="button" role="tab" aria-controls="parametros" aria-selected="false">
-                            <i class="fas fa-sliders-h"></i> Criar Parametros
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="tab-parametros-ativos" data-bs-toggle="tab" data-bs-target="#parametros-ativos" type="button" role="tab" aria-controls="parametros-ativos" aria-selected="false">
-                            <i class="fas fa-list"></i> Parametros Ativos
+                        <button class="nav-link" id="tab-automatico" data-bs-toggle="tab" data-bs-target="#automatico" type="button" role="tab" aria-controls="automatico" aria-selected="false">
+                            <i class="fas fa-cogs"></i> Carga Automática
                         </button>
                     </li>
                 </ul>
 
-                <!-- Conteúdo das abas -->
+                <!-- Conteúdo das abas renovado -->
                 <div class="tab-content">
-                    <!-- Aba: Por Diretório -->
-                    <div class="tab-pane fade show active" id="diretorio" role="tabpanel" aria-labelledby="tab-diretorio">
+                    <!-- Aba: Manual (seleção e upload) -->
+                    <div class="tab-pane fade show active" id="manual" role="tabpanel" aria-labelledby="tab-manual">
+                        <!-- Por Diretório -->
                         <div class="card-upload-xml">
                             <div class="drop-zone" id="drop-zone-diretorio">
                                 <div class="drop-zone-icon">
@@ -156,25 +133,57 @@
                                 <input type="file" id="file-input-diretorio" webkitdirectory directory multiple style="display: none;">
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Aba: Arquivo Individual -->
-                    <div class="tab-pane fade" id="arquivo" role="tabpanel" aria-labelledby="tab-arquivo">
-                        <div class="card-upload-xml">
-                            <div class="drop-zone" id="drop-zone-arquivo">
-                                <div class="drop-zone-icon">
-                                    <i class="fas fa-file-code"></i>
+                        <!-- Configurações de Upload -->
+                        <div class="mt-4 mb-3">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-600">Origem dos Dados:</label>
+                                    <select id="select-origem-dados" class="form-select">
+                                        <option value="SAP">Importação SAP</option>
+                                        <option value="SPED">Importação SPED</option>
+                                        <option value="OUTROS">Outros</option>
+                                    </select>
                                 </div>
-                                <div class="drop-zone-text">Selecione arquivos XML</div>
-                                <div class="drop-zone-subtext">Clique ou arraste os arquivos aqui</div>
-                                <input type="file" id="file-input-arquivo" accept=".xml" multiple style="display: none;">
                             </div>
+                        </div>
+
+                        <!-- Preview de arquivos -->
+                        <div class="mt-4">
+                            <h6 class="fw-600 mb-3">Arquivos Selecionados: <span id="contador-arquivos" class="text-muted">0</span></h6>
+                            <table id="tabela-uploads" class="table table-sm table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Arquivo</th>
+                                        <th>Tamanho</th>
+                                        <th>Status</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted">Nenhum arquivo selecionado</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Informações -->
+                        <div class="info-section">
+                            <h5>ℹ️ Informações</h5>
+                            <ul>
+                                <li>Formatos aceitos: <strong>.xml</strong></li>
+                                <li>Tamanho máximo por arquivo: <strong>50MB</strong></li>
+                                <li>Tipos suportados: <strong>NFe, CTe, NFSe</strong></li>
+                                <li>Arquivos inválidos serão ignorados automaticamente</li>
+                            </ul>
                         </div>
                     </div>
 
-                    <!-- Aba: Criar Parametros -->
-                    <div class="tab-pane fade" id="parametros" role="tabpanel" aria-labelledby="tab-parametros">
-                        <div class="layout-subcard">
+                    <!-- Aba: Automática (parametrização e lista de parâmetros) -->
+                    <div class="tab-pane fade" id="automatico" role="tabpanel" aria-labelledby="tab-automatico">
+                        <!-- Criar Parametros -->
+                        <div class="layout-subcard mb-3">
                             <form id="form-parametros" class="param-form">
                                 <div class="row g-3">
                                     <div class="col-md-4">
@@ -199,35 +208,6 @@
                                         <label class="form-label fw-600">Diretorio Base:</label>
                                         <input type="text" id="param-diretorio" class="form-control" placeholder="C:\\dados\\xmls" required>
                                     </div>
-                                    <div class="col-12">
-                                        <label class="form-label fw-600">Modelos:</label>
-                                        <div class="d-flex flex-wrap gap-3">
-                                            <div class="form-check">
-                                                <input class="form-check-input param-modelo" type="checkbox" value="55" id="param-modelo-55" checked>
-                                                <label class="form-check-label" for="param-modelo-55">55</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input param-modelo" type="checkbox" value="57" id="param-modelo-57" checked>
-                                                <label class="form-check-label" for="param-modelo-57">57</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input param-modelo" type="checkbox" value="67" id="param-modelo-67" checked>
-                                                <label class="form-check-label" for="param-modelo-67">67</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input param-modelo" type="checkbox" value="13" id="param-modelo-13" checked>
-                                                <label class="form-check-label" for="param-modelo-13">13</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input param-modelo" type="checkbox" value="SPC" id="param-modelo-spc" checked>
-                                                <label class="form-check-label" for="param-modelo-spc">SPC</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input param-modelo" type="checkbox" value="SPF" id="param-modelo-spf" checked>
-                                                <label class="form-check-label" for="param-modelo-spf">SPF</label>
-                                            </div>
-                                        </div>
-                                    </div>
                                 </div>
 
                                 <div class="d-flex justify-content-end mt-3">
@@ -237,19 +217,17 @@
                                 </div>
                             </form>
                         </div>
-                    </div>
 
-                    <!-- Aba: Parametros Ativos -->
-                    <div class="tab-pane fade" id="parametros-ativos" role="tabpanel" aria-labelledby="tab-parametros-ativos">
+                        <!-- Parametros ativos -->
                         <div class="layout-subcard">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <h6 class="fw-600 mb-0">Parametros Ativos</h6>
-                                <button class="btn btn-outline-primary btn-sm" id="btn-recarregar-parametros">
-                                    <i class="fas fa-sync"></i> Recarregar
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="mb-0">Parametros Ativos</h6>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-recarregar-parametros">
+                                    <i class="fas fa-rotate"></i> Recarregar
                                 </button>
                             </div>
                             <div class="table-responsive">
-                                <table class="table table-sm table-hover" id="tabela-parametros">
+                                <table id="tabela-parametros" class="table table-sm table-hover mb-0">
                                     <thead class="table-light">
                                         <tr>
                                             <th>Horario</th>
@@ -257,7 +235,7 @@
                                             <th>Diretorio</th>
                                             <th>Modelos</th>
                                             <th>Status</th>
-                                            <th></th>
+                                            <th>Ações</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -271,50 +249,6 @@
                     </div>
                 </div>
 
-                <!-- Configurações de Upload -->
-                <div class="mt-4 mb-3">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <label class="form-label fw-600">Origem dos Dados:</label>
-                            <select id="select-origem-dados" class="form-select">
-                                <option value="SAP">Importação SAP</option>
-                                <option value="SPED">Importação SPED</option>
-                                <option value="OUTROS">Outros</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Preview de arquivos -->
-                <div class="mt-4">
-                    <h6 class="fw-600 mb-3">Arquivos Selecionados: <span id="contador-arquivos" class="text-muted">0</span></h6>
-                    <table id="tabela-uploads" class="table table-sm table-hover">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Arquivo</th>
-                                <th>Tamanho</th>
-                                <th>Status</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td colspan="4" class="text-center text-muted">Nenhum arquivo selecionado</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Informações -->
-                <div class="info-section">
-                    <h5>ℹ️ Informações</h5>
-                    <ul>
-                        <li>Formatos aceitos: <strong>.xml</strong></li>
-                        <li>Tamanho máximo por arquivo: <strong>50MB</strong></li>
-                        <li>Tipos suportados: <strong>NFe, CTe, NFSe</strong></li>
-                        <li>Arquivos inválidos serão ignorados automaticamente</li>
-                    </ul>
-                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -326,47 +260,101 @@
     </div>
 </div>
 
+<!-- MODAL - DETALHES DO JOB -->
+<div class="modal fade" id="modalJobDetails" tabindex="-1" aria-labelledby="modalJobDetailsLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalJobDetailsLabel">
+                    <i class="fas fa-tasks me-2"></i> Detalhes do Job #<span id="modal-job-id"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-job-detalhes" data-bs-toggle="tab" data-bs-target="#job-detalhes" type="button" role="tab" aria-controls="job-detalhes" aria-selected="true">
+                            Parâmetros do Job
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-job-log" data-bs-toggle="tab" data-bs-target="#job-log" type="button" role="tab" aria-controls="job-log" aria-selected="false">
+                            Últimas execuções / Log
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <!-- Aba: Detalhes / Parâmetros -->
+                    <div class="tab-pane fade show active" id="job-detalhes" role="tabpanel" aria-labelledby="tab-job-detalhes">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">Status:</label>
+                                <div class="form-control-plaintext" id="modal-job-status"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">Início:</label>
+                                <div class="form-control-plaintext" id="modal-job-started"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">Fim:</label>
+                                <div class="form-control-plaintext" id="modal-job-finished"></div>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <h6 class="fw-600 mb-2">Parâmetros de execução</h6>
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label">Horário</label>
+                                <input type="text" class="form-control" id="modal-param-horario" readonly>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Origem dos Dados</label>
+                                <input type="text" class="form-control" id="modal-param-origem" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Diretório</label>
+                                <input type="text" class="form-control" id="modal-param-diretorio" readonly>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Modelos</label>
+                                <input type="text" class="form-control" id="modal-param-modelos" readonly>
+                            </div>
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            A edição e gravação destes parâmetros pode ser implementada via API conforme necessário.
+                        </small>
+                    </div>
+
+                    <!-- Aba: Últimas execuções / Log -->
+                    <div class="tab-pane fade" id="job-log" role="tabpanel" aria-labelledby="tab-job-log">
+                        <div class="table-responsive">
+                            <table id="tabela-log" class="table table-sm table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 80px;">Linha</th>
+                                        <th>Mensagem / Detalhe</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="2" class="text-center text-muted">Sem registros</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- SCRIPTS -->
 <script src="{% static 'js/Script_CargaXml.js' %}"></script>
-<script>
-    // CSRF Token
-    function getCSRFToken() {
-        return document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-    }
-
-    // Inicializar drag & drop para diretório
-    const dropZoneDiretorio = document.getElementById('drop-zone-diretorio');
-    const inputDiretorio = document.getElementById('file-input-diretorio');
-
-    dropZoneDiretorio.addEventListener('click', () => inputDiretorio.click());
-
-    // Inicializar drag & drop para arquivo
-    const dropZoneArquivo = document.getElementById('drop-zone-arquivo');
-    const inputArquivo = document.getElementById('file-input-arquivo');
-
-    dropZoneArquivo.addEventListener('click', () => inputArquivo.click());
-
-    inputArquivo.addEventListener('change', function(e) {
-        if (e.target.files && e.target.files.length > 0) {
-            estadoCargaXml.modoDiretorio = false;
-            estadoCargaXml.nomePasta = '';
-            processarArquivos(e.target.files);
-            exibirPreviewArquivos();
-        }
-    });
-
-    inputDiretorio.addEventListener('change', function(e) {
-        if (e.target.files && e.target.files.length > 0) {
-            estadoCargaXml.modoDiretorio = true;
-            estadoCargaXml.nomePasta = extrairNomePasta(e.target.files);
-            processarArquivos(e.target.files);
-            exibirPreviewArquivos();
-        }
-    });
-
-    // Botão enviar
-    document.getElementById('btn-enviar-xml').addEventListener('click', function() {
-        iniciarUpload();
-    });
-</script>
 {% endblock %}
