@@ -69,68 +69,8 @@
   </section>
 </div>
 
-<div class="modal fade" id="manifestoModal" tabindex="-1">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content manifesto-modal">
-      <div class="modal-header">
-        <div>
-          <h5 class="modal-title" id="manifesto-modal-title">Detalhe da nota</h5>
-          <p class="manifesto-modal-meta" id="manifesto-modal-meta"></p>
-        </div>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div class="manifesto-modal-actions">
-          <div class="dropdown">
-            <button class="btn btn-dark dropdown-toggle" type="button" data-bs-toggle="dropdown">Gerar documento</button>
-            <ul class="dropdown-menu">
-              <li><a class="dropdown-item" href="#">Ped. Compras</a></li>
-              <li><a class="dropdown-item" href="#">MIGO</a></li>
-              <li><a class="dropdown-item" href="#">MIRO</a></li>
-              <li><a class="dropdown-item" href="#">Remessa</a></li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="manifesto-section">
-          <div class="manifesto-section-head">
-            <h6>Documentos vinculados</h6>
-            <span class="manifesto-section-sub">Clique para expandir • Compra, MIRO e MIGO</span>
-          </div>
-          <div id="manifesto-docs"></div>
-        </div>
-
-        <div class="manifesto-modal-actions secondary">
-          <button class="btn btn-outline-primary" type="button">Rateio de item</button>
-          <button class="btn btn-outline-primary" type="button">Alterar dados</button>
-          <button class="btn btn-outline-primary" type="button">Conciliar</button>
-        </div>
-
-        <div class="manifesto-section">
-          <div class="manifesto-section-head">
-            <h6>Itens da nota</h6>
-            <span class="manifesto-section-sub">Todos os itens capturados da nota</span>
-          </div>
-          <div class="table-responsive">
-            <table class="table manifesto-table">
-              <thead>
-                <tr>
-                  <th>Seq</th>
-                  <th>Codigo</th>
-                  <th>Descricao</th>
-                  <th class="text-end">Qtd</th>
-                  <th>Un</th>
-                  <th class="text-end">Valor</th>
-                </tr>
-              </thead>
-              <tbody id="manifesto-itens-body"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+{% include 'Manifesto/Modal_Manifesto.html' %}
+{% include 'Manifesto/Modal_Item.html' %}
 
 {{ manifesto_data|json_script:"manifesto-data" }}
 {% endblock %}

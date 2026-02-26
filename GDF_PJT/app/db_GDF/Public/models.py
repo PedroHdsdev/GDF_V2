@@ -144,6 +144,7 @@ class UserEmpresas(models.Model):
 class CargaXmlParam(models.Model):
     id = models.BigAutoField(primary_key=True)
     cliente = models.ForeignKey(Clientes, models.CASCADE)
+    empresa = models.ForeignKey(Empresas, models.CASCADE, null=True, blank=True)
     ativo = models.BooleanField(default=True)
     horario = models.TimeField()
     origem_dados = models.CharField(
@@ -157,7 +158,6 @@ class CargaXmlParam(models.Model):
         default='LOCAL'
     )
     diretorio = models.CharField(max_length=500)
-    modelos = models.CharField(max_length=200, blank=True, null=True)
     usuario_criacao = models.ForeignKey(User, models.SET_NULL, null=True, blank=True, related_name='cargaxml_params')
     data_criacao = models.DateTimeField(auto_now_add=True)
     data_atualizacao = models.DateTimeField(auto_now=True)

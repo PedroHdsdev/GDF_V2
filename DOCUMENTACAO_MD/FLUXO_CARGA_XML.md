@@ -38,7 +38,7 @@ Exibe alertas de sucesso/erro
 ### 1️⃣ **FRONTEND - Template (index_CargaXml.html)**
 ```javascript
 // Usuário clica "Carregar XMLs"
-// → Modal abre com 2 abas: Por Diretório / Arquivo Individual
+// → Modal abre com 2 abas: **Carga Manual** (contém seleção por diretório ou arquivo) e **Carga Automática** (parâmetros e agendamento)
 
 // Seleciona arquivos via drag & drop ou clique
 // ↓
@@ -82,9 +82,14 @@ function uploadArquivo(file, index) {
 def fn_api_processar_xml(request):
     cod_cliente = request.session.get('cod_cliente', None)
     
-    # 1. Validar cliente
+    # 1. Validar cliente e arquivos
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'})
+    for f in lsl_Xml:  # servidor repete validação de tipo/tamanho
+        if not f.name.lower().endswith('.xml'):
+            return JsonResponse({'sucesso': False, 'mensagem': f'Arquivo inválido: {f.name}'} , status=400)
+        if f.size > 50*1024*1024:
+            return JsonResponse({'sucesso': False, 'mensagem': f'Arquivo muito grande: {f.name}'}, status=400)
     
     # 2. Extrair dados do request
     lsl_Xml = request.FILES.getlist('arquivo')  # Lista de arquivos
@@ -144,7 +149,24 @@ def set_upload_xml(self, I_LsXml, i_type, I_origem_dados, i_cod_cliente, i_usuar
     return result  # Retorna resultado final
 ```
 
-### 5️⃣ **BACKEND - Processar NFe (set_nfe)**
+### 5️⃣ **BACKEND - Listagem de Jobs & Detalhes**
+
+**Novas APIs adicionadas:**
+
+- `GET /api/cargaxml/jobs/` → retorna todos os `CargaXmlJob` do cliente atual.
+- `GET /api/cargaxml/jobs/<job_id>/` → detalhes de um job específico (status, totais, log, parâmetros).
+
+Cada job é exibido na interface principal como uma linha clicável. Ao clicar abre modal com duas abas:
+
+1. **Log** – mostra linhas de mensagem extraídas do campo `mensagem` do job. O texto agora contém entradas `OK: nome.xml` para cargas bem‑sucedidas e `ERRO: nome.xml – motivo` para falhas, tanto em execuções automáticas quanto manuais.
+2. **Dados do Job** – campos como horário programado, origem, diretório e filtros gravados no parâmetro.
+
+O frontend usa `Script_CargaXml.js` para consumir essas rotas, montar a tabela inicial de jobs e preencher o modal.
+
+A tabela de filtros passou a tratar tipos de job (`Automático` vs `Manual`) em vez de tipos de documento.
+
+
+### 6️⃣ **BACKEND - Processar NFe (set_nfe)**
 ```python
 def set_nfe(self, xml_data, origem_dados, cod_cliente, usuario):
     """

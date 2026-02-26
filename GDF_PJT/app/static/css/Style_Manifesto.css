@@ -198,6 +198,17 @@
     color: #0369a1;
 }
 
+/* item modal */
+#manifesto-item-details p {
+    margin: 0.25rem 0;
+}
+
+.manifesto-item-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
 .manifesto-badge.pendente {
     background: rgba(249, 115, 22, 0.15);
     color: #c2410c;
@@ -205,7 +216,7 @@
 
 .manifesto-modal {
     border-radius: 20px;
-    border: none;
+    border: 2px solid rgba(112, 126, 156, 0.52);
 }
 
 .manifesto-modal .modal-header {

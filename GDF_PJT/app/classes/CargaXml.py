@@ -253,7 +253,7 @@ class Carga_xml():
         
         return cobranca
     
-    def set_upload_xml(self, I_LsXml, i_type, I_origem_dados, i_usuario) -> Dict:
+    def set_upload_xml(self, I_LsXml, i_type, I_origem_dados, i_usuario, i_cod_cliente=None) -> Dict:
         """
         Processa upload de múltiplos XMLs
         
@@ -262,6 +262,7 @@ class Carga_xml():
             i_type: Tipo do documento ('NFe', 'CTe', 'NFSe')
             I_origem_dados: Origem dos dados ('LOCAL', 'SAP', 'SPED', 'OUTROS')
             i_usuario: Usuário que fez o upload
+            i_cod_cliente: código do cliente para validação de empresas
         """
         result = {
             'success': [],
@@ -273,13 +274,13 @@ class Carga_xml():
                 xml_data = xml_file.read()
 
                 if i_type == 'NFe':
-                    self.set_nfe(xml_data, I_origem_dados, i_usuario)
+                    self.set_nfe(xml_data, I_origem_dados, i_usuario, i_cod_cliente)
                 
                 elif i_type == 'CTe':
-                    self.set_cte(xml_data, I_origem_dados, i_usuario)
+                    self.set_cte(xml_data, I_origem_dados, i_usuario, i_cod_cliente)
                 
                 elif i_type == 'NFSe':
-                    self.set_nfse(xml_data, I_origem_dados, i_usuario)
+                    self.set_nfse(xml_data, I_origem_dados, i_usuario, i_cod_cliente)
 
                 result['success'].append(xml_file.name)
             
@@ -292,10 +293,11 @@ class Carga_xml():
 
         return result
     
-    def set_nfe(self, xml_data: bytes, origem_dados: str, usuario: str):
+    def set_nfe(self, xml_data: bytes, origem_dados: str, usuario: str, cod_cliente: str = None):
         """
         Processa e insere NFe no banco de dados com TODOS os campos
         Detecta automaticamente se é entrada ou saída e busca a empresa corretamente
+        cod_cliente opcional é usado para validar que a empresa pertence ao cliente
         """
         try:
             # Fazer parse do XML
@@ -395,6 +397,8 @@ class Carga_xml():
                     raise ValueError(
                         f"Empresa não encontrada. NFe {tipo_nfe}: CNPJ {cnpj_para_busca} não cadastrado."
                     )
+                if cod_cliente and empresa.cliente and empresa.cliente.cod_cliente != cod_cliente:
+                    raise ValueError(f"Empresa {empresa.cnpj} não pertence ao cliente {cod_cliente}")
             else:
                 raise ValueError(f"Não foi possível identificar CNPJ da empresa (tipo: {tipo_nfe})")
             
@@ -457,35 +461,32 @@ class Carga_xml():
             print(str(e))
             raise Exception(f"Erro ao processar NFe: {str(e)}")
 
-    def set_cte(self, xml_data: bytes, origem_dados: str, usuario: str):
+    def set_cte(self, xml_data: bytes, origem_dados: str, usuario: str, cod_cliente: str = None):
         """
         Processa e insere CTe no banco de dados
+        (atualmente apenas valida a estrutura; adiciona parâmetro cliente para futuro uso)
         """
         try:
-            # TODO: Implementar processamento de CTe
-            # Por enquanto, apenas validar que o XML é um CTe
             root = ET.fromstring(xml_data)
             infCte = root.find('.//cte:infCte', self.ns) or root.find('.//infCte')
             
             if infCte is None:
                 raise ValueError("Estrutura de CTe inválida: infCte não encontrado")
             
-            # Registro de processamento básico
+            # registro reduzido
             return True
         
         except Exception as e:
             raise Exception(f"Erro ao processar CTe: {str(e)}")
 
-    def set_nfse(self, xml_data: bytes, origem_dados: str, usuario: str):
+    def set_nfse(self, xml_data: bytes, origem_dados: str, usuario: str, cod_cliente: str = None):
         """
         Processa e insere NFSe no banco de dados
+        (placeholder; cliente adicionado para coerência)
         """
         try:
-            # TODO: Implementar processamento de NFSe
-            # Por enquanto, apenas validar que o XML é uma NFSe
             root = ET.fromstring(xml_data)
-            # NFSe pode ter diferentes estruturas dependendo do município
-            
+            # TODO: tratamento real
             return True
         
         except Exception as e:

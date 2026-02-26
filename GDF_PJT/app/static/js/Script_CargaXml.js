@@ -11,7 +11,7 @@ const estadoCargaXml = {
     cargasFiltradas: [],
     filtros: {
         busca: '',
-        tipos: ['NFe', 'CTe', 'NFSe']
+        tipos: ['Automático', 'Manual']
     },
     currentPage: 1,
     itemsPerPage: 10,
@@ -19,14 +19,38 @@ const estadoCargaXml = {
     nomePasta: ''
 };
 
+// Estado para a tabela principal de parâmetros
+const estadoParametros = {
+    todos: [],
+    filtrados: [],
+    filtros: {
+        busca: '',
+        mostrarAtivos: true,
+        mostrarInativos: true,
+    },
+    currentPage: 1,
+    itemsPerPage: 10,
+};
+
 /* ===============================
    INICIALIZAR ELEMENTOS
 ================================ */
 document.addEventListener('DOMContentLoaded', function () {
-    carregarTodasAsCargas();
-    inicializarEventosFiltros();
+    // Tabela principal: parâmetros + filtros ativo/inativo
+    carregarParametrosPrincipais();
+    inicializarEventosFiltroParametrosPrincipais();
     inicializarEventosParametros();
     carregarParametrosAtivos();
+    inicializarDragDropInputFiles();
+    inicializarEventosJobsRenderizados();
+    
+    // a aba automática carrega parâmetros sempre que for mostrada
+    const tabAutomatico = document.getElementById('tab-automatico');
+    if (tabAutomatico) {
+        tabAutomatico.addEventListener('shown.bs.tab', function () {
+            carregarParametrosAtivos();
+        });
+    }
 });
 
 function obterCsrfToken() {
@@ -35,46 +59,456 @@ function obterCsrfToken() {
 }
 
 /* ===============================
+   INICIALIZAR DRAG & DROP E INPUT FILES
+================================ */
+function inicializarDragDropInputFiles() {
+    // Inicializar drag & drop para diretório
+    const dropZoneDiretorio = document.getElementById('drop-zone-diretorio');
+    const inputDiretorio = document.getElementById('file-input-diretorio');
+
+    if (dropZoneDiretorio && inputDiretorio) {
+        dropZoneDiretorio.addEventListener('click', () => inputDiretorio.click());
+
+        inputDiretorio.addEventListener('change', function(e) {
+            if (e.target.files && e.target.files.length > 0) {
+                estadoCargaXml.modoDiretorio = true;
+                estadoCargaXml.nomePasta = extrairNomePasta(e.target.files);
+                processarArquivos(e.target.files);
+                exibirPreviewArquivos();
+            }
+        });
+    }
+
+    // Inicializar botão enviar
+    const btnEnviar = document.getElementById('btn-enviar-xml');
+    if (btnEnviar) {
+        btnEnviar.addEventListener('click', function() {
+            iniciarUpload();
+        });
+    }
+}
+
+/* ===============================
+   INICIALIZAR EVENTOS DOS JOBS RENDERIZADOS
+================================ */
+function inicializarEventosJobsRenderizados() {
+    // Adicionar listeners aos jobs renderizados pelo Django
+    const jobRows = document.querySelectorAll('.job-row');
+    jobRows.forEach(row => {
+        const jobId = row.getAttribute('data-job-id');
+        if (jobId) {
+            row.addEventListener('click', function() {
+                abrirModalJob(jobId);
+            });
+        }
+    });
+}
+
+/* ===============================
+   PARÂMETROS - TABELA PRINCIPAL
+================================ */
+
+function carregarParametrosPrincipais() {
+    const tbody = document.querySelector('#tabela-parametros-main tbody');
+    if (!tbody) return;
+
+    fetch('/api/cargaxml/parametros/')
+        .then(response => response.json())
+        .then(data => {
+            const items = data.items || [];
+            if (!data.sucesso || items.length === 0) {
+                estadoParametros.todos = [];
+                estadoParametros.filtrados = [];
+                renderizarTabelaParametrosPrincipais();
+                return;
+            }
+
+            estadoParametros.todos = items.map(item => ({
+                id: item.id,
+                horario: item.horario || '',
+                origem_dados: item.origem_dados || '',
+                diretorio: item.diretorio || '',
+                empresa_id: item.empresa_id || '',
+                empresa_nome: item.empresa_nome || '',
+                ativo: !!item.ativo,
+            }));
+
+            aplicarFiltrosParametrosPrincipais();
+            renderizarTabelaParametrosPrincipais();
+        })
+        .catch(() => {
+            estadoParametros.todos = [];
+            estadoParametros.filtrados = [];
+            renderizarTabelaParametrosPrincipais();
+        });
+}
+
+function inicializarEventosFiltroParametrosPrincipais() {
+    const inputBusca = document.getElementById('filtro-param-busca');
+    if (inputBusca) {
+        inputBusca.addEventListener('keyup', function (e) {
+            estadoParametros.filtros.busca = e.target.value.toLowerCase();
+            estadoParametros.currentPage = 1;
+            aplicarFiltrosParametrosPrincipais();
+            renderizarTabelaParametrosPrincipais();
+        });
+    }
+
+    const chkAtivos = document.getElementById('filtro-param-ativos');
+    const chkInativos = document.getElementById('filtro-param-inativos');
+
+    if (chkAtivos) {
+        chkAtivos.addEventListener('change', function () {
+            estadoParametros.filtros.mostrarAtivos = this.checked;
+            estadoParametros.currentPage = 1;
+            aplicarFiltrosParametrosPrincipais();
+            renderizarTabelaParametrosPrincipais();
+        });
+    }
+
+    if (chkInativos) {
+        chkInativos.addEventListener('change', function () {
+            estadoParametros.filtros.mostrarInativos = this.checked;
+            estadoParametros.currentPage = 1;
+            aplicarFiltrosParametrosPrincipais();
+            renderizarTabelaParametrosPrincipais();
+        });
+    }
+}
+
+function aplicarFiltrosParametrosPrincipais() {
+    estadoParametros.filtrados = estadoParametros.todos.filter(p => {
+        const { busca, mostrarAtivos, mostrarInativos } = estadoParametros.filtros;
+
+        // filtro status
+        if (p.ativo && !mostrarAtivos) return false;
+        if (!p.ativo && !mostrarInativos) return false;
+
+        // filtro texto
+        if (busca) {
+            const texto = `${p.horario} ${p.origem_dados} ${p.diretorio} ${p.empresa_nome}`.toLowerCase();
+            if (!texto.includes(busca)) return false;
+        }
+
+        return true;
+    });
+}
+
+function renderizarTabelaParametrosPrincipais() {
+    const tbody = document.querySelector('#tabela-parametros-main tbody');
+    const paginacao = document.getElementById('paginacao-cargas');
+
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+
+    if (!estadoParametros.filtrados.length) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="4" class="text-center text-muted py-4">
+                    <i class="fas fa-list" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
+                    Nenhum parâmetro cadastrado
+                </td>
+            </tr>
+        `;
+
+        if (paginacao) paginacao.innerHTML = '';
+        return;
+    }
+
+    const inicio = (estadoParametros.currentPage - 1) * estadoParametros.itemsPerPage;
+    const fim = inicio + estadoParametros.itemsPerPage;
+    const pagina = estadoParametros.filtrados.slice(inicio, fim);
+
+    pagina.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.innerHTML = `
+            <td>${p.horario || '-'}</td>
+            <td>${p.origem_dados || '-'}</td>
+            <td>${p.diretorio || '-'}</td>
+            <td>${p.empresa_nome || '-'}</td>
+            <td>
+                <span class="badge-status ${p.ativo ? 'badge-success' : 'badge-warning'}">
+                    ${p.ativo ? 'Ativo' : 'Inativo'}
+                </span>
+            </td>
+        `;
+        tr.addEventListener('click', function () {
+            abrirModalParametro(p.id);
+        });
+        tbody.appendChild(tr);
+    });
+
+    if (paginacao) {
+        const totalPages = Math.ceil(estadoParametros.filtrados.length / estadoParametros.itemsPerPage);
+        paginacao.innerHTML = '';
+
+        if (totalPages > 1) {
+            for (let i = 1; i <= totalPages; i++) {
+                const li = document.createElement('li');
+                li.className = 'page-item' + (i === estadoParametros.currentPage ? ' active' : '');
+
+                const btn = document.createElement('button');
+                btn.className = 'page-link';
+                btn.textContent = i;
+                btn.onclick = () => {
+                    estadoParametros.currentPage = i;
+                    renderizarTabelaParametrosPrincipais();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                };
+
+                li.appendChild(btn);
+                paginacao.appendChild(li);
+            }
+        }
+    }
+}
+
+/* ===============================
+   MODAL DETALHES DO PARÂMETRO
+================================ */
+
+function preencherFormularioParametro(param) {
+    if (!param) return;
+    const id = param.id;
+    const horario = param.horario || '';
+    const origem = param.origem_dados || param.origem || '';
+    const diretorio = param.diretorio || '';
+    const empresa_id = param.empresa_id || '';
+    const ativo = !!param.ativo;
+
+    const idInput = document.getElementById('param-edit-id');
+    const idLabel = document.getElementById('param-edit-id-label');
+    const inputHorario = document.getElementById('param-edit-horario');
+    const selectOrigem = document.getElementById('param-edit-origem-dados');
+    const inputDiretorio = document.getElementById('param-edit-diretorio');
+    const selectEmpresa = document.getElementById('param-edit-empresa');
+    const chkAtivo = document.getElementById('param-edit-ativo');
+
+    if (idInput) idInput.value = id || '';
+    if (idLabel) idLabel.textContent = id || '';
+    if (inputHorario) inputHorario.value = horario;
+    if (selectOrigem) selectOrigem.value = origem || 'SAP';
+    if (inputDiretorio) inputDiretorio.value = diretorio;
+    if (selectEmpresa) selectEmpresa.value = empresa_id || '';
+    if (chkAtivo) chkAtivo.checked = ativo;
+}
+
+function carregarJobsDoParametro(paramId) {
+    const tbody = document.querySelector('#tabela-jobs-param tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="4" class="text-center text-muted py-3">
+                Carregando jobs...
+            </td>
+        </tr>
+    `;
+
+    fetch(`/api/cargaxml/jobs/?parametro_id=${paramId}`)
+        .then(resp => resp.json())
+        .then(data => {
+            const items = data.items || [];
+            tbody.innerHTML = '';
+
+            if (!data.sucesso || items.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-3">
+                            Nenhum job encontrado para este parâmetro
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            items.forEach(j => {
+                const totalArq = j.total_arquivos || 0;
+                const sucesso = j.total_sucesso || 0;
+                const erro = j.total_erro || 0;
+                const resumo = totalArq > 0 ? `${totalArq} arq(s) - ${sucesso}✓/${erro}✗` : '-';
+                const dataHora = j.started_at || '';
+                let dataStr = '';
+                let horaStr = '';
+                if (dataHora.includes('T')) {
+                    const [d, t] = dataHora.split('T');
+                    dataStr = d;
+                    horaStr = (t || '').substring(0, 5);
+                }
+
+                const tr = document.createElement('tr');
+                tr.style.cursor = 'pointer';
+                tr.innerHTML = `
+                    <td>Job #${j.id}</td>
+                    <td>${dataStr} ${horaStr}</td>
+                    <td>${obterBadgeStatusCarga(j.status)}</td>
+                    <td>${resumo}</td>
+                `;
+                tr.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    abrirModalJob(j.id);
+                });
+                tbody.appendChild(tr);
+            });
+        })
+        .catch(() => {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="4" class="text-center text-muted py-3">
+                        Erro ao carregar jobs deste parâmetro
+                    </td>
+                </tr>
+            `;
+        });
+}
+
+function abrirModalParametro(paramId) {
+    // Tenta usar dados já carregados em memória
+    const paramLocal = estadoParametros.todos.find(p => p.id === paramId);
+    if (paramLocal) {
+        preencherFormularioParametro(paramLocal);
+    }
+
+    // Recarrega dados detalhados do parâmetro (caso backend forneça)
+    fetch(`/api/cargaxml/parametros/${paramId}/`)
+        .then(resp => resp.json())
+        .then(data => {
+            if (data.sucesso && data.parametro) {
+                preencherFormularioParametro(data.parametro);
+            }
+        })
+        .catch(() => {
+            // Se der erro, segue com os dados locais já preenchidos
+        });
+
+    carregarJobsDoParametro(paramId);
+
+    const modalEl = document.getElementById('modalParametroDetails');
+    if (modalEl) {
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+    }
+}
+
+/* ===============================
    CARREGAR TODAS AS CARGAS
 ================================ */
 function carregarTodasAsCargas() {
-    // Dados de exemplo (substituir com API real)
-    estadoCargaXml.todasCargas = [
-        {
-            id: 1,
-            arquivo: 'NF-2024-001.xml',
-            tipo: 'NFe',
-            numero: '123456789012345',
-            empresa: 'Empresa A',
-            data: '2024-01-15 10:30',
-            status: 'Sucesso'
-        },
-        {
-            id: 2,
-            arquivo: 'CT-2024-001.xml',
-            tipo: 'CTe',
-            numero: '987654321098765',
-            empresa: 'Empresa B',
-            data: '2024-01-16 14:20',
-            status: 'Sucesso'
-        },
-        {
-            id: 3,
-            arquivo: 'FS-2024-001.xml',
-            tipo: 'NFSe',
-            numero: '555666777888999',
-            empresa: 'Empresa A',
-            data: '2024-01-17 09:15',
-            status: 'Processando'
-        }
-    ];
-    aplicarFiltrosCarga();
-    renderizarTabelaCargas();
+    fetch('/api/cargaxml/jobs/')
+        .then(resp => {
+            console.log('API Response Status:', resp.status);
+            return resp.json().then(data => {
+                console.log('API Response Data:', data);
+                return { status: resp.status, data };
+            });
+        })
+        .then(({ status, data }) => {
+            if (status === 403) {
+                console.error('Erro 403: Cliente não identificado');
+                mostrarAlerta('Erro ao carregar jobs: Cliente não identificado', 'error');
+                estadoCargaXml.todasCargas = [];
+            } else if (data.sucesso && data.items && data.items.length > 0) {
+                console.log('Jobs carregados:', data.items.length);
+                // mapear para formato compatível
+                estadoCargaXml.todasCargas = data.items.map(j => {
+                    const totalArq = j.total_arquivos || 0;
+                    const sucesso = j.total_sucesso || 0;
+                    const erro = j.total_erro || 0;
+                    const resumo = totalArq > 0 ? `${sucesso}✓/${erro}✗` : '-';
+                    
+                    return {
+                        id: j.id,
+                        arquivo: `Job #${j.id}`,
+                        resumo: `${totalArq} arquivo(s) - ${resumo}`,
+                        tipo: j.parametro_id ? 'Automático' : 'Manual',
+                        numero: '',
+                        empresa: '',
+                        data: j.started_at ? j.started_at.split('T')[0] : '',
+                        hora: j.started_at ? j.started_at.split('T')[1]?.substring(0, 5) : '',
+                        status: j.status,
+                        detalhes: j,
+                    };
+                });
+            } else if (data.sucesso && (!data.items || data.items.length === 0)) {
+                console.log('Nenhum job encontrado');
+                // Se o template já renderizou jobs (server-side), não sobrescrever
+                const serverRows = document.querySelectorAll('#tabela-cargas tbody .job-row');
+                if (serverRows && serverRows.length > 0) {
+                    console.log('Mantendo jobs renderizados pelo servidor (nenhuma alteração pela API).');
+                    // não alterar estadoCargaXml.todasCargas nem re-renderizar
+                    return;
+                }
+                estadoCargaXml.todasCargas = [];
+            } else {
+                console.error('Erro ao carregar jobs:', data.mensagem);
+                mostrarAlerta(data.mensagem || 'Erro ao carregar jobs', 'error');
+                estadoCargaXml.todasCargas = [];
+            }
+            aplicarFiltrosCarga();
+            renderizarTabelaCargas();
+        })
+        .catch(erro => {
+            console.error('Erro na requisição:', erro);
+            mostrarAlerta('Erro ao conectar na API: ' + erro.message, 'error');
+            estadoCargaXml.todasCargas = [];
+            aplicarFiltrosCarga();
+            renderizarTabelaCargas();
+        });
 }
 
 /* ===============================
    EVENTOS DE FILTROS
 ================================ */
+
+
+function abrirModalJob(jobId) {
+    fetch(`/api/cargaxml/jobs/${jobId}/`)
+        .then(resp => resp.json())
+        .then(data => {
+            if (!data.sucesso) {
+                mostrarAlerta('❌ Não foi possível carregar detalhes do job', 'error');
+                return;
+            }
+            const job = data.job;
+            const param = data.parametro;
+            const log = data.log || [];
+            document.getElementById('modal-job-id').textContent = job.id;
+            document.getElementById('modal-job-status').textContent = job.status;
+            document.getElementById('modal-job-started').textContent = job.started_at || '-';
+            document.getElementById('modal-job-finished').textContent = job.finished_at || '-';
+            if (param) {
+                document.getElementById('modal-param-horario').value = param.horario || '';
+                document.getElementById('modal-param-origem').value = param.origem_dados || '';
+                document.getElementById('modal-param-diretorio').value = param.diretorio || '';
+                document.getElementById('modal-param-empresa').value = param.empresa_nome || param.empresa_id || '';
+            } else {
+                document.getElementById('modal-param-horario').value = '';
+                document.getElementById('modal-param-origem').value = '';
+                document.getElementById('modal-param-diretorio').value = '';
+                document.getElementById('modal-param-empresa').value = '';
+            }
+            const tbodyLog = document.querySelector('#tabela-log tbody');
+            tbodyLog.innerHTML = '';
+            if (log.length === 0) {
+                tbodyLog.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Sem registros</td></tr>';
+            } else {
+                log.forEach((line, idx) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td>${idx+1}</td><td>${line}</td>`;
+                    tbodyLog.appendChild(tr);
+                });
+            }
+            var modal = new bootstrap.Modal(document.getElementById('modalJobDetails'));
+            modal.show();
+        })
+        .catch(() => {
+            mostrarAlerta('❌ Falha ao carregar detalhes do job', 'error');
+        });
+}
+
+
 function inicializarEventosFiltros() {
     // Filtro de busca
     const inputBusca = document.getElementById('filtro-busca');
@@ -88,32 +522,25 @@ function inicializarEventosFiltros() {
     }
 
     // Checkboxes de tipo
-    const checkboxNFe = document.getElementById('filtro-nfe');
-    const checkboxCTe = document.getElementById('filtro-cte');
-    const checkboxNFSe = document.getElementById('filtro-nfse');
+    const checkboxAutomatico = document.getElementById('filtro-automatico');
+    const checkboxManual = document.getElementById('filtro-manual');
 
-    if (checkboxNFe) {
-        checkboxNFe.addEventListener('change', atualizarFiltrosTipo);
+    if (checkboxAutomatico) {
+        checkboxAutomatico.addEventListener('change', atualizarFiltrosTipo);
     }
-    if (checkboxCTe) {
-        checkboxCTe.addEventListener('change', atualizarFiltrosTipo);
-    }
-    if (checkboxNFSe) {
-        checkboxNFSe.addEventListener('change', atualizarFiltrosTipo);
+    if (checkboxManual) {
+        checkboxManual.addEventListener('change', atualizarFiltrosTipo);
     }
 }
 
 function atualizarFiltrosTipo() {
     estadoCargaXml.filtros.tipos = [];
 
-    if (document.getElementById('filtro-nfe')?.checked) {
-        estadoCargaXml.filtros.tipos.push('NFe');
+    if (document.getElementById('filtro-automatico')?.checked) {
+        estadoCargaXml.filtros.tipos.push('Automático');
     }
-    if (document.getElementById('filtro-cte')?.checked) {
-        estadoCargaXml.filtros.tipos.push('CTe');
-    }
-    if (document.getElementById('filtro-nfse')?.checked) {
-        estadoCargaXml.filtros.tipos.push('NFSe');
+    if (document.getElementById('filtro-manual')?.checked) {
+        estadoCargaXml.filtros.tipos.push('Manual');
     }
 
     estadoCargaXml.currentPage = 1;
@@ -129,12 +556,9 @@ function aplicarFiltrosCarga() {
         // Filtro de busca
         if (estadoCargaXml.filtros.busca) {
             const busca = estadoCargaXml.filtros.busca;
-            const temBusca =
-                carga.arquivo.toLowerCase().includes(busca) ||
-                carga.numero.toLowerCase().includes(busca) ||
-                carga.empresa.toLowerCase().includes(busca);
-
-            if (!temBusca) return false;
+            if (!carga.arquivo.toLowerCase().includes(busca)) {
+                return false;
+            }
         }
 
         // Filtro de tipo
@@ -177,19 +601,26 @@ function renderizarTabelaCargas() {
         const badgeStatus = obterBadgeStatusCarga(carga.status);
 
         const linha = document.createElement('tr');
+        linha.style.cursor = 'pointer';
+        linha.onclick = () => abrirModalJob(carga.id);
         linha.innerHTML = `
             <td>
                 ${iconeTipo}
-                <strong>${carga.arquivo}</strong>
+                <div>
+                    <strong>${carga.arquivo}</strong>
+                    <br>
+                    <small class="text-muted">${carga.resumo}</small>
+                </div>
             </td>
             <td>
                 <span class="badge" style="background-color: ${obterCorTipo(carga.tipo)}; color: white;">
                     ${carga.tipo}
                 </span>
             </td>
-            <td>${carga.numero}</td>
-            <td>${carga.empresa}</td>
-            <td>${carga.data}</td>
+            <td>
+                <div>${carga.data}</div>
+                <small class="text-muted">${carga.hora || ''}</small>
+            </td>
             <td>${badgeStatus}</td>
         `;
         tbody.appendChild(linha);
@@ -247,10 +678,37 @@ function inicializarEventosParametros() {
         });
     }
 
-    const modal = document.getElementById('modalCargaXml');
-    if (modal) {
-        modal.addEventListener('shown.bs.modal', function () {
+    const modalCarga = document.getElementById('modalCargaXml');
+    if (modalCarga) {
+        modalCarga.addEventListener('shown.bs.modal', function () {
             carregarParametrosAtivos();
+        });
+    }
+
+    // show/hide upload button depending on active tab
+    const btnEnviar = document.getElementById('btn-enviar-xml');
+    const tabManual = document.getElementById('tab-manual');
+    const tabAutomatico = document.getElementById('tab-automatico');
+    function ajustarBotaoEnvio() {
+        if (!btnEnviar) return;
+        const manualActive = document.querySelector('#tab-manual').classList.contains('active');
+        btnEnviar.style.display = manualActive ? '' : 'none';
+    }
+    if (tabManual) {
+        tabManual.addEventListener('shown.bs.tab', ajustarBotaoEnvio);
+    }
+    if (tabAutomatico) {
+        tabAutomatico.addEventListener('shown.bs.tab', ajustarBotaoEnvio);
+    }
+    // initial state when script loads
+    ajustarBotaoEnvio();
+
+    // salvar edição de parâmetro (modal principal)
+    const formEdit = document.getElementById('form-param-edit');
+    if (formEdit) {
+        formEdit.addEventListener('submit', function (e) {
+            e.preventDefault();
+            atualizarParametroCarga();
         });
     }
 }
@@ -259,16 +717,11 @@ function criarParametroCarga() {
     const horario = document.getElementById('param-horario')?.value || '';
     const origemDados = document.getElementById('param-origem-dados')?.value || 'LOCAL';
     const diretorio = document.getElementById('param-diretorio')?.value || '';
+    const empresaId = document.getElementById('param-edit-empresa')?.value || '';
     const ativo = document.getElementById('param-ativo')?.checked || false;
 
-    const modelosSelecionados = Array.from(document.querySelectorAll('.param-modelo'))
-        .filter(item => item.checked)
-        .map(item => item.value);
-
-    const modelos = modelosSelecionados.join(',');
-
-    if (!horario || !diretorio) {
-        mostrarAlerta('⚠️ Preencha horario e diretorio', 'warning');
+    if (!horario || !diretorio || !empresaId) {
+        mostrarAlerta('⚠️ Preencha horario, diretorio e empresa', 'warning');
         return;
     }
 
@@ -282,7 +735,7 @@ function criarParametroCarga() {
             horario: horario,
             origem_dados: origemDados,
             diretorio: diretorio,
-            modelos: modelos,
+            empresa_id: empresaId,
             ativo: ativo,
         })
     })
@@ -294,6 +747,7 @@ function criarParametroCarga() {
             }
             mostrarAlerta('✅ Parametros salvos com sucesso', 'success');
             carregarParametrosAtivos();
+            carregarParametrosPrincipais();
         })
         .catch(() => {
             mostrarAlerta('❌ Falha ao salvar parametros', 'error');
@@ -321,7 +775,7 @@ function carregarParametrosAtivos() {
                     <td>${item.horario}</td>
                     <td>${item.origem_dados}</td>
                     <td>${item.diretorio}</td>
-                    <td>${item.modelos || '-'}</td>
+                    <td>${item.empresa_nome || '-'}</td>
                     <td>
                         <span class="badge-status ${item.ativo ? 'badge-success' : 'badge-warning'}">
                             ${item.ativo ? 'Ativo' : 'Inativo'}
@@ -338,6 +792,53 @@ function carregarParametrosAtivos() {
         })
         .catch(() => {
             tabela.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Erro ao carregar parametros</td></tr>';
+        });
+}
+
+function atualizarParametroCarga() {
+    const id = document.getElementById('param-edit-id')?.value;
+    if (!id) {
+        mostrarAlerta('⚠️ Parâmetro não identificado para edição', 'warning');
+        return;
+    }
+
+    const horario = document.getElementById('param-edit-horario')?.value || '';
+    const origemDados = document.getElementById('param-edit-origem-dados')?.value || 'LOCAL';
+    const diretorio = document.getElementById('param-edit-diretorio')?.value || '';
+    const empresaId = document.getElementById('param-edit-empresa')?.value || '';
+    const ativo = document.getElementById('param-edit-ativo')?.checked || false;
+
+    if (!horario || !diretorio || !empresaId) {
+        mostrarAlerta('⚠️ Preencha horário, diretório e empresa', 'warning');
+        return;
+    }
+
+    fetch(`/api/cargaxml/parametros/${id}/`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': obterCsrfToken(),
+        },
+        body: JSON.stringify({
+            horario: horario,
+            origem_dados: origemDados,
+            diretorio: diretorio,
+            empresa_id: empresaId,
+            ativo: ativo,
+        })
+    })
+        .then(response => response.json().then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+            if (!ok || !data.sucesso) {
+                mostrarAlerta(`❌ ${data.mensagem || 'Erro ao atualizar parâmetro'}`, 'error');
+                return;
+            }
+            mostrarAlerta('✅ Parâmetro atualizado com sucesso', 'success');
+            carregarParametrosPrincipais();
+            carregarParametrosAtivos();
+        })
+        .catch(() => {
+            mostrarAlerta('❌ Falha ao atualizar parâmetro', 'error');
         });
 }
 
@@ -516,6 +1017,12 @@ function iniciarUpload() {
     // Obter tipo de documento e origem
     const tipoDocumento = document.getElementById('select-tipo-documento')?.value || 'NFe';
     const origemDados = document.getElementById('select-origem-dados')?.value || 'LOCAL';
+    const empresaId = document.getElementById('select-empresa-manual')?.value || '';
+
+    if (!empresaId) {
+        mostrarAlerta('⚠️ Selecione a empresa para a carga manual', 'warning');
+        return;
+    }
 
     estadoCargaXml.uploadEmProgresso = true;
     
@@ -525,13 +1032,13 @@ function iniciarUpload() {
     });
 
     // Enviar todos os arquivos de uma vez
-    uploadArquivosLote(estadoCargaXml.arquivos, tipoDocumento, origemDados);
+    uploadArquivosLote(estadoCargaXml.arquivos, tipoDocumento, origemDados, empresaId);
 }
 
 /* ===============================
    UPLOAD EM LOTE
 ================================ */
-function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
+function uploadArquivosLote(arquivos, tipoDocumento, origemDados, empresaId) {
     const formData = new FormData();
     
     // Adicionar todos os arquivos
@@ -539,9 +1046,12 @@ function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
         formData.append('arquivo', file);
     });
     
-    // Adicionar tipo e origem
+    // Adicionar tipo, origem e empresa
     formData.append('type_xml', tipoDocumento);
     formData.append('origem_dados', origemDados);
+    if (empresaId) {
+        formData.append('empresa_id', empresaId);
+    }
 
     // Obter CSRF token
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
@@ -702,6 +1212,9 @@ function finalizarCargas() {
         mostrarAlerta(`⚠️ ${mensagem}`, 'warning');
     }
 
+    // forçar atualização da lista de jobs para que o job recém-criado apareça
+    carregarTodasAsCargas();
+
     // Limpar após 3 segundos
     setTimeout(() => {
         limparSelecao();
@@ -805,7 +1318,9 @@ function obterIconeTipo(tipo) {
     const ícones = {
         'NFe': '<i class="fas fa-file-invoice" style="color: #007bff; margin-right: 8px;"></i>',
         'CTe': '<i class="fas fa-truck" style="color: #28a745; margin-right: 8px;"></i>',
-        'NFSe': '<i class="fas fa-receipt" style="color: #fd7e14; margin-right: 8px;"></i>'
+        'NFSe': '<i class="fas fa-receipt" style="color: #fd7e14; margin-right: 8px;"></i>',
+        'Automático': '<i class="fas fa-cogs" style="color: #17a2b8; margin-right: 8px;"></i>',
+        'Manual': '<i class="fas fa-hand-paper" style="color: #6c757d; margin-right: 8px;"></i>'
     };
     return ícones[tipo] || '<i class="fas fa-file-code" style="margin-right: 8px;"></i>';
 }
@@ -824,7 +1339,11 @@ function obterBadgeStatusCarga(status) {
         'Sucesso': '<span class="badge-status badge-success">✓ Sucesso</span>',
         'Processando': '<span class="badge-status badge-info"><span class="spinner-carga" style="margin-right: 5px;"></span>Processando</span>',
         'Erro': '<span class="badge-status badge-danger">✗ Erro</span>',
-        'Pendente': '<span class="badge-status badge-warning">⏳ Pendente</span>'
+        'Pendente': '<span class="badge-status badge-warning">⏳ Pendente</span>',
+        'SUCCESS': '<span class="badge-status badge-success">✓ Success</span>',
+        'ERROR': '<span class="badge-status badge-danger">✗ Error</span>',
+        'RUNNING': '<span class="badge-status badge-info">⏳ Running</span>',
+        'PENDING': '<span class="badge-status badge-warning">⏳ Pending</span>'
     };
     return badges[status] || '<span class="badge-status">' + status + '</span>';
 }

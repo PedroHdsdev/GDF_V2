@@ -126,15 +126,17 @@ formData.append('origem_dados', origemDados);    // ✅ Nome correto
 ```html
 <div class="modal">
   <div class="modal-body">
-    <!-- Abas: Diretório | Arquivo -->
-    
-    <!-- Configurações -->
+    <!-- Abas: Manual | Automática -->
+    <!-- - Manual contém seleção por diretório e por arquivo, além de configurações de origem e preview -->
+    <!-- - Automática exibe formulário e lista de parâmetros agendados -->
+
+    <!-- Configurações (dentro da aba manual) -->
     <div class="row">
       <select id="select-tipo-documento">      <!-- ✅ NOVO -->
       <select id="select-origem-dados">        <!-- ✅ NOVO -->
     </div>
     
-    <!-- Preview -->
+    <!-- Preview (aba manual) -->
     <table id="tabela-uploads">
       <span id="contador-arquivos">            <!-- ✅ NOVO -->
       <!-- Status com spinner animado -->

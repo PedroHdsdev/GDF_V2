@@ -32,7 +32,12 @@ urlpatterns = [
     #APIs
     path('api/processar-xml/', views.fn_api_processar_xml, name='API_ProcessarXml'),
     path('api/cargaxml/parametros/', views.fn_api_cargaxml_parametros, name='API_CargaXmlParams'),
+    path('api/cargaxml/parametros/<int:param_id>/', views.fn_api_cargaxml_parametro_detail, name='API_CargaXmlParamDetail'),
     path('api/cargaxml/parametros/<int:param_id>/toggle/', views.fn_api_cargaxml_param_toggle, name='API_CargaXmlParamsToggle'),
+    path('api/cargaxml/relatorio/', views.fn_api_cargaxml_relatorio, name='API_CargaXmlRelatorio'),
+    path('api/debug-session/', views.fn_api_debug_session, name='API_DebugSession'),
+    path('api/cargaxml/jobs/', views.fn_api_cargaxml_jobs, name='API_CargaXmlJobs'),
+    path('api/cargaxml/jobs/<int:job_id>/', views.fn_api_cargaxml_job_details, name='API_CargaXmlJobDetails'),
     
         
 #--------------------------------------------------------------------

@@ -37,45 +37,46 @@
                 </div>
             </div>
 
-            <!-- FILTROS -->
+            <!-- FILTROS DE PARÂMETROS -->
             <div class="layout-subcard">
                 <div class="row align-items-end">
                     <div class="col-md-6">
-                        <label class="form-label fw-500">Buscar:</label>
-                        <input type="text" id="filtro-busca" class="form-control" placeholder="Nome do arquivo, número, empresa...">
+                        <label class="form-label fw-500">Buscar parâmetro:</label>
+                        <input type="text" id="filtro-param-busca" class="form-control" placeholder="Diretório, origem, horário...">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-500">Tipo de Job:</label>
+                        <label class="form-label fw-500">Status:</label>
                         <div class="d-flex gap-3">
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="filtro-automatico" checked>
-                                <label class="form-check-label" for="filtro-automatico">Automático</label>
+                                <input class="form-check-input" type="checkbox" id="filtro-param-ativos" checked>
+                                <label class="form-check-label" for="filtro-param-ativos">Ativos</label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="filtro-manual" checked>
-                                <label class="form-check-label" for="filtro-manual">Manual</label>
+                                <input class="form-check-input" type="checkbox" id="filtro-param-inativos" checked>
+                                <label class="form-check-label" for="filtro-param-inativos">Inativos</label>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            <!-- TABELA DE CARGAS -->
+            <!-- TABELA DE PARÂMETROS -->
             <div class="layout-subcard">
                 <div class="table-responsive">
-                    <table id="tabela-cargas" class="table table-uploads table-hover mb-0 layout-table">
+                    <table id="tabela-parametros-main" class="table table-uploads table-hover mb-0 layout-table">
                         <thead>
                             <tr>
-                                <th style="width: 40%;">Job</th>
-                                <th style="width: 20%;">Tipo</th>
-                                <th style="width: 20%;">Data</th>
-                                <th style="width: 20%;">Status</th>
+                                <th style="width: 20%;">Horário</th>
+                                <th style="width: 20%;">Origem</th>
+                                <th>Diretório</th>
+                                <th>Empresas</th>
+                                <th style="width: 15%;">Status</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
                                 <td colspan="4" class="text-center text-muted py-4">
-                                    <i class="fas fa-inbox" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
-                                    Nenhum job registrado
+                                    <i class="fas fa-list" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
+                                    Nenhum parâmetro cadastrado
                                 </td>
                             </tr>
                         </tbody>
@@ -136,7 +137,18 @@
 
                         <!-- Configurações de Upload -->
                         <div class="mt-4 mb-3">
-                            <div class="row">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-600">Empresa:</label>
+                                    <select id="select-empresa-manual" class="form-select" required>
+                                        <option value="">Selecione a empresa</option>
+                                        {% for emp in empresas_usuario %}
+                                            <option value="{{ emp.cod_empresa }}">
+                                                {{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
                                 <div class="col-md-6">
                                     <label class="form-label fw-600">Origem dos Dados:</label>
                                     <select id="select-origem-dados" class="form-select">
@@ -186,11 +198,11 @@
                         <div class="layout-subcard mb-3">
                             <form id="form-parametros" class="param-form">
                                 <div class="row g-3">
-                                    <div class="col-md-4">
+                                    <div class="col-md-3">
                                         <label class="form-label fw-600">Horario:</label>
                                         <input type="time" id="param-horario" class="form-control" required>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-md-3">
                                         <label class="form-label fw-600">Origem dos Dados:</label>
                                         <select id="param-origem-dados" class="form-select">
                                             <option value="SAP">Importacao SAP</option>
@@ -198,7 +210,18 @@
                                             <option value="OUTROS">Outros</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-4 d-flex align-items-end">
+                                    <div class="col-md-3">
+                                        <label class="form-label fw-600">Empresa:</label>
+                                        <select id="param-empresa" class="form-select" required>
+                                            <option value="">Selecione a empresa</option>
+                                            {% for emp in empresas_usuario %}
+                                                <option value="{{ emp.cod_empresa }}">
+                                                    {{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})
+                                                </option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 d-flex align-items-end">
                                         <div class="form-check">
                                             <input class="form-check-input" type="checkbox" id="param-ativo" checked>
                                             <label class="form-check-label" for="param-ativo">Ativo</label>
@@ -233,7 +256,7 @@
                                             <th>Horario</th>
                                             <th>Origem</th>
                                             <th>Diretorio</th>
-                                            <th>Modelos</th>
+                                            <th>Empresa</th>
                                             <th>Status</th>
                                             <th>Ações</th>
                                         </tr>
@@ -314,13 +337,13 @@
                                 <label class="form-label">Origem dos Dados</label>
                                 <input type="text" class="form-control" id="modal-param-origem" readonly>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <label class="form-label">Diretório</label>
                                 <input type="text" class="form-control" id="modal-param-diretorio" readonly>
                             </div>
-                            <div class="col-12">
-                                <label class="form-label">Modelos</label>
-                                <input type="text" class="form-control" id="modal-param-modelos" readonly>
+                            <div class="col-md-2">
+                                <label class="form-label">Empresa</label>
+                                <input type="text" class="form-control" id="modal-param-empresa" readonly>
                             </div>
                         </div>
                         <small class="text-muted d-block mt-2">
@@ -350,6 +373,106 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL - DETALHES DO PARÂMETRO -->
+<div class="modal fade" id="modalParametroDetails" tabindex="-1" aria-labelledby="modalParametroDetailsLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalParametroDetailsLabel">
+                    <i class="fas fa-sliders-h me-2"></i> Parâmetro de Carga
+                    <small class="text-muted ms-2">#<span id="param-edit-id-label"></span></small>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-param-edicao" data-bs-toggle="tab" data-bs-target="#param-edicao" type="button" role="tab" aria-controls="param-edicao" aria-selected="true">
+                            Parâmetro
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-param-jobs" data-bs-toggle="tab" data-bs-target="#param-jobs" type="button" role="tab" aria-controls="param-jobs" aria-selected="false">
+                            Últimos jobs
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <!-- Aba: edição do parâmetro -->
+                    <div class="tab-pane fade show active" id="param-edicao" role="tabpanel" aria-labelledby="tab-param-edicao">
+                        <form id="form-param-edit">
+                            <input type="hidden" id="param-edit-id" name="param-edit-id">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Horário</label>
+                                    <input type="time" class="form-control" id="param-edit-horario" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Origem dos Dados</label>
+                                    <select id="param-edit-origem-dados" class="form-select">
+                                        <option value="SAP">Importacao SAP</option>
+                                        <option value="SPED">Importacao SPED</option>
+                                        <option value="OUTROS">Outros</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Empresa</label>
+                                    <select id="param-edit-empresa" class="form-select" required>
+                                        <option value="">Selecione a empresa</option>
+                                        {% for emp in empresas_usuario %}
+                                            <option value="{{ emp.cod_empresa }}">
+                                                {{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-3 d-flex align-items-end">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="param-edit-ativo">
+                                        <label class="form-check-label" for="param-edit-ativo">Ativo</label>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Diretório Base</label>
+                                    <input type="text" class="form-control" id="param-edit-diretorio" required>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Aba: últimos jobs com este parâmetro -->
+                    <div class="tab-pane fade" id="param-jobs" role="tabpanel" aria-labelledby="tab-param-jobs">
+                        <div class="table-responsive">
+                            <table id="tabela-jobs-param" class="table table-sm table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 20%;">Job</th>
+                                        <th style="width: 25%;">Data / Hora</th>
+                                        <th style="width: 20%;">Status</th>
+                                        <th>Resumo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted">Nenhum job encontrado</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                <button type="submit" form="form-param-edit" class="btn btn-primary" id="btn-param-edit-salvar">
+                    <i class="fas fa-save"></i> Salvar
+                </button>
             </div>
         </div>
     </div>

@@ -257,7 +257,7 @@ function fn_manifesto_render_itens(itens, documentos = []) {
         const isLinked = linkedSeqs.has(String(item.seq));
         const rowClass = isLinked ? 'manifesto-item-linked' : '';
         return `
-            <tr class="${rowClass}">
+            <tr class="${rowClass}" data-item-seq="${item.seq}">
                 <td>${item.seq}</td>
                 <td>${item.codigo}</td>
                 <td>${item.descricao}</td>
@@ -272,6 +272,8 @@ function fn_manifesto_render_itens(itens, documentos = []) {
 function fn_manifesto_open_modal(notaId) {
     const nota = manifestoState.notas.find((item) => item.id === notaId);
     if (!nota) return;
+
+    manifestoState.currentNota = nota; // save for item modal handlers
 
     const title = document.getElementById('manifesto-modal-title');
     const meta = document.getElementById('manifesto-modal-meta');
@@ -316,6 +318,47 @@ function fn_manifesto_init_filters() {
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* Item modal helpers */
+function fn_manifesto_render_item_details(item) {
+    const container = document.getElementById('manifesto-item-details');
+    if (!container) return;
+    container.innerHTML = `
+        <p><strong>Sequência:</strong> ${item.seq}</p>
+        <p><strong>Código:</strong> ${item.codigo}</p>
+        <p><strong>Descrição:</strong> ${item.descricao}</p>
+        <p><strong>Quantidade:</strong> ${item.qtd}</p>
+        <p><strong>Unidade:</strong> ${item.un}</p>
+        <p><strong>Valor:</strong> ${fn_manifesto_format_currency(item.valor)}</p>
+    `;
+}
+
+function fn_manifesto_open_item_modal(seq) {
+    if (!manifestoState.currentNota) return;
+    const item = manifestoState.currentNota.itens.find((i) => String(i.seq) === String(seq));
+    if (!item) return;
+
+    fn_manifesto_render_item_details(item);
+
+    const modalEl = document.getElementById('manifestoItemModal');
+    if (modalEl) {
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    }
+}
+
+/* bind item row click after notas rendered */
+function fn_manifesto_bind_item_events() {
+    const body = document.getElementById('manifesto-itens-body');
+    if (!body) return;
+    body.addEventListener('click', (ev) => {
+        const row = ev.target.closest('tr[data-item-seq]');
+        if (!row) return;
+        fn_manifesto_open_item_modal(row.dataset.itemSeq);
+    });
+}
+
+
 document.addEventListener('DOMContentLoaded', () => {
     const dataScript = document.getElementById('manifesto-data');
     if (!dataScript) return;
@@ -325,6 +368,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     fn_manifesto_render_notas();
     fn_manifesto_init_filters();
+    fn_manifesto_bind_item_events();
+
+    // rateio button inside item modal
+    const rateioBtn = document.getElementById('btn-rateio-item');
+    if (rateioBtn) {
+        rateioBtn.addEventListener('click', () => {
+            // placeholder: abrir outro modal ou realizar ação de rateio
+            alert('Abrir modal de rateio (a implementar)');
+        });
+    }
 
     const tbody = document.getElementById('manifesto-notas-body');
     if (tbody) {

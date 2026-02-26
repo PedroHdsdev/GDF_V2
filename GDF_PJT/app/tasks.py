@@ -85,13 +85,13 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
 
     success = 0
     errors = 0
-    error_messages: List[str] = []
+    log_lines: List[str] = []
 
     processor = Carga_xml()
 
     if not base_dir.exists() or not base_dir.is_dir():
         errors = 1
-        error_messages.append(f'Diretorio nao encontrado: {base_dir}')
+        log_lines.append(f'Diretorio nao encontrado: {base_dir}')
 
     for xml_path in xml_files:
         try:
@@ -104,25 +104,26 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
 
             if not tipo:
                 errors += 1
-                error_messages.append(f'Pasta desconhecida: {folder_name}')
+                log_lines.append(f'ERRO: {xml_path.name} - Pasta desconhecida: {folder_name}')
                 continue
 
             with xml_path.open('rb') as handle:
                 xml_bytes = handle.read()
 
             if tipo == 'NFe':
-                processor.set_nfe(xml_bytes, param.origem_dados, 'SYSTEM')
+                processor.set_nfe(xml_bytes, param.origem_dados, 'SYSTEM', param.cliente.cod_cliente if param.cliente else None)
             elif tipo == 'CTe':
-                processor.set_cte(xml_bytes, param.origem_dados, 'SYSTEM')
+                processor.set_cte(xml_bytes, param.origem_dados, 'SYSTEM', param.cliente.cod_cliente if param.cliente else None)
             elif tipo == 'NFSe':
-                processor.set_nfse(xml_bytes, param.origem_dados, 'SYSTEM')
+                processor.set_nfse(xml_bytes, param.origem_dados, 'SYSTEM', param.cliente.cod_cliente if param.cliente else None)
             else:
                 raise ValueError(f'Tipo nao suportado: {tipo}')
 
             success += 1
+            log_lines.append(f'OK: {xml_path.name}')
         except Exception as exc:
             errors += 1
-            error_messages.append(f'{xml_path.name}: {exc}')
+            log_lines.append(f'ERRO: {xml_path.name} - {exc}')
 
     status = 'SUCCESS' if errors == 0 else 'ERROR'
     finished_at = timezone.localtime()
@@ -131,7 +132,7 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
         job.status = status
         job.total_sucesso = success
         job.total_erro = errors
-        job.mensagem = '\n'.join(error_messages)[:5000]
+        job.mensagem = '\n'.join(log_lines)[:5000]
         job.finished_at = finished_at
         job.save(update_fields=['status', 'total_sucesso', 'total_erro', 'mensagem', 'finished_at'])
 

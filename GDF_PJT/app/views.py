@@ -749,8 +749,26 @@ def fn_view_CargaXml(request):
     if not cod_cliente:
         return render(request, 'Index_Login.html', {'error_message': 'Cliente não identificado'})
     
+    # Buscar jobs do cliente (todos os registros)
+    try:
+        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
+        jobs = CargaXmlJob.objects.filter(cliente=cliente).order_by('-started_at')
+        parametros = CargaXmlParam.objects.filter(cliente=cliente).order_by('-data_criacao')
+        # Empresas disponíveis para o usuário dentro deste cliente
+        empresas_usuario = Empresas.objects.filter(
+            cliente=cliente,
+            userempresas__user=request.user
+        ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
+    except Clientes.DoesNotExist:
+        jobs = []
+        parametros = []
+        empresas_usuario = []
+    
     context = {
         'cod_cliente': cod_cliente,
+        'jobs': jobs,
+        'parametros': parametros,
+        'empresas_usuario': empresas_usuario,
     }
     return render(request, 'Processamento/index_CargaXml.html', context)
 
@@ -770,12 +788,64 @@ def fn_api_processar_xml(request):
         lsl_Xml          = request.FILES.getlist('arquivo')
         l_v_type_xml     = request.POST.get('type_xml', 'NFe')
         l_v_origem_dados = request.POST.get('origem_dados', 'LOCAL')
+        l_v_empresa_id   = (request.POST.get('empresa_id') or '').strip()
 
         if not lsl_Xml:
             return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo selecionado'}, status=400)
 
-        upload_result = cl_xml.set_upload_xml(lsl_Xml, l_v_type_xml, l_v_origem_dados, request.user.username)
+        # validação básica de cada arquivo
+        for f in lsl_Xml:
+            if not f.name.lower().endswith('.xml'):
+                return JsonResponse({'sucesso': False, 'mensagem': f'Arquivo inválido: {f.name}'}, status=400)
+            if f.size > 50 * 1024 * 1024:
+                return JsonResponse({'sucesso': False, 'mensagem': f'Arquivo muito grande: {f.name}'}, status=400)
+
+        upload_result = cl_xml.set_upload_xml(
+            lsl_Xml,
+            l_v_type_xml,
+            l_v_origem_dados,
+            request.user.username,
+            cod_cliente
+        )
         
+        # registrar job manual para histórico com detalhes de cada arquivo
+        try:
+            from django.utils import timezone
+            mensagem_lines = []
+            for name in upload_result.get('success', []):
+                mensagem_lines.append(f"OK: {name}")
+            for err in upload_result.get('errors', []):
+                mensagem_lines.append(f"ERRO: {err.get('file','')} - {err.get('error','')}")
+            resumo = '\n'.join(mensagem_lines)[:5000]
+
+            # Montar prefixo com empresa (se enviada e válida)
+            empresa_prefixo = ''
+            if l_v_empresa_id:
+                try:
+                    empresa = Empresas.objects.get(
+                        cod_empresa=l_v_empresa_id,
+                        cliente__cod_cliente=cod_cliente
+                    )
+                    nome_emp = empresa.fantasia or empresa.razao or empresa.cod_empresa
+                    empresa_prefixo = f"EMPRESA: {empresa.cod_empresa} - {nome_emp}\n"
+                except Empresas.DoesNotExist:
+                    empresa_prefixo = f"EMPRESA: {l_v_empresa_id} (não encontrada)\n"
+
+            CargaXmlJob.objects.create(
+                cliente=get_object_or_404(Clientes, cod_cliente=cod_cliente),
+                parametro=None,
+                status='SUCCESS' if len(upload_result['errors']) == 0 else 'ERROR',
+                total_arquivos=len(upload_result['success']) + len(upload_result['errors']),
+                total_sucesso=len(upload_result['success']),
+                total_erro=len(upload_result['errors']),
+                mensagem=(empresa_prefixo + resumo)[:5000],
+                started_at=timezone.localtime(),
+                finished_at=timezone.localtime(),
+                usuario_execucao=request.user
+            )
+        except Exception:
+            pass
+
         return JsonResponse({
             'sucesso': len(upload_result['errors']) == 0,
             'mensagem': f"{len(upload_result['success'])} arquivo(s) processado(s), {len(upload_result['errors'])} erro(s)",
@@ -811,26 +881,115 @@ def fn_api_cargaxml_parametros(request):
                 'horario': param.horario.strftime('%H:%M'),
                 'origem_dados': param.origem_dados,
                 'diretorio': param.diretorio,
-                'modelos': param.modelos or '',
+                'empresa_id': param.empresa.cod_empresa if param.empresa else None,
+                'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
                 'ultima_execucao': param.ultima_execucao.isoformat() if param.ultima_execucao else None,
             })
 
         return JsonResponse({'sucesso': True, 'items': items}, status=200)
+    
+    elif request.method == "POST":
+        # Processar criação de novo parâmetro
+        payload = None
+        if request.content_type and 'application/json' in request.content_type:
+            payload = json.loads(request.body.decode('utf-8'))
+        else:
+            payload = request.POST
 
+        horario_raw = (payload.get('horario') or '').strip()
+        origem_dados = (payload.get('origem_dados') or 'LOCAL').strip().upper()
+        diretorio = (payload.get('diretorio') or '').strip()
+        empresa_id = (payload.get('empresa_id') or '').strip()
+        ativo_raw = payload.get('ativo', True)
+
+        if not horario_raw or not diretorio or not empresa_id:
+            return JsonResponse({'sucesso': False, 'mensagem': 'Horario, diretorio e empresa sao obrigatorios'}, status=400)
+
+        try:
+            horario = datetime.strptime(horario_raw, '%H:%M').time()
+        except ValueError:
+            return JsonResponse({'sucesso': False, 'mensagem': 'Horario invalido. Use HH:MM'}, status=400)
+
+        ativo = True
+        if isinstance(ativo_raw, str):
+            ativo = ativo_raw.lower() in ['1', 'true', 'yes', 'sim', 'on']
+        else:
+            ativo = bool(ativo_raw)
+
+        try:
+            empresa = Empresas.objects.get(cod_empresa=empresa_id, cliente=cliente)
+        except Empresas.DoesNotExist:
+            return JsonResponse({'sucesso': False, 'mensagem': 'Empresa nao encontrada'}, status=404)
+
+        param = CargaXmlParam.objects.create(
+            cliente=cliente,
+            empresa=empresa,
+            ativo=ativo,
+            horario=horario,
+            origem_dados=origem_dados,
+            diretorio=diretorio,
+            usuario_criacao=request.user,
+            data_atualizacao=timezone.localtime(),
+        )
+
+        return JsonResponse({
+            'sucesso': True,
+            'mensagem': 'Parametro salvo com sucesso',
+            'item': {
+                'id': param.id,
+                'ativo': param.ativo,
+                'horario': param.horario.strftime('%H:%M'),
+                'origem_dados': param.origem_dados,
+                'diretorio': param.diretorio,
+                'empresa_id': empresa.cod_empresa,
+                'empresa_nome': empresa.fantasia or empresa.razao,
+            }
+        }, status=201)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET", "PUT"])
+def fn_api_cargaxml_parametro_detail(request, param_id):
+    """Endpoint para obter ou atualizar um parâmetro específico (GET / PUT)."""
+    cod_cliente = request.session.get('cod_cliente', None)
+
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
+
+    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
+    param = get_object_or_404(CargaXmlParam, id=param_id, cliente=cliente)
+
+    if request.method == 'GET':
+        param_data = {
+            'id': param.id,
+            'ativo': param.ativo,
+            'horario': param.horario.strftime('%H:%M'),
+            'origem_dados': param.origem_dados,
+            'diretorio': param.diretorio,
+            'empresa_id': param.empresa.cod_empresa if param.empresa else None,
+            'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
+            'ultima_execucao': param.ultima_execucao.isoformat() if param.ultima_execucao else None,
+        }
+        return JsonResponse({'sucesso': True, 'parametro': param_data}, status=200)
+
+    # PUT -> atualizar parâmetro
     payload = None
     if request.content_type and 'application/json' in request.content_type:
-        payload = json.loads(request.body.decode('utf-8'))
+        try:
+            payload = json.loads(request.body.decode('utf-8'))
+        except Exception:
+            return JsonResponse({'sucesso': False, 'mensagem': 'Payload JSON invalido'}, status=400)
     else:
         payload = request.POST
 
     horario_raw = (payload.get('horario') or '').strip()
-    origem_dados = (payload.get('origem_dados') or 'LOCAL').strip().upper()
-    diretorio = (payload.get('diretorio') or '').strip()
-    modelos = (payload.get('modelos') or '').strip()
-    ativo_raw = payload.get('ativo', True)
+    origem_dados = (payload.get('origem_dados') or param.origem_dados).strip().upper()
+    diretorio = (payload.get('diretorio') or param.diretorio).strip()
+    empresa_id = (payload.get('empresa_id') or (param.empresa.cod_empresa if param.empresa else '')).strip()
+    ativo_raw = payload.get('ativo', param.ativo)
 
-    if not horario_raw or not diretorio:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Horario e diretorio sao obrigatorios'}, status=400)
+    if not horario_raw or not diretorio or not empresa_id:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Horario, diretorio e empresa sao obrigatorios'}, status=400)
 
     try:
         horario = datetime.strptime(horario_raw, '%H:%M').time()
@@ -843,28 +1002,60 @@ def fn_api_cargaxml_parametros(request):
     else:
         ativo = bool(ativo_raw)
 
-    param = CargaXmlParam.objects.create(
-        cliente=cliente,
-        ativo=ativo,
-        horario=horario,
-        origem_dados=origem_dados,
-        diretorio=diretorio,
-        modelos=modelos,
-        usuario_criacao=request.user,
-        data_atualizacao=timezone.localtime(),
-    )
+    try:
+        empresa = Empresas.objects.get(cod_empresa=empresa_id, cliente=cliente)
+    except Empresas.DoesNotExist:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Empresa nao encontrada'}, status=404)
 
-    return JsonResponse({
-        'sucesso': True,
-        'item': {
+    # Aplicar alterações
+    param.horario = horario
+    param.origem_dados = origem_dados
+    param.diretorio = diretorio
+    param.empresa = empresa
+    param.ativo = ativo
+    param.data_atualizacao = timezone.localtime()
+    param.usuario_execucao = request.user
+    param.save(update_fields=['horario', 'origem_dados', 'diretorio', 'empresa', 'ativo', 'data_atualizacao'])
+
+    return JsonResponse({'sucesso': True, 'mensagem': 'Parametro atualizado com sucesso'}, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_cargaxml_relatorio(request):
+    """Relatório de ajuste para parâmetros de carga (diretório existe, último job)."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
+
+    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
+    parametros = CargaXmlParam.objects.filter(cliente=cliente)
+    items = []
+
+    import os
+    for param in parametros.order_by('horario'):
+        dir_exists = os.path.isdir(param.diretorio)
+        last_job = CargaXmlJob.objects.filter(parametro=param).order_by('-started_at').first()
+        items.append({
             'id': param.id,
             'ativo': param.ativo,
             'horario': param.horario.strftime('%H:%M'),
             'origem_dados': param.origem_dados,
             'diretorio': param.diretorio,
-            'modelos': param.modelos or '',
-        }
-    }, status=201)
+            'empresa_id': param.empresa.cod_empresa if param.empresa else None,
+            'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
+            'dir_exists': dir_exists,
+            'ultima_execucao': param.ultima_execucao.isoformat() if param.ultima_execucao else None,
+            'last_job_status': last_job.status if last_job else None,
+            'last_job_total': last_job.total_arquivos if last_job else None,
+            'last_job_success': last_job.total_sucesso if last_job else None,
+            'last_job_error': last_job.total_erro if last_job else None,
+            'last_job_msg': last_job.mensagem if last_job else None,
+            'last_job_started': last_job.started_at.isoformat() if last_job and last_job.started_at else None,
+            'last_job_finished': last_job.finished_at.isoformat() if last_job and last_job.finished_at else None,
+        })
+
+    return JsonResponse({'sucesso': True, 'items': items}, status=200)
 
 
 @login_required(login_url='Login')
@@ -899,6 +1090,84 @@ def fn_api_cargaxml_param_toggle(request, param_id):
         'sucesso': True,
         'id': param.id,
         'ativo': param.ativo,
+    }, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_debug_session(request):
+    """Debug endpoint para verificar sessão e cliente"""
+    cod_cliente = request.session.get('cod_cliente', None)
+    return JsonResponse({
+        'usuario': request.user.username,
+        'cod_cliente': cod_cliente,
+        'session_keys': list(request.session.keys()),
+    }, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_cargaxml_jobs(request):
+    """Lista todos os jobs de carga XML do cliente"""
+    import sys
+    cod_cliente = request.session.get('cod_cliente', None)
+    print(f"DEBUG: cod_cliente={cod_cliente}", file=sys.stderr)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
+
+    jobs = CargaXmlJob.objects.filter(cliente__cod_cliente=cod_cliente).order_by('-started_at')
+    print(f"DEBUG: Found {jobs.count()} jobs", file=sys.stderr)
+    items = []
+    for job in jobs:
+        items.append({
+            'id': job.id,
+            'status': job.status,
+            'total_arquivos': job.total_arquivos,
+            'total_sucesso': job.total_sucesso,
+            'total_erro': job.total_erro,
+            'started_at': job.started_at.isoformat() if job.started_at else None,
+            'finished_at': job.finished_at.isoformat() if job.finished_at else None,
+            'parametro_id': job.parametro.id if job.parametro else None,
+        })
+    return JsonResponse({'sucesso': True, 'items': items}, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_cargaxml_job_details(request, job_id):
+    """Retorna detalhes e log de um job específico"""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
+
+    job = get_object_or_404(CargaXmlJob, id=job_id, cliente__cod_cliente=cod_cliente)
+    log_lines = [line.strip() for line in (job.mensagem or '').splitlines() if line.strip()]
+    param_data = None
+    if job.parametro:
+        p = job.parametro
+        param_data = {
+            'id': p.id,
+            'ativo': p.ativo,
+            'horario': p.horario.strftime('%H:%M'),
+            'origem_dados': p.origem_dados,
+            'diretorio': p.diretorio,
+            'empresa_id': p.empresa.cod_empresa if p.empresa else None,
+            'empresa_nome': p.empresa.fantasia or p.empresa.razao if p.empresa else '',
+            'ultima_execucao': p.ultima_execucao.isoformat() if p.ultima_execucao else None,
+        }
+    return JsonResponse({
+        'sucesso': True,
+        'job': {
+            'id': job.id,
+            'status': job.status,
+            'total_arquivos': job.total_arquivos,
+            'total_sucesso': job.total_sucesso,
+            'total_erro': job.total_erro,
+            'started_at': job.started_at.isoformat() if job.started_at else None,
+            'finished_at': job.finished_at.isoformat() if job.finished_at else None,
+        },
+        'parametro': param_data,
+        'log': log_lines,
     }, status=200)
 
 @login_required(login_url='Login')
