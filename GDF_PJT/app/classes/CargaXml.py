@@ -8,6 +8,14 @@ from app.db_GDF.NFe.models          import (
     NFe_Endereco, NFe_ICMS, NFe_IPI, NFe_PIS, NFe_COFINS, NFe_Transporte,
     NFe_Cobranca, NFe_Parcela, NFe_Pagamento, NFe_Informacoes_Adicionais
 )
+from app.db_GDF.CTe.models          import (
+    CTe, CTe_Identificacao, CTe_Emitente, CTe_Destinatario, CTe_Transporte, CTe_Valor,
+    CTe_Carga, CTe_Servico, CTe_Veiculo, CTe_Motorista, CTe_Percurso, CTe_Fiscal
+)
+from app.db_GDF.NFSe.models         import (
+    NFSe, NFSe_Identificacao, NFSe_Prestador, NFSe_Tomador, NFSe_Servico, NFSe_Endereco,
+    NFSe_RPS, NFSe_Retencao, NFSe_Pagamento, NFSe_Credenciamento
+)
 from typing                        import List, Dict
 from datetime import datetime, time
 from decimal import Decimal
@@ -463,8 +471,7 @@ class Carga_xml():
 
     def set_cte(self, xml_data: bytes, origem_dados: str, usuario: str, cod_cliente: str = None):
         """
-        Processa e insere CTe no banco de dados
-        (atualmente apenas valida a estrutura; adiciona parâmetro cliente para futuro uso)
+        Processa e insere CTe no banco de dados com extração completa de todos os campos
         """
         try:
             root = ET.fromstring(xml_data)
@@ -473,21 +480,427 @@ class Carga_xml():
             if infCte is None:
                 raise ValueError("Estrutura de CTe inválida: infCte não encontrado")
             
-            # registro reduzido
-            return True
-        
+            # Identificação
+            ide = infCte.find('.//cte:ide', self.ns) or infCte.find('.//ide')
+            numero = self._get_text(ide, 'nCT') or self._get_text(ide, 'nNF') or ''
+            serie = self._get_text(ide, 'serie')
+            chave = (infCte.get('Id') or '').replace('CTe', '')
+            data_emissao = self._to_datetime(self._get_text(ide, 'dhEmi') or self._get_text(ide, 'dEmi'), '%Y-%m-%dT%H:%M:%S') or self._to_datetime(self._get_text(ide, 'dEmi'))
+
+            # Emitente / Remetente
+            rem = (infCte.find('.//cte:rem', self.ns) or infCte.find('.//rem') or
+                   infCte.find('.//cte:emit', self.ns) or infCte.find('.//emit'))
+            emitente_cnpj = self._get_text(rem, 'CNPJ') or self._get_text(rem, 'CPF') if rem is not None else None
+            endereco_emit = self._processar_endereco(rem, is_emitente=True) if rem is not None else None
+            emitente = None
+            if emitente_cnpj:
+                emitente, _ = CTe_Emitente.objects.update_or_create(
+                    cnpj=emitente_cnpj,
+                    defaults={
+                        'razao_social': self._get_text(rem, 'xNome', 'S/N'),
+                        'nome_fantasia': self._get_text(rem, 'xFant'),
+                        'ie': self._get_text(rem, 'IE'),
+                        'endereco': endereco_emit,
+                        'data_atualizacao': timezone.now()
+                    }
+                )
+
+            # Destinatario / Tomador
+            dest = infCte.find('.//cte:dest', self.ns) or infCte.find('.//dest')
+            destinatario = None
+            destinatario_cnpj = None
+            if dest is not None:
+                destinatario_cnpj = self._get_text(dest, 'CNPJ') or self._get_text(dest, 'CPF')
+                if destinatario_cnpj:
+                    endereco_dest = self._processar_endereco(dest, is_emitente=False)
+                    destinatario, _ = CTe_Destinatario.objects.update_or_create(
+                        documento=destinatario_cnpj,
+                        defaults={
+                            'tipo': '1' if self._get_text(dest, 'CNPJ') else '2',
+                            'razao_social': self._get_text(dest, 'xNome', 'S/N'),
+                            'endereco': endereco_dest,
+                            'data_atualizacao': timezone.now()
+                        }
+                    )
+
+            # Encontrar empresa (tenta emitente primeiro, depois destinatario)
+            empresa = None
+            cnpj_para_busca = emitente_cnpj or destinatario_cnpj
+            if cnpj_para_busca:
+                try:
+                    empresa = Empresas.objects.get(cnpj=cnpj_para_busca)
+                except Empresas.DoesNotExist:
+                    empresa = None
+
+            # Criar/atualizar identificação
+            identificacao, _ = CTe_Identificacao.objects.update_or_create(
+                chave_acesso=chave or f"{numero}_{serie}",
+                defaults={
+                    'numero': numero,
+                    'serie': serie,
+                    'emissao': data_emissao or timezone.now(),
+                    'modelo': self._get_text(ide, 'mod', '57'),
+                    'data_atualizacao': timezone.now()
+                }
+            )
+
+            # Criar CTe principal
+            cte, created = CTe.objects.update_or_create(
+                identificacao=identificacao,
+                defaults={
+                    'emitente': emitente,
+                    'destinatario': destinatario,
+                    'empresa': empresa,
+                    'data_atualizacao': timezone.now()
+                }
+            )
+
+            # === EXTRAÇÃO DE CARGA ===
+            infCarga = infCte.find('.//cte:infCarga', self.ns) or infCte.find('.//infCarga')
+            if infCarga is not None:
+                cte_carga, _ = CTe_Carga.objects.update_or_create(
+                    cte_identificacao=identificacao,
+                    defaults={
+                        'natureza_carga': self._get_text(infCarga, 'xNaturez'),
+                        'weight_total': self._to_decimal(self._get_text(infCarga, 'vPBrutoCarga')),
+                        'weight_cubagem': self._to_decimal(self._get_text(infCarga, 'vMerc')),
+                        'quantidade_volumes': int(self._get_text(infCarga, 'qVol', '0')) or 0,
+                        'produto_perigoso': self._get_text(infCarga, 'xMatPer') != '',
+                        'data_criacao': timezone.now()
+                    }
+                )
+
+            # === EXTRAÇÃO DE SERVIÇO ===
+            serv = infCte.find('.//cte:infServ', self.ns) or infCte.find('.//infServ')
+            if serv is not None:
+                cte_servico, _ = CTe_Servico.objects.update_or_create(
+                    cte_identificacao=identificacao,
+                    defaults={
+                        'valor_padrao_servico': self._to_decimal(self._get_text(serv, 'vTPrest')),
+                        'valor_vale_pedagio': self._to_decimal(self._get_text(serv, 'vVpd')),
+                        'valor_gris': self._to_decimal(self._get_text(serv, 'vGRIS')),
+                        'valor_seguro': self._to_decimal(self._get_text(serv, 'vValorCobrado')),
+                        'taxa_adicional': self._to_decimal(self._get_text(serv, 'vOutrasDesp')),
+                        'data_criacao': timezone.now()
+                    }
+                )
+
+            # === EXTRAÇÃO DE VEÍCULO ===
+            infModal = infCte.find('.//cte:infCteCarregamento', self.ns) or infCte.find('.//infCteCarregamento')
+            if infModal is not None:
+                veiculo = infModal.find('.//cte:veiculo', self.ns) or infModal.find('.//veiculo')
+                if veiculo is not None:
+                    cte_veiculo, _ = CTe_Veiculo.objects.update_or_create(
+                        cte_identificacao=identificacao,
+                        defaults={
+                            'tipo_veiculo': self._get_text(veiculo, 'tpVeic'),
+                            'placa': self._get_text(veiculo, 'placa'),
+                            'uf_placa': self._get_text(veiculo, 'UF', 'SP'),
+                            'tara': int(self._to_decimal(self._get_text(veiculo, 'tara', '0'))) or 0,
+                            'capacidade_maxima': int(self._to_decimal(self._get_text(veiculo, 'capKg', '0'))) or 0,
+                            'modelo': self._get_text(veiculo, 'modelo'),
+                            'ano_fabricacao': int(self._get_text(veiculo, 'anoFab', '2000')) or 2000,
+                            'eixos': int(self._get_text(veiculo, 'nEixos', '0')) or 0,
+                            'combustivel': self._get_text(veiculo, 'tComb'),
+                            'data_criacao': timezone.now()
+                        }
+                    )
+
+            # === EXTRAÇÃO DE MOTORISTA ===
+            mot = infModal.find('.//cte:mot', self.ns) or infModal.find('.//mot') if infModal is not None else None
+            if mot is not None:
+                cpf_mot = self._get_text(mot, 'CPF')
+                if cpf_mot:
+                    cte_motorista, _ = CTe_Motorista.objects.update_or_create(
+                        cte_identificacao=identificacao,
+                        defaults={
+                            'cpf': cpf_mot,
+                            'nome': self._get_text(mot, 'xNome'),
+                            'cnh': self._get_text(mot, 'nCNH'),
+                            'cnh_categoria': self._get_text(mot, 'cCNH'),
+                            'cnh_validade': self._to_datetime(self._get_text(mot, 'dVencCNH')),
+                            'banco': self._get_text(mot, 'banco'),
+                            'agencia': self._get_text(mot, 'agencia'),
+                            'conta': self._get_text(mot, 'conta'),
+                            'data_criacao': timezone.now()
+                        }
+                    )
+
+            # === EXTRAÇÃO DE PERCURSO ===
+            peri = infCte.find('.//cte:perCurso', self.ns) or infCte.find('.//perCurso')
+            if peri is not None:
+                cte_percurso, _ = CTe_Percurso.objects.update_or_create(
+                    cte_identificacao=identificacao,
+                    defaults={
+                        'municipio_origem': self._get_text(peri, 'xOrigem'),
+                        'municipio_destino': self._get_text(peri, 'xDestino'),
+                        'valor_pedagio_estimado': self._to_decimal(self._get_text(peri, 'vTpPed')),
+                        'odometro_inicio': int(self._get_text(peri, 'odIni', '0')) or 0,
+                        'odometro_fim': int(self._get_text(peri, 'odFim', '0')) or 0,
+                        'data_criacao': timezone.now()
+                    }
+                )
+
+            # === EXTRAÇÃO DE INFORMAÇÕES FISCAIS ===
+            imp = infCte.find('.//cte:imp', self.ns) or infCte.find('.//imp')
+            if imp is not None:
+                icms = imp.find('.//cte:ICMS', self.ns) or imp.find('.//ICMS')
+                if icms is not None:
+                    cte_fiscal, _ = CTe_Fiscal.objects.update_or_create(
+                        cte_identificacao=identificacao,
+                        defaults={
+                            'cfop': self._get_text(icms, 'CFOP'),
+                            'valor_base_icms': self._to_decimal(self._get_text(icms, 'vBC')),
+                            'aliquota_icms': self._to_decimal(self._get_text(icms, 'pICMS')),
+                            'valor_icms': self._to_decimal(self._get_text(icms, 'vICMS')),
+                            'valor_pis': self._to_decimal(self._get_text(imp, 'vPIS')),
+                            'valor_cofins': self._to_decimal(self._get_text(imp, 'vCOFINS')),
+                            'valor_irrf': self._to_decimal(self._get_text(imp, 'vIRRF')),
+                            'cst_icms': self._get_text(icms, 'CST'),
+                            'data_criacao': timezone.now()
+                        }
+                    )
+
+            return cte
+
         except Exception as e:
             raise Exception(f"Erro ao processar CTe: {str(e)}")
 
     def set_nfse(self, xml_data: bytes, origem_dados: str, usuario: str, cod_cliente: str = None):
         """
-        Processa e insere NFSe no banco de dados
-        (placeholder; cliente adicionado para coerência)
+        Processa e insere NFSe no banco de dados com extração completa de RPS, retenções e pagamento.
+
+        The structure of NFSe XML varies significantly between municipalities and
+        providers.  We therefore perform namespace-agnostic searches for the key
+        nodes by iterating over the tree and comparing local names.  This makes
+        the parser much more tolerant of default namespaces and missing prefixes.
         """
         try:
             root = ET.fromstring(xml_data)
-            # TODO: tratamento real
-            return True
-        
+
+            def find_local(root, *names):
+                for elem in root.iter():
+                    tag = elem.tag.split('}')[-1]
+                    if tag in names:
+                        return elem
+                return None
+
+            inf = find_local(root, 'InfNfse', 'infNfse', 'InfRps', 'infRps', 'Rps', 'Nfse', 'NFSe')
+            if inf is None:
+                raise ValueError('Estrutura de NFSe inválida: nó de identificação não encontrado')
+
+            numero = self._get_text(inf, 'Numero') or self._get_text(inf, 'numero') or ''
+            emissao = self._to_datetime(self._get_text(inf, 'DataEmissao') or self._get_text(inf, 'dataEmissao')) or timezone.now()
+            competencia = self._to_datetime(self._get_text(inf, 'Competencia') or self._get_text(inf, 'competencia'))
+            chave = self._get_text(inf, 'Chave') or (numero or '')
+
+            # PRESTADOR
+            prest = find_local(inf, 'Prestador', 'PrestadorServico') or find_local(root, 'Prestador', 'PrestadorServico')
+            prestador = None
+            endereco_prest = None
+            if prest is not None:
+                prest_cnpj = self._get_text(prest, 'CNPJ') or self._get_text(prest, 'Cpf')
+                # tentar endereço dentro do prestador
+                end_p = find_local(prest, 'Endereco', 'EnderecoPrestador', 'enderPrestador') or prest
+                if end_p is not None:
+                    endereco_prest = NFSe_Endereco.objects.create(
+                        logradouro=self._get_text(end_p, 'xLgr'),
+                        numero=self._get_text(end_p, 'nro'),
+                        complemento=self._get_text(end_p, 'xCpl'),
+                        bairro=self._get_text(end_p, 'xBairro'),
+                        codigo_municipio=self._get_text(end_p, 'cMun'),
+                        nome_municipio=self._get_text(end_p, 'xMun'),
+                        uf=self._get_text(end_p, 'UF'),
+                        cep=self._get_text(end_p, 'CEP'),
+                        pais=self._get_text(end_p, 'cPais', '1058'),
+                        nome_pais=self._get_text(end_p, 'xPais', 'Brasil'),
+                        telefone=self._get_text(end_p, 'fone'),
+                        email=self._get_text(end_p, 'email'),
+                        data_criacao=timezone.now()
+                    )
+
+                if prest_cnpj:
+                    prestador, _ = NFSe_Prestador.objects.update_or_create(
+                        cnpj=prest_cnpj,
+                        defaults={
+                            'razao_social': self._get_text(prest, 'xNome', self._get_text(prest, 'RazaoSocial', 'S/N')),
+                            'nome_fantasia': self._get_text(prest, 'xFant'),
+                            'ie': self._get_text(prest, 'IE'),
+                            'endereco': endereco_prest,
+                            'data_atualizacao': timezone.now()
+                        }
+                    )
+
+            # TOMADOR
+            tom = find_local(inf, 'Tomador', 'TomadorServico') or find_local(root, 'Tomador', 'TomadorServico')
+            tomador = None
+            if tom is not None:
+                tom_doc = self._get_text(tom, 'CNPJ') or self._get_text(tom, 'CPF')
+                tipo = '1' if self._get_text(tom, 'CNPJ') else '2'
+                end_t = find_local(tom, 'Endereco', 'enderTomador') or tom
+                endereco_tom = None
+                if end_t is not None:
+                    endereco_tom = NFSe_Endereco.objects.create(
+                        logradouro=self._get_text(end_t, 'xLgr'),
+                        numero=self._get_text(end_t, 'nro'),
+                        complemento=self._get_text(end_t, 'xCpl'),
+                        bairro=self._get_text(end_t, 'xBairro'),
+                        codigo_municipio=self._get_text(end_t, 'cMun'),
+                        nome_municipio=self._get_text(end_t, 'xMun'),
+                        uf=self._get_text(end_t, 'UF'),
+                        cep=self._get_text(end_t, 'CEP'),
+                        pais=self._get_text(end_t, 'cPais', '1058'),
+                        nome_pais=self._get_text(end_t, 'xPais', 'Brasil'),
+                        telefone=self._get_text(end_t, 'fone'),
+                        email=self._get_text(end_t, 'email'),
+                        data_criacao=timezone.now()
+                    )
+
+                if tom_doc:
+                    tomador, _ = NFSe_Tomador.objects.update_or_create(
+                        documento=tom_doc,
+                        defaults={
+                            'tipo': tipo,
+                            'razao_social': self._get_text(tom, 'xNome', self._get_text(tom, 'RazaoSocial', 'S/N')),
+                            'endereco': endereco_tom,
+                            'data_atualizacao': timezone.now()
+                        }
+                    )
+
+            # Identificacao
+            identificacao, _ = NFSe_Identificacao.objects.update_or_create(
+                chave=chave or f"{numero}",
+                defaults={
+                    'numero': numero or '0',
+                    'emissao': emissao,
+                    'competencia': competencia,
+                    'codigo_prefeitura': self._get_text(inf, 'CodigoMunicipio') or self._get_text(inf, 'codigoMunicipio'),
+                    'data_atualizacao': timezone.now()
+                }
+            )
+
+            # Criar NFSe principal
+            nfse, created = NFSe.objects.update_or_create(
+                identificacao=identificacao,
+                defaults={
+                    'prestador': prestador,
+                    'tomador': tomador,
+                    'empresa': None,
+                    'data_atualizacao': timezone.now()
+                }
+            )
+
+            # === EXTRAÇÃO DE RPS ===
+            rps_node = find_local(inf, 'Rps', 'RPS')
+            if rps_node is not None:
+                numero_rps = self._get_text(rps_node, 'Numero') or self._get_text(rps_node, 'numero')
+                serie_rps = self._get_text(rps_node, 'Serie') or self._get_text(rps_node, 'serie') or 'RPS'
+                tipo_rps = self._get_text(rps_node, 'Tipo') or 'RPS'
+                data_rps = self._to_datetime(self._get_text(rps_node, 'DataEmissao') or self._get_text(rps_node, 'dataEmissao'))
+                status_rps = self._get_text(rps_node, 'Status') or 'NORMAL'
+                
+                if numero_rps:
+                    NFSe_RPS.objects.update_or_create(
+                        numero_rps=numero_rps,
+                        serie_rps=serie_rps,
+                        nfse_identificacao=identificacao,
+                        defaults={
+                            'tipo_rps': tipo_rps,
+                            'data_emissao_rps': data_rps or timezone.now().date(),
+                            'status_rps': status_rps,
+                            'numero_nfse_gerada': numero,
+                            'valor_rps': self._to_decimal(self._get_text(rps_node, 'Valor') or self._get_text(inf, 'ValorServicos')),
+                            'data_criacao': timezone.now()
+                        }
+                    )
+
+            # === EXTRAÇÃO DE RETENÇÕES ===
+            retencao_node = find_local(inf, 'Retencoes', 'RetencaoDados', 'Deducoes', 'Deducao')
+            if retencao_node is not None:
+                retencao_data = {
+                    'nfse_identificacao': identificacao,
+                    'valor_ir': self._to_decimal(self._get_text(retencao_node, 'DescricaoDeducao') if 'IR' in (self._get_text(retencao_node, 'DescricaoDeducao') or '') else '0'),
+                    'valor_issqn': self._to_decimal(self._get_text(retencao_node, 'ValorDeducao') if 'ISS' in (self._get_text(retencao_node, 'DescricaoDeducao') or '') else '0'),
+                    'valor_inss': self._to_decimal(self._get_text(retencao_node, 'ValorDeducao') if 'INSS' in (self._get_text(retencao_node, 'DescricaoDeducao') or '') else '0'),
+                    'valor_cofins': self._to_decimal(self._get_text(retencao_node, 'ValorDeducao') if 'COFINS' in (self._get_text(retencao_node, 'DescricaoDeducao') or '') else '0'),
+                    'valor_pis': self._to_decimal(self._get_text(retencao_node, 'ValorDeducao') if 'PIS' in (self._get_text(retencao_node, 'DescricaoDeducao') or '') else '0'),
+                    'valor_csll': self._to_decimal(self._get_text(retencao_node, 'ValorDeducao') if 'CSLL' in (self._get_text(retencao_node, 'DescricaoDeducao') or '') else '0'),
+                }
+                retencao_data['valor_total_retencoes'] = (retencao_data['valor_ir'] + retencao_data['valor_issqn'] + 
+                                                          retencao_data['valor_inss'] + retencao_data['valor_cofins'] + 
+                                                          retencao_data['valor_pis'] + retencao_data['valor_csll'])
+                
+                NFSe_Retencao.objects.update_or_create(
+                    nfse_identificacao=identificacao,
+                    defaults={**retencao_data, 'data_criacao': timezone.now()}
+                )
+
+            # === EXTRAÇÃO DE PAGAMENTO ===
+            pag_node = find_local(inf, 'Pagamento', 'DadosFormaPagamento')
+            if pag_node is not None:
+                forma = self._get_text(pag_node, 'Forma') or self._get_text(pag_node, 'forma') or 'DINHEIRO'
+                NFSe_Pagamento.objects.update_or_create(
+                    nfse_identificacao=identificacao,
+                    defaults={
+                        'forma_pagamento': forma,
+                        'descricao_forma_pagamento': self._get_text(pag_node, 'Descricao'),
+                        'banco': self._get_text(pag_node, 'Banco'),
+                        'agencia': self._get_text(pag_node, 'Agencia'),
+                        'conta': self._get_text(pag_node, 'Conta'),
+                        'valor_total_pagamento': self._to_decimal(self._get_text(inf, 'ValorLiquido') or self._get_text(inf, 'valorLiquido')),
+                        'data_pagamento': self._to_datetime(self._get_text(pag_node, 'DataPagamento')),
+                        'condicao_pagamento': 'VISTA' if self._get_text(pag_node, 'Parcelas') == '1' else 'PARCELADO',
+                        'num_parcelas': int(self._get_text(pag_node, 'Parcelas', '1')),
+                        'data_criacao': timezone.now()
+                    }
+                )
+
+            # === EXTRAÇÃO DE CREDENCIAMENTO ===
+            codigo_municipio = self._get_text(inf, 'CodigoMunicipio') or '0000000'
+            if codigo_municipio != '0000000':
+                NFSe_Credenciamento.objects.update_or_create(
+                    nfse_identificacao=identificacao,
+                    defaults={
+                        'inscricao_municipal': self._get_text(inf, 'InscricaoMunicipal') or '',
+                        'optante_simples_nacional': self._get_text(inf, 'OptanteSimplesNacional') == 'S' if self._get_text(inf, 'OptanteSimplesNacional') else False,
+                        'codigo_municipio': codigo_municipio,
+                        'nome_municipio': self._get_text(inf, 'CodigoMunicipio') or 'Sem informação',
+                        'uf': self._get_text(inf, 'UF') or '',
+                        'ambiente_emissao': 'PRODUCAO' if self._get_text(inf, 'Ambiente') != 'H' else 'HOMOLOGACAO',
+                        'data_criacao': timezone.now()
+                    }
+                )
+
+            # Serviços - tentar localizar lista de servicos
+            serv_nodes = []
+            for s in inf.iter():
+                if s.tag.split('}')[-1] in ('Servico', 'ItensServico', 'DetalhamentoServico'):
+                    serv_nodes.append(s)
+
+            # Apagar serviços existentes para evitar duplicatas
+            NFSe_Servico.objects.filter(nfse_identificacao=identificacao).delete()
+
+            for s in serv_nodes:
+                descricao = self._get_text(s, 'Discriminacao') or self._get_text(s, 'Descricao') or self._get_text(s, 'discriminacao')
+                quantidade = self._to_decimal(self._get_text(s, 'Quantidade') or self._get_text(s, 'quantidade') or '1')
+                valor_unit = self._to_decimal(self._get_text(s, 'ValorUnitario') or self._get_text(s, 'valorUnitario') or self._get_text(s, 'valor'))
+                valor_total = self._to_decimal(self._get_text(s, 'ValorTotal') or self._get_text(s, 'valorTotal') or self._get_text(s, 'valorServico') or self._get_text(s, 'ValorServicos'))
+
+                if descricao and valor_total:
+                    NFSe_Servico.objects.create(
+                        descricao=descricao,
+                        quantidade=quantidade,
+                        valor_unitario=valor_unit,
+                        valor_total=valor_total,
+                        nfse_identificacao=identificacao,
+                        codigo_servico=self._get_text(s, 'CodigoServicoMunicipal'),
+                        aliquota_issqn=self._to_decimal(self._get_text(s, 'AliquotaIssqn')),
+                        valor_issqn=self._to_decimal(self._get_text(s, 'ValorISSQN')),
+                        municipio_incidencia=self._get_text(s, 'CodigoMunicipio'),
+                        data_criacao=timezone.now()
+                    )
+
+            return nfse
+
         except Exception as e:
             raise Exception(f"Erro ao processar NFSe: {str(e)}")    

@@ -110,7 +110,6 @@ class NFe_Identificacao(models.Model):
     modelo = models.CharField(max_length=2, default='55', blank=True, null=True)
     forma_emissao = models.CharField(max_length=1, blank=True, null=True)
     finalidade_emissao = models.CharField(max_length=1, blank=True, null=True)
-    consumidor_final = models.CharField(max_length=1, blank=True, null=True)
     presenca_comprador = models.CharField(max_length=1, blank=True, null=True)
     data_atualizacao = models.DateTimeField(auto_now=True)
     
@@ -197,6 +196,9 @@ class NFe_ICMS(models.Model):
     percentual_reducao = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
     valor_base_st = models.DecimalField(max_digits=15, decimal_places=2, blank=True, null=True)
     valor_icms_st = models.DecimalField(max_digits=15, decimal_places=2, blank=True, null=True)
+    valor_base_st_dest = models.DecimalField(max_digits=15, decimal_places=2, blank=True, null=True)  # Crédito ST
+    valor_icms_st_dest = models.DecimalField(max_digits=15, decimal_places=2, blank=True, null=True)
+    excecao_tipi_cst = models.CharField(max_length=2, blank=True, null=True)  # Campo EX TIPI
     uf = models.CharField(max_length=2, blank=True, null=True)
 
     class Meta:

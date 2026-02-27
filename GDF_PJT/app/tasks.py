@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import xml.etree.ElementTree as ET
 from typing import Dict, Iterable, List, Tuple
+import shutil
+import time
 
 from celery import shared_task
 from django.db import transaction
@@ -20,21 +23,90 @@ MODEL_FOLDER_MAP: Dict[str, Tuple[str, str]] = {
     'SPF': ('modeloSPF', 'NFe'),
 }
 
+# Previously the parameters included an optional "modelos" field that
+# allowed restricting processing to certain document types.  That column
+# was removed in migration 0013, so the filtering logic is now obsolete.
+# We continue to scan every known folder by default.
 
-def _parse_modelos(modelos: str | None) -> List[str]:
-    if not modelos:
+
+def _collect_xml_files(base_dir: Path) -> List[Path]:
+    """Return all XML files found under *base_dir* (recursively).
+
+    Historically we only looked inside a fixed set of subfolders derived
+    from :data:`MODEL_FOLDER_MAP`.  The user story now is that the company
+    directory may contain *any* number of model-specific subdirectories
+    (``MODELO55``, ``Modelo67`` etc) and we should blindly traverse them
+    rather than relying on their names.  This helper therefore performs a
+    recursive glob and returns all ``*.xml`` paths.
+    """
+
+    if not base_dir.exists() or not base_dir.is_dir():
         return []
-    return [item.strip().upper() for item in modelos.split(',') if item.strip()]
 
+    # exclude any files already inside the archive folders
+    excluded_names = {'processados', 'pendentes'}
 
-def _collect_xml_files(base_dir: Path, folders: Iterable[str]) -> List[Path]:
-    files: List[Path] = []
-    for folder in folders:
-        folder_path = base_dir / folder
-        if not folder_path.exists() or not folder_path.is_dir():
+    files = []
+    for p in sorted(base_dir.rglob('*.xml')):
+        # skip files under excluded directories (case-insensitive)
+        parts = {part.lower() for part in p.parts}
+        if parts & excluded_names:
             continue
-        files.extend(sorted(folder_path.glob('*.xml')))
+        files.append(p)
+
     return files
+
+
+def _detect_doc_type(xml_bytes: bytes) -> str | None:
+    """Infer document type by inspecting every element's local name.
+
+    The old implementation relied on :meth:`ElementTree.find` with explicit
+    namespace prefixes, which raised ``ValueError: prefix 'nfse' not found in
+    prefix map`` when parsing XML that did not declare the namespace.  In
+    practice the job may receive files from arbitrary sources, some of which
+    omit prefixes entirely, so we take a more robust approach: iterate through
+    every element in the tree and check the *localname* portion of the tag
+    (i.e. strip any namespace URI).  This removes any dependency on the
+    document's namespace mapping and avoids accidental exceptions during
+    detection.
+    """
+
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        return None
+
+    for elem in root.iter():
+        # ``elem.tag`` could be '{namespace}localname' or simply 'localname'
+        local = elem.tag.split('}')[-1]
+        if local == 'infNFe':
+            return 'NFe'
+        if local in ('infCte', 'infCTe'):
+            return 'CTe'
+        # NFSe is very inconsistent; look for obvious markers
+        if local in ('NFSe', 'NotaFiscal', 'InfNfse', 'InfRps'):
+            return 'NFSe'
+
+    return None
+
+
+def _safe_move(src: Path, dest_dir: Path) -> Path:
+    """Move `src` into `dest_dir`, creating `dest_dir` if needed.
+
+    If a file with the same name exists in the destination, append a
+    timestamp suffix to avoid overwriting. Returns the final destination
+    path.
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / src.name
+    if dest.exists():
+        ts = int(time.time())
+        dest = dest_dir / f"{src.stem}_{ts}{src.suffix}"
+    try:
+        shutil.move(str(src), str(dest))
+    except Exception:
+        src.rename(dest)
+    return dest
 
 
 @shared_task
@@ -62,17 +134,13 @@ def scan_cargaxml_params() -> int:
 def process_cargaxml_param(param_id: int) -> Dict[str, int]:
     param = CargaXmlParam.objects.select_related('cliente', 'usuario_criacao').get(id=param_id)
     now = timezone.localtime()
-    modelos = _parse_modelos(param.modelos)
 
-    if modelos:
-        folders = [MODEL_FOLDER_MAP[m][0] for m in modelos if m in MODEL_FOLDER_MAP]
-    else:
-        folders = [value[0] for value in MODEL_FOLDER_MAP.values()]
-
+    # build list of files to process; walk company directory recursively and
+    # ignore non-XML entries.  We no longer constrain by subfolder names,
+    # because customers may create arbitrary directories under the base
+    # path.
     base_dir = Path(param.diretorio)
-    xml_files = []
-    if base_dir.exists() and base_dir.is_dir():
-        xml_files = _collect_xml_files(base_dir, folders)
+    xml_files: List[Path] = _collect_xml_files(base_dir)
 
     job = CargaXmlJob.objects.create(
         cliente=param.cliente,
@@ -95,35 +163,66 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
 
     for xml_path in xml_files:
         try:
-            folder_name = xml_path.parent.name
-            tipo = None
-            for model_key, (folder, tipo_doc) in MODEL_FOLDER_MAP.items():
-                if folder == folder_name:
-                    tipo = tipo_doc
-                    break
-
-            if not tipo:
-                errors += 1
-                log_lines.append(f'ERRO: {xml_path.name} - Pasta desconhecida: {folder_name}')
-                continue
-
             with xml_path.open('rb') as handle:
                 xml_bytes = handle.read()
 
-            if tipo == 'NFe':
-                processor.set_nfe(xml_bytes, param.origem_dados, 'SYSTEM', param.cliente.cod_cliente if param.cliente else None)
-            elif tipo == 'CTe':
-                processor.set_cte(xml_bytes, param.origem_dados, 'SYSTEM', param.cliente.cod_cliente if param.cliente else None)
-            elif tipo == 'NFSe':
-                processor.set_nfse(xml_bytes, param.origem_dados, 'SYSTEM', param.cliente.cod_cliente if param.cliente else None)
-            else:
-                raise ValueError(f'Tipo nao suportado: {tipo}')
+            # detect document type from the XML itself; this is the ultimate
+            # source of truth.  If the file is mis‑placed the detection will
+            # catch it and log an error.
+            tipo = _detect_doc_type(xml_bytes)
+            if not tipo:
+                errors += 1
+                log_lines.append(f'ERRO: {xml_path.name} - tipo de documento nao identificado')
+                # move to pendentes/unknown
+                try:
+                    _safe_move(xml_path, base_dir / 'pendentes' / 'unknown')
+                except Exception:
+                    pass
+                continue
 
+            # optional: warn if the folder name doesn't match the inferred
+            # type (helps users keep the directory tree tidy)
+            folder_name = xml_path.parent.name.lower()
+            expected_folder = None
+            for _, (folder, tipo_doc) in MODEL_FOLDER_MAP.items():
+                if tipo_doc == tipo:
+                    expected_folder = folder.lower()
+                    break
+            if expected_folder and expected_folder != folder_name:
+                log_lines.append(
+                    f'AVISO: {xml_path.name} - documento {tipo} em pasta "{folder_name}"'
+                )
+
+            if tipo == 'NFe':
+                processor.set_nfe(xml_bytes, param.origem_dados, 'SYSTEM',
+                                  param.cliente.cod_cliente if param.cliente else None)
+            elif tipo == 'CTe':
+                processor.set_cte(xml_bytes, param.origem_dados, 'SYSTEM',
+                                  param.cliente.cod_cliente if param.cliente else None)
+            elif tipo == 'NFSe':
+                processor.set_nfse(xml_bytes, param.origem_dados, 'SYSTEM',
+                                   param.cliente.cod_cliente if param.cliente else None)
+            else:
+                # should never happen because _detect_doc_type returns only
+                # known values, but protect against future regressions
+                raise ValueError(f'Tipo nao suportado: {tipo}')
             success += 1
             log_lines.append(f'OK: {xml_path.name}')
+            # move processed file to processados/<tipo>
+            try:
+                _safe_move(xml_path, base_dir / 'processados' / tipo.lower())
+            except Exception:
+                # moving shouldn't break job; just warn
+                log_lines.append(f'AVISO: nao foi possivel mover {xml_path.name} para processados')
         except Exception as exc:
             errors += 1
             log_lines.append(f'ERRO: {xml_path.name} - {exc}')
+            # move problematic file to pendentes/<tipo_or_unknown>
+            try:
+                target = (base_dir / 'pendentes' / (tipo.lower() if tipo else 'unknown'))
+                _safe_move(xml_path, target)
+            except Exception:
+                log_lines.append(f'AVISO: nao foi possivel mover {xml_path.name} para pendentes')
 
     status = 'SUCCESS' if errors == 0 else 'ERROR'
     finished_at = timezone.localtime()
