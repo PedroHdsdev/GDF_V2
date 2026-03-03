@@ -68,11 +68,10 @@ META: 10x mais performance!
    - Suporte para múltiplas instâncias (8000, 8001, 8002)
 
 4. **Load Balancing com Nginx** ✅
-   - Arquivo: `nginx_gdf_v2.conf`
-   - Algoritmo: least_conn (servidor com menos conexões)
-   - Round-robin entre múltiplos workers
-   - Gzip compression ativado
-   - Static files cache (30 dias)
+4. **Load Balancing** ✅
+    - Managed externally on the host; repository no longer contains an Nginx config file.
+    - Configure the host's Nginx (or cloud load balancer) to proxy to Gunicorn workers on 127.0.0.1:8000/8001/8002 or to 127.0.0.1:8500 as required.
+    - Ensure Gzip and static file caching are configured on the host server (e.g. `expires 30d`).
 
 5. **Load Testing** ✅
    - Arquivo: `locustfile.py`

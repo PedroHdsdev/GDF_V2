@@ -121,13 +121,11 @@ class ClGdf():
                 cliente=self.Cliente,
                 is_active=True
             ).select_related('solucao')
-            print(self.solucoes_acesso)
 
             # Subsoluções liberadas via grupo
             self.subsolucoes_acesso = SubsolucoesAcesso.objects.filter(
                 group__in=self.Groups
             ).select_related('subsolucao')
-            print(self.subsolucoes_acesso)
         
         except OperationalError as e:
             print(str(e))
@@ -188,8 +186,6 @@ class ClGdf():
                 return 0  # o resto fica no meio
 
             lsl_dados_solucoes.sort(key=sort_key)
-
-            print(lsl_dados_solucoes)
             return lsl_dados_solucoes
 
         except AttributeError as e:

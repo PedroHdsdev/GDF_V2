@@ -18,7 +18,7 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
         response['X-Content-Type-Options'] = 'nosniff'
         
         # X-Frame-Options: Clickjacking protection
-        response['X-Frame-Options'] = 'DENY'
+        response['X-Frame-Options'] = 'SAMEORIGIN' #'DENY'
         
         # X-XSS-Protection: XSS filter (legacy, mas ainda útil)
         response['X-XSS-Protection'] = '1; mode=block'
@@ -43,8 +43,8 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
             settings,
             'STREAMLIT_FRAME_ORIGINS',
             [
-                'http://localhost:8502',
-                'http://127.0.0.1:8502',
+                'https://localhost:8600',
+                'https://10.0.1.19:8600',
             ],
         )
         csp_directives = [
@@ -60,7 +60,7 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
             "form-action 'self'",  # Restringe <form> action
             "upgrade-insecure-requests",  # Atualizar HTTP para HTTPS
         ]
-        response['Content-Security-Policy'] = '; '.join(csp_directives)
+        #response['Content-Security-Policy'] = '; '.join(csp_directives)
         
         # Strict-Transport-Security (HSTS)
         # Forçar HTTPS por 1 ano (31536000 segundos)

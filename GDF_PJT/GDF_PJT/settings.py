@@ -22,9 +22,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 import environ
+from csp.constants import NONCE
 
 env = environ.Env()
-environ.Env.read_env(os.path.join(BASE_DIR.parent, '.env'))
+environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-)+_kx-l8g8iu@t@k3y=mswm^+s#%)yu_d=kevi0vac+y#m0oc^')
 
@@ -36,14 +37,13 @@ ALLOWED_HOSTS = ["*"]
 
 # HTTPS & Security Configuration
 SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=False)  # True em produção
-SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=False)  # True em produção
-CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=False)  # True em produção
+SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=True)  # True em produção
+CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=True)  # True em produção
 SECURE_HSTS_SECONDS = env.int('SECURE_HSTS_SECONDS', default=31536000)  # 1 ano
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=True)
 SECURE_HSTS_PRELOAD = env.bool('SECURE_HSTS_PRELOAD', default=True)
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_SECURITY_POLICY_REPORT_ONLY = False
-
 
 # Application definition
 
@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    "django_extensions",
     'app',
     'csp',  # Django CSP for Content-Security-Policy
 ]
@@ -258,38 +259,42 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-# Content Security Policy (django-csp 4.0+)
-STREAMLIT_FRAME_ORIGINS = env.list(
-    'STREAMLIT_FRAME_ORIGINS',
-    default=[
-        'http://localhost:8502',
-        'http://127.0.0.1:8502',
-    ],
-)
-
 CONTENT_SECURITY_POLICY = {
-    'DIRECTIVES': {
-        'default-src': ("'self'",),
-        'script-src': (
+    "DIRECTIVES": {
+        "default-src": ("'self'",),
+
+        "script-src": (
             "'self'",
-            "'unsafe-inline'",  # Apenas para desenvolvimento
+            "'unsafe-inline'",
             "https://cdn.jsdelivr.net",
             "https://code.jquery.com",
         ),
-        'style-src': (
+
+        "style-src": (
             "'self'",
-            "'unsafe-inline'",  # Apenas para desenvolvimento
+            "'unsafe-inline'",
             "https://cdn.jsdelivr.net",
             "https://fonts.googleapis.com",
         ),
-        'img-src': ("'self'", "data:", "https:"),
-        'font-src': ("'self'", "https://fonts.gstatic.com"),
-        'connect-src': ("'self'", "https:"),
-        'frame-src': ("'self'", *STREAMLIT_FRAME_ORIGINS),
-        'frame-ancestors': ("'none'",),
-        'base-uri': ("'self'",),
-        'form-action': ("'self'",),
+
+        "img-src": ("'self'", "data:", "https:"),
+
+        "font-src": (
+            "'self'",
+            "https://fonts.gstatic.com",
+        ),
+
+        "connect-src": ("'self'", "https:"),
+
+        "frame-src": (
+            "'self'",
+            "https://10.0.1.19:8600",
+            "https://localhost:8600",
+            "https://127.0.0.1:8600",
+            "https://201.6.103.133:8600",
+        ),
+
+        "frame-ancestors": ("'none'",),
     }
 }
-
 

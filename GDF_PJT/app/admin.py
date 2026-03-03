@@ -122,7 +122,6 @@ class GrpEmpresasAdmin(admin.ModelAdmin):
     list_display = ('grp_empresa', 'descricao', 'cliente')
     list_filter = ('cliente',)
     search_fields = ('grp_empresa', 'descricao', 'cliente__razao')
-    readonly_fields = ('grp_empresa',)
     fieldsets = (
         ('Informações do Grupo', {
             'fields': ('grp_empresa', 'descricao', 'cliente')

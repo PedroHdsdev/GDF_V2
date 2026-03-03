@@ -1,0 +1,20 @@
+[Unit]
+Description=Gunicorn instance to serve GDF_PJT
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/gdf_v2/GDF_PJT
+Environment="PATH=/var/www/gdf_v2/venv/bin"
+ExecStart=/var/www/gdf_v2/venv/bin/gunicorn -c /var/www/gdf_v2/GDF_PJT/gunicorn_config.py GDF_PJT.wsgi:application
+
+[Install]
+WantedBy=multi-user.target
+
+# Notes:
+# - Copy this file to /etc/systemd/system/gunicorn.service and run:
+#   sudo systemctl daemon-reload
+#   sudo systemctl start gunicorn
+#   sudo systemctl enable gunicorn
+# - Adjust paths, User and Group to match your host setup.

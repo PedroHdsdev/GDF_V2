@@ -5,10 +5,12 @@
 ### Opção A: Com Let's Encrypt (RECOMENDADO)
 
 ```bash
-# Instalar Certbot
-sudo apt-get install certbot python3-certbot-nginx
+# Instalar Certbot (client only)
+sudo apt-get install certbot
 
-# Gerar certificado (replace com seu domínio)
+# Gerar certificado (substitua com seu domínio). O método de validação
+# e instalação do certificado depende do servidor web que estivesse a correr
+# no host (Nginx/Apache/LoadBalancer). Aqui usamos o modo standalone como exemplo:
 sudo certbot certonly --standalone -d seu-dominio.com -d www.seu-dominio.com
 
 # Certificado fica em: /etc/letsencrypt/live/seu-dominio.com/
@@ -44,84 +46,24 @@ CSP_REPORT_ONLY=False
 
 ---
 
-## 3. Configurar Nginx com HTTPS
+## 3. TLS termination / web server configuration
 
-```nginx
-# /etc/nginx/sites-available/gdf_v2
+TLS termination and HTTP->HTTPS redirection are the responsibility of the host
+web server or load balancer (for example, Nginx, Apache, a cloud LB, or a
+managed reverse proxy). The repository no longer includes a full web server
+configuration; below are general guidelines:
 
-upstream django_gdf {
-    server 127.0.0.1:8000;
-}
+- Obtain certificates (Let's Encrypt is recommended) and place them under
+  `/etc/letsencrypt/live/<your-domain>/` or `/etc/ssl/...`.
+- Configure your host web server to terminate TLS and proxy requests to the
+  local Gunicorn instance (e.g. `http://127.0.0.1:8500`). Ensure `X-Forwarded-*`
+  headers are passed through and `X-Forwarded-Proto` is set to `https`.
+- Serve `static/` and `media/` directly from the host filesystem for performance
+  (e.g. `alias /var/www/gdf_v2/staticfiles/`).
 
-# Redirecionar HTTP para HTTPS
-server {
-    listen 80;
-    server_name seu-dominio.com www.seu-dominio.com;
-    
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
-    
-    location / {
-        return 301 https://$server_name$request_uri;
-    }
-}
-
-# HTTPS server
-server {
-    listen 443 ssl http2;
-    server_name seu-dominio.com www.seu-dominio.com;
-    
-    # SSL Certificates (Let's Encrypt)
-    ssl_certificate /etc/letsencrypt/live/seu-dominio.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/seu-dominio.com/privkey.pem;
-    
-    # SSL Configuration (Mozilla Intermediate)
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-    
-    # Security Headers
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-Frame-Options "DENY" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    
-    # Cliente Upload Limit
-    client_max_body_size 100M;
-    
-    # Proxy para Django
-    location / {
-        proxy_pass http://django_gdf;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_redirect off;
-        
-        # Timeouts
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-    }
-    
-    # Static files
-    location /static/ {
-        alias /var/www/gdf_v2/staticfiles/;
-        expires 30d;
-        add_header Cache-Control "public, immutable";
-    }
-    
-    # Media files
-    location /media/ {
-        alias /var/www/gdf_v2/media/;
-        expires 7d;
-    }
-}
-```
+If you still want an example Nginx snippet to adapt to your host, request it
+and it will be provided separately — it's intentionally omitted from the
+repository to avoid duplicating host configuration.
 
 ---
 

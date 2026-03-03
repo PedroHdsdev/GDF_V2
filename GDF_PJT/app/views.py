@@ -95,7 +95,7 @@ def fn_view_listar_usuarios(request):
     # Paginação e busca serão feitas em JavaScript no cliente
     return render(
         request,
-        'usuarios/Index_Usuarios.html',
+        'Usuarios/Index_Usuarios.html',
         {
             't_user': t_user,         
         }

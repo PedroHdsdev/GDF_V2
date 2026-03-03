@@ -4,14 +4,15 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="{% static 'css/style_Dashboard.css' %}">
+<link rel="stylesheet" href="{% static 'css/Style_Dashboard.css' %}">
 {% endblock %}
 
 {% block titlepage %}Dashboard{% endblock %}
 
 {% block container %}
 <div id="iframeWrapper" class="iframe-container">
-    <iframe src="http://localhost:8502/?token={{ token }}"></iframe>
+   <!-- <iframe src="http://localhost:8600/?token={{ token }}"></iframe>-->
+    <iframe src="https://10.0.1.19:8600/?token={{ token }}"></iframe>
 </div>
 {% endblock %}
 

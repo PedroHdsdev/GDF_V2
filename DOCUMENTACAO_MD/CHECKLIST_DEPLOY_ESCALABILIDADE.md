@@ -5,7 +5,7 @@
 - [ ] PostgreSQL 12+
 - [ ] Redis 6+
 - [ ] Python 3.9+
-- [ ] Nginx (load balancer)
+- [ ] Host web server / load balancer (Nginx/Apache/Cloud LB)
 - [ ] Docker & Docker Compose
 
 ---
@@ -101,123 +101,17 @@ gunicorn -c gunicorn_config.py GDF_PJT.wsgi:application
 curl http://localhost:8000
 ```
 
-### 2.5 Nginx Load Balancer
+### 2.5 Host load balancer / reverse proxy (optional)
 
-**Instalar Nginx**:
-```bash
-sudo apt-get install nginx
-```
+The host should provide TLS termination and act as a reverse proxy to local
+Gunicorn workers. The repository no longer contains a default Nginx config —
+configure the host web server (Nginx, Apache or cloud LB) with an upstream to
+`127.0.0.1:8500` (or 8000/8001/8002 for multiple instances), enable gzip and
+static file caching on the host, and ensure `X-Forwarded-*` headers are set.
 
-**Arquivo: `/etc/nginx/nginx.conf`**
-```nginx
-user www-data;
-worker_processes auto;
-pid /run/nginx.pid;
-
-events {
-    worker_connections 2000;
-    use epoll;
-    multi_accept on;
-}
-
-http {
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 65;
-    types_hash_max_size 2048;
-    server_tokens off;
-
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-
-    # Logging
-    access_log /var/log/nginx/access.log;
-    error_log /var/log/nginx/error.log;
-
-    # Gzip compression
-    gzip on;
-    gzip_vary on;
-    gzip_min_length 1000;
-    gzip_comp_level 6;
-    gzip_types text/plain text/css text/xml text/javascript 
-               application/json application/javascript application/xml+rss;
-
-    # Rate limiting
-    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
-    limit_req_zone $binary_remote_addr zone=login_limit:10m rate=5r/m;
-
-    # Upstream Django apps
-    upstream django_app {
-        least_conn;
-        server 127.0.0.1:8000 weight=1 max_fails=3 fail_timeout=30s;
-        server 127.0.0.1:8001 weight=1 max_fails=3 fail_timeout=30s;
-        keepalive 32;
-    }
-
-    server {
-        listen 80;
-        listen [::]:80;
-        server_name gdf.seu-dominio.com;
-        
-        # Redirect HTTP to HTTPS
-        return 301 https://$server_name$request_uri;
-    }
-
-    server {
-        listen 443 ssl http2;
-        listen [::]:443 ssl http2;
-        server_name gdf.seu-dominio.com;
-
-        # SSL certificates (gerar com Let's Encrypt)
-        ssl_certificate /etc/letsencrypt/live/gdf.seu-dominio.com/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/gdf.seu-dominio.com/privkey.pem;
-        
-        # SSL config
-        ssl_protocols TLSv1.2 TLSv1.3;
-        ssl_ciphers HIGH:!aNULL:!MD5;
-        ssl_prefer_server_ciphers on;
-        ssl_session_cache shared:SSL:10m;
-        ssl_session_timeout 10m;
-
-        # HSTS
-        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-
-        # Security headers
-        add_header X-Frame-Options "DENY" always;
-        add_header X-Content-Type-Options "nosniff" always;
-        add_header X-XSS-Protection "1; mode=block" always;
-        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-        # File upload limit
-        client_max_body_size 100M;
-
-        # Timeouts
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-
-        location / {
-            proxy_pass http://django_app;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            
-            # Rate limiting
-            limit_req zone=api_limit burst=20 nodelay;
-        }
-
-        location /admin/ {
-            proxy_pass http://django_app;
-            proxy_set_header Host $host;
-            
-            # Rate limiting mais restritivo
-            limit_req zone=login_limit burst=5 nodelay;
-        }
-
+If you need a sample configuration for a particular host web server, request
+it and it will be provided separately; keeping host config out of the repo
+avoids accidental overwrites of production settings.
         location /login/ {
             proxy_pass http://django_app;
             proxy_set_header Host $host;
