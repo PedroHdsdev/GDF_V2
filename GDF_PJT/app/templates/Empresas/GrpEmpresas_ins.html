@@ -11,7 +11,19 @@
         </div>
 
         <div class="modal-body">
+          {% if is_superuser and lista_clientes %}
+          <div class="mb-3">
+            <label for="ins_grp_cod_cliente" class="form-label">* Cliente</label>
+            <select id="ins_grp_cod_cliente" name="m_cod_cliente" class="form-select" required>
+              <option value="">-- Selecione o cliente --</option>
+              {% for c in lista_clientes %}
+              <option value="{{ c.cod_cliente }}" {% if cod_cliente == c.cod_cliente %}selected{% endif %}>{{ c.cod_cliente }} – {{ c.razao|default:"" }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% else %}
           <p class="text-muted small mb-3">O grupo será vinculado ao cliente do usuário logado.</p>
+          {% endif %}
           <div class="mb-3">
             <label for="ins_grp_empresa" class="form-label">* Código do grupo</label>
             <input

@@ -1,3 +1,5 @@
+import json
+import os
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts               import get_object_or_404, render
 from django.shortcuts               import render, redirect
@@ -7,10 +9,28 @@ from app.decorators                 import validate_idor_empresa, validate_idor_
 from django.views.decorators.http   import require_http_methods
 from django.conf                    import settings
 from django.contrib                 import messages
+
+# Dicionário tipo de pagamento (código XML → descrição) para relatório fiscal e exibição
+_path_tipo_pagamento = getattr(settings, 'BASE_DIR', None)
+if _path_tipo_pagamento is not None:
+    _path_tipo_pagamento = os.path.join(str(_path_tipo_pagamento), 'json', 'Tipo_pagamento.json')
+    try:
+        with open(_path_tipo_pagamento, 'r', encoding='utf-8') as _f:
+            TIPO_PAGAMENTO_DESC = json.load(_f)
+    except Exception:
+        TIPO_PAGAMENTO_DESC = {}
+else:
+    TIPO_PAGAMENTO_DESC = {}
+
+def _descricao_tipo_pagamento(codigo):
+    """Retorna a descrição do tipo de pagamento pelo código (XML). Usado no relatório fiscal."""
+    if codigo is None or codigo == '':
+        return 'Não informado'
+    return TIPO_PAGAMENTO_DESC.get(str(codigo).strip(), None)  # None = usar display do model depois
 from app.classes.gdf                import ClGdf
 from app.classes.CargaXml           import Carga_xml
 from django.core.paginator          import Paginator
-from django.db.models               import Q
+from django.db.models               import Q, Count
 from app.db_GDF.Public.models       import (
     UserEmpresas, Empresas, Clientes, GrpEmpresas,
     CargaXmlParam, CargaXmlJob,
@@ -33,6 +53,21 @@ from app.db_GDF.NFSe.models        import (
 )
 from app.db_GDF.Sped.models        import Sped_Arquivo, Sped_Fiscal, Sped_Contribuicao
 import re
+
+# Cliente ao qual superusuários têm acesso total ao painel (todos os clientes)
+COD_CLIENTE_SUPERUSER_PAINEL = '1000'
+
+
+def _superuser_acesso_total_painel(request):
+    """Retorna True se o superuser tem acesso total ao painel (todos os clientes).
+    Superusers vinculados ao cliente 1000 (session superuser_cliente_1000) têm sempre acesso total.
+    Outros superusers têm seletor de cliente apenas quando cod_cliente é None ou 1000."""
+    if not request.session.get('is_superuser', False):
+        return False
+    if request.session.get('superuser_cliente_1000', False):
+        return True
+    cod = request.session.get('cod_cliente') or ''
+    return cod == '' or str(cod).strip() == COD_CLIENTE_SUPERUSER_PAINEL
 import json
 import zipfile
 from pathlib import Path
@@ -47,20 +82,38 @@ def fn_view_login(request):
         user = authenticate(username=Username, password=password)
         
         if user is not None:
+            if not getattr(user, 'is_active', True):
+                return render(request, 'Index_Login.html', {'error_message': 'Usuário inativo.'})
             login(request, user)
             cl_gdf_instance = ClGdf()
-            cl_gdf_instance.get_dados(request.user) 
+            cl_gdf_instance.get_dados(request.user)
+
+            request.session['is_superuser'] = getattr(user, 'is_superuser', False)
+            request.session['is_staff'] = getattr(user, 'is_staff', False)
+            # Superuser vinculado ao cliente 1000 tem acesso total ao painel (todos os clientes)
+            _cliente = getattr(cl_gdf_instance, 'Cliente', None)
+            _cod = getattr(_cliente, 'cod_cliente', None) if _cliente else None
+            request.session['superuser_cliente_1000'] = (
+                getattr(user, 'is_superuser', False) and _cod is not None and str(_cod).strip() == COD_CLIENTE_SUPERUSER_PAINEL
+            )
 
             if not cl_gdf_instance.Retorn:
-                #buscar solucoes que tem acessos 
                 solucoes = cl_gdf_instance.get_solucoes()
-                if solucoes:
-                    request.session['t_solucoes']  = solucoes
-                    request.session['cod_cliente'] = cl_gdf_instance.Cliente.cod_cliente
-
-                    return render(request, 'Index_Home.html')
-                else:
-                    return render(request, 'Index_Login.html', {'error_message': 'Problema de Acesso.'})  
+                cod_cliente = (
+                    cl_gdf_instance.Cliente.cod_cliente
+                    if getattr(cl_gdf_instance, 'Cliente', None) else None
+                )
+                if solucoes or getattr(user, 'is_superuser', False):
+                    request.session['t_solucoes'] = solucoes or []
+                    request.session['cod_cliente'] = cod_cliente
+                    # Contexto para Index_Home (evita erro de is_superuser/lista_clientes indefinidos)
+                    context = {'cod_cliente': cod_cliente}
+                    if getattr(user, 'is_superuser', False):
+                        context['is_superuser'] = True
+                        if not cod_cliente or str(cod_cliente).strip() == COD_CLIENTE_SUPERUSER_PAINEL:
+                            context['lista_clientes'] = cl_gdf_instance.get_clientes()
+                    return render(request, 'Index_Home.html', context)
+                return render(request, 'Index_Login.html', {'error_message': 'Problema de Acesso.'})
             return redirect('Home')   
         else:
             return render(request, 'Index_Login.html', {'error_message': 'Usuário ou senha inválidos.'})
@@ -83,15 +136,30 @@ def fn_view_obter_subsolucao(request, cod_sub):
 
 @login_required(login_url='Login')
 def fn_view_home(request):
-    if request.user.is_authenticated:
-        if request.method == "POST":
-            codigo = request.POST.get('codigo')
-            
-            if codigo:
-                return redirect(codigo)
-            
-        return render(request, "Index_Home.html")
-    return render(request, 'Index_Login.html')
+    if not request.user.is_authenticated:
+        return redirect('Login')
+    is_superuser = request.session.get('is_superuser', False)
+    cod_cliente = request.session.get('cod_cliente')
+    # Superuser (cliente 1000): permitir trocar cliente por POST; opcionalmente redirecionar para "next"
+    _REDIRECT_NAMES = ('Home', 'Dm_Empresas', 'Dm_Usuarios', 'Dm_Clientes')
+    if request.method == "POST":
+        codigo = request.POST.get('codigo')
+        novo_cliente = request.POST.get('cod_cliente', '').strip()
+        next_name = (request.POST.get('next') or '').strip()
+        if is_superuser and novo_cliente:
+            request.session['cod_cliente'] = novo_cliente
+            if next_name in _REDIRECT_NAMES:
+                return redirect(next_name)
+            return redirect('Home')
+        if codigo:
+            return redirect(codigo)
+    context = {'cod_cliente': cod_cliente}
+    if is_superuser:
+        context['is_superuser'] = True
+        if _superuser_acesso_total_painel(request):
+            cl_gdf = ClGdf()
+            context['lista_clientes'] = cl_gdf.get_clientes()
+    return render(request, "Index_Home.html", context)
 
 @login_required
 def fn_view_sair(request):   
@@ -105,63 +173,61 @@ def fn_view_sair(request):
 @login_required(login_url='Login')
 def fn_view_listar_usuarios(request):
     cod_cliente = request.session.get('cod_cliente', None)
-    
-    # Validar se usuário tem acesso a cliente
+    is_superuser = request.session.get('is_superuser', False)
     if not cod_cliente:
+        if is_superuser:
+            messages.info(request, 'Selecione um cliente na Home para gerenciar usuários.')
+            return redirect('Home')
         return render(request, 'Index_Login.html', {'error_message': 'Acesso negado: cliente não identificado'})
     
-    # Buscar dados APENAS uma vez - carregamento inicial da página
     cl_gdf = ClGdf()
     t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
-
-    # ✅ Passar dados brutos para o template
-    # Paginação e busca serão feitas em JavaScript no cliente
-    return render(
-        request,
-        'Usuarios/Index_Usuarios.html',
-        {
-            't_user': t_user,         
-        }
-    )
+    is_superuser = request.session.get('is_superuser', False)
+    context = {
+        't_user': t_user,
+        'cod_cliente': cod_cliente,
+        'is_superuser': is_superuser,
+    }
+    if is_superuser and _superuser_acesso_total_painel(request):
+        context['lista_clientes'] = cl_gdf.get_clientes()
+    return render(request, 'Usuarios/Index_Usuarios.html', context)
 
 # Empresas
 @login_required(login_url='Login')
-def fn_view_listar_empresas(request): 
+def fn_view_listar_empresas(request):
     cod_cliente = request.session.get('cod_cliente', None)
+    is_superuser = request.session.get('is_superuser', False)
     if not cod_cliente:
+        if is_superuser:
+            messages.info(request, 'Selecione um cliente na Home para gerenciar empresas.')
+            return redirect('Home')
         return redirect('Login')
     
     cl_gdf = ClGdf()
-
-    # Buscar todas as empresas - paginação será feita em JavaScript
     t_empresas = cl_gdf.get_empresas(i_v_cod_cliente=cod_cliente)
-    
-    return render(
-        request,
-        'Empresas/Index_Empresas.html',
-        {
-            't_empresas': t_empresas
-        }
-    )
+    context = {
+        't_empresas': t_empresas,
+        'cod_cliente': cod_cliente,
+        'is_superuser': is_superuser,
+    }
+    if is_superuser and _superuser_acesso_total_painel(request):
+        context['lista_clientes'] = cl_gdf.get_clientes()
+    return render(request, 'Empresas/Index_Empresas.html', context)
 
 # Clientes
 @login_required(login_url='Login')
-def fn_view_listar_clientes(request): 
+def fn_view_listar_clientes(request):
     cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
+    is_superuser = request.session.get('is_superuser', False)
+    if not cod_cliente and not is_superuser:
         return redirect('Login')
-    
     cl_gdf = ClGdf()
-    
     t_clientes = cl_gdf.get_clientes()
-
-    return render(
-        request,
-        'Clientes/Index_Clientes.html',
-        {
-            't_clientes': t_clientes
-        }
-    )
+    context = {'t_clientes': t_clientes, 'cod_cliente': cod_cliente}
+    if is_superuser and _superuser_acesso_total_painel(request):
+        context['is_superuser'] = True
+        context['lista_clientes'] = t_clientes  # mesma lista para o seletor de contexto
+    return render(request, 'Clientes/Index_Clientes.html', context)
 
 #--------------------------------------------------------------------
 #       Modais Views
@@ -169,17 +235,23 @@ def fn_view_listar_clientes(request):
 @login_required(login_url='Login')
 @require_http_methods(["GET", "POST"])
 def fn_view_inserir_usuario(request):
+    """Inserir usuário. Superuser pode informar o cliente no formulário."""
+    is_superuser = request.session.get('is_superuser', False)
     cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
-        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
-    
-    cl_gdf = ClGdf()
     if request.method == "GET":
-        # ✅ Retorna dados para preencher o modal
+        if is_superuser and request.GET.get('cod_cliente'):
+            cod_cliente = request.GET.get('cod_cliente', '').strip() or cod_cliente
+        if not cod_cliente:
+            return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+        cl_gdf = ClGdf()
         return JsonResponse(cl_gdf.get_usuario_dados_ins(i_v_cod_cliente=cod_cliente))
 
     if request.method == "POST":
-        # ✅ Extrair dados do formulário
+        if is_superuser and request.POST.get("m_cod_cliente"):
+            cod_cliente = request.POST.get("m_cod_cliente", "").strip() or cod_cliente
+        if not cod_cliente:
+            return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+        cl_gdf = ClGdf()
         username        = request.POST.get("username", "").strip()
         first_name      = request.POST.get("first_name", "").strip()
         last_name       = request.POST.get("last_name", "").strip()
@@ -189,9 +261,7 @@ def fn_view_inserir_usuario(request):
         empresas_str    = request.POST.get("ls_empresas", "").strip()
         grupos_str      = request.POST.get("ls_grupos", "").strip()
 
-        # ✅ Validações básicas (frontend já valida, mas revalidamos no backend)
         errors = []
-        
         if not username:
             errors.append("Username é obrigatório")
         if not email:
@@ -204,35 +274,29 @@ def fn_view_inserir_usuario(request):
             errors.append("Selecione pelo menos 1 empresa")
         if not grupos_str:
             errors.append("Selecione pelo menos 1 grupo")
-        
         if errors:
             t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
-            return render(request, 'Usuarios/Index_Usuarios.html', {
-                't_user': t_user,
-                'error_message': ' | '.join(errors)
-            })
-        
-        # ✅ Chamar método de inserção na classe
+            ctx = {'t_user': t_user, 'error_message': ' | '.join(errors), 'cod_cliente': cod_cliente, 'is_superuser': is_superuser}
+            if is_superuser and _superuser_acesso_total_painel(request):
+                ctx['lista_clientes'] = cl_gdf.get_clientes()
+            return render(request, 'Usuarios/Index_Usuarios.html', ctx)
+
         resultado = cl_gdf.set_usuario(
             i_v_username=username,
             i_v_email=email,
             i_v_password=password,
             i_v_first_name=first_name,
             i_v_last_name=last_name,
-            i_lsl_empresas_ids=empresas_str,  # "1,2,3"
-            i_lsl_grupos_ids=grupos_str,      # "4,5,6"
+            i_lsl_empresas_ids=empresas_str,
+            i_lsl_grupos_ids=grupos_str,
             i_v_cod_cliente=cod_cliente
         )
-        
-        # ✅ Verificar resultado
         if not resultado.get("success"):
             t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
-            return render(request, 'Usuarios/Index_Usuarios.html', {
-                't_user': t_user,
-                'error_message': resultado.get("message", "Erro ao criar usuário")
-            })
-        
-        # ✅ Sucesso! Redirecionar com mensagem
+            ctx = {'t_user': t_user, 'error_message': resultado.get("message", "Erro ao criar usuário"), 'cod_cliente': cod_cliente, 'is_superuser': is_superuser}
+            if is_superuser and _superuser_acesso_total_painel(request):
+                ctx['lista_clientes'] = cl_gdf.get_clientes()
+            return render(request, 'Usuarios/Index_Usuarios.html', ctx)
         return redirect('Dm_Usuarios')
 
 @login_required(login_url='Login')
@@ -426,18 +490,24 @@ def fn_view_manifesto_painel(request):
 @login_required(login_url='Login')
 @require_http_methods(["GET","POST"])
 def fn_view_inserir_empresa(request):
-    """Inserir nova empresa"""
+    """Inserir nova empresa. Superuser pode informar o cliente no formulário."""
+    is_superuser = request.session.get('is_superuser', False)
     cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
-        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
-    
-    cl_gdf = ClGdf()
     if request.method == "GET":
+        if is_superuser and request.GET.get('cod_cliente'):
+            cod_cliente = request.GET.get('cod_cliente', '').strip() or cod_cliente
+        if not cod_cliente:
+            return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+        cl_gdf = ClGdf()
         data = cl_gdf.get_empresa_dados_ins(i_v_cod_cliente=cod_cliente)
         return JsonResponse(data)  
     
     elif request.method == "POST":
-        # ✅ Extrair dados do formulário
+        if is_superuser and request.POST.get("m_cod_cliente"):
+            cod_cliente = request.POST.get("m_cod_cliente", "").strip() or cod_cliente
+        if not cod_cliente:
+            return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+        cl_gdf = ClGdf()
         cod_empresa = request.POST.get("m_codempresa", "").strip()
         razao = request.POST.get("m_razao", "").strip()
         cnpj = request.POST.get("m_cnpj", "").strip()
@@ -453,9 +523,7 @@ def fn_view_inserir_empresa(request):
         suframa = request.POST.get("m_suframa", "").strip()
         chave_acesso = request.POST.get("m_chave_acesso", "").strip()
 
-        # ✅ Validações básicas (frontend já valida, mas revalidamos no backend)
         errors = []
-        
         if not cod_empresa:
             errors.append("Código da empresa é obrigatório")
         if not razao:
@@ -466,11 +534,9 @@ def fn_view_inserir_empresa(request):
             errors.append("Fantasia é obrigatória")
         if not grp_empresa:
             errors.append("Grupo de empresa é obrigatório")
-        
         if errors:
             return JsonResponse({"erro": " | ".join(errors)}, status=400)
-        
-        # ✅ Chamar método de inserção na classe com cod_cliente para validação IDOR
+
         resultado = cl_gdf.set_empresa(
             i_v_cod_empresa=cod_empresa,
             i_v_razao=razao,
@@ -498,18 +564,19 @@ def fn_view_inserir_empresa(request):
 @login_required(login_url='Login')
 @require_http_methods(["GET", "POST"])
 def fn_view_inserir_grp_empresa(request):
-    """Criar grupo de empresas (subsolução Empresas). Cliente vem da sessão."""
+    """Criar grupo de empresas. Superuser pode informar o cliente no formulário."""
+    is_superuser = request.session.get('is_superuser', False)
     cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
-        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
-
     if request.method == "GET":
         return redirect('Dm_Empresas')
+    if is_superuser and request.POST.get("m_cod_cliente"):
+        cod_cliente = request.POST.get("m_cod_cliente", "").strip() or cod_cliente
+    if not cod_cliente:
+        messages.error(request, "Cliente não identificado.", extra_tags="MODAL_GRP_INS")
+        return redirect('Dm_Empresas')
 
-    # POST
     grp_empresa = request.POST.get("m_grp_empresa", "").strip()[:5]
     descricao = (request.POST.get("m_descricao", "").strip() or "")[:80]
-
     if not grp_empresa:
         messages.error(request, "Código do grupo é obrigatório.", extra_tags="MODAL_GRP_INS")
         return redirect('Dm_Empresas')
@@ -1218,6 +1285,25 @@ def fn_api_cargaxml_param_toggle(request, param_id):
 
 
 @login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_api_sessao_cliente(request):
+    """Define o cliente ativo na sessão (apenas superuser). Uso: troca de contexto multi-cliente."""
+    if not request.session.get('is_superuser', False):
+        return JsonResponse({'sucesso': False, 'erro': 'Acesso negado'}, status=403)
+    try:
+        body = json.loads(request.body) if request.body else {}
+        cod_cliente = (body.get('cod_cliente') or request.POST.get('cod_cliente') or '').strip()
+        if not cod_cliente:
+            return JsonResponse({'sucesso': False, 'erro': 'cod_cliente obrigatório'}, status=400)
+        if not Clientes.objects.filter(cod_cliente=cod_cliente, is_active=True).exists():
+            return JsonResponse({'sucesso': False, 'erro': 'Cliente não encontrado ou inativo'}, status=400)
+        request.session['cod_cliente'] = cod_cliente
+        return JsonResponse({'sucesso': True, 'cod_cliente': cod_cliente}, status=200)
+    except json.JSONDecodeError:
+        return JsonResponse({'sucesso': False, 'erro': 'JSON inválido'}, status=400)
+
+
+@login_required(login_url='Login')
 @require_http_methods(["GET"])
 def fn_api_debug_session(request):
     """Debug endpoint para verificar sessão e cliente"""
@@ -1625,8 +1711,16 @@ def fn_api_relatorio_nfe(request):
     data_inicio = request.GET.get('data_inicio', '').strip()
     data_fim = request.GET.get('data_fim', '').strip()
     busca = request.GET.get('busca', '').strip()
+    parcelas = request.GET.get('parcelas', '').strip()
 
     qs = NFe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    if parcelas != '':
+        try:
+            qtd = int(parcelas)
+            if qtd >= 0:
+                qs = qs.annotate(num_parcelas=Count('identificacao__cobranca__parcelas', distinct=True)).filter(num_parcelas=qtd)
+        except ValueError:
+            pass
     if busca:
         qs = qs.filter(
             Q(identificacao__chave_acesso__icontains=busca) |
@@ -1854,7 +1948,10 @@ def fn_api_relatorio_nfe_detalhe(request, id_nfe):
             'identificacao', 'emitente', 'destinatario', 'empresa',
             'emitente__endereco', 'destinatario__endereco',
         ).prefetch_related(
-            'identificacao__produtos',
+            'identificacao__produtos__icms',
+            'identificacao__produtos__pis',
+            'identificacao__produtos__cofins',
+            'identificacao__produtos__ipi',
             'identificacao__totalizacao',
             'identificacao__cobranca__parcelas',
             'identificacao__pagamento',
@@ -1876,14 +1973,39 @@ def fn_api_relatorio_nfe_detalhe(request, id_nfe):
         cabecalho['emitente_endereco'] = _serialize_model(nfe.emitente.endereco)
     if nfe.destinatario and nfe.destinatario.endereco:
         cabecalho['destinatario_endereco'] = _serialize_model(nfe.destinatario.endereco)
-    itens = [_serialize_model(p) for p in ide.produtos.all().order_by('numero_item')]
+    itens = []
+    for p in ide.produtos.all().order_by('numero_item'):
+        item = _serialize_model(p, exclude=['nfe_serie'])
+        item['icms'] = _serialize_model(p.icms, exclude=['produto']) if getattr(p, 'icms', None) else None
+        item['pis'] = _serialize_model(p.pis, exclude=['produto']) if getattr(p, 'pis', None) else None
+        item['cofins'] = _serialize_model(p.cofins, exclude=['produto']) if getattr(p, 'cofins', None) else None
+        item['ipi'] = _serialize_model(p.ipi, exclude=['produto']) if getattr(p, 'ipi', None) else None
+        itens.append(item)
     totalizacao = _serialize_model(ide.totalizacao) if hasattr(ide, 'totalizacao') and ide.totalizacao else None
     cobranca = None
     parcelas = []
-    if hasattr(ide, 'cobranca') and ide.cobranca:
-        cobranca = _serialize_model(ide.cobranca, exclude=['nfe_identificacao'])
-        parcelas = [_serialize_model(parc, exclude=['nfe_cobranca']) for parc in ide.cobranca.parcelas.all().order_by('numero_parcela')]
-    pagamento = _serialize_model(ide.pagamento) if hasattr(ide, 'pagamento') and ide.pagamento else None
+    try:
+        if getattr(ide, 'cobranca', None):
+            cobranca = _serialize_model(ide.cobranca, exclude=['nfe_identificacao'])
+            parcelas = [_serialize_model(parc, exclude=['nfe_cobranca']) for parc in ide.cobranca.parcelas.all().order_by('numero_parcela')]
+    except Exception:
+        cobranca = None
+        parcelas = []
+    pagamento = None
+    try:
+        if getattr(ide, 'pagamento', None):
+            pagamento = _serialize_model(ide.pagamento, exclude=['nfe_identificacao'])
+            # Descrição do tipo de pagamento: json/Tipo_pagamento.json, senão display do model
+            pagamento['tipo_pagamento'] = (
+                _descricao_tipo_pagamento(ide.pagamento.meio_pagamento)
+                or ide.pagamento.get_meio_pagamento_display()
+            )
+            if ide.pagamento.cartao_bandeira:
+                pagamento['bandeira_cartao'] = ide.pagamento.get_cartao_bandeira_display()
+            if ide.pagamento.pix_tipo_chave:
+                pagamento['pix_tipo_chave_desc'] = ide.pagamento.get_pix_tipo_chave_display()
+    except Exception:
+        pagamento = None
     transporte = _serialize_model(ide.transporte) if hasattr(ide, 'transporte') and ide.transporte else None
     info_adic = _serialize_model(ide.informacoes_adicionais) if hasattr(ide, 'informacoes_adicionais') and ide.informacoes_adicionais else None
     return JsonResponse({
@@ -2032,6 +2154,7 @@ def fn_view_Relatorio_Fiscal(request):
     context = {
         'cod_cliente': cod_cliente,
         'empresas_usuario': empresas_usuario,
+        'tipo_pagamento_json': json.dumps(TIPO_PAGAMENTO_DESC),
     }
     return render(request, 'Processamento/index_Relatorio.html', context)
 

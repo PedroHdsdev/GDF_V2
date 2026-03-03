@@ -100,6 +100,8 @@ class ClGdf():
         self.Retorn = []
         try:
             l_v_query_user = User.objects.filter(id=I_User.id).first()
+            self._is_superuser = getattr(l_v_query_user, 'is_superuser', False)
+            self._is_staff = getattr(l_v_query_user, 'is_staff', False)
 
             # Empresas do usuário
             self.Empresas = Empresas.objects.filter(
@@ -111,18 +113,20 @@ class ClGdf():
                 user=l_v_query_user
             )
 
-            # Cliente associado às empresas do usuário
+            # Cliente associado às empresas do usuário (ou primeiro cliente se superuser sem empresas)
             self.Cliente = Clientes.objects.filter(
                 empresas__in=self.Empresas
             ).distinct().first()
+            if self.Cliente is None and self._is_superuser:
+                self.Cliente = Clientes.objects.filter(is_active=True).first()
 
-            # Soluções liberadas para o cliente
+            # Soluções liberadas para o cliente (superuser: todas ativas do cliente padrão ou todas)
             self.solucoes_acesso = SolucoesAcesso.objects.filter(
                 cliente=self.Cliente,
                 is_active=True
-            ).select_related('solucao')
+            ).select_related('solucao') if self.Cliente else []
 
-            # Subsoluções liberadas via grupo
+            # Subsoluções liberadas via grupo (superuser sem grupos: tratado em get_solucoes)
             self.subsolucoes_acesso = SubsolucoesAcesso.objects.filter(
                 group__in=self.Groups
             ).select_related('subsolucao')
@@ -139,6 +143,10 @@ class ClGdf():
     def get_solucoes(self):
         self.Retorn = []
         try:
+            # Superuser: acesso a todas as soluções e subsoluções (controle total por cliente)
+            if getattr(self, '_is_superuser', False):
+                return self._get_solucoes_superuser()
+
             if not hasattr(self, 'subsolucoes_acesso') or not hasattr(self, 'solucoes_acesso'):
                 return []
 
@@ -194,6 +202,32 @@ class ClGdf():
         except OperationalError as e:
             print(str(e))
             return []
+        except Exception as e:
+            print(str(e))
+            return []
+
+    def _get_solucoes_superuser(self):
+        """Retorna todas as soluções e subsoluções para usuário superuser (controle total)."""
+        try:
+            l_v_queryset_solucoes = Solucoes.objects.all().order_by('cod_solucao')
+            lsl_dados_solucoes = []
+            for l_v_solucao in l_v_queryset_solucoes:
+                l_v_queryset_subsolucoes = Subsolucoes.objects.filter(
+                    solucao=l_v_solucao
+                ).values('cod_subsolucao', 'descricao').order_by('cod_subsolucao')
+                lsl_dados_solucoes.append({
+                    "codigo": l_v_solucao.cod_solucao,
+                    "descricao": l_v_solucao.descricao,
+                    "sub_solucoes": list(l_v_queryset_subsolucoes)
+                })
+            def sort_key(sol):
+                if sol["descricao"].lower() == "adiministração":
+                    return -1
+                elif sol["descricao"].lower() == "dashboard":
+                    return 9999
+                return 0
+            lsl_dados_solucoes.sort(key=sort_key)
+            return lsl_dados_solucoes
         except Exception as e:
             print(str(e))
             return []

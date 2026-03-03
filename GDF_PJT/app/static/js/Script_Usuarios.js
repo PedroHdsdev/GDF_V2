@@ -417,33 +417,53 @@ function fn_init_usuario_ins() {
     const modalEl = document.getElementById("modalUsuarioIns");
     if (!modalEl) return;
 
-    // Ao abrir o modal, buscar dados do servidor para popular selects
     modalEl.addEventListener("show.bs.modal", async () => {
         try {
-            // ✅ Fechar modal de UPDATE se estiver aberto
             fn_fechar_modal_aberto();
-            
-            // ✅ Marcar como modal aberto
             og_estado_usuarios.modalAberto = "modalUsuarioIns";
-            
-            const resp = await fetch('/usuario/inserir/', {
+            const codClienteEl = document.getElementById('ins_cod_cliente');
+            if (codClienteEl && !codClienteEl.value) {
+                return;
+            }
+            const qs = codClienteEl && codClienteEl.value ? '?cod_cliente=' + encodeURIComponent(codClienteEl.value) : '';
+            const resp = await fetch('/usuario/inserir/' + qs, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
             });
             if (resp.ok) {
                 const data = await resp.json();
-                // aceitar várias possíveis chaves retornadas pela view
                 const empresas = data.Todas_Empresas || data.todas_empresas || data.TodasEmpresas || [];
                 const grupos = data.Todos_Grupos || data.todos_grupos || data.TodosGrupos || [];
                 fn_preencher_select_ins_empresas(empresas);
                 fn_preencher_select_ins_grupos(grupos);
-                console.log("✅ Modal INSERT: Dados carregados com sucesso");
             } else {
-                console.warn('Falha ao carregar dados para modal INSERT:', resp.status, resp.statusText);
+                console.warn('Falha ao carregar dados para modal INSERT. Se for superusuário, selecione o cliente.', resp.status);
             }
         } catch (err) {
             console.error('Erro ao buscar dados para modal INSERT:', err);
         }
     });
+
+    const codClienteSelect = document.getElementById('ins_cod_cliente');
+    if (codClienteSelect) {
+        codClienteSelect.addEventListener("change", async () => {
+            const cod = codClienteSelect.value;
+            if (!cod) return;
+            try {
+                const resp = await fetch('/usuario/inserir/?cod_cliente=' + encodeURIComponent(cod), {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    const empresas = data.Todas_Empresas || data.todas_empresas || data.TodasEmpresas || [];
+                    const grupos = data.Todos_Grupos || data.todos_grupos || data.TodosGrupos || [];
+                    fn_preencher_select_ins_empresas(empresas);
+                    fn_preencher_select_ins_grupos(grupos);
+                }
+            } catch (err) {
+                console.error('Erro ao recarregar dados por cliente:', err);
+            }
+        });
+    }
 
     modalEl.addEventListener("hidden.bs.modal", () => {
         const form = modalEl.querySelector("form");

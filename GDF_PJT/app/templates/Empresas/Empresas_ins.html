@@ -12,7 +12,17 @@
 
         <div class="modal-body modal-body-scroll">
           <div class="row g-3">
-
+            {% if is_superuser and lista_clientes %}
+            <div class="col-12">
+              <label for="ins_cod_cliente" class="form-label">* Cliente</label>
+              <select id="ins_cod_cliente" name="m_cod_cliente" class="form-select" required>
+                <option value="">-- Selecione o cliente --</option>
+                {% for c in lista_clientes %}
+                <option value="{{ c.cod_cliente }}" {% if cod_cliente == c.cod_cliente %}selected{% endif %}>{{ c.cod_cliente }} – {{ c.razao|default:"" }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% endif %}
             <div class="col-md-6">
               <label for="ins_codempresa" class="form-label">* Código da Empresa</label>
               <input

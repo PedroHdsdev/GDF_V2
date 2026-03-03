@@ -11,6 +11,23 @@
 
 {% block container %}
 <div class="layout-page">
+  {% if is_superuser and lista_clientes %}
+  <section class="mb-3 p-3 bg-white rounded shadow-sm border">
+    <form method="post" action="{% url 'Home' %}" class="d-flex align-items-center gap-2 flex-wrap">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="Dm_Usuarios">
+      <label class="fw-semibold mb-0">Cliente ativo (contexto):</label>
+      <select name="cod_cliente" class="form-select form-select-sm" style="max-width: 280px;">
+        <option value="">-- Selecione --</option>
+        {% for c in lista_clientes %}
+        <option value="{{ c.cod_cliente }}" {% if cod_cliente == c.cod_cliente %}selected{% endif %}>{{ c.cod_cliente }} – {{ c.razao|default:"" }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-primary btn-sm">Ver usuários deste cliente</button>
+    </form>
+    <p class="text-muted small mb-0 mt-1">Cliente 1000 (GDF): você pode ver e gerenciar usuários de qualquer cliente.</p>
+  </section>
+  {% endif %}
   <section class="layout-hero">
     <div class="layout-hero-content">
       <p class="layout-eyebrow">Cadastros</p>

@@ -38,6 +38,7 @@ urlpatterns = [
     path('api/cargaxml/parametros/<int:param_id>/upload-zip/', views.fn_api_cargaxml_upload_zip, name='API_CargaXmlUploadZip'),
     path('api/cargaxml/relatorio/', views.fn_api_cargaxml_relatorio, name='API_CargaXmlRelatorio'),
     path('api/debug-session/', views.fn_api_debug_session, name='API_DebugSession'),
+    path('api/sessao/cliente/', views.fn_api_sessao_cliente, name='API_SessaoCliente'),
     path('api/cargaxml/jobs/', views.fn_api_cargaxml_jobs, name='API_CargaXmlJobs'),
     path('api/cargaxml/jobs/<int:job_id>/', views.fn_api_cargaxml_job_details, name='API_CargaXmlJobDetails'),
 

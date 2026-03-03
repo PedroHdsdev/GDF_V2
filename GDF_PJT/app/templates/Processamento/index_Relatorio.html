@@ -9,9 +9,38 @@
 <style>
 .tr-relatorio-click { cursor: pointer; }
 .tr-relatorio-click:hover { background-color: rgba(0,123,255,0.08); }
-#modalRelatorioDetalhe .modal-dialog { max-width: 90%; }
-#modalRelatorioDetalhe .table-detalhe { font-size: 0.9rem; }
-#modalRelatorioDetalhe .table-detalhe th { width: 35%; background: #f8f9fa; }
+#modalRelatorioDetalhe .modal-dialog { max-width: 92%; }
+#modalRelatorioDetalhe .modal-body { padding: 1.25rem 1.5rem; background: #f5f6f8; }
+#modalRelatorioDetalhe .modal-content { border: none; border-radius: 0.75rem; box-shadow: 0 8px 32px rgba(0,0,0,0.12); }
+#modalRelatorioDetalhe .modal-header { border-bottom: 1px solid #e9ecef; padding: 1rem 1.25rem; background: #fff; border-radius: 0.75rem 0.75rem 0 0; }
+#modalRelatorioDetalhe .nav-tabs { border-bottom: 2px solid #e9ecef; gap: 0.25rem; }
+#modalRelatorioDetalhe .nav-tabs .nav-link { border: none; color: #6c757d; font-weight: 500; padding: 0.5rem 1rem; border-radius: 0.375rem; }
+#modalRelatorioDetalhe .nav-tabs .nav-link:hover { color: #0d6efd; background: #f0f4ff; }
+#modalRelatorioDetalhe .nav-tabs .nav-link.active { color: #0d6efd; background: #fff; border-bottom: 2px solid #0d6efd; margin-bottom: -2px; }
+#modalRelatorioDetalhe .tab-content { padding-top: 1rem; }
+/* Blocos de conteúdo */
+#modalRelatorioDetalhe .relatorio-bloco { background: #fff; border-radius: 0.5rem; padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; border: 1px solid #e9ecef; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+#modalRelatorioDetalhe .relatorio-bloco h6 { color: #0d6efd; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.75rem; padding-bottom: 0.35rem; border-bottom: 1px solid #e9ecef; letter-spacing: 0.01em; }
+#modalRelatorioDetalhe .relatorio-bloco + .relatorio-bloco { margin-top: 0.5rem; }
+/* Tabelas key-value no modal */
+#modalRelatorioDetalhe .table-detalhe { font-size: 0.875rem; border-collapse: separate; border-spacing: 0; background: #fff; border-radius: 0.375rem; overflow: hidden; }
+#modalRelatorioDetalhe .table-detalhe th { background: #f8fafb; font-weight: 600; color: #495057; white-space: nowrap; padding: 0.5rem 0.75rem; font-size: 0.8125rem; border: none; border-bottom: 1px solid #eee; }
+#modalRelatorioDetalhe .table-detalhe td { padding: 0.5rem 0.75rem; vertical-align: middle; border: none; border-bottom: 1px solid #f0f0f0; color: #212529; }
+#modalRelatorioDetalhe .table-detalhe tbody tr:last-child td { border-bottom: none; }
+#modalRelatorioDetalhe .table-detalhe tbody tr:hover td { background: #fafbfc; }
+#modalRelatorioDetalhe .table-detalhe .relatorio-num { text-align: right; font-variant-numeric: tabular-nums; }
+#modalRelatorioDetalhe .table-detalhe .relatorio-moeda { text-align: right; font-variant-numeric: tabular-nums; }
+#modalRelatorioDetalhe .table-detalhe.relatorio-cab th { width: 36%; min-width: 140px; }
+/* Tabela de itens com impostos */
+#modalRelatorioDetalhe .relatorio-thead-grupo { background: #eef1f5; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: #495057; font-weight: 600; }
+#modalRelatorioDetalhe .relatorio-thead-grupo th { border: none; border-bottom: 1px solid #dee2e6; padding: 0.4rem 0.5rem; text-align: center; }
+#modalRelatorioDetalhe .relatorio-thead-col th { background: #fff; border-bottom: 2px solid #0d6efd; color: #0d6efd; font-weight: 600; font-size: 0.8125rem; padding: 0.5rem 0.5rem; }
+#modalRelatorioDetalhe .relatorio-itens-wrapper { overflow-x: auto; margin-top: 0.5rem; border-radius: 0.5rem; border: 1px solid #e9ecef; box-shadow: 0 1px 3px rgba(0,0,0,0.04); background: #fff; }
+#modalRelatorioDetalhe .relatorio-itens-wrapper .table { margin-bottom: 0; }
+#modalRelatorioDetalhe .relatorio-itens-wrapper .table td { border: 1px solid #eee; }
+#modalRelatorioDetalhe .relatorio-itens-wrapper .table tbody tr:nth-child(even) { background: #fafbfc; }
+#modalRelatorioDetalhe .relatorio-itens-wrapper .table tbody tr:hover { background: #f0f4ff; }
+#modalRelatorioDetalhe .relatorio-itens-wrapper thead th { position: sticky; top: 0; z-index: 1; background: #f8fafb !important; box-shadow: 0 1px 0 #dee2e6; }
 </style>
 {% endblock %}
 
@@ -49,6 +78,24 @@
                         <label class="form-label">Data fim</label>
                         <input type="date" id="relatorio-data-fim" class="form-control">
                     </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Qtd. parcelas (NFe)</label>
+                        <select id="relatorio-parcelas" class="form-select">
+                            <option value="">Todas</option>
+                            <option value="0">À vista (0)</option>
+                            <option value="1">1 parcela</option>
+                            <option value="2">2 parcelas</option>
+                            <option value="3">3 parcelas</option>
+                            <option value="4">4 parcelas</option>
+                            <option value="5">5 parcelas</option>
+                            <option value="6">6 parcelas</option>
+                            <option value="7">7 parcelas</option>
+                            <option value="8">8 parcelas</option>
+                            <option value="9">9 parcelas</option>
+                            <option value="10">10 parcelas</option>
+                            <option value="12">12 parcelas</option>
+                        </select>
+                    </div>
                     <div class="col-md-3">
                         <label class="form-label">Buscar</label>
                         <input type="text" id="relatorio-busca" class="form-control" placeholder="Chave, número, status, natureza...">
@@ -61,12 +108,13 @@
                 </div>
             </div>
 
-            <ul class="nav nav-tabs mb-3" role="tablist">
+            <ul class="nav nav-tabs mb-2" role="tablist">
                 <li class="nav-item"><button class="nav-link active" id="tab-rel-nfe" data-bs-toggle="tab" data-bs-target="#rel-nfe" type="button">NFe</button></li>
                 <li class="nav-item"><button class="nav-link" id="tab-rel-cte" data-bs-toggle="tab" data-bs-target="#rel-cte" type="button">CTe</button></li>
                 <li class="nav-item"><button class="nav-link" id="tab-rel-nfse" data-bs-toggle="tab" data-bs-target="#rel-nfse" type="button">NFS</button></li>
                 <li class="nav-item"><button class="nav-link" id="tab-rel-sped" data-bs-toggle="tab" data-bs-target="#rel-sped" type="button">SPED</button></li>
             </ul>
+            <p id="relatorio-contador" class="mb-3 text-muted small"><span id="relatorio-contador-num">—</span></p>
 
             <div class="tab-content">
                 <div class="tab-pane fade show active" id="rel-nfe" role="tabpanel">
@@ -154,5 +202,8 @@
     </div>
 </div>
 
+<script>
+window.TIPO_PAGAMENTO_DESC = {{ tipo_pagamento_json|safe }};
+</script>
 <script src="{% static 'js/Script_Relatorio.js' %}"></script>
 {% endblock %}

@@ -289,68 +289,66 @@ function fn_init_empresa_ins() {
         return;
     }
     
-    // Clique no botão Cadastrar
     btnAbrirModal.addEventListener("click", async (e) => {
         e.preventDefault();
-        console.log("🔄 Clique no botão Cadastrar - buscando grupos...");
-        
-        // Fechar modal de UPDATE se estiver aberto
         fn_fechar_modal_aberto();
-        
-        // Buscar grupos ANTES de abrir o modal
+        const codClienteEl = document.getElementById('ins_cod_cliente');
+        const qs = codClienteEl && codClienteEl.value ? '?cod_cliente=' + encodeURIComponent(codClienteEl.value) : '';
+        if (codClienteEl && !codClienteEl.value) {
+            og_estado_empresas.modalAberto = "modalEmpresaIns";
+            const modal = new bootstrap.Modal(modalEl, { backdrop: "static", keyboard: false });
+            modal.show();
+            return;
+        }
         try {
-            console.log("🔄 Buscando grupos em /empresa/inserir/...");
-            const resp = await fetch('/empresa/inserir/', {
+            const resp = await fetch('/empresa/inserir/' + qs, {
                 method: 'GET',
-                headers: { 
-                    'X-Requested-With': 'XMLHttpRequest', 
-                    'Accept': 'application/json' 
-                }
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
             });
-            console.log("📡 Response status:", resp.status);
-            
             if (resp.ok) {
                 const data = await resp.json();
-                console.log("📦 Dados recebidos:", data);
-                console.log("📋 Estrutura de todos_grupos:", data.todos_grupos);
-                
                 const grupos = data.todos_grupos || [];
-                console.log(`✅ ${grupos.length} grupos encontrados`);
-                
-                if (grupos.length > 0) {
-                    console.log("🔍 Primeiro grupo:", grupos[0]);
-                }
-                
-                // PREENCHER select ANTES de abrir modal
                 fn_preencher_select_grupos(grupos);
-                
-                // AGORA SIM, abrir o modal
                 og_estado_empresas.modalAberto = "modalEmpresaIns";
-                const modal = new bootstrap.Modal(modalEl, {
-                    backdrop: "static",
-                    keyboard: false
-                });
+                const modal = new bootstrap.Modal(modalEl, { backdrop: "static", keyboard: false });
                 modal.show();
-                console.log("✅ Modal aberto após carregar grupos");
             } else {
-                console.warn('❌ Falha ao carregar grupos:', resp.status);
-                alert('Erro ao carregar dados. Tente novamente.');
+                alert('Erro ao carregar dados. Se for superusuário, selecione o cliente primeiro.');
             }
         } catch (err) {
-            console.error('💥 Erro ao buscar grupos:', err);
+            console.error('Erro ao buscar grupos:', err);
             alert('Erro de conexão. Tente novamente.');
         }
     });
     
-    // Limpar modal ao fechar
     modalEl.addEventListener("hidden.bs.modal", () => {
         const form = modalEl.querySelector("form");
         if (form) form.reset();
-        
         if (og_estado_empresas.modalAberto === "modalEmpresaIns") {
             og_estado_empresas.modalAberto = null;
         }
     });
+
+    // Superuser: ao trocar o cliente, recarregar grupos do select
+    const codClienteSelect = document.getElementById('ins_cod_cliente');
+    if (codClienteSelect) {
+        codClienteSelect.addEventListener("change", async () => {
+            const cod = codClienteSelect.value;
+            if (!cod) return;
+            try {
+                const resp = await fetch('/empresa/inserir/?cod_cliente=' + encodeURIComponent(cod), {
+                    method: 'GET',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    fn_preencher_select_grupos(data.todos_grupos || []);
+                }
+            } catch (err) {
+                console.error('Erro ao recarregar grupos por cliente:', err);
+            }
+        });
+    }
 }
 
 /* ===============================
