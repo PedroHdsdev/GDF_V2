@@ -16,12 +16,18 @@ from app.db_GDF.NFSe.models         import (
     NFSe, NFSe_Identificacao, NFSe_Prestador, NFSe_Tomador, NFSe_Servico, NFSe_Endereco,
     NFSe_RPS, NFSe_Retencao, NFSe_Pagamento, NFSe_Credenciamento
 )
-from typing                        import List, Dict
+from typing                        import List, Dict, Optional
 from datetime import datetime, time
 from decimal import Decimal
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime, parse_date
 import xml.etree.ElementTree as ET
+
+
+class EmpresaNaoCadastradaError(Exception):
+    """XML não será registrado: CNPJ não pertence a nenhuma empresa cadastrada no GDF. Deve ir para pasta pendentes."""
+    pass
+
 
 class Carga_xml():
     def __init__(self):
@@ -274,7 +280,8 @@ class Carga_xml():
         """
         result = {
             'success': [],
-            'errors': []
+            'errors': [],
+            'pendentes': []  # não registrados: empresa não cadastrada no GDF (devem ir para pasta pendentes)
         }
 
         for xml_file in I_LsXml:
@@ -292,6 +299,11 @@ class Carga_xml():
 
                 result['success'].append(xml_file.name)
             
+            except EmpresaNaoCadastradaError as e:
+                result['pendentes'].append({
+                    'file': xml_file.name,
+                    'motivo': str(e),
+                })
             except Exception as e:
                 result['errors'].append({
                     'file': xml_file.name, 
@@ -389,7 +401,9 @@ class Carga_xml():
                     )
             
             # ========== BUSCAR EMPRESA ==========
+            # Não criar empresa; se CNPJ não estiver cadastrado, gravar com empresa=None e avisar
             empresa = None
+            avisos_nfe: List[str] = []
             cnpj_para_busca = None
             tipo_nfe = "SAÍDA" if tipo_operacao == '1' else "ENTRADA"
             
@@ -401,14 +415,22 @@ class Carga_xml():
             if cnpj_para_busca:
                 try:
                     empresa = Empresas.objects.get(cnpj=cnpj_para_busca)
+                    if cod_cliente and empresa.cliente and empresa.cliente.cod_cliente != cod_cliente:
+                        empresa = None
+                        avisos_nfe.append(
+                            f"NFe {tipo_nfe}: CNPJ {cnpj_para_busca} não pertence a nenhuma das empresas cadastradas do cliente."
+                        )
                 except Empresas.DoesNotExist:
-                    raise ValueError(
-                        f"Empresa não encontrada. NFe {tipo_nfe}: CNPJ {cnpj_para_busca} não cadastrado."
+                    empresa = None
+                    avisos_nfe.append(
+                        f"NFe {tipo_nfe}: CNPJ {cnpj_para_busca} não pertence a nenhuma das empresas cadastradas."
                     )
-                if cod_cliente and empresa.cliente and empresa.cliente.cod_cliente != cod_cliente:
-                    raise ValueError(f"Empresa {empresa.cnpj} não pertence ao cliente {cod_cliente}")
             else:
                 raise ValueError(f"Não foi possível identificar CNPJ da empresa (tipo: {tipo_nfe})")
+            
+            # Não registrar NFe sem empresa: enviar para pendentes (job) ou retornar como pendente (upload manual)
+            if empresa is None and avisos_nfe:
+                raise EmpresaNaoCadastradaError(avisos_nfe[0])
             
             # ========== CRIAR IDENTIFICAÇÃO COMPLETA ==========
             identificacao, _ = NFe_Identificacao.objects.update_or_create(
@@ -463,8 +485,10 @@ class Carga_xml():
             # ========== PROCESSAR COBRANÇA E PARCELAS ==========
             self._processar_cobranca(infNFe, identificacao)
             
-            return nfe
+            return []
         
+        except EmpresaNaoCadastradaError:
+            raise
         except Exception as e:
             print(str(e))
             raise Exception(f"Erro ao processar NFe: {str(e)}")

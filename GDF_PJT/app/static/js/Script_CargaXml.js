@@ -685,6 +685,11 @@ function inicializarEventosParametros() {
         });
     }
 
+    const btnConfirmarUploadZip = document.getElementById('btn-confirmar-upload-zip');
+    if (btnConfirmarUploadZip) {
+        btnConfirmarUploadZip.addEventListener('click', enviarZipParaPasta);
+    }
+
     // show/hide upload button depending on active tab
     const btnEnviar = document.getElementById('btn-enviar-xml');
     const tabManual = document.getElementById('tab-manual');
@@ -782,8 +787,11 @@ function carregarParametrosAtivos() {
                         </span>
                     </td>
                     <td>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="toggleParametro(${item.id}, ${item.ativo})">
+                        <button class="btn btn-sm btn-outline-secondary me-1" onclick="toggleParametro(${item.id}, ${item.ativo})">
                             ${item.ativo ? 'Desativar' : 'Ativar'}
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="abrirModalUploadZip(${item.id})" title="Enviar ZIP para pasta do job">
+                            <i class="fas fa-file-archive"></i> Enviar ZIP
                         </button>
                     </td>
                 `;
@@ -792,6 +800,53 @@ function carregarParametrosAtivos() {
         })
         .catch(() => {
             tabela.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Erro ao carregar parametros</td></tr>';
+        });
+}
+
+function abrirModalUploadZip(paramId) {
+    document.getElementById('upload-zip-param-id').value = paramId;
+    document.getElementById('upload-zip-file').value = '';
+    const modal = new bootstrap.Modal(document.getElementById('modalUploadZip'));
+    modal.show();
+}
+
+function enviarZipParaPasta() {
+    const paramId = document.getElementById('upload-zip-param-id').value;
+    const fileInput = document.getElementById('upload-zip-file');
+    if (!paramId || !fileInput || !fileInput.files || !fileInput.files.length) {
+        mostrarAlerta('Selecione um arquivo ZIP', 'warning');
+        return;
+    }
+    const file = fileInput.files[0];
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+        mostrarAlerta('O arquivo deve ser .zip', 'warning');
+        return;
+    }
+    const formData = new FormData();
+    formData.append('arquivo_zip', file);
+    formData.append('csrfmiddlewaretoken', obterCsrfToken());
+
+    const btn = document.getElementById('btn-confirmar-upload-zip');
+    btn.disabled = true;
+
+    fetch(`/api/cargaxml/parametros/${paramId}/upload-zip/`, {
+        method: 'POST',
+        body: formData
+    })
+        .then(response => response.json())
+        .then(data => {
+            btn.disabled = false;
+            if (data.sucesso) {
+                mostrarAlerta(data.mensagem || 'ZIP enviado com sucesso.', 'success');
+                bootstrap.Modal.getInstance(document.getElementById('modalUploadZip')).hide();
+                fileInput.value = '';
+            } else {
+                mostrarAlerta(data.mensagem || 'Erro ao enviar ZIP', 'error');
+            }
+        })
+        .catch(() => {
+            btn.disabled = false;
+            mostrarAlerta('Erro ao enviar ZIP', 'error');
         });
 }
 

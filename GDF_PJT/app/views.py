@@ -10,9 +10,32 @@ from django.contrib                 import messages
 from app.classes.gdf                import ClGdf
 from app.classes.CargaXml           import Carga_xml
 from django.core.paginator          import Paginator
-from app.db_GDF.Public.models       import UserEmpresas, Empresas, Clientes, CargaXmlParam, CargaXmlJob
+from django.db.models               import Q
+from app.db_GDF.Public.models       import (
+    UserEmpresas, Empresas, Clientes, GrpEmpresas,
+    CargaXmlParam, CargaXmlJob,
+    CargaSpedParam, CargaSpedJob,
+)
+from app.classes.CargaSped          import Carga_sped
+from app.db_GDF.NFe.models          import (
+    NFe, NFe_Identificacao, NFe_Emitente, NFe_Destinatario, NFe_Endereco,
+    NFe_Produto, NFe_Total, NFe_Cobranca, NFe_Parcela, NFe_Pagamento,
+    NFe_Transporte, NFe_Informacoes_Adicionais,
+)
+from app.db_GDF.CTe.models         import (
+    CTe, CTe_Identificacao, CTe_Emitente, CTe_Destinatario, CTe_Valor,
+    CTe_Transporte, CTe_Carga, CTe_Servico, CTe_Veiculo, CTe_Motorista,
+    CTe_Percurso, CTe_Fiscal,
+)
+from app.db_GDF.NFSe.models        import (
+    NFSe, NFSe_Identificacao, NFSe_Prestador, NFSe_Tomador, NFSe_Endereco,
+    NFSe_RPS, NFSe_Retencao, NFSe_Pagamento, NFSe_Servico,
+)
+from app.db_GDF.Sped.models        import Sped_Arquivo, Sped_Fiscal, Sped_Contribuicao
 import re
 import json
+import zipfile
+from pathlib import Path
 from datetime import datetime
 from django.utils import timezone
 
@@ -471,6 +494,40 @@ def fn_view_inserir_empresa(request):
 
         return redirect('Dm_Empresas')
 
+
+@login_required(login_url='Login')
+@require_http_methods(["GET", "POST"])
+def fn_view_inserir_grp_empresa(request):
+    """Criar grupo de empresas (subsolução Empresas). Cliente vem da sessão."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+
+    if request.method == "GET":
+        return redirect('Dm_Empresas')
+
+    # POST
+    grp_empresa = request.POST.get("m_grp_empresa", "").strip()[:5]
+    descricao = (request.POST.get("m_descricao", "").strip() or "")[:80]
+
+    if not grp_empresa:
+        messages.error(request, "Código do grupo é obrigatório.", extra_tags="MODAL_GRP_INS")
+        return redirect('Dm_Empresas')
+
+    try:
+        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
+    except Clientes.DoesNotExist:
+        return JsonResponse({"erro": "Cliente não encontrado"}, status=403)
+
+    if GrpEmpresas.objects.filter(grp_empresa=grp_empresa).exists():
+        messages.error(request, f"Já existe um grupo com o código '{grp_empresa}'.", extra_tags="MODAL_GRP_INS")
+        return redirect('Dm_Empresas')
+
+    GrpEmpresas.objects.create(grp_empresa=grp_empresa, descricao=descricao or None, cliente=cliente)
+    messages.success(request, f"Grupo '{grp_empresa}' criado com sucesso.", extra_tags="MODAL_GRP_INS")
+    return redirect('Dm_Empresas')
+
+
 @login_required(login_url='Login')
 @validate_idor_empresa
 @require_http_methods(["GET", "POST"])
@@ -816,6 +873,8 @@ def fn_api_processar_xml(request):
                 mensagem_lines.append(f"OK: {name}")
             for err in upload_result.get('errors', []):
                 mensagem_lines.append(f"ERRO: {err.get('file','')} - {err.get('error','')}")
+            for p in upload_result.get('pendentes', []):
+                mensagem_lines.append(f"PENDENTES (empresa não cadastrada): {p.get('file','')} - {p.get('motivo','')}")
             resumo = '\n'.join(mensagem_lines)[:5000]
 
             # Montar prefixo com empresa (se enviada e válida)
@@ -831,11 +890,12 @@ def fn_api_processar_xml(request):
                 except Empresas.DoesNotExist:
                     empresa_prefixo = f"EMPRESA: {l_v_empresa_id} (não encontrada)\n"
 
+            total_arquivos = len(upload_result['success']) + len(upload_result['errors']) + len(upload_result.get('pendentes', []))
             CargaXmlJob.objects.create(
                 cliente=get_object_or_404(Clientes, cod_cliente=cod_cliente),
                 parametro=None,
                 status='SUCCESS' if len(upload_result['errors']) == 0 else 'ERROR',
-                total_arquivos=len(upload_result['success']) + len(upload_result['errors']),
+                total_arquivos=total_arquivos,
                 total_sucesso=len(upload_result['success']),
                 total_erro=len(upload_result['errors']),
                 mensagem=(empresa_prefixo + resumo)[:5000],
@@ -846,9 +906,13 @@ def fn_api_processar_xml(request):
         except Exception:
             pass
 
+        pendentes_count = len(upload_result.get('pendentes', []))
+        msg = f"{len(upload_result['success'])} arquivo(s) registrado(s), {len(upload_result['errors'])} erro(s)"
+        if pendentes_count:
+            msg += f", {pendentes_count} enviado(s) para pendentes (empresa não cadastrada no GDF - não registrado)"
         return JsonResponse({
             'sucesso': len(upload_result['errors']) == 0,
-            'mensagem': f"{len(upload_result['success'])} arquivo(s) processado(s), {len(upload_result['errors'])} erro(s)",
+            'mensagem': msg,
             'detalhes': upload_result
         }, status=200)
     
@@ -1014,10 +1078,70 @@ def fn_api_cargaxml_parametro_detail(request, param_id):
     param.empresa = empresa
     param.ativo = ativo
     param.data_atualizacao = timezone.localtime()
-    param.usuario_execucao = request.user
     param.save(update_fields=['horario', 'origem_dados', 'diretorio', 'empresa', 'ativo', 'data_atualizacao'])
 
     return JsonResponse({'sucesso': True, 'mensagem': 'Parametro atualizado com sucesso'}, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_api_cargaxml_upload_zip(request, param_id):
+    """Envia um arquivo ZIP para a pasta do parâmetro; extrai apenas .xml para o diretório do job."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
+
+    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
+    param = get_object_or_404(CargaXmlParam, id=param_id, cliente=cliente)
+
+    arquivo_zip = request.FILES.get('arquivo_zip')
+    if not arquivo_zip:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo ZIP enviado'}, status=400)
+    if not (arquivo_zip.name or '').lower().endswith('.zip'):
+        return JsonResponse({'sucesso': False, 'mensagem': 'Arquivo deve ser .zip'}, status=400)
+    if arquivo_zip.size > 100 * 1024 * 1024:
+        return JsonResponse({'sucesso': False, 'mensagem': 'ZIP muito grande (max 100MB)'}, status=400)
+
+    base_dir = Path(param.diretorio)
+    try:
+        base_dir.mkdir(parents=True, exist_ok=True)
+        base_dir = base_dir.resolve()
+    except OSError as e:
+        return JsonResponse({'sucesso': False, 'mensagem': f'Diretorio invalido ou inacessivel: {e}'}, status=400)
+
+    extraidos = 0
+    try:
+        with zipfile.ZipFile(arquivo_zip, 'r') as zf:
+            for name in zf.namelist():
+                if name.endswith('/') or not name.lower().endswith('.xml'):
+                    continue
+                # Evitar path traversal: extrair apenas o nome do arquivo na pasta base
+                safe_name = Path(name).name
+                if not safe_name or '..' in safe_name:
+                    continue
+                dest_path = base_dir / safe_name
+                try:
+                    dest_path = dest_path.resolve()
+                    if not str(dest_path).startswith(str(base_dir)):
+                        continue
+                except Exception:
+                    continue
+                try:
+                    with zf.open(name, 'r') as src:
+                        dest_path.write_bytes(src.read())
+                    extraidos += 1
+                except Exception:
+                    pass
+    except zipfile.BadZipFile:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Arquivo ZIP invalido ou corrompido'}, status=400)
+    except Exception as e:
+        return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao extrair ZIP: {str(e)}'}, status=500)
+
+    return JsonResponse({
+        'sucesso': True,
+        'mensagem': f'ZIP processado: {extraidos} arquivo(s) XML extraido(s) para a pasta do job.',
+        'extraidos': extraidos
+    }, status=200)
 
 
 @login_required(login_url='Login')
@@ -1170,12 +1294,754 @@ def fn_api_cargaxml_job_details(request, job_id):
         'log': log_lines,
     }, status=200)
 
+
+# ========== APIs Carga SPED (mesma linha de raciocínio da Carga XML) ==========
+
 @login_required(login_url='Login')
-def fn_view_Reprocessamento(request):
-    """View para reprocessamento de dados"""
+@require_http_methods(["POST"])
+def fn_api_processar_sped(request):
+    """API para processar upload de arquivos SPED (.txt)."""
     cod_cliente = request.session.get('cod_cliente', None)
-    
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    arquivos = request.FILES.getlist('arquivo')
+    tipo_sped = request.POST.get('tipo_sped', 'EFD_ICMS')
+    if not arquivos:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo selecionado'}, status=400)
+    cl_sped = Carga_sped()
+    upload_result = cl_sped.set_upload_sped(arquivos, tipo_sped, request.user.username, cod_cliente)
+    try:
+        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
+        total = len(upload_result['success']) + len(upload_result['errors'])
+        CargaSpedJob.objects.create(
+            cliente=cliente,
+            parametro=None,
+            status='SUCCESS' if len(upload_result['errors']) == 0 else 'ERROR',
+            total_arquivos=total,
+            total_sucesso=len(upload_result['success']),
+            total_erro=len(upload_result['errors']),
+            mensagem='\n'.join([f"OK: {n}" for n in upload_result['success']] + [f"ERRO: {e.get('file','')} - {e.get('error','')}" for e in upload_result['errors']])[:5000],
+            started_at=timezone.localtime(),
+            finished_at=timezone.localtime(),
+            usuario_execucao=request.user
+        )
+    except Exception:
+        pass
+    return JsonResponse({
+        'sucesso': len(upload_result['errors']) == 0,
+        'mensagem': f"{len(upload_result['success'])} arquivo(s) recebido(s), {len(upload_result['errors'])} erro(s).",
+        'total_sucesso': len(upload_result['success']),
+        'total_erro': len(upload_result['errors']),
+    }, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET", "POST"])
+def fn_api_cargasped_parametros(request):
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
+
+    if request.method == "GET":
+        parametros = CargaSpedParam.objects.filter(cliente=cliente)
+        items = []
+        for param in parametros.order_by('-data_criacao'):
+            items.append({
+                'id': param.id,
+                'ativo': param.ativo,
+                'horario': param.horario.strftime('%H:%M'),
+                'tipo_sped': param.tipo_sped,
+                'diretorio': param.diretorio,
+                'empresa_id': param.empresa.cod_empresa if param.empresa else None,
+                'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
+                'ultima_execucao': param.ultima_execucao.isoformat() if param.ultima_execucao else None,
+            })
+        return JsonResponse({'sucesso': True, 'items': items}, status=200)
+
+    elif request.method == "POST":
+        payload = json.loads(request.body.decode('utf-8')) if request.content_type and 'application/json' in request.content_type else request.POST
+        horario_raw = (payload.get('horario') or '').strip()
+        tipo_sped = (payload.get('tipo_sped') or 'EFD_ICMS').strip()
+        diretorio = (payload.get('diretorio') or '').strip()
+        empresa_id = (payload.get('empresa_id') or '').strip()
+        ativo = payload.get('ativo', True)
+        if isinstance(ativo, str):
+            ativo = ativo.lower() in ['1', 'true', 'yes', 'sim', 'on']
+        else:
+            ativo = bool(ativo)
+        if not horario_raw or not diretorio or not empresa_id:
+            return JsonResponse({'sucesso': False, 'mensagem': 'Horário, diretório e empresa são obrigatórios'}, status=400)
+        try:
+            from datetime import datetime
+            horario = datetime.strptime(horario_raw, '%H:%M').time()
+        except ValueError:
+            return JsonResponse({'sucesso': False, 'mensagem': 'Horário inválido. Use HH:MM'}, status=400)
+        try:
+            empresa = Empresas.objects.get(cod_empresa=empresa_id, cliente=cliente)
+        except Empresas.DoesNotExist:
+            return JsonResponse({'sucesso': False, 'mensagem': 'Empresa não encontrada'}, status=404)
+        param = CargaSpedParam.objects.create(
+            cliente=cliente,
+            empresa=empresa,
+            ativo=ativo,
+            horario=horario,
+            tipo_sped=tipo_sped,
+            diretorio=diretorio,
+            usuario_criacao=request.user,
+        )
+        return JsonResponse({
+            'sucesso': True,
+            'mensagem': 'Parâmetro salvo com sucesso',
+            'item': {
+                'id': param.id,
+                'ativo': param.ativo,
+                'horario': param.horario.strftime('%H:%M'),
+                'tipo_sped': param.tipo_sped,
+                'diretorio': param.diretorio,
+                'empresa_id': param.empresa.cod_empresa if param.empresa else None,
+                'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
+            }
+        }, status=201)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET", "PUT"])
+def fn_api_cargasped_parametro_detail(request, param_id):
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    param = get_object_or_404(CargaSpedParam, id=param_id, cliente__cod_cliente=cod_cliente)
+
+    if request.method == "GET":
+        return JsonResponse({
+            'sucesso': True,
+            'item': {
+                'id': param.id,
+                'ativo': param.ativo,
+                'horario': param.horario.strftime('%H:%M'),
+                'tipo_sped': param.tipo_sped,
+                'diretorio': param.diretorio,
+                'empresa_id': param.empresa.cod_empresa if param.empresa else None,
+                'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
+                'ultima_execucao': param.ultima_execucao.isoformat() if param.ultima_execucao else None,
+            }
+        }, status=200)
+
+    elif request.method == "PUT":
+        payload = json.loads(request.body.decode('utf-8'))
+        if 'horario' in payload:
+            try:
+                param.horario = datetime.strptime((payload['horario'] or '').strip(), '%H:%M').time()
+            except ValueError:
+                pass
+        if 'tipo_sped' in payload:
+            param.tipo_sped = (payload['tipo_sped'] or param.tipo_sped).strip() or 'EFD_ICMS'
+        if 'diretorio' in payload:
+            param.diretorio = (payload['diretorio'] or '').strip()
+        if 'empresa_id' in payload and payload['empresa_id']:
+            try:
+                param.empresa = Empresas.objects.get(cod_empresa=payload['empresa_id'], cliente__cod_cliente=cod_cliente)
+            except Empresas.DoesNotExist:
+                pass
+        if 'ativo' in payload:
+            param.ativo = payload['ativo'] in [True, 'true', '1', 'yes', 'sim']
+        param.save(update_fields=['horario', 'tipo_sped', 'diretorio', 'empresa', 'ativo', 'data_atualizacao'])
+        return JsonResponse({'sucesso': True, 'mensagem': 'Parâmetro atualizado'}, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_api_cargasped_upload_zip(request, param_id):
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
+    param = get_object_or_404(CargaSpedParam, id=param_id, cliente=cliente)
+    arquivo_zip = request.FILES.get('arquivo_zip')
+    if not arquivo_zip or not (arquivo_zip.name or '').lower().endswith('.zip'):
+        return JsonResponse({'sucesso': False, 'mensagem': 'Envie um arquivo .zip'}, status=400)
+    if arquivo_zip.size > 100 * 1024 * 1024:
+        return JsonResponse({'sucesso': False, 'mensagem': 'ZIP muito grande (máx 100MB)'}, status=400)
+    base_dir = Path(param.diretorio)
+    try:
+        base_dir.mkdir(parents=True, exist_ok=True)
+        base_dir = base_dir.resolve()
+    except OSError as e:
+        return JsonResponse({'sucesso': False, 'mensagem': f'Diretório inválido: {e}'}, status=400)
+    extraidos = 0
+    try:
+        with zipfile.ZipFile(arquivo_zip, 'r') as zf:
+            for name in zf.namelist():
+                if name.endswith('/') or not name.lower().endswith('.txt'):
+                    continue
+                safe_name = Path(name).name
+                if not safe_name or '..' in safe_name:
+                    continue
+                dest_path = base_dir / safe_name
+                try:
+                    dest_path = dest_path.resolve()
+                    if not str(dest_path).startswith(str(base_dir)):
+                        continue
+                except Exception:
+                    continue
+                try:
+                    with zf.open(name, 'r') as src:
+                        dest_path.write_bytes(src.read())
+                    extraidos += 1
+                except Exception:
+                    pass
+    except zipfile.BadZipFile:
+        return JsonResponse({'sucesso': False, 'mensagem': 'ZIP inválido'}, status=400)
+    except Exception as e:
+        return JsonResponse({'sucesso': False, 'mensagem': str(e)}, status=500)
+    return JsonResponse({'sucesso': True, 'mensagem': f'{extraidos} arquivo(s) SPED (.txt) extraído(s).', 'extraidos': extraidos}, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_api_cargasped_param_toggle(request, param_id):
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    param = get_object_or_404(CargaSpedParam, id=param_id, cliente__cod_cliente=cod_cliente)
+    body = json.loads(request.body.decode('utf-8')) if request.content_type and 'application/json' in request.content_type else {}
+    ativo_raw = body.get('ativo', request.POST.get('ativo'))
+    if ativo_raw is None:
+        param.ativo = not param.ativo
+    else:
+        param.ativo = ativo_raw in [True, 'true', '1', 'yes', 'sim', 'on'] if isinstance(ativo_raw, str) else bool(ativo_raw)
+    param.save(update_fields=['ativo', 'data_atualizacao'])
+    return JsonResponse({'sucesso': True, 'id': param.id, 'ativo': param.ativo}, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_cargasped_jobs(request):
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    jobs = CargaSpedJob.objects.filter(cliente__cod_cliente=cod_cliente).order_by('-started_at')
+    items = [{
+        'id': j.id,
+        'status': j.status,
+        'total_arquivos': j.total_arquivos,
+        'total_sucesso': j.total_sucesso,
+        'total_erro': j.total_erro,
+        'started_at': j.started_at.isoformat() if j.started_at else None,
+        'finished_at': j.finished_at.isoformat() if j.finished_at else None,
+        'parametro_id': j.parametro.id if j.parametro else None,
+    } for j in jobs]
+    return JsonResponse({'sucesso': True, 'items': items}, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_cargasped_job_details(request, job_id):
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    job = get_object_or_404(CargaSpedJob, id=job_id, cliente__cod_cliente=cod_cliente)
+    log_lines = [line.strip() for line in (job.mensagem or '').splitlines() if line.strip()]
+    param_data = None
+    if job.parametro:
+        p = job.parametro
+        param_data = {
+            'id': p.id, 'ativo': p.ativo,
+            'horario': p.horario.strftime('%H:%M'),
+            'tipo_sped': p.tipo_sped,
+            'diretorio': p.diretorio,
+            'empresa_id': p.empresa.cod_empresa if p.empresa else None,
+            'empresa_nome': p.empresa.fantasia or p.empresa.razao if p.empresa else '',
+            'ultima_execucao': p.ultima_execucao.isoformat() if p.ultima_execucao else None,
+        }
+    return JsonResponse({
+        'sucesso': True,
+        'job': {
+            'id': job.id, 'status': job.status,
+            'total_arquivos': job.total_arquivos,
+            'total_sucesso': job.total_sucesso,
+            'total_erro': job.total_erro,
+            'started_at': job.started_at.isoformat() if job.started_at else None,
+            'finished_at': job.finished_at.isoformat() if job.finished_at else None,
+        },
+        'parametro': param_data,
+        'log': log_lines,
+    }, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_view_CargaSped(request):
+    """View para carregamento de arquivos SPED (mesma linha de raciocínio da Carga XML)."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return render(request, 'Index_Login.html', {'error_message': 'Cliente não identificado'})
+    try:
+        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
+        jobs = CargaSpedJob.objects.filter(cliente=cliente).order_by('-started_at')
+        parametros = CargaSpedParam.objects.filter(cliente=cliente).order_by('-data_criacao')
+        empresas_usuario = Empresas.objects.filter(
+            cliente=cliente,
+            userempresas__user=request.user
+        ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
+    except Clientes.DoesNotExist:
+        jobs = []
+        parametros = []
+        empresas_usuario = []
     context = {
         'cod_cliente': cod_cliente,
+        'jobs': jobs,
+        'parametros': parametros,
+        'empresas_usuario': empresas_usuario,
     }
+    return render(request, 'Processamento/index_CargaSped.html', context)
+
+
+# ========== APIs Relatório Fiscal (NFe, CTe, NFS, SPED nível cabeçalho) ==========
+
+def _relatorio_empresas_queryset(request):
+    """Retorna queryset de empresas do cliente que o usuário pode acessar."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return Empresas.objects.none()
+    return Empresas.objects.filter(
+        cliente__cod_cliente=cod_cliente,
+        userempresas__user=request.user
+    ).distinct()
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_relatorio_nfe(request):
+    """Lista NFe nível cabeçalho com filtros empresa e período."""
+    empresas = _relatorio_empresas_queryset(request)
+    if not empresas.exists():
+        return JsonResponse({'sucesso': True, 'items': []}, status=200)
+    cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    empresa_id = request.GET.get('empresa_id', '').strip()
+    if empresa_id:
+        cod_empresas = [empresa_id] if empresa_id in cod_empresas else []
+    data_inicio = request.GET.get('data_inicio', '').strip()
+    data_fim = request.GET.get('data_fim', '').strip()
+    busca = request.GET.get('busca', '').strip()
+
+    qs = NFe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    if busca:
+        qs = qs.filter(
+            Q(identificacao__chave_acesso__icontains=busca) |
+            Q(identificacao__numero__icontains=busca) |
+            Q(identificacao__serie__icontains=busca) |
+            Q(status__icontains=busca) |
+            Q(identificacao__natureza_operacao__icontains=busca)
+        )
+    if data_inicio:
+        try:
+            from django.utils.dateparse import parse_date
+            dt = parse_date(data_inicio)
+            if dt:
+                qs = qs.filter(identificacao__emissao__date__gte=dt)
+        except Exception:
+            pass
+    if data_fim:
+        try:
+            from django.utils.dateparse import parse_date
+            dt = parse_date(data_fim)
+            if dt:
+                qs = qs.filter(identificacao__emissao__date__lte=dt)
+        except Exception:
+            pass
+    qs = qs.order_by('-identificacao__emissao')[:500]
+    items = []
+    for nfe in qs:
+        id_ = nfe.identificacao
+        items.append({
+            'id_nfe': nfe.id_nfe,
+            'numero': id_.numero,
+            'serie': id_.serie,
+            'chave': id_.chave_acesso,
+            'emissao': id_.emissao.isoformat() if id_.emissao else None,
+            'tipo_operacao': id_.tipo_operacao,
+            'status': nfe.status,
+            'empresa': nfe.empresa.cod_empresa if nfe.empresa else None,
+            'natureza': id_.natureza_operacao,
+        })
+    return JsonResponse({'sucesso': True, 'items': items}, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_relatorio_cte(request):
+    """Lista CTe nível cabeçalho com filtros."""
+    empresas = _relatorio_empresas_queryset(request)
+    if not empresas.exists():
+        return JsonResponse({'sucesso': True, 'items': []}, status=200)
+    cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    empresa_id = request.GET.get('empresa_id', '').strip()
+    if empresa_id:
+        cod_empresas = [empresa_id] if empresa_id in cod_empresas else []
+    data_inicio = request.GET.get('data_inicio', '').strip()
+    data_fim = request.GET.get('data_fim', '').strip()
+    busca = request.GET.get('busca', '').strip()
+
+    qs = CTe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    if busca:
+        qs = qs.filter(
+            Q(identificacao__chave_acesso__icontains=busca) |
+            Q(identificacao__numero__icontains=busca) |
+            Q(identificacao__serie__icontains=busca)
+        )
+    if data_inicio:
+        try:
+            from django.utils.dateparse import parse_date
+            dt = parse_date(data_inicio)
+            if dt:
+                qs = qs.filter(identificacao__emissao__date__gte=dt)
+        except Exception:
+            pass
+    if data_fim:
+        try:
+            from django.utils.dateparse import parse_date
+            dt = parse_date(data_fim)
+            if dt:
+                qs = qs.filter(identificacao__emissao__date__lte=dt)
+        except Exception:
+            pass
+    qs = qs.order_by('-identificacao__emissao')[:500]
+    items = []
+    for cte in qs:
+        id_ = cte.identificacao
+        items.append({
+            'id_cte': cte.id_cte,
+            'numero': id_.numero,
+            'serie': id_.serie,
+            'chave': id_.chave_acesso,
+            'emissao': id_.emissao.isoformat() if id_.emissao else None,
+            'empresa': cte.empresa.cod_empresa if cte.empresa else None,
+        })
+    return JsonResponse({'sucesso': True, 'items': items}, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_relatorio_nfse(request):
+    """Lista NFSe nível cabeçalho com filtros."""
+    empresas = _relatorio_empresas_queryset(request)
+    if not empresas.exists():
+        return JsonResponse({'sucesso': True, 'items': []}, status=200)
+    cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    empresa_id = request.GET.get('empresa_id', '').strip()
+    if empresa_id:
+        cod_empresas = [empresa_id] if empresa_id in cod_empresas else []
+    data_inicio = request.GET.get('data_inicio', '').strip()
+    data_fim = request.GET.get('data_fim', '').strip()
+    busca = request.GET.get('busca', '').strip()
+
+    qs = NFSe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    if busca:
+        qs = qs.filter(
+            Q(identificacao__chave__icontains=busca) |
+            Q(identificacao__numero__icontains=busca)
+        )
+    if data_inicio:
+        try:
+            from django.utils.dateparse import parse_date
+            dt = parse_date(data_inicio)
+            if dt:
+                qs = qs.filter(identificacao__emissao__date__gte=dt)
+        except Exception:
+            pass
+    if data_fim:
+        try:
+            from django.utils.dateparse import parse_date
+            dt = parse_date(data_fim)
+            if dt:
+                qs = qs.filter(identificacao__emissao__date__lte=dt)
+        except Exception:
+            pass
+    qs = qs.order_by('-identificacao__emissao')[:500]
+    items = []
+    for nfse in qs:
+        id_ = nfse.identificacao
+        items.append({
+            'id_nfse': nfse.id_nfse,
+            'numero': id_.numero,
+            'chave': id_.chave,
+            'emissao': id_.emissao.isoformat() if id_.emissao else None,
+            'empresa': nfse.empresa.cod_empresa if nfse.empresa else None,
+        })
+    return JsonResponse({'sucesso': True, 'items': items}, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_relatorio_sped(request):
+    """Lista SPED nível cabeçalho (Sped_Arquivo) com filtros. tipo: C=Contribuição, F=Fiscal."""
+    empresas = _relatorio_empresas_queryset(request)
+    if not empresas.exists():
+        return JsonResponse({'sucesso': True, 'items': []}, status=200)
+    cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    empresa_id = request.GET.get('empresa_id', '').strip()
+    if empresa_id:
+        cod_empresas = [empresa_id] if empresa_id in cod_empresas else []
+    data_inicio = request.GET.get('data_inicio', '').strip()
+    data_fim = request.GET.get('data_fim', '').strip()
+    busca = request.GET.get('busca', '').strip()
+
+    qs = Sped_Arquivo.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('empresa')
+    if busca:
+        qs = qs.filter(
+            Q(nome_arquivo__icontains=busca) |
+            Q(tipo__icontains=busca)
+        )
+    if data_inicio:
+        try:
+            from django.utils.dateparse import parse_date
+            dt = parse_date(data_inicio)
+            if dt:
+                qs = qs.filter(competencia__gte=dt)
+        except Exception:
+            pass
+    if data_fim:
+        try:
+            from django.utils.dateparse import parse_date
+            dt = parse_date(data_fim)
+            if dt:
+                qs = qs.filter(competencia__lte=dt)
+        except Exception:
+            pass
+    qs = qs.order_by('-data_carga')[:500]
+    items = []
+    for arq in qs:
+        items.append({
+            'id_arquivo': arq.id_arquivo,
+            'tipo': arq.tipo,
+            'tipo_display': arq.get_tipo_display(),
+            'competencia': arq.competencia.isoformat() if arq.competencia else None,
+            'nome_arquivo': arq.nome_arquivo,
+            'data_carga': arq.data_carga.isoformat() if arq.data_carga else None,
+            'empresa': arq.empresa.cod_empresa if arq.empresa else None,
+        })
+    return JsonResponse({'sucesso': True, 'items': items}, status=200)
+
+
+def _serialize_model(inst, exclude=None):
+    """Converte um model instance em dict para JSON (datas e decimals já serializáveis)."""
+    if inst is None:
+        return None
+    exclude = set(exclude or [])
+    from django.forms.models import model_to_dict
+    d = model_to_dict(inst, exclude=exclude)
+    for k, v in list(d.items()):
+        if hasattr(v, 'isoformat'):
+            d[k] = v.isoformat() if v else None
+        elif hasattr(v, '__float__') and not isinstance(v, (bool, int)):
+            try:
+                d[k] = float(v)
+            except (TypeError, ValueError):
+                pass
+    return d
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_relatorio_nfe_detalhe(request, id_nfe):
+    """Detalhe completo da NFe para modal: cabeçalho, itens, total, cobrança/parcelas, pagamento, transporte, info adicionais."""
+    empresas = _relatorio_empresas_queryset(request)
+    cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    nfe = get_object_or_404(
+        NFe.objects.select_related(
+            'identificacao', 'emitente', 'destinatario', 'empresa',
+            'emitente__endereco', 'destinatario__endereco',
+        ).prefetch_related(
+            'identificacao__produtos',
+            'identificacao__totalizacao',
+            'identificacao__cobranca__parcelas',
+            'identificacao__pagamento',
+            'identificacao__transporte',
+            'identificacao__informacoes_adicionais',
+        ),
+        id_nfe=id_nfe,
+        empresa__cod_empresa__in=cod_empresas,
+    )
+    ide = nfe.identificacao
+    cabecalho = {
+        'identificacao': _serialize_model(ide),
+        'emitente': _serialize_model(nfe.emitente),
+        'destinatario': _serialize_model(nfe.destinatario),
+        'nfe': _serialize_model(nfe, exclude=['identificacao', 'emitente', 'destinatario', 'empresa']),
+        'empresa': nfe.empresa.cod_empresa if nfe.empresa else None,
+    }
+    if nfe.emitente and nfe.emitente.endereco:
+        cabecalho['emitente_endereco'] = _serialize_model(nfe.emitente.endereco)
+    if nfe.destinatario and nfe.destinatario.endereco:
+        cabecalho['destinatario_endereco'] = _serialize_model(nfe.destinatario.endereco)
+    itens = [_serialize_model(p) for p in ide.produtos.all().order_by('numero_item')]
+    totalizacao = _serialize_model(ide.totalizacao) if hasattr(ide, 'totalizacao') and ide.totalizacao else None
+    cobranca = None
+    parcelas = []
+    if hasattr(ide, 'cobranca') and ide.cobranca:
+        cobranca = _serialize_model(ide.cobranca, exclude=['nfe_identificacao'])
+        parcelas = [_serialize_model(parc, exclude=['nfe_cobranca']) for parc in ide.cobranca.parcelas.all().order_by('numero_parcela')]
+    pagamento = _serialize_model(ide.pagamento) if hasattr(ide, 'pagamento') and ide.pagamento else None
+    transporte = _serialize_model(ide.transporte) if hasattr(ide, 'transporte') and ide.transporte else None
+    info_adic = _serialize_model(ide.informacoes_adicionais) if hasattr(ide, 'informacoes_adicionais') and ide.informacoes_adicionais else None
+    return JsonResponse({
+        'sucesso': True,
+        'cabecalho': cabecalho,
+        'itens': itens,
+        'totalizacao': totalizacao,
+        'cobranca': cobranca,
+        'parcelas': parcelas,
+        'pagamento': pagamento,
+        'transporte': transporte,
+        'informacoes_adicionais': info_adic,
+    }, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_relatorio_cte_detalhe(request, id_cte):
+    """Detalhe completo do CTe para modal: cabeçalho, valor, transporte, carga, serviço, veículo, motorista, percurso, fiscal."""
+    empresas = _relatorio_empresas_queryset(request)
+    cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    cte = get_object_or_404(
+        CTe.objects.select_related(
+            'identificacao', 'emitente', 'destinatario', 'empresa',
+            'emitente__endereco', 'destinatario__endereco',
+        ),
+        id_cte=id_cte,
+        empresa__cod_empresa__in=cod_empresas,
+    )
+    ide = cte.identificacao
+    cabecalho = {
+        'identificacao': _serialize_model(ide),
+        'emitente': _serialize_model(cte.emitente),
+        'destinatario': _serialize_model(cte.destinatario),
+        'cte': _serialize_model(cte, exclude=['identificacao', 'emitente', 'destinatario', 'empresa']),
+        'empresa': cte.empresa.cod_empresa if cte.empresa else None,
+    }
+    if cte.emitente and cte.emitente.endereco:
+        cabecalho['emitente_endereco'] = _serialize_model(cte.emitente.endereco)
+    if cte.destinatario and cte.destinatario.endereco:
+        cabecalho['destinatario_endereco'] = _serialize_model(cte.destinatario.endereco)
+    valor = _serialize_model(ide.valor) if hasattr(ide, 'valor') and ide.valor else None
+    transporte = _serialize_model(ide.transporte) if hasattr(ide, 'transporte') and ide.transporte else None
+    carga = _serialize_model(ide.carga) if hasattr(ide, 'carga') and ide.carga else None
+    servico = _serialize_model(ide.servico) if hasattr(ide, 'servico') and ide.servico else None
+    veiculo = _serialize_model(ide.veiculo) if hasattr(ide, 'veiculo') and ide.veiculo else None
+    motorista = _serialize_model(ide.motorista) if hasattr(ide, 'motorista') and ide.motorista else None
+    percurso = _serialize_model(ide.percurso) if hasattr(ide, 'percurso') and ide.percurso else None
+    fiscal = _serialize_model(ide.fiscal) if hasattr(ide, 'fiscal') and ide.fiscal else None
+    return JsonResponse({
+        'sucesso': True,
+        'cabecalho': cabecalho,
+        'valor': valor,
+        'transporte': transporte,
+        'carga': carga,
+        'servico': servico,
+        'veiculo': veiculo,
+        'motorista': motorista,
+        'percurso': percurso,
+        'fiscal': fiscal,
+    }, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_relatorio_nfse_detalhe(request, id_nfse):
+    """Detalhe completo da NFSe para modal: cabeçalho, prestador, tomador, serviços, RPS, retenção, pagamento."""
+    empresas = _relatorio_empresas_queryset(request)
+    cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    nfse = get_object_or_404(
+        NFSe.objects.select_related(
+            'identificacao', 'prestador', 'tomador', 'empresa',
+            'prestador__endereco', 'tomador__endereco',
+        ).prefetch_related(
+            'identificacao__servicos',
+            'identificacao__rps_list',
+        ),
+        id_nfse=id_nfse,
+        empresa__cod_empresa__in=cod_empresas,
+    )
+    ide = nfse.identificacao
+    cabecalho = {
+        'identificacao': _serialize_model(ide),
+        'prestador': _serialize_model(nfse.prestador),
+        'tomador': _serialize_model(nfse.tomador),
+        'nfse': _serialize_model(nfse, exclude=['identificacao', 'prestador', 'tomador', 'empresa']),
+        'empresa': nfse.empresa.cod_empresa if nfse.empresa else None,
+    }
+    if nfse.prestador and nfse.prestador.endereco:
+        cabecalho['prestador_endereco'] = _serialize_model(nfse.prestador.endereco)
+    if nfse.tomador and nfse.tomador.endereco:
+        cabecalho['tomador_endereco'] = _serialize_model(nfse.tomador.endereco)
+    servicos = [_serialize_model(s) for s in ide.servicos.all()]
+    rps_list = [_serialize_model(r) for r in ide.rps_list.all()]
+    retencao = _serialize_model(ide.retencao) if hasattr(ide, 'retencao') and ide.retencao else None
+    pagamento = _serialize_model(ide.pagamento) if hasattr(ide, 'pagamento') and ide.pagamento else None
+    return JsonResponse({
+        'sucesso': True,
+        'cabecalho': cabecalho,
+        'servicos': servicos,
+        'rps': rps_list,
+        'retencao': retencao,
+        'pagamento': pagamento,
+    }, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_relatorio_sped_detalhe(request, id_arquivo):
+    """Detalhe do arquivo SPED: cabeçalho e registros fiscal/contribuição."""
+    empresas = _relatorio_empresas_queryset(request)
+    cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    arq = get_object_or_404(
+        Sped_Arquivo.objects.prefetch_related('registros_fiscal', 'registros_contribuicao').select_related('empresa'),
+        id_arquivo=id_arquivo,
+        empresa__cod_empresa__in=cod_empresas,
+    )
+    cabecalho = _serialize_model(arq)
+    if cabecalho and 'empresa' in cabecalho:
+        cabecalho['empresa'] = arq.empresa.cod_empresa if arq.empresa else None
+    registros_fiscal = [{'bloco': r.bloco, 'registro': r.registro, 'conteudo': r.conteudo, 'linha': r.linha} for r in arq.registros_fiscal.all()[:500]]
+    registros_contribuicao = [{'bloco': r.bloco, 'registro': r.registro, 'conteudo': r.conteudo, 'linha': r.linha} for r in arq.registros_contribuicao.all()[:500]]
+    return JsonResponse({
+        'sucesso': True,
+        'cabecalho': cabecalho,
+        'registros_fiscal': registros_fiscal,
+        'registros_contribuicao': registros_contribuicao,
+    }, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_view_Relatorio_Fiscal(request):
+    """Relatório com dados e filtros das tabelas carregadas: NFe, CTe, NFS e SPED (nível cabeçalho)."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return render(request, 'Index_Login.html', {'error_message': 'Cliente não identificado'})
+    try:
+        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
+        empresas_usuario = Empresas.objects.filter(
+            cliente=cliente,
+            userempresas__user=request.user
+        ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
+    except Clientes.DoesNotExist:
+        empresas_usuario = []
+    context = {
+        'cod_cliente': cod_cliente,
+        'empresas_usuario': empresas_usuario,
+    }
+    return render(request, 'Processamento/index_Relatorio.html', context)
+
+
+# -------------------------------------------------------------------------
+# Reprocessamento: view mantida para uso futuro como solução própria
+# -------------------------------------------------------------------------
+@login_required(login_url='Login')
+def fn_view_Reprocessamento(request):
+    """View para reprocessamento de dados (solução própria futura)."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    context = {'cod_cliente': cod_cliente}
     return render(request, 'Processamento/index_Reprocessamento.html', context)

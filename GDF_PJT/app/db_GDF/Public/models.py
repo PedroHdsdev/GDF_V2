@@ -50,7 +50,7 @@ class Empresas(models.Model):
     cnae = models.CharField(max_length=7, blank=True, null=True)
     iest = models.CharField(max_length=18, blank=True, null=True)
     suframa = models.CharField(max_length=10, blank=True, null=True)
-    grp_empresa = models.ForeignKey('GrpEmpresas', models.DO_NOTHING, blank=True, null=True)
+    grp_empresa = models.ForeignKey('GrpEmpresas', models.SET_NULL, blank=True, null=True)
     chave_acesso = models.CharField(max_length=40, blank=True, null=True)
     cert = models.ForeignKey(Cert, models.DO_NOTHING, blank=True, null=True)
     cliente = models.ForeignKey(Clientes, models.CASCADE, blank=True, null=True)
@@ -194,6 +194,66 @@ class CargaXmlJob(models.Model):
     class Meta:
         managed = True
         db_table = 'cargaxml_job'
+        indexes = [
+            models.Index(fields=['cliente', 'status']),
+        ]
+
+
+class CargaSpedParam(models.Model):
+    """Parâmetros de carga automática de arquivos SPED (EFD ICMS/IPI, EFD Contribuições, etc.)."""
+    id = models.BigAutoField(primary_key=True)
+    cliente = models.ForeignKey(Clientes, models.CASCADE)
+    empresa = models.ForeignKey(Empresas, models.CASCADE, null=True, blank=True)
+    ativo = models.BooleanField(default=True)
+    horario = models.TimeField()
+    tipo_sped = models.CharField(
+        max_length=20,
+        choices=[
+            ('EFD_ICMS', 'EFD ICMS/IPI'),
+            ('EFD_CONTRIB', 'EFD Contribuições'),
+            ('ECD', 'ECD'),
+            ('OUTROS', 'Outros'),
+        ],
+        default='EFD_ICMS'
+    )
+    diretorio = models.CharField(max_length=500)
+    usuario_criacao = models.ForeignKey(User, models.SET_NULL, null=True, blank=True, related_name='cargasped_params')
+    data_criacao = models.DateTimeField(auto_now_add=True)
+    data_atualizacao = models.DateTimeField(auto_now=True)
+    ultima_execucao = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = True
+        db_table = 'cargasped_param'
+        indexes = [
+            models.Index(fields=['cliente', 'ativo']),
+        ]
+
+
+class CargaSpedJob(models.Model):
+    """Job de execução de carga SPED (automática ou manual)."""
+    STATUS_CHOICES = [
+        ('PENDING', 'Pendente'),
+        ('RUNNING', 'Executando'),
+        ('SUCCESS', 'Sucesso'),
+        ('ERROR', 'Erro'),
+    ]
+
+    id = models.BigAutoField(primary_key=True)
+    cliente = models.ForeignKey(Clientes, models.CASCADE)
+    parametro = models.ForeignKey(CargaSpedParam, models.SET_NULL, null=True, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    total_arquivos = models.IntegerField(default=0)
+    total_sucesso = models.IntegerField(default=0)
+    total_erro = models.IntegerField(default=0)
+    mensagem = models.TextField(blank=True, null=True)
+    started_at = models.DateTimeField(blank=True, null=True)
+    finished_at = models.DateTimeField(blank=True, null=True)
+    usuario_execucao = models.ForeignKey(User, models.SET_NULL, null=True, blank=True, related_name='cargasped_jobs')
+
+    class Meta:
+        managed = True
+        db_table = 'cargasped_job'
         indexes = [
             models.Index(fields=['cliente', 'status']),
         ]

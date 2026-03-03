@@ -17,6 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
     fn_init_paginacao();
     fn_init_busca();
+    fn_init_grp_empresa_ins();
     fn_init_empresa_ins();
     fn_init_empresa_upd();
 });
@@ -244,6 +245,41 @@ function fn_init_paginacao() {
 /* ===============================
    INS – INSERT EMPRESA
 ================================ */ 
+/* ===============================
+   MODAL CRIAR GRUPO DE EMPRESAS (vinculado ao cliente do usuário logado)
+================================ */
+function fn_init_grp_empresa_ins() {
+    const modalEl = document.getElementById("modalGrpEmpresaIns");
+    if (!modalEl) {
+        console.warn("Script_Empresas: modal modalGrpEmpresaIns não encontrado.");
+        return;
+    }
+
+    // Delegação: capturar clique no botão (mesmo que carregado depois)
+    document.addEventListener("click", function(e) {
+        const btn = e.target.closest("#btnAbrirModalGrpEmpresaIns");
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const el = document.getElementById("modalGrpEmpresaIns");
+        if (!el) return;
+
+        fn_fechar_modal_aberto();
+        og_estado_empresas.modalAberto = "modalGrpEmpresaIns";
+        const modal = new bootstrap.Modal(el, { backdrop: "static", keyboard: false });
+        modal.show();
+    });
+
+    modalEl.addEventListener("hidden.bs.modal", () => {
+        const form = modalEl.querySelector("form");
+        if (form) form.reset();
+        if (og_estado_empresas.modalAberto === "modalGrpEmpresaIns") {
+            og_estado_empresas.modalAberto = null;
+        }
+    });
+}
+
 function fn_init_empresa_ins() {
     const btnAbrirModal = document.getElementById("btnAbrirModalEmpresaIns");
     const modalEl = document.getElementById("modalEmpresaIns");

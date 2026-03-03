@@ -576,7 +576,7 @@ class NFe(models.Model):
     """Tabela principal de NF-e - Documento fiscal"""
     id_nfe = models.AutoField(primary_key=True)
     identificacao = models.OneToOneField(NFe_Identificacao, on_delete=models.CASCADE, related_name='nfe')
-    empresa = models.ForeignKey(Empresas, on_delete=models.PROTECT, related_name='nfe_docs', null=True, blank=True)  # Vínculo com tabela Empresas
+    empresa = models.ForeignKey(Empresas, on_delete=models.CASCADE, related_name='nfe_docs', null=True, blank=True)  # Ao apagar empresa (ex.: ao apagar cliente), apaga NFe vinculadas
     emitente = models.ForeignKey(NFe_Emitente, on_delete=models.PROTECT)
     destinatario = models.ForeignKey(NFe_Destinatario, on_delete=models.SET_NULL, null=True, blank=True)
     

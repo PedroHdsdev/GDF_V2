@@ -10,7 +10,7 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
-from app.classes.CargaXml import Carga_xml
+from app.classes.CargaXml import Carga_xml, EmpresaNaoCadastradaError
 from app.db_GDF.Public.models import CargaXmlJob, CargaXmlParam
 
 
@@ -194,8 +194,17 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
                 )
 
             if tipo == 'NFe':
-                processor.set_nfe(xml_bytes, param.origem_dados, 'SYSTEM',
-                                  param.cliente.cod_cliente if param.cliente else None)
+                try:
+                    processor.set_nfe(xml_bytes, param.origem_dados, 'SYSTEM',
+                                      param.cliente.cod_cliente if param.cliente else None)
+                except EmpresaNaoCadastradaError as exc:
+                    errors += 1
+                    log_lines.append(f'PENDENTES (empresa nao cadastrada): {xml_path.name} - {exc}')
+                    try:
+                        _safe_move(xml_path, base_dir / 'pendentes' / 'sem_empresa')
+                    except Exception:
+                        pass
+                    continue
             elif tipo == 'CTe':
                 processor.set_cte(xml_bytes, param.origem_dados, 'SYSTEM',
                                   param.cliente.cod_cliente if param.cliente else None)

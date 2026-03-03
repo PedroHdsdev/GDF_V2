@@ -19,12 +19,32 @@
     </div>
     <div class="layout-hero-actions">
       <button
+        type="button"
+        id="btnAbrirModalGrpEmpresaIns"
+        class="btn btn-outline-secondary layout-btn"
+        data-bs-toggle="modal"
+        data-bs-target="#modalGrpEmpresaIns">
+        Criar grupo de empresas
+      </button>
+      <button
+        type="button"
         id="btnAbrirModalEmpresaIns"
         class="btn btn-light layout-btn">
         Cadastrar empresa
       </button>
     </div>
   </section>
+
+  {% if messages %}
+    {% for message in messages %}
+      {% if message.extra_tags == 'MODAL_GRP_INS' %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show mb-3" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
 
   <section class="layout-panel">
     <div class="layout-card">
@@ -106,6 +126,7 @@
 </div>
 
 <!-- INCLUIR MODAIS -->
+{% include 'Empresas/GrpEmpresas_ins.html' %}
 {% include 'Empresas/Empresas_ins.html' %}
 {% include 'Empresas/Empresas_upd.html' %}
 

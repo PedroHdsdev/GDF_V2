@@ -59,8 +59,8 @@
                 <li class="home-alert is-info">
                     <span class="home-alert-dot"></span>
                     <div>
-                        <p class="home-alert-title">Fila de reprocessamento pronta</p>
-                        <p class="home-alert-meta">Reprocessamento • 128 arquivos</p>
+                        <p class="home-alert-title">Carga fiscal disponível</p>
+                        <p class="home-alert-meta">Processamento Fiscal • Carga XML e SPED</p>
                     </div>
                     <span class="home-alert-tag">Pronto</span>
                 </li>
@@ -81,11 +81,15 @@
             <div class="home-quick-grid">
                 <a class="home-quick-item" href="{% url 'Pro_CargaXml' %}">
                     <span>Importar XML</span>
-                    <small>Carga diaria</small>
+                    <small>Carga diária</small>
                 </a>
-                <a class="home-quick-item" href="{% url 'Pro_Reproc.' %}">
-                    <span>Reprocessar fila</span>
-                    <small>Regras e ajustes</small>
+                <a class="home-quick-item" href="{% url 'Pro_CargaSped' %}">
+                    <span>Carga SPED</span>
+                    <small>Arquivos SPED</small>
+                </a>
+                <a class="home-quick-item" href="{% url 'Pro_Relatorio' %}">
+                    <span>Relatório Fiscal</span>
+                    <small>NFe, CTe, NFS, SPED</small>
                 </a>
                 <a class="home-quick-item" href="{% url 'Dm_Empresas' %}">
                     <span>Empresas</span>

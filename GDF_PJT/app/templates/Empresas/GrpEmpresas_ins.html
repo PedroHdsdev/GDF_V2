@@ -1,0 +1,60 @@
+<div class="modal fade" id="modalGrpEmpresaIns" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <form method="post" action="{% url 'Empresa_Grp_ins' %}" id="formGrpEmpresaIns">
+        {% csrf_token %}
+
+        <div class="modal-header">
+          <h5 class="modal-title">Criar grupo de empresas</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <p class="text-muted small mb-3">O grupo será vinculado ao cliente do usuário logado.</p>
+          <div class="mb-3">
+            <label for="ins_grp_empresa" class="form-label">* Código do grupo</label>
+            <input
+              type="text"
+              id="ins_grp_empresa"
+              name="m_grp_empresa"
+              class="form-control"
+              placeholder="Ex: 01"
+              maxlength="5"
+              required>
+            <div class="form-text">Máximo 5 caracteres.</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="ins_grp_descricao" class="form-label">Descrição</label>
+            <input
+              type="text"
+              id="ins_grp_descricao"
+              name="m_descricao"
+              class="form-control"
+              placeholder="Ex: Filiais SP"
+              maxlength="80">
+          </div>
+
+          {% if messages %}
+            {% for message in messages %}
+              {% if message.extra_tags == 'MODAL_GRP_INS' %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                  {{ message }}
+                  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success">Criar grupo</button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</div>

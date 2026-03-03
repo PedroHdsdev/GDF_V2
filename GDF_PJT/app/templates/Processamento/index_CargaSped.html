@@ -1,0 +1,229 @@
+{% extends 'Index_Base.html' %}
+{% load static %}
+
+{% block title %}Carga SPED{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/Style_CargaXml.css' %}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+
+{% block titlepage %}Carga SPED{% endblock %}
+
+{% block container %}
+<div class="layout-page">
+    {% csrf_token %}
+    <section class="layout-hero">
+        <div class="layout-hero-content">
+            <p class="layout-eyebrow">Processamento Fiscal</p>
+            <h1 class="layout-title">Carga SPED</h1>
+            <p class="layout-subtitle">Importe arquivos SPED (EFD ICMS/IPI, EFD Contribuições, etc.) no mesmo fluxo da Carga XML.</p>
+        </div>
+        <div class="layout-hero-actions">
+            <button class="btn btn-light layout-btn" data-bs-toggle="modal" data-bs-target="#modalCargaSped">
+                <i class="fas fa-file-alt"></i> Carregar SPED
+            </button>
+        </div>
+    </section>
+
+    <section class="layout-panel">
+        <div class="layout-card">
+            <div id="alertas-container"></div>
+            <div class="layout-card-head">
+                <h2 class="layout-card-title">Gerenciador de carga SPED</h2>
+            </div>
+
+            <div class="layout-subcard">
+                <div class="row align-items-end">
+                    <div class="col-md-6">
+                        <label class="form-label fw-500">Buscar parâmetro:</label>
+                        <input type="text" id="filtro-param-busca" class="form-control" placeholder="Diretório, tipo, horário...">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-500">Status:</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="filtro-param-ativos" checked>
+                                <label class="form-check-label" for="filtro-param-ativos">Ativos</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="filtro-param-inativos" checked>
+                                <label class="form-check-label" for="filtro-param-inativos">Inativos</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="layout-subcard">
+                <div class="table-responsive">
+                    <table id="tabela-parametros-main" class="table table-uploads table-hover mb-0 layout-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 15%;">Horário</th>
+                                <th style="width: 18%;">Tipo SPED</th>
+                                <th>Diretório</th>
+                                <th>Empresa</th>
+                                <th style="width: 12%;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    <i class="fas fa-list" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
+                                    Nenhum parâmetro cadastrado
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="layout-card-footer">
+                <nav aria-label="Paginação">
+                    <ul id="paginacao-cargas" class="pagination justify-content-end"></ul>
+                </nav>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- MODAL - CARGA SPED -->
+<div class="modal fade" id="modalCargaSped" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-upload"></i> Carregar Arquivos SPED</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" id="tab-manual-sped" data-bs-toggle="tab" data-bs-target="#manual-sped" type="button">Carga Manual</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="tab-automatico-sped" data-bs-toggle="tab" data-bs-target="#automatico-sped" type="button">Carga Automática</button>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="manual-sped">
+                        <div class="mb-3">
+                            <label class="form-label fw-600">Tipo SPED:</label>
+                            <select id="select-tipo-sped-manual" class="form-select">
+                                <option value="EFD_ICMS">EFD ICMS/IPI</option>
+                                <option value="EFD_CONTRIB">EFD Contribuições</option>
+                                <option value="ECD">ECD</option>
+                                <option value="OUTROS">Outros</option>
+                            </select>
+                        </div>
+                        <div class="card-upload-xml">
+                            <div class="drop-zone" id="drop-zone-sped">
+                                <i class="fas fa-file-alt fa-3x text-muted mb-2"></i>
+                                <div class="drop-zone-text">Selecione arquivos .txt (SPED)</div>
+                                <input type="file" id="file-input-sped" multiple accept=".txt" style="display: none;">
+                            </div>
+                        </div>
+                        <p class="text-muted small mt-2">Formatos: .txt. Tamanho máximo por arquivo: 50MB.</p>
+                        <div class="mt-3">
+                            <strong>Arquivos:</strong> <span id="contador-sped">0</span>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="automatico-sped">
+                        <form id="form-parametros-sped" class="param-form">
+                            <div class="row g-3">
+                                <div class="col-md-3">
+                                    <label class="form-label fw-600">Horário:</label>
+                                    <input type="time" id="param-sped-horario" class="form-control" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-600">Tipo SPED:</label>
+                                    <select id="param-sped-tipo" class="form-select">
+                                        <option value="EFD_ICMS">EFD ICMS/IPI</option>
+                                        <option value="EFD_CONTRIB">EFD Contribuições</option>
+                                        <option value="ECD">ECD</option>
+                                        <option value="OUTROS">Outros</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-600">Empresa:</label>
+                                    <select id="param-sped-empresa" class="form-select" required>
+                                        <option value="">Selecione</option>
+                                        {% for emp in empresas_usuario %}
+                                            <option value="{{ emp.cod_empresa }}">{{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-3 d-flex align-items-end">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="param-sped-ativo" checked>
+                                        <label class="form-check-label" for="param-sped-ativo">Ativo</label>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label fw-600">Diretório base:</label>
+                                    <input type="text" id="param-sped-diretorio" class="form-control" placeholder="C:\dados\sped" required>
+                                </div>
+                                <div class="col-12">
+                                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Salvar parâmetro</button>
+                                </div>
+                            </div>
+                        </form>
+                        <div class="table-responsive mt-3">
+                            <table id="tabela-parametros-sped" class="table table-sm table-hover">
+                                <thead class="table-light"><tr><th>Horário</th><th>Tipo</th><th>Diretório</th><th>Empresa</th><th>Status</th><th>Ações</th></tr></thead>
+                                <tbody><tr><td colspan="6" class="text-center text-muted">Nenhum parâmetro</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-enviar-sped"><i class="fas fa-check"></i> Carregar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL - UPLOAD ZIP SPED -->
+<div class="modal fade" id="modalUploadZipSped" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Enviar ZIP para pasta do parâmetro</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="upload-zip-sped-param-id" value="">
+                <input type="file" id="upload-zip-sped-file" class="form-control" accept=".zip">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-confirmar-upload-zip-sped">Enviar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL - DETALHES JOB SPED -->
+<div class="modal fade" id="modalJobDetailsSped" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Detalhes do Job #<span id="modal-sped-job-id"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Status:</strong> <span id="modal-sped-job-status"></span></p>
+                <p><strong>Início:</strong> <span id="modal-sped-job-started"></span></p>
+                <p><strong>Fim:</strong> <span id="modal-sped-job-finished"></span></p>
+                <hr>
+                <h6>Log</h6>
+                <pre id="modal-sped-job-log" class="bg-light p-3 small" style="max-height: 300px; overflow: auto;"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="{% static 'js/Script_CargaSped.js' %}"></script>
+{% endblock %}

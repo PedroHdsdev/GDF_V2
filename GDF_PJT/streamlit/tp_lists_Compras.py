@@ -127,6 +127,14 @@ Metrica_header_nfe = [
     "Total de Impostos"
 ]
 
+# Para análise de compras (NF-e de entrada)
+Metrica_compras_evolucao = [
+    "Faturamento",      # valor total compras
+    "Total Impostos",
+    "Valor Líquido",
+    "Credito_Tributario_Total"
+]
+
 Metrica_item_nfe = [
     "Valor Líquido",
     "Total de Impostos",
@@ -166,8 +174,8 @@ Metrica_valores_k = [
     "Faturamento",
     "V.CMV",
     "Valor Líquido",
-    "Total de Impostos"
-
+    "Total de Impostos",
+    "Credito_Tributario_Total",
 ]
 
 Metrica_valores_p = [

@@ -1,0 +1,158 @@
+{% extends 'Index_Base.html' %}
+{% load static %}
+
+{% block title %}Relatório Fiscal{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/Style_CargaXml.css' %}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+.tr-relatorio-click { cursor: pointer; }
+.tr-relatorio-click:hover { background-color: rgba(0,123,255,0.08); }
+#modalRelatorioDetalhe .modal-dialog { max-width: 90%; }
+#modalRelatorioDetalhe .table-detalhe { font-size: 0.9rem; }
+#modalRelatorioDetalhe .table-detalhe th { width: 35%; background: #f8f9fa; }
+</style>
+{% endblock %}
+
+{% block titlepage %}Relatório Fiscal{% endblock %}
+
+{% block container %}
+<div class="layout-page">
+    <section class="layout-hero">
+        <div class="layout-hero-content">
+            <p class="layout-eyebrow">Processamento Fiscal</p>
+            <h1 class="layout-title">Relatório Fiscal</h1>
+            <p class="layout-subtitle">Dados e filtros das tabelas carregadas: NFe, CTe, NFS e SPED. Clique na linha para ver o detalhe.</p>
+        </div>
+    </section>
+
+    <section class="layout-panel">
+        <div class="layout-card">
+            <div class="layout-subcard mb-3">
+                <h6 class="fw-600 mb-3">Filtros</h6>
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Empresa</label>
+                        <select id="relatorio-empresa" class="form-select">
+                            <option value="">Todas</option>
+                            {% for emp in empresas_usuario %}
+                                <option value="{{ emp.cod_empresa }}">{{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Data início</label>
+                        <input type="date" id="relatorio-data-inicio" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Data fim</label>
+                        <input type="date" id="relatorio-data-fim" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Buscar</label>
+                        <input type="text" id="relatorio-busca" class="form-control" placeholder="Chave, número, status, natureza...">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="button" class="btn btn-primary" id="relatorio-btn-aplicar">
+                            <i class="fas fa-search"></i> Aplicar
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <ul class="nav nav-tabs mb-3" role="tablist">
+                <li class="nav-item"><button class="nav-link active" id="tab-rel-nfe" data-bs-toggle="tab" data-bs-target="#rel-nfe" type="button">NFe</button></li>
+                <li class="nav-item"><button class="nav-link" id="tab-rel-cte" data-bs-toggle="tab" data-bs-target="#rel-cte" type="button">CTe</button></li>
+                <li class="nav-item"><button class="nav-link" id="tab-rel-nfse" data-bs-toggle="tab" data-bs-target="#rel-nfse" type="button">NFS</button></li>
+                <li class="nav-item"><button class="nav-link" id="tab-rel-sped" data-bs-toggle="tab" data-bs-target="#rel-sped" type="button">SPED</button></li>
+            </ul>
+
+            <div class="tab-content">
+                <div class="tab-pane fade show active" id="rel-nfe" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-hover layout-table" id="tabela-rel-nfe">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Número</th><th>Série</th><th>Chave</th><th>Emissão</th><th>Tipo</th><th>Status</th><th>Empresa</th><th>Natureza</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="8" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="rel-cte" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-hover layout-table" id="tabela-rel-cte">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Número</th><th>Série</th><th>Chave</th><th>Emissão</th><th>Empresa</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="5" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="rel-nfse" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-hover layout-table" id="tabela-rel-nfse">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Número</th><th>Chave</th><th>Emissão</th><th>Empresa</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="4" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="rel-sped" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-hover layout-table" id="tabela-rel-sped">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Tipo</th><th>Competência</th><th>Arquivo</th><th>Data carga</th><th>Empresa</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="5" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- Modal Detalhe -->
+<div class="modal fade" id="modalRelatorioDetalhe" tabindex="-1" aria-labelledby="modalRelatorioDetalheLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalRelatorioDetalheLabel">
+                    <i class="fas fa-file-invoice"></i> <span id="modal-rel-titulo">Detalhe</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modal-rel-loading" class="text-center py-5 d-none">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2">Carregando...</p>
+                </div>
+                <div id="modal-rel-content" class="d-none">
+                    <ul class="nav nav-tabs mb-3" id="modal-rel-tabs" role="tablist"></ul>
+                    <div class="tab-content" id="modal-rel-tab-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="{% static 'js/Script_Relatorio.js' %}"></script>
+{% endblock %}

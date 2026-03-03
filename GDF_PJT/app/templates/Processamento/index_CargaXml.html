@@ -283,6 +283,34 @@
     </div>
 </div>
 
+<!-- MODAL - ENVIAR ZIP PARA PASTA DO JOB -->
+<div class="modal fade" id="modalUploadZip" tabindex="-1" aria-labelledby="modalUploadZipLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalUploadZipLabel">
+                    <i class="fas fa-file-archive me-2"></i> Enviar ZIP para pasta do job
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">O arquivo ZIP será extraído na pasta do parâmetro. Apenas arquivos <strong>.xml</strong> serão extraídos e ficarão disponíveis para o job na próxima execução.</p>
+                <input type="hidden" id="upload-zip-param-id" value="">
+                <div class="mb-3">
+                    <label class="form-label fw-600">Arquivo ZIP</label>
+                    <input type="file" id="upload-zip-file" class="form-control" accept=".zip">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-confirmar-upload-zip">
+                    <i class="fas fa-upload"></i> Enviar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL - DETALHES DO JOB -->
 <div class="modal fade" id="modalJobDetails" tabindex="-1" aria-labelledby="modalJobDetailsLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
