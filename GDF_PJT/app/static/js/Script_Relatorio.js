@@ -6,7 +6,9 @@ function relatorioParams() {
         data_inicio: (document.getElementById('relatorio-data-inicio') && document.getElementById('relatorio-data-inicio').value.trim()) || '',
         data_fim: (document.getElementById('relatorio-data-fim') && document.getElementById('relatorio-data-fim').value.trim()) || '',
         busca: (document.getElementById('relatorio-busca') && document.getElementById('relatorio-busca').value.trim()) || '',
-        parcelas: (document.getElementById('relatorio-parcelas') && document.getElementById('relatorio-parcelas').value.trim()) || ''
+        parcelas: (document.getElementById('relatorio-parcelas') && document.getElementById('relatorio-parcelas').value.trim()) || '',
+        tipo_operacao: (document.getElementById('relatorio-tipo-operacao') && document.getElementById('relatorio-tipo-operacao').value.trim()) || '',
+        tipo_pagamento: (document.getElementById('relatorio-tipo-pagamento') && document.getElementById('relatorio-tipo-pagamento').value.trim()) || ''
     };
 }
 
@@ -17,6 +19,8 @@ function relatorioBuildUrl(base, params) {
     if (params.data_fim) q.set('data_fim', params.data_fim);
     if (params.busca) q.set('busca', params.busca);
     if (params.parcelas) q.set('parcelas', params.parcelas);
+    if (params.tipo_operacao) q.set('tipo_operacao', params.tipo_operacao);
+    if (params.tipo_pagamento) q.set('tipo_pagamento', params.tipo_pagamento);
     var s = q.toString();
     return s ? base + '?' + s : base;
 }

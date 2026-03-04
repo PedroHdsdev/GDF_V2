@@ -94,6 +94,109 @@
     border-radius: 0.25rem;
 }
 
+/* ==========================
+   Padrão de alertas/erros/avisos do painel GDF
+   (NotificacoesPadrao.js - área fixa + modal)
+   ========================== */
+
+/* Área de notificações: logo abaixo da navbar, no fluxo da página (não sobrepõe conteúdo) */
+.notificacoes-fixa {
+    padding: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: transparent;
+}
+.notificacoes-fixa:has(.alert) {
+    padding: 0.75rem 1rem;
+    max-height: 42vh;
+    overflow-y: auto;
+    background: rgba(248, 250, 252, 0.98);
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+.notificacoes-fixa-inner {
+    max-width: 720px;
+    margin: 0 auto;
+}
+.notificacoes-fixa .alert + .alert {
+    margin-top: 0.5rem;
+}
+
+/* Container inline (quando a página usa alertas-container no conteúdo) */
+#alertas-container {
+    margin-bottom: 1rem;
+}
+#alertas-container .alert + .alert {
+    margin-top: 0.5rem;
+}
+
+/* Card do alerta: rótulo + texto + fechar */
+.alert-padrao {
+    border-left: 5px solid;
+    border-radius: 10px;
+    padding: 0.9rem 1rem 0.9rem 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.35rem 0.75rem;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+    font-size: 0.95rem;
+    line-height: 1.4;
+    animation: alerta-entrada 0.35s ease-out;
+}
+@keyframes alerta-entrada {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.alert-padrao-rotulo {
+    font-weight: 700;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-right: 0.25rem;
+}
+.alert-padrao-texto {
+    flex: 1 1 100%;
+    min-width: 0;
+}
+.alert-padrao .btn-close {
+    margin-left: auto;
+    flex-shrink: 0;
+    padding: 0.5rem;
+}
+
+/* Cores por tipo (página e modal) */
+.alert.alert-error {
+    color: #721c24;
+    background-color: #fef2f2;
+    border-color: #fecaca;
+}
+.alert.alert-error.alert-padrao { border-left-color: #dc2626; }
+.alert.alert-error .alert-padrao-rotulo { color: #b91c1c; }
+
+.alert-padrao.alert-success { border-left-color: #16a34a; background-color: #f0fdf4; color: #166534; }
+.alert-padrao.alert-success .alert-padrao-rotulo { color: #15803d; }
+
+.alert-padrao.alert-danger { border-left-color: #dc2626; background-color: #fef2f2; color: #991b1b; }
+.alert-padrao.alert-danger .alert-padrao-rotulo { color: #b91c1c; }
+
+.alert-padrao.alert-warning { border-left-color: #ca8a04; background-color: #fefce8; color: #854d0e; }
+.alert-padrao.alert-warning .alert-padrao-rotulo { color: #a16207; }
+
+.alert-padrao.alert-info { border-left-color: #0284c7; background-color: #f0f9ff; color: #075985; }
+.alert-padrao.alert-info .alert-padrao-rotulo { color: #0369a1; }
+
+/* Modal: alertas dentro do modal (mesmo estilo, menor destaque) */
+.modal .alert-padrao {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
 /* Scroll caso o sidebar ultrapasse altura */
 .offcanvas-body {
     overflow-y: auto;

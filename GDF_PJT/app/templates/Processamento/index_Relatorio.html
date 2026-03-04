@@ -79,6 +79,25 @@
                         <input type="date" id="relatorio-data-fim" class="form-control">
                     </div>
                     <div class="col-md-2">
+                        <label class="form-label">Nota (NFe)</label>
+                        <select id="relatorio-tipo-operacao" class="form-select">
+                            <option value="">Todas</option>
+                            <option value="0">Entrada</option>
+                            <option value="1">Saída</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Tipo pagamento (NFe)</label>
+                        <select id="relatorio-tipo-pagamento" class="form-select">
+                            <option value="">Todos</option>
+                            {% for codigo, descricao in meio_pagamento_choices %}
+                            <option value="{{ codigo }}">{{ descricao }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="row g-3 mt-1">
+                    <div class="col-md-2">
                         <label class="form-label">Qtd. parcelas (NFe)</label>
                         <select id="relatorio-parcelas" class="form-select">
                             <option value="">Todas</option>
@@ -96,7 +115,7 @@
                             <option value="12">12 parcelas</option>
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-6">
                         <label class="form-label">Buscar</label>
                         <input type="text" id="relatorio-busca" class="form-control" placeholder="Chave, número, status, natureza...">
                     </div>

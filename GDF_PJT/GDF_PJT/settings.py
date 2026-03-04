@@ -117,7 +117,7 @@ DATABASES = {
          'HOST': env('DB_HOST'),        
          'PORT': env('DB_PORT'), 
         'OPTIONS': {
-            'options': '-c search_path=public,"nfe"'
+            'options': '-c search_path=public,"nfe","sped","reprocessamento"'
         }         
     },                          
 }

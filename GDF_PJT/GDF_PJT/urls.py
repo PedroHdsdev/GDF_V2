@@ -18,10 +18,13 @@ urlpatterns = [
     path('empresas/', views.fn_view_listar_empresas, name='Dm_Empresas'),
     path('clientes/', views.fn_view_listar_clientes, name='Dm_Clientes'),
     
-    # PROCESSAMENTO FISCAL (Carga XML, Carga SPED, Relatório — Reprocessamento será solução própria futura)
+    # PROCESSAMENTO FISCAL (Carga XML, Carga SPED, Relatório)
     path('CargaXml/', views.fn_view_CargaXml, name='Pro_CargaXml'),
     path('CargaSped/', views.fn_view_CargaSped, name='Pro_CargaSped'),
     path('Relatorio/', views.fn_view_Relatorio_Fiscal, name='Pro_Relatorio'),
+
+    # REPROCESSAMENTO (solução própria: confronto SPED x NFe, painel)
+    path('Reprocessamento/Painel/', views.fn_view_Reprocessamento_Painel, name='Reproc_Painel'),
 
     #Dashboard
     path('dashboard/vendas/', views.fn_view_dashboard_vendas, name='Db_Vendas'),
@@ -39,6 +42,7 @@ urlpatterns = [
     path('api/cargaxml/relatorio/', views.fn_api_cargaxml_relatorio, name='API_CargaXmlRelatorio'),
     path('api/debug-session/', views.fn_api_debug_session, name='API_DebugSession'),
     path('api/sessao/cliente/', views.fn_api_sessao_cliente, name='API_SessaoCliente'),
+    path('api/cargaxml/avisos/', views.fn_api_cargaxml_avisos, name='API_CargaXmlAvisos'),
     path('api/cargaxml/jobs/', views.fn_api_cargaxml_jobs, name='API_CargaXmlJobs'),
     path('api/cargaxml/jobs/<int:job_id>/', views.fn_api_cargaxml_job_details, name='API_CargaXmlJobDetails'),
 
@@ -46,6 +50,7 @@ urlpatterns = [
     path('api/cargasped/parametros/<int:param_id>/', views.fn_api_cargasped_parametro_detail, name='API_CargaSpedParamDetail'),
     path('api/cargasped/parametros/<int:param_id>/toggle/', views.fn_api_cargasped_param_toggle, name='API_CargaSpedParamToggle'),
     path('api/cargasped/parametros/<int:param_id>/upload-zip/', views.fn_api_cargasped_upload_zip, name='API_CargaSpedUploadZip'),
+    path('api/cargasped/avisos/', views.fn_api_cargasped_avisos, name='API_CargaSpedAvisos'),
     path('api/cargasped/jobs/', views.fn_api_cargasped_jobs, name='API_CargaSpedJobs'),
     path('api/cargasped/jobs/<int:job_id>/', views.fn_api_cargasped_job_details, name='API_CargaSpedJobDetails'),
     path('api/processar-sped/', views.fn_api_processar_sped, name='API_ProcessarSped'),
@@ -58,6 +63,12 @@ urlpatterns = [
     path('api/relatorio/nfse/<int:id_nfse>/', views.fn_api_relatorio_nfse_detalhe, name='API_RelatorioNFSEDetalhe'),
     path('api/relatorio/sped/', views.fn_api_relatorio_sped, name='API_RelatorioSped'),
     path('api/relatorio/sped/<int:id_arquivo>/', views.fn_api_relatorio_sped_detalhe, name='API_RelatorioSpedDetalhe'),
+
+    # API Reprocessamento (Painel: lotes, divergências, confronto)
+    path('api/reprocessamento/lotes/', views.fn_api_reprocessamento_lotes, name='API_ReprocessamentoLotes'),
+    path('api/reprocessamento/lotes/<int:id_lote>/divergencias/', views.fn_api_reprocessamento_divergencias, name='API_ReprocessamentoDivergencias'),
+    path('api/reprocessamento/confronto/', views.fn_api_reprocessamento_confronto, name='API_ReprocessamentoConfronto'),
+    path('api/reprocessamento/divergencias/<int:id_divergencia>/reprocessar/', views.fn_api_reprocessamento_reprocessar_divergencia, name='API_ReprocessamentoReprocessarDivergencia'),
     
         
 #--------------------------------------------------------------------

@@ -175,7 +175,8 @@ class NFe_ICMS(models.Model):
     produto = models.OneToOneField(NFe_Produto, on_delete=models.CASCADE, related_name='icms')
     
     origem = models.CharField(max_length=1, choices=[('0', 'Nacional'), ('3', 'Exterior'), ('4', 'Exterior - Importação'), ('5', 'Exterior - Adquirida'), ('8', 'Nacional com conteúdo importado')], default='0')
-    cst = models.CharField(max_length=2, choices=[
+    # CST (2 dígitos) ou CSOSN/Simples Nacional (3 dígitos: 101, 102, 201, 900, etc.)
+    cst = models.CharField(max_length=3, choices=[
         ('00', 'Tributada integralmente'),
         ('10', 'Tributada e com cobrança do ICMS por ST'),
         ('20', 'Com redução de base de cálculo'),
@@ -560,6 +561,7 @@ class NFe_Informacoes_Adicionais(models.Model):
     
     informacoes_complementares = models.TextField(blank=True, null=True)
     informacoes_interesse_fisco = models.TextField(blank=True, null=True)
+    xped = models.CharField(max_length=60, blank=True, null=True, help_text='Número do pedido de compra (tag xPed do XML)')
     resposta_json = models.TextField(blank=True, null=True)  # Resposta da autorização da SEFAZ
     
     data_criacao = models.DateTimeField(auto_now_add=True)

@@ -130,6 +130,38 @@
     box-shadow: 0 5px 15px rgba(23, 162, 184, 0.4);
 }
 
+/* Resumo (cards) */
+.resumo-reprocessamento {
+    padding: 0.75rem 0;
+}
+
+.resumo-card {
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    border: 1px solid #e9ecef;
+    background: #f8fafc;
+    height: 100%;
+}
+
+.resumo-card .resumo-numero {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #0f172a;
+}
+
+.resumo-card .resumo-label {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.resumo-card.resumo-total { border-left: 3px solid #0d6efd; }
+.resumo-card.resumo-concluido { border-left: 3px solid #198754; }
+.resumo-card.resumo-divergencias { border-left: 3px solid #fd7e14; }
+.resumo-card.resumo-andamento { border-left: 3px solid #6f42c1; }
+
 /* Tabela de reprocessamento */
 .table-reprocessamento {
     background: transparent;
@@ -147,8 +179,30 @@
     font-weight: 600;
     color: #333;
     border-bottom: 2px solid #dee2e6;
-    padding: 15px;
-    text-align: left;
+    padding: 12px 10px;
+    font-size: 0.8125rem;
+}
+
+.table-reprocessamento-lotes tbody td {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    vertical-align: middle;
+    font-size: 0.875rem;
+}
+
+.table-reprocessamento-lotes tbody td.tab-num {
+    font-variant-numeric: tabular-nums;
+}
+
+.table-reprocessamento-lotes tbody td.col-empresa {
+    min-width: 10rem;
+}
+.table-reprocessamento-lotes tbody td.col-empresa .badge {
+    font-weight: 500;
+}
+.table-reprocessamento-lotes tbody td.col-empresa .small.text-muted {
+    display: block;
+    margin-top: 2px;
 }
 
 .table-reprocessamento tbody td {
@@ -161,6 +215,14 @@
     background-color: #f8f9fa;
 }
 
+.table-reprocessamento tbody tr.tem-divergencia {
+    background-color: #fff8e6;
+}
+
+.table-reprocessamento tbody tr.tem-divergencia:hover {
+    background-color: #fff3cd;
+}
+
 .table-reprocessamento tbody tr.em-processamento {
     background-color: #fff3cd;
     opacity: 0.9;
@@ -170,6 +232,12 @@
     background-color: #d4edda;
     opacity: 0.8;
 }
+
+/* Modal tabela divergências */
+.table-divergencias { font-size: 0.875rem; }
+.table-divergencias .col-tipo { min-width: 140px; }
+.table-divergencias .col-acao { width: 100px; }
+.table-divergencias code { font-size: 0.75rem; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; }
 
 /* Status col */
 .status-badge {

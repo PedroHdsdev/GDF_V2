@@ -386,7 +386,7 @@ async function fn_carregar_cliente(clienteId) {
 
         if (!resp.ok) {
             console.error(`Erro ao carregar cliente: ${resp.status} - ${resp.statusText}`);
-            alert(`Erro ao carregar cliente: ${resp.statusText}`);
+            Notificacoes.modal('Erro ao carregar cliente: ' + resp.statusText, 'danger', 'modalClienteUpdAlerts');
             return false;  // ✅ Retornar false se falhar
         }
 
@@ -400,7 +400,7 @@ async function fn_carregar_cliente(clienteId) {
 
     } catch (err) {
         console.error("Erro ao fazer fetch do cliente:", err);
-        alert("Erro ao carregar dados do cliente");
+        Notificacoes.modal("Erro ao carregar dados do cliente", 'danger', 'modalClienteUpdAlerts');
         return false;  // ✅ Retornar false se erro
     }
 }
@@ -473,7 +473,7 @@ function fn_preencher_select_solucoes() {
 function fn_adicionar_solucao() {
   const select = document.getElementById('upd_solucoes_select');
   if (!select.value) {
-    alert('Selecione uma solução!');
+    Notificacoes.modal('Selecione uma solução!', 'warning', 'modalClienteUpdAlerts');
     return;
   }
   
@@ -482,7 +482,7 @@ function fn_adicionar_solucao() {
   
   // ✅ Verificar se já foi adicionada
   if (og_estado_clientes.solucoesSelecionadas.some(s => s.cod_solucao === solCod)) {
-    alert('Esta solução já foi adicionada!');
+    Notificacoes.modal('Esta solução já foi adicionada!', 'warning', 'modalClienteUpdAlerts');
     return;
   }
   
@@ -637,19 +637,52 @@ document.addEventListener('DOMContentLoaded', () => {
 function fn_validar_formulario_ins(event) {
     event.preventDefault();
     
-    const cnpj = document.querySelector('input[name="m_cnpj"]').value.trim();
-    const razao = document.querySelector('input[name="m_razao"]').value.trim();
+    var form = event.target;
+    var codigo = (form.querySelector('input[name="m_cliente_id"]') || {}).value.trim();
+    var cnpj = (form.querySelector('input[name="m_cnpj"]') || {}).value.trim();
+    var razao = (form.querySelector('input[name="m_razao"]') || {}).value.trim();
     
-    const errors = [];
+    var errors = [];
+    if (!codigo) errors.push("Código do cliente é obrigatório");
     if (!cnpj) errors.push("CNPJ é obrigatório");
     if (!razao) errors.push("Razão Social é obrigatória");
     
     if (errors.length > 0) {
-        alert("❌ Erros:\n\n" + errors.join("\n"));
+        Notificacoes.modal("Erros:\n\n" + errors.join("\n"), 'danger', 'modalClienteInsAlerts');
         return false;
     }
     
-    event.target.submit();
+    var formData = new FormData(form);
+    var action = form.getAttribute('action');
+    
+    fetch(action, {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function(response) {
+        return response.json().then(function(data) {
+            return { ok: response.ok, data: data };
+        }).catch(function() {
+            return { ok: response.ok, data: {} };
+        });
+    })
+    .then(function(result) {
+        if (result.ok && result.data.success) {
+            Notificacoes.modal(result.data.message || 'Cliente cadastrado!', 'success', 'modalClienteInsAlerts');
+            setTimeout(function() { window.location.href = window.location.pathname; }, 1500);
+        } else if (result.data.erro) {
+            Notificacoes.modal(result.data.erro, 'danger', 'modalClienteInsAlerts');
+        } else {
+            Notificacoes.modal('Erro ao cadastrar cliente. Tente novamente.', 'danger', 'modalClienteInsAlerts');
+        }
+    })
+    .catch(function(err) {
+        console.error('Erro ao enviar formulário:', err);
+        Notificacoes.modal('Erro ao enviar formulário. Tente novamente.', 'danger', 'modalClienteInsAlerts');
+    });
+    
+    return false;
 }
 
 function fn_validar_formulario_upd(event) {
@@ -663,7 +696,7 @@ function fn_validar_formulario_upd(event) {
     if (!cnpj) errors.push("CNPJ é obrigatório");
     
     if (errors.length > 0) {
-        fn_exibir_alerta_modal("❌ Erros:\n\n" + errors.join("\n"), 'danger');
+        Notificacoes.modal("❌ Erros:\n\n" + errors.join("\n"), 'danger', 'modalClienteUpdAlerts');
         return false;
     }
     
@@ -712,7 +745,7 @@ function fn_submit_form_ajax(form, tipo) {
     // ✅ Se for JSON com success/message
     if (typeof data === 'object' && data.success !== undefined) {
       const tipoAlert = data.success ? 'success' : 'danger';
-      fn_exibir_alerta_modal(data.message, tipoAlert);
+      Notificacoes.modal(data.message, tipoAlert, 'modalClienteUpdAlerts');
       
       // ✅ Se sucesso, recarregar tabela após 2 segundos
       if (data.success) {
@@ -722,79 +755,36 @@ function fn_submit_form_ajax(form, tipo) {
       }
     } else {
       // ✅ Se não for JSON, considerar erro
-      fn_exibir_alerta_modal('Erro ao processar requisição', 'danger');
+      Notificacoes.modal('Erro ao processar requisição', 'danger', 'modalClienteUpdAlerts');
     }
   })
   .catch(error => {
     console.error(`[fn_submit_form_ajax] Erro:`, error);
-    fn_exibir_alerta_modal('Erro ao processar requisição', 'danger');
+    Notificacoes.modal('Erro ao processar requisição', 'danger', 'modalClienteUpdAlerts');
   });
 }
 
-// ✅ Exibir alerta dentro do modal
-function fn_exibir_alerta_modal(mensagem, tipo = 'info') {
-  const container = document.getElementById('modalClienteUpdAlerts');
-  if (!container) {
-    console.warn('[fn_exibir_alerta_modal] Container não encontrado, usando alert do navegador');
-    alert(mensagem);
-    return;
-  }
-  
-  // Limpar alertas anteriores
-  container.innerHTML = '';
-  
-  // Criar novo alerta
-  const alertDiv = document.createElement('div');
-  alertDiv.className = `alert alert-${tipo} alert-dismissible fade show`;
-  alertDiv.role = 'alert';
-  alertDiv.innerHTML = `
-    ${mensagem}
-    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-  `;
-  
-  container.appendChild(alertDiv);
-  console.log(`[fn_exibir_alerta_modal] Alerta exibido: ${tipo}`);
-  
-  // Auto-fechar após 5 segundos se for sucesso
-  if (tipo === 'success') {
-    setTimeout(() => {
-      const alert = bootstrap.Alert.getOrCreateInstance(alertDiv);
-      if (alert) alert.close();
-    }, 5000);
-  }
-}
+// ✅ Alertas no modal: padrão Notificacoes.modal (ver PADRAO_ALERTAS.md)
 
-// ✅ NOVO: Limpar messages ao abrir/fechar modais
+// Limpar alertas ao abrir/fechar modais
 function fn_init_modal_message_cleanup() {
   const modalIns = document.getElementById('modalClienteIns');
   const modalUpd = document.getElementById('modalClienteUpd');
-  
+
   if (modalIns) {
-    // Limpar messages do INSERT ao fechar
-    modalIns.addEventListener('hidden.bs.modal', function() {
-      const alerts = this.querySelectorAll('.alert');
-      alerts.forEach(alert => {
-        alert.remove();  // Remove da DOM
-      });
-      console.log('✅ Messages do INSERT limpas');
-    });
-    
-    // Limpar formulário ao abrir
     modalIns.addEventListener('show.bs.modal', function() {
+      Notificacoes.limparModal('modalClienteInsAlerts');
       const form = this.querySelector('form');
       if (form) form.reset();
-      console.log('✅ Formulário INSERT resetado');
     });
   }
-  
+
   if (modalUpd) {
-    // Limpar messages do UPDATE ao fechar
+    modalUpd.addEventListener('show.bs.modal', function() {
+      Notificacoes.limparModal('modalClienteUpdAlerts');
+    });
     modalUpd.addEventListener('hidden.bs.modal', function() {
-      const alerts = this.querySelectorAll('.alert');
-      alerts.forEach(alert => {
-        alert.remove();  // Remove da DOM
-      });
-      console.log('✅ Messages do UPDATE limpas');
+      Notificacoes.limparModal('modalClienteUpdAlerts');
     });
   }
 }

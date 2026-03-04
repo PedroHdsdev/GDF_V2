@@ -17,6 +17,7 @@ class AppConfig(AppConfig):
             import app.db_GDF.CTe.models  # noqa: F401
             import app.db_GDF.NFSe.models  # noqa: F401
             import app.db_GDF.Sped.models  # noqa: F401
+            import app.db_Reprocessamento.models  # noqa: F401
         except ImportError:
             # during early development the modules may not exist yet
             pass

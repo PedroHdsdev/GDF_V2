@@ -13,6 +13,109 @@ function obterCsrfToken() {
     return t ? t.value : '';
 }
 
+function carregarAvisosCargaSped(preencherModal) {
+    fetch('/api/cargasped/avisos/', {
+        method: 'GET',
+        headers: { 'X-CSRFToken': obterCsrfToken() },
+    })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            var total = (data.sucesso && data.total_erros) ? data.total_erros : 0;
+            var badge = document.getElementById('avisos-badge-cargasped');
+            if (badge) {
+                if (total > 0) {
+                    badge.textContent = total > 99 ? '99+' : total;
+                    badge.style.display = 'inline-block';
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+            if (preencherModal) {
+                preencherModalAvisosCargaSped(data.items || []);
+            }
+        })
+        .catch(function () {
+            var badge = document.getElementById('avisos-badge-cargasped');
+            if (badge) badge.style.display = 'none';
+        });
+}
+
+function preencherModalAvisosCargaSped(items) {
+    var emptyEl = document.getElementById('modal-avisos-cargasped-empty');
+    var listEl = document.getElementById('modal-avisos-cargasped-list');
+    if (!emptyEl || !listEl) return;
+    if (items.length === 0) {
+        emptyEl.style.display = 'block';
+        listEl.style.display = 'none';
+        listEl.innerHTML = '';
+        return;
+    }
+    emptyEl.style.display = 'none';
+    listEl.style.display = 'block';
+    function formatDt(iso) {
+        if (!iso) return '-';
+        try {
+            var d = new Date(iso);
+            return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+        } catch (e) { return iso; }
+    }
+    function escapeHtml(s) {
+        return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function classForLogLine(line) {
+        var t = (line || '').trim();
+        if (t.indexOf('ERRO:') === 0) return 'aviso-log-erro';
+        if (t.indexOf('PENDENTES') === 0) return 'aviso-log-pendente';
+        if (t.indexOf('OK:') === 0) return 'aviso-log-ok';
+        return 'aviso-log-outro';
+    }
+    var html = '';
+    items.forEach(function (job) {
+        var totalErro = job.total_erro || 0;
+        var totalOk = job.total_sucesso || 0;
+        var logLines = (job.log && job.log.length) ? job.log : [];
+        var logHtml = '';
+        if (logLines.length) {
+            logHtml = '<div class="aviso-dados-adicionais">';
+            logHtml += '<div class="aviso-dados-titulo small fw-600 text-uppercase text-muted mb-2">Dados adicionais</div>';
+            logHtml += '<div class="aviso-log-lines">';
+            logLines.forEach(function (l) {
+                var cssClass = classForLogLine(l);
+                logHtml += '<div class="aviso-log-line ' + cssClass + '">' + escapeHtml(l) + '</div>';
+            });
+            logHtml += '</div></div>';
+        } else {
+            logHtml = '<div class="aviso-dados-adicionais"><div class="text-muted small">Sem log</div></div>';
+        }
+        html += '<div class="aviso-item layout-subcard">';
+        html += '  <div class="aviso-item-header d-flex justify-content-between align-items-center" role="button" tabindex="0">';
+        html += '    <span class="aviso-item-info"><strong>Job #' + job.id + '</strong> &middot; ' + formatDt(job.started_at) + ' <span class="text-muted small ms-1">(clique para detalhes)</span></span>';
+        html += '    <span class="d-flex align-items-center gap-2">';
+        if (totalOk > 0) html += '<span class="badge aviso-badge-ok">' + totalOk + ' OK</span>';
+        html += '<span class="badge aviso-badge-erro">' + totalErro + ' erro(s)</span> <i class="fas fa-chevron-right aviso-chevron small"></i></span>';
+        html += '  </div>';
+        html += '  <div class="aviso-item-body d-none">' + logHtml + '</div>';
+        html += '</div>';
+    });
+    listEl.innerHTML = html;
+    listEl.querySelectorAll('.aviso-item-header').forEach(function (header) {
+        header.addEventListener('click', function () {
+            var card = header.closest('.aviso-item');
+            var body = card.querySelector('.aviso-item-body');
+            var chevron = header.querySelector('.aviso-chevron');
+            body.classList.toggle('d-none');
+            chevron.classList.toggle('fa-chevron-right');
+            chevron.classList.toggle('fa-chevron-down');
+        });
+        header.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                header.click();
+            }
+        });
+    });
+}
+
 function carregarParametrosPrincipais() {
     const tbody = document.querySelector('#tabela-parametros-main tbody');
     if (!tbody) return;
@@ -117,7 +220,7 @@ function carregarParametrosModal() {
 
 function enviarArquivosManuais() {
     if (estadoSped.arquivosManuais.length === 0) {
-        alert('Selecione ao menos um arquivo .txt');
+        Notificacoes.modal('Selecione ao menos um arquivo .txt', 'warning', 'modalCargaSpedAlerts');
         return;
     }
     const fd = new FormData();
@@ -130,7 +233,7 @@ function enviarArquivosManuais() {
         .then(r => r.json())
         .then(data => {
             btn.disabled = false;
-            alert(data.mensagem || (data.sucesso ? 'Enviado.' : 'Erro.'));
+            Notificacoes.modal(data.mensagem || (data.sucesso ? 'Enviado.' : 'Erro.'), data.sucesso ? 'success' : 'danger', 'modalCargaSpedAlerts');
             if (data.sucesso) {
                 estadoSped.arquivosManuais = [];
                 document.getElementById('contador-sped').textContent = '0';
@@ -139,11 +242,19 @@ function enviarArquivosManuais() {
                 carregarParametrosPrincipais();
             }
         })
-        .catch(() => { btn.disabled = false; alert('Erro na requisição.'); });
+        .catch(() => { btn.disabled = false; Notificacoes.modal('Erro na requisição.', 'danger', 'modalCargaSpedAlerts'); });
 }
 
 document.addEventListener('DOMContentLoaded', function () {
     carregarParametrosPrincipais();
+    carregarAvisosCargaSped();
+
+    var modalAvisos = document.getElementById('modalAvisosCargaSped');
+    if (modalAvisos) {
+        modalAvisos.addEventListener('show.bs.modal', function () {
+            carregarAvisosCargaSped(true);
+        });
+    }
 
     const filtroBusca = document.getElementById('filtro-param-busca');
     if (filtroBusca) filtroBusca.addEventListener('keyup', function () { estadoSped.filtros.busca = this.value.toLowerCase(); aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
@@ -180,7 +291,7 @@ document.addEventListener('DOMContentLoaded', function () {
             empresa_id: document.getElementById('param-sped-empresa').value,
             ativo: document.getElementById('param-sped-ativo').checked
         };
-        if (!payload.horario || !payload.diretorio || !payload.empresa_id) { alert('Preencha horário, diretório e empresa.'); return; }
+        if (!payload.horario || !payload.diretorio) { Notificacoes.modal('Preencha horário e diretório.', 'warning', 'modalCargaSpedAlerts'); return; }
         fetch('/api/cargasped/parametros/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': obterCsrfToken() },
@@ -189,9 +300,9 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(r => r.json())
             .then(data => {
                 if (data.sucesso) { carregarParametrosModal(); carregarParametrosPrincipais(); this.reset(); }
-                else alert(data.mensagem || 'Erro');
+                else Notificacoes.modal(data.mensagem || 'Erro', 'danger', 'modalCargaSpedAlerts');
             })
-            .catch(() => alert('Erro na requisição.'));
+            .catch(() => Notificacoes.modal('Erro na requisição.', 'danger', 'modalCargaSpedAlerts'));
     });
 
     document.getElementById('tab-automatico-sped').addEventListener('shown.bs.tab', carregarParametrosModal);
@@ -199,16 +310,27 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('btn-confirmar-upload-zip-sped').addEventListener('click', function () {
         const paramId = document.getElementById('upload-zip-sped-param-id').value;
         const fileInput = document.getElementById('upload-zip-sped-file');
-        if (!paramId || !fileInput.files || !fileInput.files[0]) { alert('Selecione um arquivo ZIP.'); return; }
+        if (!paramId || !fileInput.files || !fileInput.files[0]) { Notificacoes.modal('Selecione um arquivo ZIP.', 'warning', 'modalUploadZipSpedAlerts'); return; }
         const fd = new FormData();
         fd.append('arquivo_zip', fileInput.files[0]);
         fd.append('csrfmiddlewaretoken', obterCsrfToken());
         fetch(`/api/cargasped/parametros/${paramId}/upload-zip/`, { method: 'POST', body: fd })
             .then(r => r.json())
             .then(data => {
-                alert(data.mensagem || (data.sucesso ? 'OK' : 'Erro'));
+                Notificacoes.modal(data.mensagem || (data.sucesso ? 'OK' : 'Erro'), data.sucesso ? 'success' : 'danger', 'modalUploadZipSpedAlerts');
                 if (data.sucesso) { fileInput.value = ''; bootstrap.Modal.getInstance(document.getElementById('modalUploadZipSped')).hide(); carregarParametrosPrincipais(); carregarParametrosModal(); }
             })
-            .catch(() => alert('Erro na requisição.'));
+            .catch(() => Notificacoes.modal('Erro na requisição.', 'danger', 'modalUploadZipSpedAlerts'));
+    });
+
+    // Limpar alertas ao abrir cada modal
+    ['modalCargaSped', 'modalUploadZipSped'].forEach(function (modalId) {
+        var el = document.getElementById(modalId);
+        if (el) {
+            el.addEventListener('show.bs.modal', function () {
+                var alertsId = modalId + 'Alerts';
+                if (typeof Notificacoes !== 'undefined') Notificacoes.limparModal(alertsId);
+            });
+        }
     });
 });

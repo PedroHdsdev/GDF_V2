@@ -38,7 +38,7 @@ function fn_validar_formulario_ins(event) {
     if (!grupos_hidden) errors.push("Selecione pelo menos 1 grupo");
     
     if (errors.length > 0) {
-        alert("❌ Erros ao preencher formulário:\n\n" + errors.join("\n"));
+        Notificacoes.modal("Erros ao preencher formulário:\n\n" + errors.join("\n"), 'danger', 'modalUsuarioInsAlerts');
         return false;
     }
     
@@ -66,7 +66,7 @@ function fn_validar_formulario_upd(event) {
     if (!grupos_hidden) errors.push("Selecione pelo menos 1 grupo");
     
     if (errors.length > 0) {
-        fn_exibir_alerta_modal("❌ Erros:\n\n" + errors.join("\n"), 'danger');
+        Notificacoes.modal("❌ Erros:\n\n" + errors.join("\n"), 'danger', 'modalUsuarioUpdAlerts');
         return false;
     }
     
@@ -98,7 +98,7 @@ function fn_submit_form_ajax(form, tipo) {
     // ✅ Se for JSON com success/message
     if (typeof data === 'object' && data.success !== undefined) {
       const tipoAlert = data.success ? 'success' : 'danger';
-      fn_exibir_alerta_modal(data.message, tipoAlert);
+      Notificacoes.modal(data.message, tipoAlert, 'modalUsuarioUpdAlerts');
       
       // ✅ Se sucesso, recarregar tabela após 2 segundos
       if (data.success) {
@@ -108,47 +108,17 @@ function fn_submit_form_ajax(form, tipo) {
       }
     } else {
       // ✅ Se não for JSON, considerar erro
-      fn_exibir_alerta_modal('Erro ao processar requisição', 'danger');
+      Notificacoes.modal('Erro ao processar requisição', 'danger', 'modalUsuarioUpdAlerts');
     }
   })
   .catch(error => {
     console.error(`[fn_submit_form_ajax] Erro:`, error);
-    fn_exibir_alerta_modal('Erro ao processar requisição', 'danger');
+    Notificacoes.modal('Erro ao processar requisição', 'danger', 'modalUsuarioUpdAlerts');
   });
 }
 
-// ✅ Exibir alerta dentro do modal
-function fn_exibir_alerta_modal(mensagem, tipo = 'info') {
-  const container = document.getElementById('modalUsuarioUpdAlerts');
-  if (!container) {
-    console.warn('[fn_exibir_alerta_modal] Container não encontrado, usando alert do navegador');
-    alert(mensagem);
-    return;
-  }
-  
-  // Limpar alertas anteriores
-  container.innerHTML = '';
-  
-  // Criar novo alerta
-  const alertDiv = document.createElement('div');
-  alertDiv.className = `alert alert-${tipo} alert-dismissible fade show`;
-  alertDiv.role = 'alert';
-  alertDiv.innerHTML = `
-    ${mensagem}
-    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-  `;
-  
-  container.appendChild(alertDiv);
-  console.log(`[fn_exibir_alerta_modal] Alerta exibido: ${tipo}`);
-  
-  // Auto-fechar após 5 segundos se for sucesso
-  if (tipo === 'success') {
-    setTimeout(() => {
-      const alert = bootstrap.Alert.getOrCreateInstance(alertDiv);
-      if (alert) alert.close();
-    }, 5000);
-  }
-}
+// ✅ Alertas no modal: Notificacoes.modal (ver PADRAO_ALERTAS.md)
+
 function fn_fechar_modal_aberto() {
     if (!og_estado_usuarios.modalAberto) return;
     
@@ -419,6 +389,7 @@ function fn_init_usuario_ins() {
 
     modalEl.addEventListener("show.bs.modal", async () => {
         try {
+            if (typeof Notificacoes !== 'undefined') Notificacoes.limparModal('modalUsuarioInsAlerts');
             fn_fechar_modal_aberto();
             og_estado_usuarios.modalAberto = "modalUsuarioIns";
             const codClienteEl = document.getElementById('ins_cod_cliente');
@@ -536,6 +507,9 @@ function fn_init_usuario_upd() {
         }
     });
 
+    modalEl.addEventListener("show.bs.modal", () => {
+        if (typeof Notificacoes !== 'undefined') Notificacoes.limparModal('modalUsuarioUpdAlerts');
+    });
     // ✅ Desmarcar modal aberto ao fechar
     modalEl.addEventListener("hidden.bs.modal", () => {
         if (og_estado_usuarios.modalAberto === "modalUsuarioUpd") {
@@ -560,7 +534,7 @@ async function fn_carregar_usuario(userId) {
 
         if (!resp.ok) {
             console.error(`Erro ao carregar usuário: ${resp.status} - ${resp.statusText}`);
-            alert(`Erro ao carregar usuário: ${resp.statusText}`);
+            Notificacoes.modal('Erro ao carregar usuário: ' + resp.statusText, 'danger', 'modalUsuarioUpdAlerts');
             return false;  // ✅ Retornar false se falhar
         }
 
@@ -574,7 +548,7 @@ async function fn_carregar_usuario(userId) {
         return true;  // ✅ Retornar true se sucesso
     } catch (error) {
         console.error("Erro na requisição:", error);
-        alert("Erro ao carregar usuário. Tente novamente.");
+        Notificacoes.modal("Erro ao carregar usuário. Tente novamente.", 'danger', 'modalUsuarioUpdAlerts');
         return false;  // ✅ Retornar false se erro
     }
 }
@@ -730,7 +704,7 @@ function fn_preencher_select_ins_grupos(grupos) {
 function fn_adicionar_empresa() {
     const select = document.getElementById("upd_empresas_select");
     if (!select.value) {
-        alert("Selecione uma empresa!");
+        Notificacoes.modal("Selecione uma empresa!", 'warning', 'modalUsuarioUpdAlerts');
         return;
     }
     
@@ -739,7 +713,7 @@ function fn_adicionar_empresa() {
     
     // ✅ Verificar se já foi adicionada
     if (og_estado_usuarios.empresasSelecionadas.some(e => e.id == empId)) {
-        alert("Esta empresa já foi adicionada!");
+        Notificacoes.modal("Esta empresa já foi adicionada!", 'warning', 'modalUsuarioUpdAlerts');
         return;
     }
     
@@ -795,7 +769,7 @@ function fn_renderizar_empresas_selecionadas() {
 function fn_adicionar_grupo() {
     const select = document.getElementById("upd_grupos_select");
     if (!select.value) {
-        alert("Selecione um grupo!");
+        Notificacoes.modal("Selecione um grupo!", 'warning', 'modalUsuarioUpdAlerts');
         return;
     }
     
@@ -804,7 +778,7 @@ function fn_adicionar_grupo() {
     
     // ✅ Verificar se já foi adicionado
     if (og_estado_usuarios.gruposSelecionados.some(g => g.id == grupoId)) {
-        alert("Este grupo já foi adicionado!");
+        Notificacoes.modal("Este grupo já foi adicionado!", 'warning', 'modalUsuarioUpdAlerts');
         return;
     }
     
@@ -860,7 +834,7 @@ function fn_renderizar_grupos_selecionados() {
 function fn_adicionar_empresa_ins() {
     const select = document.getElementById("ins_empresas_select");
     if (!select.value) {
-        alert("Selecione uma empresa!");
+        Notificacoes.modal("Selecione uma empresa!", 'warning', 'modalUsuarioInsAlerts');
         return;
     }
     
@@ -869,7 +843,7 @@ function fn_adicionar_empresa_ins() {
     
     // ✅ Verificar se já foi adicionada
     if (og_estado_usuarios.empresasSelecionadas.some(e => e.id == empId)) {
-        alert("Esta empresa já foi adicionada!");
+        Notificacoes.modal("Esta empresa já foi adicionada!", 'warning', 'modalUsuarioInsAlerts');
         return;
     }
     
@@ -931,7 +905,7 @@ function fn_renderizar_empresas_selecionadas_ins() {
 function fn_adicionar_grupo_ins() {
     const select = document.getElementById("ins_grupos_select");
     if (!select.value) {
-        alert("Selecione um grupo!");
+        Notificacoes.modal("Selecione um grupo!", 'warning', 'modalUsuarioInsAlerts');
         return;
     }
     
@@ -940,7 +914,7 @@ function fn_adicionar_grupo_ins() {
     
     // ✅ Verificar se já foi adicionado
     if (og_estado_usuarios.gruposSelecionados.some(g => g.id == grupoId)) {
-        alert("Este grupo já foi adicionado!");
+        Notificacoes.modal("Este grupo já foi adicionado!", 'warning', 'modalUsuarioInsAlerts');
         return;
     }
     

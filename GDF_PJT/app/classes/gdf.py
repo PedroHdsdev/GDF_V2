@@ -25,7 +25,19 @@ except ImportError:
         import jwt as jwt_module
         jwt_encode = jwt_module.encode
     except (ImportError, AttributeError):
-        jwt_encode = None                          
+        jwt_encode = None
+
+
+def _mensagem_amigavel_empresa_duplicada(erro_texto, cod_empresa=None):
+    """Se o erro for de constraint/duplicidade (PostgreSQL ou Django), retorna mensagem para o usuário."""
+    t = (erro_texto or "").lower()
+    if "duplicate key" in t or "empresas_pkey" in t or "unique constraint" in t or ("cod_empresa" in t and "already exists" in t):
+        cod = cod_empresa if cod_empresa is not None else ""
+        return f"Já existe uma empresa com o código '{cod}'. Escolha outro código." if cod else "Já existe uma empresa com estes dados. Escolha outro código."
+    if "integrity" in t or "unique" in t or "duplicate" in t:
+        return "Já existe um registro com estes dados. Verifique o código ou CNPJ da empresa."
+    return None
+
 
 class ClGdf():
     def __init__(self):
@@ -328,7 +340,7 @@ class ClGdf():
                 )
 
                 if not l_v_created:
-                    return {"success": False, "message": "Cliente já existe"}
+                    return {"success": False, "message": f"Já existe um cliente com o código '{i_cliente}'. Escolha outro código."}
 
                 # Criar vínculos de soluções (todas inativas inicialmente)
                 l_v_queryset_solucoes = Solucoes.objects.all()
@@ -341,10 +353,16 @@ class ClGdf():
 
         except Solucoes.DoesNotExist:
             return {"success": False, "message": "Soluções não encontradas"}
-        except IntegrityError:
-            return {"success": False, "message": "Cliente já existe"}
+        except IntegrityError as e:
+            msg = str(e).lower()
+            if "clientes" in msg or "cod_cliente" in msg or "duplicate key" in msg:
+                return {"success": False, "message": f"Já existe um cliente com o código '{i_cliente}'. Escolha outro código."}
+            return {"success": False, "message": "Cliente já existe ou registro duplicado."}
         except Exception as e:
-            return {"success": False, "message": f"Erro ao criar cliente: {str(e)}"}
+            err = str(e).lower()
+            if "duplicate key" in err or "clientes_pkey" in err or "unique constraint" in err or ("cod_cliente" in err and "already exists" in err):
+                return {"success": False, "message": f"Já existe um cliente com o código '{i_cliente}'. Escolha outro código."}
+            return {"success": False, "message": "Erro ao criar cliente. Tente novamente ou verifique os dados."}
 
 #--------------------------------------------------------------------------------
     """Atualiza cliente e seus vínculos de soluções com transação atômica"""
@@ -367,6 +385,15 @@ class ClGdf():
             print(f"[OK] Cliente {i_cliente} atualizado com sucesso")
             return {"success": True, "message": "Cliente atualizado com sucesso"}
         
+        except Clientes.DoesNotExist:
+            return {"success": False, "message": "Cliente não encontrado"}
+        except ValueError as e:
+            return {"success": False, "message": str(e)}
+        except IntegrityError as e:
+            msg = str(e).lower()
+            if "cnpj" in msg or "duplicate" in msg or "unique" in msg:
+                return {"success": False, "message": "Já existe outro cliente com este CNPJ. Use um CNPJ diferente."}
+            return {"success": False, "message": "Dados duplicados. Verifique as informações e tente novamente."}
         except Exception as e:
             print(f"[ERROR] Erro ao atualizar cliente: {str(e)}")
             return {"success": False, "message": f"Erro inesperado: {str(e)}"}
@@ -643,9 +670,15 @@ class ClGdf():
         
         except ValueError as e:
             return {"success": False, "message": str(e)}
+        except IntegrityError as e:
+            msg = _mensagem_amigavel_empresa_duplicada(str(e), i_v_cod_empresa)
+            return {"success": False, "message": msg or "Já existe um registro com estes dados. Verifique o código ou CNPJ da empresa."}
         except Exception as e:
             print(f"[ERROR] Empresa_ins - Erro: {str(e)}")
-            return {"success": False, "message": f"Erro ao criar empresa: {str(e)}"}
+            msg = _mensagem_amigavel_empresa_duplicada(str(e), i_v_cod_empresa)
+            if msg:
+                return {"success": False, "message": msg}
+            return {"success": False, "message": "Erro ao criar empresa. Tente novamente ou verifique os dados."}
 
 #--------------------------------------------------------------------------------
     """Atualização de Empresas"""
@@ -715,6 +748,11 @@ class ClGdf():
         except ValueError as e:
             print(f"[ERROR] Empresa_upd - Validação: {str(e)}")
             return {"success": False, "message": str(e)}
+        except IntegrityError as e:
+            msg = str(e).lower()
+            if "cnpj" in msg or "duplicate" in msg or "unique" in msg:
+                return {"success": False, "message": "Já existe outra empresa com este CNPJ ou dados duplicados. Verifique as informações."}
+            return {"success": False, "message": "Dados duplicados. Verifique as informações e tente novamente."}
         except Exception as e:
             print(f"[ERROR] Empresa_upd - Erro: {str(e)}")
             return {"success": False, "message": f"Erro ao atualizar empresa: {str(e)}"}

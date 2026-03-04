@@ -655,29 +655,18 @@ with st.tabs(["📦 Grupo de Mercadorias"])[0]:
         st.error(f"❌ Erro ao gerar grupo de mercadorias: {str(err_grp)}")
 
 # ============================================================
-# TAB: POR TIPO DE PAGAMENTO (descrições do JSON)
+# TAB: POR TIPO DE PAGAMENTO (Compras: seção standalone; Vendas: dentro de Pagamentos)
 # ============================================================
-st.markdown("---")
-st.subheader("💳 Por tipo de pagamento")
-st.caption("Tipos de pagamento conforme cadastro em json/Tipo_pagamento.json (código do XML → descrição).")
-if not df_pagamento.empty:
-    agg_pag = df_pagamento.groupby("tipo_pagamento_desc").agg(
-        quantidade_nfe=("id_identificacao", "nunique"),
-        valor_total=("valor_pago", "sum"),
-    ).reset_index()
-    agg_pag = agg_pag.sort_values("valor_total", ascending=False)
+def _render_por_tipo_pagamento():
+    """Renderiza gráficos e tabela por tipo de pagamento (reutilizado em Vendas e Compras)."""
+    st.caption("Tipos de pagamento conforme cadastro em json/Tipo_pagamento.json (código do XML → descrição).")
+    if not df_pagamento.empty:
+        agg_pag = df_pagamento.groupby("tipo_pagamento_desc").agg(
+            quantidade_nfe=("id_identificacao", "nunique"),
+            valor_total=("valor_pago", "sum"),
+        ).reset_index()
+        agg_pag = agg_pag.sort_values("valor_total", ascending=False)
 
-    col_pag1, col_pag2 = st.columns(2)
-    with col_pag1:
-        st.markdown("#### Por valor pago (R$)")
-        chart_pag_valor = alt.Chart(agg_pag).mark_bar().encode(
-            y=alt.Y("tipo_pagamento_desc:N", sort=alt.EncodingSortField(field="valor_total", order="descending")),
-            x=alt.X("valor_total:Q", title="Valor total (R$)"),
-            color=alt.value("#1f77d4"),
-            tooltip=[alt.Tooltip("tipo_pagamento_desc:N", title="Tipo"), alt.Tooltip("valor_total:Q", title="Valor (R$)"), alt.Tooltip("quantidade_nfe:Q", title="Qtd. NF-e")],
-        ).properties(height=max(300, len(agg_pag) * 32), title="Valor por tipo de pagamento")
-        st.altair_chart(chart_pag_valor, use_container_width=True)
-    with col_pag2:
         st.markdown("#### Por quantidade de NF-e")
         chart_pag_qtd = alt.Chart(agg_pag).mark_bar().encode(
             y=alt.Y("tipo_pagamento_desc:N", sort=alt.EncodingSortField(field="quantidade_nfe", order="descending")),
@@ -686,76 +675,26 @@ if not df_pagamento.empty:
             tooltip=[alt.Tooltip("tipo_pagamento_desc:N", title="Tipo"), alt.Tooltip("quantidade_nfe:Q", title="Qtd. NF-e"), alt.Tooltip("valor_total:Q", title="Valor (R$)")],
         ).properties(height=max(300, len(agg_pag) * 32), title="NF-e por tipo de pagamento")
         st.altair_chart(chart_pag_qtd, use_container_width=True)
-    with st.expander("Ver tabela por tipo de pagamento"):
-        st.dataframe(agg_pag.rename(columns={"tipo_pagamento_desc": "Tipo de pagamento", "quantidade_nfe": "Qtd. NF-e", "valor_total": "Valor total (R$)"}), use_container_width=True)
-else:
-    st.info("ℹ️ Nenhum dado de pagamento cadastrado nas NF-e do período.")
+        with st.expander("Ver tabela por tipo de pagamento"):
+            st.dataframe(agg_pag.rename(columns={"tipo_pagamento_desc": "Tipo de pagamento", "quantidade_nfe": "Qtd. NF-e", "valor_total": "Valor total (R$)"}), use_container_width=True)
+    else:
+        st.info("ℹ️ Nenhum dado de pagamento cadastrado nas NF-e do período.")
+
+if tipo_relatorio == "Compras":
+    st.markdown("---")
+    st.subheader("💳 Por tipo de pagamento")
+    _render_por_tipo_pagamento()
 
 # ============================================================
-# SEÇÃO VENDAS: Prazo médio de pagamento e impacto no fluxo de caixa
+# SEÇÃO VENDAS: Pagamentos (condições e tipo)
 # ============================================================
 if tipo_relatorio == "Vendas":
     st.markdown("---")
-    st.subheader("💰 Prazo e fluxo de caixa (Vendas)")
-    tab_prazo_v, tab_fluxo_v, tab_cond_pag = st.tabs([
-        "⏱️ Prazo médio de pagamento",
-        "📅 Parcelamento e impacto no fluxo de caixa",
+    st.subheader("💰 Pagamentos (Vendas)")
+    tab_cond_pag, tab_tipo_pag = st.tabs([
         "📋 Condições de pagamento mais usadas",
+        "💳 Por tipo de pagamento",
     ])
-    with tab_prazo_v:
-        st.markdown("### Prazo médio de recebimento (emissão → vencimento)")
-        if not df_parcelas.empty and "id_identificacao" in df_parcelas.columns:
-            df_emissao = df_merged[["id_identificacao", "emissao"]].drop_duplicates()
-            df_prazo_v = df_parcelas.merge(df_emissao, on="id_identificacao", how="left")
-            # Forçar UTC para subtração funcionar (naive e aware)
-            emissao_dt = pd.to_datetime(df_prazo_v["emissao"], utc=True).dt.normalize()
-            venc_dt = pd.to_datetime(df_prazo_v["data_vencimento"], utc=True).dt.normalize()
-            df_prazo_v["dias_prazo"] = (venc_dt - emissao_dt).dt.days
-            df_prazo_v["valor_parcela"] = pd.to_numeric(df_prazo_v["valor_parcela"], errors="coerce").fillna(0)
-            total_valor_v = df_prazo_v["valor_parcela"].sum()
-            if total_valor_v and total_valor_v > 0:
-                prazo_medio_v = (df_prazo_v["dias_prazo"] * df_prazo_v["valor_parcela"]).sum() / total_valor_v
-                st.metric("Prazo médio ponderado (dias)", f"{prazo_medio_v:.0f} dias")
-            else:
-                prazo_medio_v = df_prazo_v["dias_prazo"].mean()
-                st.metric("Prazo médio simples (dias)", f"{prazo_medio_v:.0f} dias")
-            df_prazo_v = df_prazo_v.merge(
-                df_merged[["id_identificacao", "nome_cliente", "cnpj_cliente"]].drop_duplicates(),
-                on="id_identificacao", how="left"
-            )
-            df_prazo_v["dias_x_valor"] = df_prazo_v["dias_prazo"] * df_prazo_v["valor_parcela"]
-            agg_v = df_prazo_v.groupby(["cnpj_cliente", "nome_cliente"]).agg(
-                valor_total=("valor_parcela", "sum"),
-                soma_dias_valor=("dias_x_valor", "sum"),
-            ).reset_index()
-            agg_v["prazo_medio_dias"] = np.where(agg_v["valor_total"] > 0, agg_v["soma_dias_valor"] / agg_v["valor_total"], 0)
-            agg_v = agg_v[agg_v["valor_total"] > 0].nlargest(10, "valor_total")
-            if not agg_v.empty:
-                agg_v["label"] = agg_v["cnpj_cliente"].astype(str) + " - " + agg_v["nome_cliente"].fillna("S/N")
-                chart_prazo_v = alt.Chart(agg_v).mark_bar().encode(
-                    y=alt.Y("label:N", sort=alt.EncodingSortField(field="prazo_medio_dias", order="descending")),
-                    x=alt.X("prazo_medio_dias:Q", title="Prazo médio (dias)"),
-                    color=alt.value("#1f77d4"),
-                ).properties(height=400, title="Prazo médio por cliente (Top 10 por valor)")
-                st.altair_chart(chart_prazo_v, use_container_width=True)
-        else:
-            st.info("ℹ️ Nenhuma parcela de recebimento cadastrada nas NF-e do período.")
-    with tab_fluxo_v:
-        st.markdown("### Impacto no fluxo de caixa (previsão de recebimentos por vencimento)")
-        if not df_parcelas.empty:
-            df_parcelas["mes_venc"] = df_parcelas["data_vencimento"].dt.to_period("M").astype(str)
-            fluxo_v = df_parcelas.groupby("mes_venc", as_index=False)["valor_parcela"].sum()
-            fluxo_v = fluxo_v.rename(columns={"valor_parcela": "Valor a receber (R$)"})
-            chart_fluxo_v = alt.Chart(fluxo_v).mark_bar().encode(
-                x=alt.X("mes_venc:N", title="Mês de vencimento"),
-                y=alt.Y("Valor a receber (R$):Q", title="Valor (R$)"),
-                color=alt.value("#2ca02c"),
-            ).properties(height=350, title="Previsão de entradas por mês de vencimento")
-            st.altair_chart(chart_fluxo_v, use_container_width=True)
-            with st.expander("Ver totais por mês"):
-                st.dataframe(fluxo_v, use_container_width=True)
-        else:
-            st.info("ℹ️ Nenhuma parcela cadastrada para exibir fluxo de caixa.")
     with tab_cond_pag:
         st.markdown("### Condições de pagamento que mais se repetem")
         st.caption("Cada condição considera o número de parcelas e o prazo em dias (emissão → vencimento) de cada parcela. Ex.: \"5x em 15/30/30/30/30 dias\".")
@@ -800,72 +739,21 @@ if tipo_relatorio == "Vendas":
         else:
             st.info("ℹ️ Nenhuma parcela cadastrada para analisar condições de pagamento.")
 
+    with tab_tipo_pag:
+        _render_por_tipo_pagamento()
+
 # ============================================================
 # SEÇÃO COMPRAS: Análises financeiras, fiscais e estratégicas
 # ============================================================
 if tipo_relatorio == "Compras":
     st.markdown("---")
     st.subheader("📊 Análise de NF-e de Entrada (Compras)")
-    tab_prazo, tab_parcelas, tab_cfop, tab_creditos, tab_abc = st.tabs([
-        "⏱️ Prazo médio de pagamento",
-        "📅 Parcelamento e fluxo de caixa",
+    tab_cfop, tab_creditos, tab_abc = st.tabs([
         "📋 Distribuição por CFOP",
         "💰 Créditos tributários",
         "📈 Curva ABC (concentração)",
     ])
-    
-    with tab_prazo:
-        st.markdown("### Prazo médio de pagamento (emissão → vencimento)")
-        if not df_parcelas.empty and 'id_identificacao' in df_parcelas.columns:
-            df_emissao = df_merged[['id_identificacao', 'emissao']].drop_duplicates()
-            df_prazo = df_parcelas.merge(df_emissao, on='id_identificacao', how='left')
-            emissao_dt = pd.to_datetime(df_prazo['emissao'], utc=True).dt.normalize()
-            venc_dt = pd.to_datetime(df_prazo['data_vencimento'], utc=True).dt.normalize()
-            df_prazo['dias_prazo'] = (venc_dt - emissao_dt).dt.days
-            df_prazo['valor_parcela'] = pd.to_numeric(df_prazo['valor_parcela'], errors='coerce').fillna(0)
-            total_valor = df_prazo['valor_parcela'].sum()
-            if total_valor and total_valor > 0:
-                prazo_medio = (df_prazo['dias_prazo'] * df_prazo['valor_parcela']).sum() / total_valor
-                st.metric("Prazo médio ponderado (dias)", f"{prazo_medio:.0f} dias")
-            else:
-                prazo_medio = df_prazo['dias_prazo'].mean()
-                st.metric("Prazo médio simples (dias)", f"{prazo_medio:.0f} dias")
-            # Por fornecedor: prazo médio ponderado = sum(dias * valor) / sum(valor)
-            df_prazo_f = df_prazo.merge(df_merged[['id_identificacao', 'nome_fornecedor', 'cnpj_fornecedor']].drop_duplicates(), on='id_identificacao', how='left')
-            df_prazo_f['dias_x_valor'] = df_prazo_f['dias_prazo'] * df_prazo_f['valor_parcela']
-            agg_f = df_prazo_f.groupby(['cnpj_fornecedor', 'nome_fornecedor']).agg(
-                valor_total=('valor_parcela', 'sum'),
-                soma_dias_valor=('dias_x_valor', 'sum')
-            ).reset_index()
-            agg_f['prazo_medio_dias'] = np.where(agg_f['valor_total'] > 0, agg_f['soma_dias_valor'] / agg_f['valor_total'], 0)
-            agg_f = agg_f[agg_f['valor_total'] > 0].nlargest(10, 'valor_total')
-            if not agg_f.empty:
-                agg_f['label'] = agg_f['cnpj_fornecedor'].astype(str) + ' - ' + agg_f['nome_fornecedor'].fillna('S/N')
-                chart_prazo = alt.Chart(agg_f).mark_bar().encode(
-                    y=alt.Y('label:N', sort=alt.EncodingSortField(field='prazo_medio_dias', order='descending')),
-                    x=alt.X('prazo_medio_dias:Q', title='Prazo médio (dias)'),
-                    color=alt.value('#1f77d4')
-                ).properties(height=400, title="Prazo médio por fornecedor (Top 10 por valor)")
-                st.altair_chart(chart_prazo, use_container_width=True)
-        else:
-            st.info("ℹ️ Nenhuma parcela de pagamento cadastrada nas NF-e do período.")
-    
-    with tab_parcelas:
-        st.markdown("### Impacto no fluxo de caixa (vencimentos por período)")
-        if not df_parcelas.empty:
-            df_parcelas['mes_venc'] = df_parcelas['data_vencimento'].dt.to_period('M').astype(str)
-            fluxo = df_parcelas.groupby('mes_venc', as_index=False)['valor_parcela'].sum()
-            chart_fluxo = alt.Chart(fluxo).mark_bar().encode(
-                x=alt.X('mes_venc:N', title='Mês de vencimento'),
-                y=alt.Y('valor_parcela:Q', title='Valor (R$)'),
-                color=alt.value('#2ca02c')
-            ).properties(height=350, title="Valor a pagar por mês de vencimento")
-            st.altair_chart(chart_fluxo, use_container_width=True)
-            with st.expander("Ver parcelas agregadas"):
-                st.dataframe(fluxo, use_container_width=True)
-        else:
-            st.info("ℹ️ Nenhuma parcela cadastrada para exibir fluxo.")
-    
+
     with tab_cfop:
         st.markdown("### Distribuição das compras por CFOP")
         if not df_produtos.empty and 'cfop' in df_produtos.columns:

@@ -19,7 +19,11 @@
             <h1 class="layout-title">Carga de XML</h1>
             <p class="layout-subtitle">Importe, acompanhe e valide arquivos em um fluxo unico.</p>
         </div>
-        <div class="layout-hero-actions">
+        <div class="layout-hero-actions d-flex gap-2 align-items-center">
+            <button type="button" class="btn btn-outline-secondary layout-btn position-relative" id="btn-avisos-cargaxml" data-bs-toggle="modal" data-bs-target="#modalAvisosCargaXml" title="Logs de cargas com erros">
+                <i class="fas fa-bell"></i> Avisos
+                <span class="avisos-badge badge rounded-pill bg-danger position-absolute top-0 end-0 translate-middle" id="avisos-badge-cargaxml" style="display: none; font-size: 0.7rem;">0</span>
+            </button>
             <button class="btn btn-light layout-btn" data-bs-toggle="modal" data-bs-target="#modalCargaXml">
                 <i class="fas fa-folder-open"></i> Carregar XMLs
             </button>
@@ -105,6 +109,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <div id="modalCargaXmlAlerts"></div>
                 <!-- Abas simplificadas -->
                 <ul class="nav nav-tabs mb-3" role="tablist">
                     <li class="nav-item" role="presentation">
@@ -138,17 +143,6 @@
                         <!-- Configurações de Upload -->
                         <div class="mt-4 mb-3">
                             <div class="row g-3">
-                                <div class="col-md-6">
-                                    <label class="form-label fw-600">Empresa:</label>
-                                    <select id="select-empresa-manual" class="form-select" required>
-                                        <option value="">Selecione a empresa</option>
-                                        {% for emp in empresas_usuario %}
-                                            <option value="{{ emp.cod_empresa }}">
-                                                {{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})
-                                            </option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
                                 <div class="col-md-6">
                                     <label class="form-label fw-600">Origem dos Dados:</label>
                                     <select id="select-origem-dados" class="form-select">
@@ -208,17 +202,6 @@
                                             <option value="SAP">Importacao SAP</option>
                                             <option value="SPED">Importacao SPED</option>
                                             <option value="OUTROS">Outros</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <label class="form-label fw-600">Empresa:</label>
-                                        <select id="param-empresa" class="form-select" required>
-                                            <option value="">Selecione a empresa</option>
-                                            {% for emp in empresas_usuario %}
-                                                <option value="{{ emp.cod_empresa }}">
-                                                    {{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})
-                                                </option>
-                                            {% endfor %}
                                         </select>
                                     </div>
                                     <div class="col-md-3 d-flex align-items-end">
@@ -294,6 +277,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
             </div>
             <div class="modal-body">
+                <div id="modalUploadZipAlerts"></div>
                 <p class="text-muted small">O arquivo ZIP será extraído na pasta do parâmetro. Apenas arquivos <strong>.xml</strong> serão extraídos e ficarão disponíveis para o job na próxima execução.</p>
                 <input type="hidden" id="upload-zip-param-id" value="">
                 <div class="mb-3">
@@ -418,6 +402,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
             </div>
             <div class="modal-body">
+                <div id="modalParametroDetailsAlerts"></div>
                 <ul class="nav nav-tabs mb-3" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active" id="tab-param-edicao" data-bs-toggle="tab" data-bs-target="#param-edicao" type="button" role="tab" aria-controls="param-edicao" aria-selected="true">
@@ -450,9 +435,9 @@
                                     </select>
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label">Empresa</label>
-                                    <select id="param-edit-empresa" class="form-select" required>
-                                        <option value="">Selecione a empresa</option>
+                                    <label class="form-label">Empresa (opcional)</label>
+                                    <select id="param-edit-empresa" class="form-select">
+                                        <option value="">Nenhuma</option>
                                         {% for emp in empresas_usuario %}
                                             <option value="{{ emp.cod_empresa }}">
                                                 {{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})
@@ -501,6 +486,30 @@
                 <button type="submit" form="form-param-edit" class="btn btn-primary" id="btn-param-edit-salvar">
                     <i class="fas fa-save"></i> Salvar
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL - AVISOS (logs de cargas com erros) -->
+<div class="modal fade" id="modalAvisosCargaXml" tabindex="-1" aria-labelledby="modalAvisosCargaXmlLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content modal-avisos-cargaxml">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalAvisosCargaXmlLabel">
+                    <i class="fas fa-exclamation-triangle text-warning me-2"></i> Avisos – Logs de cargas com erros
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modal-avisos-cargaxml-empty" class="modal-avisos-empty text-center py-5">
+                    <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                    <p class="mb-0 text-muted">Nenhuma carga com erro no momento.</p>
+                </div>
+                <div id="modal-avisos-cargaxml-list" class="modal-avisos-list" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary layout-btn" data-bs-dismiss="modal">Fechar</button>
             </div>
         </div>
     </div>

@@ -271,6 +271,9 @@ function fn_init_grp_empresa_ins() {
         modal.show();
     });
 
+    modalEl.addEventListener("show.bs.modal", () => {
+        if (typeof Notificacoes !== 'undefined') Notificacoes.limparModal('modalGrpEmpresaInsAlerts');
+    });
     modalEl.addEventListener("hidden.bs.modal", () => {
         const form = modalEl.querySelector("form");
         if (form) form.reset();
@@ -313,14 +316,17 @@ function fn_init_empresa_ins() {
                 const modal = new bootstrap.Modal(modalEl, { backdrop: "static", keyboard: false });
                 modal.show();
             } else {
-                alert('Erro ao carregar dados. Se for superusuário, selecione o cliente primeiro.');
+                Notificacoes.pagina('Erro ao carregar dados. Se for superusuário, selecione o cliente primeiro.', 'danger');
             }
         } catch (err) {
             console.error('Erro ao buscar grupos:', err);
-            alert('Erro de conexão. Tente novamente.');
+            Notificacoes.pagina('Erro de conexão. Tente novamente.', 'danger');
         }
     });
     
+    modalEl.addEventListener("show.bs.modal", () => {
+        if (typeof Notificacoes !== 'undefined') Notificacoes.limparModal('modalEmpresaInsAlerts');
+    });
     modalEl.addEventListener("hidden.bs.modal", () => {
         const form = modalEl.querySelector("form");
         if (form) form.reset();
@@ -433,6 +439,9 @@ function fn_init_empresa_upd() {
         }
     });
 
+    modalEl.addEventListener("show.bs.modal", () => {
+        if (typeof Notificacoes !== 'undefined') Notificacoes.limparModal('modalEmpresaUpdAlerts');
+    });
     modalEl.addEventListener("hidden.bs.modal", () => {
         fn_resetar_formulario();
         
@@ -476,7 +485,7 @@ async function fn_carregar_empresa(empresaId) {
 
         if (!resp.ok) {
             console.error(`Erro ao carregar empresa: ${resp.status} - ${resp.statusText}`);
-            alert(`Erro ao carregar empresa: ${resp.statusText}`);
+            Notificacoes.modal('Erro ao carregar empresa: ' + resp.statusText, 'danger', 'modalEmpresaUpdAlerts');
             return false;  // ✅ Retornar false se falhar
         }
 
@@ -490,7 +499,7 @@ async function fn_carregar_empresa(empresaId) {
 
     } catch (err) {
         console.error("Erro ao fazer fetch da empresa:", err);
-        alert("Erro ao carregar dados da empresa");
+        Notificacoes.modal("Erro ao carregar dados da empresa", 'danger', 'modalEmpresaUpdAlerts');
         return false;  // ✅ Retornar false se erro
     }
 }
@@ -581,18 +590,18 @@ function fn_validar_certificado(event) {
   
   // Validar se algo foi enviado
   if (!fileInput.files.length && !emissor && !dtInicial && !dtFim) {
-    alert('Selecione um arquivo ou preencha os dados do certificado');
+    Notificacoes.modal('Selecione um arquivo ou preencha os dados do certificado', 'warning', 'modalEmpresaUpdAlerts');
     return false;
   }
   
   // Se há datas, validar formato
   if (dtInicial && !fn_validar_data(dtInicial)) {
-    alert('Formato de data inválido para Data Início. Use DD/MM/YYYY ou YYYY-MM-DD');
+    Notificacoes.modal('Formato de data inválido para Data Início. Use DD/MM/YYYY ou YYYY-MM-DD', 'warning', 'modalEmpresaUpdAlerts');
     return false;
   }
   
   if (dtFim && !fn_validar_data(dtFim)) {
-    alert('Formato de data inválido para Data Fim. Use DD/MM/YYYY ou YYYY-MM-DD');
+    Notificacoes.modal('Formato de data inválido para Data Fim. Use DD/MM/YYYY ou YYYY-MM-DD', 'warning', 'modalEmpresaUpdAlerts');
     return false;
   }
   
@@ -669,11 +678,12 @@ if (cnpjInput) {
 }
 
 /* ===============================
-   VALIDAÇÃO FORMULÁRIO INSERT
+   VALIDAÇÃO E ENVIO FORMULÁRIO INSERT (via AJAX para exibir erros no modal)
 ================================ */
 function fn_validar_formulario_ins(event) {
     event.preventDefault();
     
+    const form = event.target;
     const cod_empresa = document.getElementById('ins_codempresa').value.trim();
     const cnpj = document.getElementById('ins_cnpj').value.trim();
     const razao = document.getElementById('ins_razao').value.trim();
@@ -688,11 +698,44 @@ function fn_validar_formulario_ins(event) {
     if (!grp_empresa) errors.push("Selecione um Grupo de Empresas");
     
     if (errors.length > 0) {
-        alert("❌ Erros:\n\n" + errors.join("\n"));
+        Notificacoes.modal("Erros:\n\n" + errors.join("\n"), 'danger', 'modalEmpresaInsAlerts');
         return false;
     }
     
-    event.target.submit();
+    var formData = new FormData(form);
+    var action = form.getAttribute('action');
+    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]') ? document.querySelector('[name=csrfmiddlewaretoken]').value : '';
+    
+    fetch(action, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(function(response) {
+        return response.json().then(function(data) {
+            return { ok: response.ok, data: data };
+        }).catch(function() {
+            return { ok: response.ok, data: {} };
+        });
+    })
+    .then(function(result) {
+        if (result.ok && result.data.success) {
+            Notificacoes.modal(result.data.message || 'Empresa cadastrada com sucesso', 'success', 'modalEmpresaInsAlerts');
+            setTimeout(function() { window.location.href = window.location.pathname; }, 1500);
+        } else if (result.data.erro) {
+            Notificacoes.modal(result.data.erro, 'danger', 'modalEmpresaInsAlerts');
+        } else {
+            Notificacoes.modal('Erro ao cadastrar empresa. Tente novamente.', 'danger', 'modalEmpresaInsAlerts');
+        }
+    })
+    .catch(function(err) {
+        console.error('Erro ao enviar formulário:', err);
+        Notificacoes.modal('Erro ao enviar formulário. Tente novamente.', 'danger', 'modalEmpresaInsAlerts');
+    });
+    
+    return false;
 }
 
 /* ===============================
@@ -709,7 +752,7 @@ function fn_validar_formulario_upd(event) {
     if (!fantasia) errors.push("Nome Fantasia é obrigatório");
     
     if (errors.length > 0) {
-        fn_exibir_alerta_modal("❌ Erros:\n\n" + errors.join("\n"), 'danger');
+        Notificacoes.modal("❌ Erros:\n\n" + errors.join("\n"), 'danger', 'modalEmpresaUpdAlerts');
         return false;
     }
     
@@ -741,7 +784,7 @@ function fn_submit_form_ajax(form, tipo) {
     // ✅ Se for JSON com success/message
     if (typeof data === 'object' && data.success !== undefined) {
       const tipoAlert = data.success ? 'success' : 'danger';
-      fn_exibir_alerta_modal(data.message, tipoAlert);
+      Notificacoes.modal(data.message, tipoAlert, 'modalEmpresaUpdAlerts');
       
       // ✅ Se sucesso, recarregar tabela após 2 segundos
       if (data.success) {
@@ -751,44 +794,13 @@ function fn_submit_form_ajax(form, tipo) {
       }
     } else {
       // ✅ Se não for JSON, considerar erro
-      fn_exibir_alerta_modal('Erro ao processar requisição', 'danger');
+      Notificacoes.modal('Erro ao processar requisição', 'danger', 'modalEmpresaUpdAlerts');
     }
   })
   .catch(error => {
     console.error(`[fn_submit_form_ajax] Erro:`, error);
-    fn_exibir_alerta_modal('Erro ao processar requisição', 'danger');
+    Notificacoes.modal('Erro ao processar requisição', 'danger', 'modalEmpresaUpdAlerts');
   });
 }
 
-// ✅ Exibir alerta dentro do modal
-function fn_exibir_alerta_modal(mensagem, tipo = 'info') {
-  const container = document.getElementById('modalEmpresaUpdAlerts');
-  if (!container) {
-    console.warn('[fn_exibir_alerta_modal] Container não encontrado, usando alert do navegador');
-    alert(mensagem);
-    return;
-  }
-  
-  // Limpar alertas anteriores
-  container.innerHTML = '';
-  
-  // Criar novo alerta
-  const alertDiv = document.createElement('div');
-  alertDiv.className = `alert alert-${tipo} alert-dismissible fade show`;
-  alertDiv.role = 'alert';
-  alertDiv.innerHTML = `
-    ${mensagem}
-    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-  `;
-  
-  container.appendChild(alertDiv);
-  console.log(`[fn_exibir_alerta_modal] Alerta exibido: ${tipo}`);
-  
-  // Auto-fechar após 5 segundos se for sucesso
-  if (tipo === 'success') {
-    setTimeout(() => {
-      const alert = bootstrap.Alert.getOrCreateInstance(alertDiv);
-      if (alert) alert.close();
-    }, 5000);
-  }
-}
+// ✅ Alertas no modal: Notificacoes.modal (ver PADRAO_ALERTAS.md)

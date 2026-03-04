@@ -148,10 +148,12 @@ class Carga_xml():
                     break
             
             if icms_tipo is not None:
+                # CST (2 dígitos) ou CSOSN/Simples Nacional (3 dígitos: 101, 102, 201, 900)
+                cst_val = (self._get_text(icms_tipo, 'CST') or self._get_text(icms_tipo, 'CSOSN', '00'))[:3]
                 NFe_ICMS.objects.create(
                     produto=produto,
                     origem=self._get_text(icms_tipo, 'orig', '0'),
-                    cst=self._get_text(icms_tipo, 'CST') or self._get_text(icms_tipo, 'CSOSN', '00'),
+                    cst=cst_val or '00',
                     valor_base_calculo=self._to_decimal(self._get_text(icms_tipo, 'vBC')),
                     aliquota=self._to_decimal(self._get_text(icms_tipo, 'pICMS')),
                     valor_icms=self._to_decimal(self._get_text(icms_tipo, 'vICMS'))
@@ -266,7 +268,83 @@ class Carga_xml():
                 )
         
         return cobranca
-    
+
+    # Códigos de meio de pagamento aceitos pelo modelo NFe_Pagamento (para normalizar tPag do XML)
+    _MEIO_PAGAMENTO_VALIDOS = frozenset(
+        ('01', '02', '03', '04', '05', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '99')
+    )
+
+    def _processar_pagamento(self, infNFe, identificacao):
+        """
+        Processa o bloco pag/detPag da NFe e grava em NFe_Pagamento.
+        Usa o primeiro detPag como meio_pagamento e soma todos os vPag em valor_pago.
+        """
+        pag_node = infNFe.find('.//nfe:pag', self.ns) or infNFe.find('.//pag')
+        if pag_node is None:
+            return None
+        det_list = pag_node.findall('.//nfe:detPag', self.ns) or pag_node.findall('.//detPag')
+        if not det_list:
+            return None
+        valor_total = Decimal('0')
+        primeiro_tpag = None
+        for det in det_list:
+            vpag = self._to_decimal(self._get_text(det, 'vPag'))
+            valor_total += vpag
+            if primeiro_tpag is None:
+                tpag = (self._get_text(det, 'tPag') or '').strip()
+                if len(tpag) == 1:
+                    tpag = '0' + tpag
+                if tpag in self._MEIO_PAGAMENTO_VALIDOS:
+                    primeiro_tpag = tpag
+                else:
+                    primeiro_tpag = '99'
+        if primeiro_tpag is None or valor_total < 0:
+            return None
+        if valor_total == 0:
+            valor_total = Decimal('0.01')
+        NFe_Pagamento.objects.update_or_create(
+            nfe_identificacao=identificacao,
+            defaults={
+                'meio_pagamento': primeiro_tpag,
+                'valor_pago': valor_total,
+            }
+        )
+        return None
+
+    def _processar_informacoes_adicionais(self, infNFe, identificacao):
+        """
+        Processa o bloco infAdic da NFe (informações adicionais) e grava em NFe_Informacoes_Adicionais.
+        Tags: infCpl (informações complementares), infAdFisco (informações de interesse do fisco),
+        xPed (número do pedido de compra - pode estar em infAdic, compra ou em qualquer nó sob infNFe).
+        """
+        inf_adic = infNFe.find('.//nfe:infAdic', self.ns) or infNFe.find('.//infAdic')
+        inf_cpl = None
+        inf_ad_fisco = None
+        xped = None
+        if inf_adic is not None:
+            inf_cpl = self._get_text(inf_adic, 'infCpl', '').strip() or None
+            inf_ad_fisco = self._get_text(inf_adic, 'infAdFisco', '').strip() or None
+            xped = self._get_text(inf_adic, 'xPed', '').strip() or None
+        if xped is None:
+            compra = infNFe.find('.//nfe:compra', self.ns) or infNFe.find('.//compra')
+            if compra is not None:
+                xped = self._get_text(compra, 'xPed', '').strip() or None
+        if xped is None:
+            elem = infNFe.find('.//nfe:xPed', self.ns) or infNFe.find('.//xPed')
+            if elem is not None and elem.text:
+                xped = elem.text.strip() or None
+        if inf_cpl is None and inf_ad_fisco is None and xped is None:
+            return None
+        NFe_Informacoes_Adicionais.objects.update_or_create(
+            nfe_identificacao=identificacao,
+            defaults={
+                'informacoes_complementares': inf_cpl,
+                'informacoes_interesse_fisco': inf_ad_fisco,
+                'xped': xped,
+            }
+        )
+        return None
+
     def set_upload_xml(self, I_LsXml, i_type, I_origem_dados, i_usuario, i_cod_cliente=None) -> Dict:
         """
         Processa upload de múltiplos XMLs
@@ -401,9 +479,8 @@ class Carga_xml():
                     )
             
             # ========== BUSCAR EMPRESA ==========
-            # Não criar empresa; se CNPJ não estiver cadastrado, gravar com empresa=None e avisar
+            # Se CNPJ não estiver cadastrado, grava com empresa=None (não é obrigatório informar empresa na carga)
             empresa = None
-            avisos_nfe: List[str] = []
             cnpj_para_busca = None
             tipo_nfe = "SAÍDA" if tipo_operacao == '1' else "ENTRADA"
             
@@ -417,20 +494,12 @@ class Carga_xml():
                     empresa = Empresas.objects.get(cnpj=cnpj_para_busca)
                     if cod_cliente and empresa.cliente and empresa.cliente.cod_cliente != cod_cliente:
                         empresa = None
-                        avisos_nfe.append(
-                            f"NFe {tipo_nfe}: CNPJ {cnpj_para_busca} não pertence a nenhuma das empresas cadastradas do cliente."
-                        )
                 except Empresas.DoesNotExist:
                     empresa = None
-                    avisos_nfe.append(
-                        f"NFe {tipo_nfe}: CNPJ {cnpj_para_busca} não pertence a nenhuma das empresas cadastradas."
-                    )
             else:
                 raise ValueError(f"Não foi possível identificar CNPJ da empresa (tipo: {tipo_nfe})")
             
-            # Não registrar NFe sem empresa: enviar para pendentes (job) ou retornar como pendente (upload manual)
-            if empresa is None and avisos_nfe:
-                raise EmpresaNaoCadastradaError(avisos_nfe[0])
+            # Permite gravar NFe com empresa=None quando CNPJ não está cadastrado (não é mais obrigatório informar empresa na carga)
             
             # ========== CRIAR IDENTIFICAÇÃO COMPLETA ==========
             identificacao, _ = NFe_Identificacao.objects.update_or_create(
@@ -484,6 +553,12 @@ class Carga_xml():
             
             # ========== PROCESSAR COBRANÇA E PARCELAS ==========
             self._processar_cobranca(infNFe, identificacao)
+
+            # ========== PROCESSAR PAGAMENTO (pag/detPag) ==========
+            self._processar_pagamento(infNFe, identificacao)
+
+            # ========== PROCESSAR INFORMAÇÕES ADICIONAIS (infAdic) ==========
+            self._processar_informacoes_adicionais(infNFe, identificacao)
             
             return []
         

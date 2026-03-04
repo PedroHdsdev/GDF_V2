@@ -43,7 +43,16 @@ document.addEventListener('DOMContentLoaded', function () {
     carregarParametrosAtivos();
     inicializarDragDropInputFiles();
     inicializarEventosJobsRenderizados();
-    
+    carregarAvisosCargaXml();
+
+    // Modal Avisos: ao abrir, recarrega lista de logs
+    const modalAvisos = document.getElementById('modalAvisosCargaXml');
+    if (modalAvisos) {
+        modalAvisos.addEventListener('show.bs.modal', function () {
+            carregarAvisosCargaXml(true);
+        });
+    }
+
     // a aba automática carrega parâmetros sempre que for mostrada
     const tabAutomatico = document.getElementById('tab-automatico');
     if (tabAutomatico) {
@@ -51,11 +60,128 @@ document.addEventListener('DOMContentLoaded', function () {
             carregarParametrosAtivos();
         });
     }
+
+    // Limpar alertas ao abrir cada modal (erros/avisos exibidos dentro do modal)
+    ['modalCargaXml', 'modalUploadZip', 'modalParametroDetails'].forEach(function (modalId) {
+        var el = document.getElementById(modalId);
+        if (el) {
+            el.addEventListener('show.bs.modal', function () {
+                var alertsId = modalId + 'Alerts';
+                if (typeof Notificacoes !== 'undefined') Notificacoes.limparModal(alertsId);
+            });
+        }
+    });
 });
 
 function obterCsrfToken() {
     const token = document.querySelector('[name=csrfmiddlewaretoken]');
     return token ? token.value : '';
+}
+
+/* ===============================
+   AVISOS – LOGS DE CARGAS COM ERROS
+================================ */
+function carregarAvisosCargaXml(preencherModal) {
+    fetch('/api/cargaxml/avisos/', {
+        method: 'GET',
+        headers: { 'X-CSRFToken': obterCsrfToken() },
+    })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            var total = (data.sucesso && data.total_erros) ? data.total_erros : 0;
+            var badge = document.getElementById('avisos-badge-cargaxml');
+            if (badge) {
+                if (total > 0) {
+                    badge.textContent = total > 99 ? '99+' : total;
+                    badge.style.display = 'inline-block';
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+            if (preencherModal) {
+                preencherModalAvisosCargaXml(data.items || []);
+            }
+        })
+        .catch(function () {
+            var badge = document.getElementById('avisos-badge-cargaxml');
+            if (badge) badge.style.display = 'none';
+        });
+}
+
+function preencherModalAvisosCargaXml(items) {
+    var emptyEl = document.getElementById('modal-avisos-cargaxml-empty');
+    var listEl = document.getElementById('modal-avisos-cargaxml-list');
+    if (!emptyEl || !listEl) return;
+    if (items.length === 0) {
+        emptyEl.style.display = 'block';
+        listEl.style.display = 'none';
+        listEl.innerHTML = '';
+        return;
+    }
+    emptyEl.style.display = 'none';
+    listEl.style.display = 'block';
+    function formatDt(iso) {
+        if (!iso) return '-';
+        try {
+            var d = new Date(iso);
+            return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+        } catch (e) { return iso; }
+    }
+    function escapeHtml(s) {
+        return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function classForLogLine(line) {
+        var t = (line || '').trim();
+        if (t.indexOf('ERRO:') === 0) return 'aviso-log-erro';
+        if (t.indexOf('PENDENTES') === 0) return 'aviso-log-pendente';
+        if (t.indexOf('OK:') === 0) return 'aviso-log-ok';
+        return 'aviso-log-outro';
+    }
+    var html = '';
+    items.forEach(function (job) {
+        var totalErro = job.total_erro || 0;
+        var totalOk = job.total_sucesso || 0;
+        var logLines = (job.log && job.log.length) ? job.log : [];
+        var logHtml = '';
+        if (logLines.length) {
+            logHtml = '<div class="aviso-dados-adicionais">';
+            logHtml += '<div class="aviso-dados-titulo small fw-600 text-uppercase text-muted mb-2">Dados adicionais</div>';
+            logHtml += '<div class="aviso-log-lines">';
+            logLines.forEach(function (l) {
+                var cssClass = classForLogLine(l);
+                logHtml += '<div class="aviso-log-line ' + cssClass + '">' + escapeHtml(l) + '</div>';
+            });
+            logHtml += '</div></div>';
+        } else {
+            logHtml = '<div class="aviso-dados-adicionais"><div class="text-muted small">Sem log</div></div>';
+        }
+        html += '<div class="aviso-item layout-subcard">';
+        html += '  <div class="aviso-item-header d-flex justify-content-between align-items-center" role="button" tabindex="0">';
+        html += '    <span class="aviso-item-info"><strong>Job #' + job.id + '</strong> &middot; ' + formatDt(job.started_at) + ' <span class="text-muted small ms-1">(clique para detalhes)</span></span>';
+        html += '    <span class="d-flex align-items-center gap-2">';
+        if (totalOk > 0) html += '<span class="badge aviso-badge-ok">' + totalOk + ' OK</span>';
+        html += '<span class="badge aviso-badge-erro">' + totalErro + ' erro(s)</span> <i class="fas fa-chevron-right aviso-chevron small"></i></span>';
+        html += '  </div>';
+        html += '  <div class="aviso-item-body d-none">' + logHtml + '</div>';
+        html += '</div>';
+    });
+    listEl.innerHTML = html;
+    listEl.querySelectorAll('.aviso-item-header').forEach(function (header) {
+        header.addEventListener('click', function () {
+            var card = header.closest('.aviso-item');
+            var body = card.querySelector('.aviso-item-body');
+            var chevron = header.querySelector('.aviso-chevron');
+            body.classList.toggle('d-none');
+            chevron.classList.toggle('fa-chevron-right');
+            chevron.classList.toggle('fa-chevron-down');
+        });
+        header.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                header.click();
+            }
+        });
+    });
 }
 
 /* ===============================
@@ -407,7 +533,7 @@ function carregarTodasAsCargas() {
         .then(({ status, data }) => {
             if (status === 403) {
                 console.error('Erro 403: Cliente não identificado');
-                mostrarAlerta('Erro ao carregar jobs: Cliente não identificado', 'error');
+                Notificacoes.pagina('Erro ao carregar jobs: Cliente não identificado', 'error');
                 estadoCargaXml.todasCargas = [];
             } else if (data.sucesso && data.items && data.items.length > 0) {
                 console.log('Jobs carregados:', data.items.length);
@@ -443,7 +569,7 @@ function carregarTodasAsCargas() {
                 estadoCargaXml.todasCargas = [];
             } else {
                 console.error('Erro ao carregar jobs:', data.mensagem);
-                mostrarAlerta(data.mensagem || 'Erro ao carregar jobs', 'error');
+                Notificacoes.pagina(data.mensagem || 'Erro ao carregar jobs', 'error');
                 estadoCargaXml.todasCargas = [];
             }
             aplicarFiltrosCarga();
@@ -451,7 +577,7 @@ function carregarTodasAsCargas() {
         })
         .catch(erro => {
             console.error('Erro na requisição:', erro);
-            mostrarAlerta('Erro ao conectar na API: ' + erro.message, 'error');
+            Notificacoes.pagina('Erro ao conectar na API: ' + erro.message, 'error');
             estadoCargaXml.todasCargas = [];
             aplicarFiltrosCarga();
             renderizarTabelaCargas();
@@ -468,7 +594,7 @@ function abrirModalJob(jobId) {
         .then(resp => resp.json())
         .then(data => {
             if (!data.sucesso) {
-                mostrarAlerta('❌ Não foi possível carregar detalhes do job', 'error');
+                Notificacoes.pagina('❌ Não foi possível carregar detalhes do job', 'error');
                 return;
             }
             const job = data.job;
@@ -504,7 +630,7 @@ function abrirModalJob(jobId) {
             modal.show();
         })
         .catch(() => {
-            mostrarAlerta('❌ Falha ao carregar detalhes do job', 'error');
+            Notificacoes.pagina('❌ Falha ao carregar detalhes do job', 'error');
         });
 }
 
@@ -722,11 +848,10 @@ function criarParametroCarga() {
     const horario = document.getElementById('param-horario')?.value || '';
     const origemDados = document.getElementById('param-origem-dados')?.value || 'LOCAL';
     const diretorio = document.getElementById('param-diretorio')?.value || '';
-    const empresaId = document.getElementById('param-edit-empresa')?.value || '';
     const ativo = document.getElementById('param-ativo')?.checked || false;
 
-    if (!horario || !diretorio || !empresaId) {
-        mostrarAlerta('⚠️ Preencha horario, diretorio e empresa', 'warning');
+    if (!horario || !diretorio) {
+        Notificacoes.modal('Preencha horário e diretório', 'warning', 'modalCargaXmlAlerts');
         return;
     }
 
@@ -740,22 +865,22 @@ function criarParametroCarga() {
             horario: horario,
             origem_dados: origemDados,
             diretorio: diretorio,
-            empresa_id: empresaId,
+            empresa_id: '',
             ativo: ativo,
         })
     })
         .then(response => response.json().then(data => ({ ok: response.ok, data })))
         .then(({ ok, data }) => {
             if (!ok || !data.sucesso) {
-                mostrarAlerta(`❌ ${data.mensagem || 'Erro ao salvar parametros'}`, 'error');
+                Notificacoes.modal(data.mensagem || 'Erro ao salvar parametros', 'danger', 'modalCargaXmlAlerts');
                 return;
             }
-            mostrarAlerta('✅ Parametros salvos com sucesso', 'success');
+            Notificacoes.modal('Parametros salvos com sucesso', 'success', 'modalCargaXmlAlerts');
             carregarParametrosAtivos();
             carregarParametrosPrincipais();
         })
         .catch(() => {
-            mostrarAlerta('❌ Falha ao salvar parametros', 'error');
+            Notificacoes.modal('Falha ao salvar parametros', 'danger', 'modalCargaXmlAlerts');
         });
 }
 
@@ -814,12 +939,12 @@ function enviarZipParaPasta() {
     const paramId = document.getElementById('upload-zip-param-id').value;
     const fileInput = document.getElementById('upload-zip-file');
     if (!paramId || !fileInput || !fileInput.files || !fileInput.files.length) {
-        mostrarAlerta('Selecione um arquivo ZIP', 'warning');
+        Notificacoes.modal('Selecione um arquivo ZIP', 'warning', 'modalUploadZipAlerts');
         return;
     }
     const file = fileInput.files[0];
     if (!file.name.toLowerCase().endsWith('.zip')) {
-        mostrarAlerta('O arquivo deve ser .zip', 'warning');
+        Notificacoes.modal('O arquivo deve ser .zip', 'warning', 'modalUploadZipAlerts');
         return;
     }
     const formData = new FormData();
@@ -837,23 +962,23 @@ function enviarZipParaPasta() {
         .then(data => {
             btn.disabled = false;
             if (data.sucesso) {
-                mostrarAlerta(data.mensagem || 'ZIP enviado com sucesso.', 'success');
+                Notificacoes.modal(data.mensagem || 'ZIP enviado com sucesso.', 'success', 'modalUploadZipAlerts');
                 bootstrap.Modal.getInstance(document.getElementById('modalUploadZip')).hide();
                 fileInput.value = '';
             } else {
-                mostrarAlerta(data.mensagem || 'Erro ao enviar ZIP', 'error');
+                Notificacoes.modal(data.mensagem || 'Erro ao enviar ZIP', 'danger', 'modalUploadZipAlerts');
             }
         })
         .catch(() => {
             btn.disabled = false;
-            mostrarAlerta('Erro ao enviar ZIP', 'error');
+            Notificacoes.modal('Erro ao enviar ZIP', 'danger', 'modalUploadZipAlerts');
         });
 }
 
 function atualizarParametroCarga() {
     const id = document.getElementById('param-edit-id')?.value;
     if (!id) {
-        mostrarAlerta('⚠️ Parâmetro não identificado para edição', 'warning');
+        Notificacoes.modal('Parâmetro não identificado para edição', 'warning', 'modalParametroDetailsAlerts');
         return;
     }
 
@@ -863,8 +988,8 @@ function atualizarParametroCarga() {
     const empresaId = document.getElementById('param-edit-empresa')?.value || '';
     const ativo = document.getElementById('param-edit-ativo')?.checked || false;
 
-    if (!horario || !diretorio || !empresaId) {
-        mostrarAlerta('⚠️ Preencha horário, diretório e empresa', 'warning');
+    if (!horario || !diretorio) {
+        Notificacoes.modal('Preencha horário e diretório', 'warning', 'modalParametroDetailsAlerts');
         return;
     }
 
@@ -885,15 +1010,15 @@ function atualizarParametroCarga() {
         .then(response => response.json().then(data => ({ ok: response.ok, data })))
         .then(({ ok, data }) => {
             if (!ok || !data.sucesso) {
-                mostrarAlerta(`❌ ${data.mensagem || 'Erro ao atualizar parâmetro'}`, 'error');
+                Notificacoes.modal(data.mensagem || 'Erro ao atualizar parâmetro', 'danger', 'modalParametroDetailsAlerts');
                 return;
             }
-            mostrarAlerta('✅ Parâmetro atualizado com sucesso', 'success');
+            Notificacoes.modal('Parâmetro atualizado com sucesso', 'success', 'modalParametroDetailsAlerts');
             carregarParametrosPrincipais();
             carregarParametrosAtivos();
         })
         .catch(() => {
-            mostrarAlerta('❌ Falha ao atualizar parâmetro', 'error');
+            Notificacoes.modal('Falha ao atualizar parâmetro', 'danger', 'modalParametroDetailsAlerts');
         });
 }
 
@@ -909,13 +1034,13 @@ function toggleParametro(paramId, ativoAtual) {
         .then(response => response.json())
         .then(data => {
             if (!data.sucesso) {
-                mostrarAlerta('❌ Erro ao atualizar parametro', 'error');
+                Notificacoes.pagina('Erro ao atualizar parametro', 'danger');
                 return;
             }
             carregarParametrosAtivos();
         })
         .catch(() => {
-            mostrarAlerta('❌ Erro ao atualizar parametro', 'error');
+            Notificacoes.pagina('Erro ao atualizar parametro', 'danger');
         });
 }
 
@@ -949,13 +1074,13 @@ function processarArquivos(files) {
     for (let file of files) {
         // Validar extensão
         if (!file.name.toLowerCase().endsWith('.xml')) {
-            mostrarAlerta(`❌ ${file.name} não é um arquivo XML válido`, 'error');
+            Notificacoes.modal(`${file.name} não é um arquivo XML válido`, 'danger', 'modalCargaXmlAlerts');
             continue;
         }
 
         // Validar tamanho (máximo 50MB)
         if (file.size > 50 * 1024 * 1024) {
-            mostrarAlerta(`❌ ${file.name} excede o tamanho máximo de 50MB`, 'error');
+            Notificacoes.modal(`${file.name} excede o tamanho máximo de 50MB`, 'danger', 'modalCargaXmlAlerts');
             continue;
         }
 
@@ -1065,19 +1190,13 @@ function exibirPreviewArquivos(files) {
 ================================ */
 function iniciarUpload() {
     if (estadoCargaXml.uploadEmProgresso || estadoCargaXml.arquivos.length === 0) {
-        mostrarAlerta('⚠️ Selecione pelo menos um arquivo XML', 'warning');
+        Notificacoes.modal('Selecione pelo menos um arquivo XML', 'warning', 'modalCargaXmlAlerts');
         return;
     }
 
     // Obter tipo de documento e origem
     const tipoDocumento = document.getElementById('select-tipo-documento')?.value || 'NFe';
     const origemDados = document.getElementById('select-origem-dados')?.value || 'LOCAL';
-    const empresaId = document.getElementById('select-empresa-manual')?.value || '';
-
-    if (!empresaId) {
-        mostrarAlerta('⚠️ Selecione a empresa para a carga manual', 'warning');
-        return;
-    }
 
     estadoCargaXml.uploadEmProgresso = true;
     
@@ -1086,14 +1205,14 @@ function iniciarUpload() {
         atualizarStatusUpload(index, 'processing', 'Processando...');
     });
 
-    // Enviar todos os arquivos de uma vez
-    uploadArquivosLote(estadoCargaXml.arquivos, tipoDocumento, origemDados, empresaId);
+    // Enviar todos os arquivos de uma vez (empresa não é mais obrigatória na carga)
+    uploadArquivosLote(estadoCargaXml.arquivos, tipoDocumento, origemDados);
 }
 
 /* ===============================
    UPLOAD EM LOTE
 ================================ */
-function uploadArquivosLote(arquivos, tipoDocumento, origemDados, empresaId) {
+function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
     const formData = new FormData();
     
     // Adicionar todos os arquivos
@@ -1101,12 +1220,9 @@ function uploadArquivosLote(arquivos, tipoDocumento, origemDados, empresaId) {
         formData.append('arquivo', file);
     });
     
-    // Adicionar tipo, origem e empresa
+    // Adicionar tipo e origem (empresa não é mais obrigatória na carga)
     formData.append('type_xml', tipoDocumento);
     formData.append('origem_dados', origemDados);
-    if (empresaId) {
-        formData.append('empresa_id', empresaId);
-    }
 
     // Obter CSRF token
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
@@ -1157,9 +1273,9 @@ function uploadArquivosLote(arquivos, tipoDocumento, origemDados, empresaId) {
                     }
                 }
                 
-                mostrarAlerta(data.mensagem, 'success');
+                Notificacoes.modal(data.mensagem, 'success', 'modalCargaXmlAlerts');
             } else {
-                mostrarAlerta(data.mensagem || 'Erro ao processar XMLs', 'error');
+                Notificacoes.modal(data.mensagem || 'Erro ao processar XMLs', 'danger', 'modalCargaXmlAlerts');
                 // Marcar todos como erro
                 arquivos.forEach((file, index) => {
                     atualizarStatusUpload(index, 'error', '✗ Erro no processamento');
@@ -1171,7 +1287,7 @@ function uploadArquivosLote(arquivos, tipoDocumento, origemDados, empresaId) {
         })
         .catch(error => {
             console.error('Erro ao fazer upload:', error);
-            mostrarAlerta('Erro ao enviar arquivos: ' + error.message, 'error');
+            Notificacoes.modal('Erro ao enviar arquivos: ' + error.message, 'danger', 'modalCargaXmlAlerts');
             
             // Marcar todos como erro
             arquivos.forEach((file, index) => {
@@ -1262,9 +1378,9 @@ function finalizarCargas() {
     const mensagem = `Upload finalizado: ${sucessos} sucesso(s) e ${erros} erro(s)`;
 
     if (erros === 0) {
-        mostrarAlerta(`✅ ${mensagem}`, 'success');
+        Notificacoes.modal(mensagem, 'success', 'modalCargaXmlAlerts');
     } else {
-        mostrarAlerta(`⚠️ ${mensagem}`, 'warning');
+        Notificacoes.modal(mensagem, 'warning', 'modalCargaXmlAlerts');
     }
 
     // forçar atualização da lista de jobs para que o job recém-criado apareça
@@ -1330,33 +1446,8 @@ function removerArquivo(index) {
 }
 
 /* ===============================
-   MOSTRAR ALERTA
+   ALERTAS: usar Notificacoes.pagina(mensagem, tipo) - ver PADRAO_ALERTAS.md
 ================================ */
-function mostrarAlerta(mensagem, tipo = 'info') {
-    const container = document.getElementById('alertas-container');
-
-    if (!container) return;
-
-    const alert = document.createElement('div');
-    alert.className = `alert-upload ${tipo}`;
-    alert.innerHTML = `
-        <strong>${mensagem}</strong>
-        <button type="button" class="close" onclick="this.parentElement.style.display='none';">
-            <span>&times;</span>
-        </button>
-    `;
-
-    container.appendChild(alert);
-
-    // Auto-remover após 5 segundos
-    setTimeout(() => {
-        if (alert.parentElement) {
-            alert.style.transition = 'opacity 0.3s ease';
-            alert.style.opacity = '0';
-            setTimeout(() => alert.remove(), 300);
-        }
-    }, 5000);
-}
 
 /* ===============================
    UTILITÁRIOS

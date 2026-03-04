@@ -52,6 +52,8 @@ from app.db_GDF.NFSe.models        import (
     NFSe_RPS, NFSe_Retencao, NFSe_Pagamento, NFSe_Servico,
 )
 from app.db_GDF.Sped.models        import Sped_Arquivo, Sped_Fiscal, Sped_Contribuicao
+from app.db_Reprocessamento.models import ReprocessamentoLote, Divergencia, ReprocessamentoJob
+from django.utils import timezone
 import re
 
 # Cliente ao qual superusuários têm acesso total ao painel (todos os clientes)
@@ -72,7 +74,6 @@ import json
 import zipfile
 from pathlib import Path
 from datetime import datetime
-from django.utils import timezone
 
 def fn_view_login(request):
     if request.method == "POST":
@@ -558,6 +559,8 @@ def fn_view_inserir_empresa(request):
         if not resultado.get("success"):
             return JsonResponse({"erro": resultado.get("message")}, status=400)
 
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse({"success": True, "message": resultado.get("message", "Empresa cadastrada com sucesso")})
         return redirect('Dm_Empresas')
 
 
@@ -746,10 +749,13 @@ def fn_view_inserir_cliente(request):
         
         # ✅ Verificar resultado
         if not resultado.get("success"):
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return JsonResponse({"erro": resultado.get("message", "Erro ao criar cliente")}, status=400)
             messages.error(request, resultado.get("message", "Erro ao criar cliente"), extra_tags='MODAL_INS')
-        else:
-            messages.success(request, resultado.get("message", "Cliente cadastrado!"), extra_tags='MODAL_INS')
-
+            return redirect('Dm_Clientes')
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse({"success": True, "message": resultado.get("message", "Cliente cadastrado!")})
+        messages.success(request, resultado.get("message", "Cliente cadastrado!"), extra_tags='MODAL_INS')
         return redirect('Dm_Clientes')
     
     return JsonResponse({"erro": "Método não permitido"}, status=405)
@@ -1033,8 +1039,8 @@ def fn_api_cargaxml_parametros(request):
         empresa_id = (payload.get('empresa_id') or '').strip()
         ativo_raw = payload.get('ativo', True)
 
-        if not horario_raw or not diretorio or not empresa_id:
-            return JsonResponse({'sucesso': False, 'mensagem': 'Horario, diretorio e empresa sao obrigatorios'}, status=400)
+        if not horario_raw or not diretorio:
+            return JsonResponse({'sucesso': False, 'mensagem': 'Horario e diretorio sao obrigatorios'}, status=400)
 
         try:
             horario = datetime.strptime(horario_raw, '%H:%M').time()
@@ -1047,10 +1053,12 @@ def fn_api_cargaxml_parametros(request):
         else:
             ativo = bool(ativo_raw)
 
-        try:
-            empresa = Empresas.objects.get(cod_empresa=empresa_id, cliente=cliente)
-        except Empresas.DoesNotExist:
-            return JsonResponse({'sucesso': False, 'mensagem': 'Empresa nao encontrada'}, status=404)
+        empresa = None
+        if empresa_id:
+            try:
+                empresa = Empresas.objects.get(cod_empresa=empresa_id, cliente=cliente)
+            except Empresas.DoesNotExist:
+                return JsonResponse({'sucesso': False, 'mensagem': 'Empresa nao encontrada'}, status=404)
 
         param = CargaXmlParam.objects.create(
             cliente=cliente,
@@ -1072,8 +1080,8 @@ def fn_api_cargaxml_parametros(request):
                 'horario': param.horario.strftime('%H:%M'),
                 'origem_dados': param.origem_dados,
                 'diretorio': param.diretorio,
-                'empresa_id': empresa.cod_empresa,
-                'empresa_nome': empresa.fantasia or empresa.razao,
+                'empresa_id': param.empresa.cod_empresa if param.empresa else None,
+                'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
             }
         }, status=201)
 
@@ -1119,8 +1127,8 @@ def fn_api_cargaxml_parametro_detail(request, param_id):
     empresa_id = (payload.get('empresa_id') or (param.empresa.cod_empresa if param.empresa else '')).strip()
     ativo_raw = payload.get('ativo', param.ativo)
 
-    if not horario_raw or not diretorio or not empresa_id:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Horario, diretorio e empresa sao obrigatorios'}, status=400)
+    if not horario_raw or not diretorio:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Horario e diretorio sao obrigatorios'}, status=400)
 
     try:
         horario = datetime.strptime(horario_raw, '%H:%M').time()
@@ -1133,16 +1141,18 @@ def fn_api_cargaxml_parametro_detail(request, param_id):
     else:
         ativo = bool(ativo_raw)
 
-    try:
-        empresa = Empresas.objects.get(cod_empresa=empresa_id, cliente=cliente)
-    except Empresas.DoesNotExist:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Empresa nao encontrada'}, status=404)
+    if empresa_id:
+        try:
+            param.empresa = Empresas.objects.get(cod_empresa=empresa_id, cliente=cliente)
+        except Empresas.DoesNotExist:
+            return JsonResponse({'sucesso': False, 'mensagem': 'Empresa nao encontrada'}, status=404)
+    else:
+        param.empresa = None
 
     # Aplicar alterações
     param.horario = horario
     param.origem_dados = origem_dados
     param.diretorio = diretorio
-    param.empresa = empresa
     param.ativo = ativo
     param.data_atualizacao = timezone.localtime()
     param.save(update_fields=['horario', 'origem_dados', 'diretorio', 'empresa', 'ativo', 'data_atualizacao'])
@@ -1317,6 +1327,33 @@ def fn_api_debug_session(request):
 
 @login_required(login_url='Login')
 @require_http_methods(["GET"])
+def fn_api_cargaxml_avisos(request):
+    """Retorna jobs de carga XML com status ERROR (para o botão Avisos e modal de logs)."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
+    jobs = CargaXmlJob.objects.filter(
+        cliente__cod_cliente=cod_cliente,
+        status='ERROR'
+    ).order_by('-started_at')[:100]
+    items = []
+    for job in jobs:
+        log_lines = [line.strip() for line in (job.mensagem or '').splitlines() if line.strip()]
+        items.append({
+            'id': job.id,
+            'started_at': job.started_at.isoformat() if job.started_at else None,
+            'finished_at': job.finished_at.isoformat() if job.finished_at else None,
+            'total_arquivos': job.total_arquivos,
+            'total_sucesso': job.total_sucesso,
+            'total_erro': job.total_erro,
+            'mensagem': job.mensagem or '',
+            'log': log_lines,
+        })
+    return JsonResponse({'sucesso': True, 'total_erros': len(items), 'items': items}, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
 def fn_api_cargaxml_jobs(request):
     """Lista todos os jobs de carga XML do cliente"""
     import sys
@@ -1456,17 +1493,19 @@ def fn_api_cargasped_parametros(request):
             ativo = ativo.lower() in ['1', 'true', 'yes', 'sim', 'on']
         else:
             ativo = bool(ativo)
-        if not horario_raw or not diretorio or not empresa_id:
-            return JsonResponse({'sucesso': False, 'mensagem': 'Horário, diretório e empresa são obrigatórios'}, status=400)
+        if not horario_raw or not diretorio:
+            return JsonResponse({'sucesso': False, 'mensagem': 'Horário e diretório são obrigatórios'}, status=400)
         try:
             from datetime import datetime
             horario = datetime.strptime(horario_raw, '%H:%M').time()
         except ValueError:
             return JsonResponse({'sucesso': False, 'mensagem': 'Horário inválido. Use HH:MM'}, status=400)
-        try:
-            empresa = Empresas.objects.get(cod_empresa=empresa_id, cliente=cliente)
-        except Empresas.DoesNotExist:
-            return JsonResponse({'sucesso': False, 'mensagem': 'Empresa não encontrada'}, status=404)
+        empresa = None
+        if empresa_id:
+            try:
+                empresa = Empresas.objects.get(cod_empresa=empresa_id, cliente=cliente)
+            except Empresas.DoesNotExist:
+                return JsonResponse({'sucesso': False, 'mensagem': 'Empresa não encontrada'}, status=404)
         param = CargaSpedParam.objects.create(
             cliente=cliente,
             empresa=empresa,
@@ -1525,11 +1564,14 @@ def fn_api_cargasped_parametro_detail(request, param_id):
             param.tipo_sped = (payload['tipo_sped'] or param.tipo_sped).strip() or 'EFD_ICMS'
         if 'diretorio' in payload:
             param.diretorio = (payload['diretorio'] or '').strip()
-        if 'empresa_id' in payload and payload['empresa_id']:
-            try:
-                param.empresa = Empresas.objects.get(cod_empresa=payload['empresa_id'], cliente__cod_cliente=cod_cliente)
-            except Empresas.DoesNotExist:
-                pass
+        if 'empresa_id' in payload:
+            if payload.get('empresa_id'):
+                try:
+                    param.empresa = Empresas.objects.get(cod_empresa=payload['empresa_id'], cliente__cod_cliente=cod_cliente)
+                except Empresas.DoesNotExist:
+                    pass
+            else:
+                param.empresa = None
         if 'ativo' in payload:
             param.ativo = payload['ativo'] in [True, 'true', '1', 'yes', 'sim']
         param.save(update_fields=['horario', 'tipo_sped', 'diretorio', 'empresa', 'ativo', 'data_atualizacao'])
@@ -1599,6 +1641,33 @@ def fn_api_cargasped_param_toggle(request, param_id):
         param.ativo = ativo_raw in [True, 'true', '1', 'yes', 'sim', 'on'] if isinstance(ativo_raw, str) else bool(ativo_raw)
     param.save(update_fields=['ativo', 'data_atualizacao'])
     return JsonResponse({'sucesso': True, 'id': param.id, 'ativo': param.ativo}, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_cargasped_avisos(request):
+    """Retorna jobs de carga SPED com status ERROR (para o botão Avisos e modal de logs)."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    jobs = CargaSpedJob.objects.filter(
+        cliente__cod_cliente=cod_cliente,
+        status='ERROR'
+    ).order_by('-started_at')[:100]
+    items = []
+    for job in jobs:
+        log_lines = [line.strip() for line in (job.mensagem or '').splitlines() if line.strip()]
+        items.append({
+            'id': job.id,
+            'started_at': job.started_at.isoformat() if job.started_at else None,
+            'finished_at': job.finished_at.isoformat() if job.finished_at else None,
+            'total_arquivos': job.total_arquivos,
+            'total_sucesso': job.total_sucesso,
+            'total_erro': job.total_erro,
+            'mensagem': job.mensagem or '',
+            'log': log_lines,
+        })
+    return JsonResponse({'sucesso': True, 'total_erros': len(items), 'items': items}, status=200)
 
 
 @login_required(login_url='Login')
@@ -1712,8 +1781,14 @@ def fn_api_relatorio_nfe(request):
     data_fim = request.GET.get('data_fim', '').strip()
     busca = request.GET.get('busca', '').strip()
     parcelas = request.GET.get('parcelas', '').strip()
+    tipo_operacao = request.GET.get('tipo_operacao', '').strip()  # '0'=Entrada, '1'=Saída
+    tipo_pagamento = request.GET.get('tipo_pagamento', '').strip()  # código meio_pagamento (01, 02, 20, etc.)
 
     qs = NFe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    if tipo_operacao in ('0', '1'):
+        qs = qs.filter(identificacao__tipo_operacao=tipo_operacao)
+    if tipo_pagamento:
+        qs = qs.filter(identificacao__pagamento__meio_pagamento=tipo_pagamento)
     if parcelas != '':
         try:
             qtd = int(parcelas)
@@ -2151,20 +2226,264 @@ def fn_view_Relatorio_Fiscal(request):
         ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
     except Clientes.DoesNotExist:
         empresas_usuario = []
+    # Opções de tipo de pagamento (NFe) para o filtro do relatório (código 2 dígitos = valor no XML tPag)
+    try:
+        meio_pagamento_choices = list(
+            NFe_Pagamento._meta.get_field('meio_pagamento').choices
+        )
+    except Exception:
+        meio_pagamento_choices = []
     context = {
         'cod_cliente': cod_cliente,
         'empresas_usuario': empresas_usuario,
         'tipo_pagamento_json': json.dumps(TIPO_PAGAMENTO_DESC),
+        'meio_pagamento_choices': meio_pagamento_choices,
     }
     return render(request, 'Processamento/index_Relatorio.html', context)
 
 
 # -------------------------------------------------------------------------
-# Reprocessamento: view mantida para uso futuro como solução própria
+# Reprocessamento – Solução com subsolução Painel (confronto SPED x NFe)
 # -------------------------------------------------------------------------
 @login_required(login_url='Login')
 def fn_view_Reprocessamento(request):
-    """View para reprocessamento de dados (solução própria futura)."""
+    """Legado: redireciona para o Painel."""
+    return redirect('Reproc_Painel')
+
+
+@login_required(login_url='Login')
+def fn_view_Reprocessamento_Painel(request):
+    """Painel de Reprocessamento: confronto SPED x NFe, divergências e reprocessamento controlado."""
     cod_cliente = request.session.get('cod_cliente', None)
-    context = {'cod_cliente': cod_cliente}
-    return render(request, 'Processamento/index_Reprocessamento.html', context)
+    if not cod_cliente:
+        context = {'cod_cliente': None, 'empresas': []}
+        return render(request, 'Reprocessamento/index_Painel.html', context)
+    empresas = list(
+        Empresas.objects.filter(cliente_id=cod_cliente).values('cod_empresa', 'razao', 'fantasia').order_by('razao')
+    )
+    context = {
+        'cod_cliente': cod_cliente,
+        'empresas': empresas,
+    }
+    return render(request, 'Reprocessamento/index_Painel.html', context)
+
+
+def _reprocessamento_empresas_cliente(cod_cliente):
+    """Retorna lista de cod_empresa permitidos para o cliente (para filtrar lotes/divergências)."""
+    if not cod_cliente:
+        return []
+    return list(Empresas.objects.filter(cliente_id=cod_cliente).values_list('cod_empresa', flat=True))
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_reprocessamento_lotes(request):
+    """Lista lotes de reprocessamento do cliente (filtros: empresa, competência, status)."""
+    cod_cliente = request.session.get('cod_cliente')
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    if not cod_empresas:
+        return JsonResponse({'sucesso': True, 'lotes': [], 'total': 0})
+
+    qs = ReprocessamentoLote.objects.filter(cod_empresa__in=cod_empresas)
+    cod_empresa = request.GET.get('empresa')
+    if cod_empresa and cod_empresa in cod_empresas:
+        qs = qs.filter(cod_empresa=cod_empresa)
+    competencia = request.GET.get('competencia')
+    if competencia:
+        competencia = competencia.strip()
+        if len(competencia) == 7 and competencia[4] == '-':  # YYYY-MM
+            from datetime import datetime
+            try:
+                dt_comp = datetime.strptime(competencia + '-01', '%Y-%m-%d').date()
+                qs = qs.filter(competencia=dt_comp)
+            except ValueError:
+                pass
+        else:
+            try:
+                from datetime import datetime
+                dt_comp = datetime.strptime(competencia, '%Y-%m-%d').date()
+                qs = qs.filter(competencia=dt_comp)
+            except ValueError:
+                pass
+    status = request.GET.get('status')
+    if status:
+        qs = qs.filter(status=status)
+    criado_de = request.GET.get('criado_de')  # YYYY-MM-DD
+    criado_ate = request.GET.get('criado_ate')
+    if criado_de:
+        try:
+            from datetime import datetime
+            qs = qs.filter(data_criacao__date__gte=datetime.strptime(criado_de, '%Y-%m-%d').date())
+        except ValueError:
+            pass
+    if criado_ate:
+        try:
+            from datetime import datetime
+            qs = qs.filter(data_criacao__date__lte=datetime.strptime(criado_ate, '%Y-%m-%d').date())
+        except ValueError:
+            pass
+    qs = qs.order_by('-data_criacao')[:500]
+    lotes = [
+        {
+            'id_lote': l.id_lote,
+            'cod_empresa': l.cod_empresa,
+            'escopo_empresas': getattr(l, 'escopo_empresas', 'UMA'),
+            'competencia': str(l.competencia),
+            'competencia_mes': l.competencia.strftime('%Y-%m') if l.competencia else None,
+            'id_arquivo_sped': l.id_arquivo_sped,
+            'total_nfe_esperado': l.total_nfe_esperado,
+            'total_nfe_encontrado': l.total_nfe_encontrado,
+            'total_divergencias': l.total_divergencias,
+            'status': l.status,
+            'mensagem_erro': l.mensagem_erro,
+            'usuario_criacao': l.usuario_criacao,
+            'data_inicio': l.data_inicio.isoformat() if l.data_inicio else None,
+            'data_fim': l.data_fim.isoformat() if l.data_fim else None,
+            'data_criacao': l.data_criacao.isoformat(),
+        }
+        for l in qs
+    ]
+    return JsonResponse({'sucesso': True, 'lotes': lotes, 'total': len(lotes)})
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_reprocessamento_divergencias(request, id_lote):
+    """Lista divergências de um lote."""
+    cod_cliente = request.session.get('cod_cliente')
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
+    divs = Divergencia.objects.filter(lote=lote).order_by('-data_criacao')[:1000]
+    lista = [
+        {
+            'id_divergencia': d.id_divergencia,
+            'tipo': d.tipo,
+            'status': d.status,
+            'chave_nfe': d.chave_nfe,
+            'numero_nfe': d.numero_nfe,
+            'serie_nfe': d.serie_nfe,
+            'descricao': d.descricao,
+            'valor_esperado': str(d.valor_esperado) if d.valor_esperado is not None else None,
+            'valor_encontrado': str(d.valor_encontrado) if d.valor_encontrado is not None else None,
+            'data_criacao': d.data_criacao.isoformat(),
+        }
+        for d in divs
+    ]
+    return JsonResponse({'sucesso': True, 'divergencias': lista, 'lote_id': lote.id_lote})
+
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_api_reprocessamento_confronto(request):
+    """Dispara confronto SPED x NFe para uma ou mais empresas (ou todas) e competência (mês)."""
+    cod_cliente = request.session.get('cod_cliente')
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    empresas_permitidas = _reprocessamento_empresas_cliente(cod_cliente)
+    if not empresas_permitidas:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Nenhuma empresa vinculada ao cliente.'}, status=400)
+
+    data = json.loads(request.body) if request.body else {}
+    competencia = data.get('competencia')
+    if not competencia:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Competência obrigatória (mês: YYYY-MM).'}, status=400)
+
+    from datetime import datetime
+    competencia = competencia.strip()
+    try:
+        if len(competencia) == 7 and competencia[4] == '-':
+            dt = datetime.strptime(competencia + '-01', '%Y-%m-%d').date()
+        else:
+            dt = datetime.strptime(competencia, '%Y-%m-%d').date()
+            dt = dt.replace(day=1)
+    except ValueError:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Competência inválida. Use YYYY-MM (mês).'}, status=400)
+
+    # Definir lista de empresas: todas ou as selecionadas (cod_empresas array)
+    todas = data.get('todas_empresas', False)
+    cod_empresas_list = data.get('cod_empresas') or data.get('cod_empresa')
+    if isinstance(cod_empresas_list, str):
+        cod_empresas_list = [cod_empresas_list] if cod_empresas_list else []
+    if todas or not cod_empresas_list:
+        cod_empresas_a_processar = list(empresas_permitidas)
+    else:
+        cod_empresas_a_processar = [c for c in cod_empresas_list if c in empresas_permitidas]
+    if not cod_empresas_a_processar:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Selecione ao menos uma empresa válida.'}, status=400)
+
+    # Escopo para exibição: TODAS, VARIAS ou UMA
+    if todas:
+        escopo = 'TODAS'
+    elif len(cod_empresas_a_processar) > 1:
+        escopo = 'VARIAS'
+    else:
+        escopo = 'UMA'
+    usuario = getattr(request.user, 'username', '') or str(request.user)
+    ids_lotes = []
+    for cod_empresa in cod_empresas_a_processar:
+        lote = ReprocessamentoLote.objects.create(
+            cod_empresa=cod_empresa,
+            competencia=dt,
+            status='PENDENTE',
+            usuario_criacao=usuario,
+            escopo_empresas=escopo,
+        )
+        job = ReprocessamentoJob.objects.create(
+            tipo='CONFRONTO',
+            status='AGUARDANDO',
+            id_lote=lote.id_lote,
+            usuario=usuario,
+        )
+        lote.status = 'EM_CONFRONTO'
+        lote.data_inicio = timezone.now()
+        lote.save(update_fields=['status', 'data_inicio'])
+        job.status = 'EM_EXECUCAO'
+        job.data_inicio = timezone.now()
+        job.save(update_fields=['status', 'data_inicio'])
+        try:
+            from app.classes.Reprocessamento import confrontar_sped_nfe
+            confrontar_sped_nfe(lote.id_lote, cod_empresa, dt)
+        except ImportError:
+            lote.total_nfe_esperado = 0
+            lote.total_nfe_encontrado = 0
+            lote.total_divergencias = 0
+            lote.status = 'CONCLUIDO'
+            lote.data_fim = timezone.now()
+            lote.save(update_fields=['total_nfe_esperado', 'total_nfe_encontrado', 'total_divergencias', 'status', 'data_fim'])
+            job.status = 'CONCLUIDO'
+            job.data_fim = timezone.now()
+            job.total_processados = 0
+            job.save(update_fields=['status', 'data_fim', 'total_processados'])
+        ids_lotes.append(lote.id_lote)
+
+    n = len(ids_lotes)
+    return JsonResponse({
+        'sucesso': True,
+        'id_lote': ids_lotes[0] if ids_lotes else None,
+        'ids_lotes': ids_lotes,
+        'total_lotes': n,
+        'mensagem': f'Confronto iniciado para {n} empresa(s). Consulte o painel para acompanhar.',
+    })
+
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_api_reprocessamento_reprocessar_divergencia(request, id_divergencia):
+    """Marca divergência como resolvida após reprocessamento."""
+    cod_cliente = request.session.get('cod_cliente')
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    div = get_object_or_404(Divergencia, id_divergencia=id_divergencia)
+    if div.lote.cod_empresa not in cod_empresas:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Divergência não pertence ao cliente'}, status=403)
+    usuario = getattr(request.user, 'username', '') or str(request.user)
+    div.status = 'RESOLVIDA'
+    div.data_reprocessamento = timezone.now()
+    div.usuario_reprocessamento = usuario
+    div.save(update_fields=['status', 'data_reprocessamento', 'usuario_reprocessamento'])
+    return JsonResponse({'sucesso': True, 'mensagem': 'Divergência marcada como resolvida.'})

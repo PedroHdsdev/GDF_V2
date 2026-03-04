@@ -19,7 +19,11 @@
             <h1 class="layout-title">Carga SPED</h1>
             <p class="layout-subtitle">Importe arquivos SPED (EFD ICMS/IPI, EFD Contribuições, etc.) no mesmo fluxo da Carga XML.</p>
         </div>
-        <div class="layout-hero-actions">
+        <div class="layout-hero-actions d-flex gap-2 align-items-center">
+            <button type="button" class="btn btn-outline-secondary layout-btn position-relative" id="btn-avisos-cargasped" data-bs-toggle="modal" data-bs-target="#modalAvisosCargaSped" title="Logs de cargas com erros">
+                <i class="fas fa-bell"></i> Avisos
+                <span class="avisos-badge badge rounded-pill bg-danger position-absolute top-0 end-0 translate-middle" id="avisos-badge-cargasped" style="display: none; font-size: 0.7rem;">0</span>
+            </button>
             <button class="btn btn-light layout-btn" data-bs-toggle="modal" data-bs-target="#modalCargaSped">
                 <i class="fas fa-file-alt"></i> Carregar SPED
             </button>
@@ -97,6 +101,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <div id="modalCargaSpedAlerts"></div>
                 <ul class="nav nav-tabs mb-3" role="tablist">
                     <li class="nav-item">
                         <button class="nav-link active" id="tab-manual-sped" data-bs-toggle="tab" data-bs-target="#manual-sped" type="button">Carga Manual</button>
@@ -145,9 +150,9 @@
                                     </select>
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label fw-600">Empresa:</label>
-                                    <select id="param-sped-empresa" class="form-select" required>
-                                        <option value="">Selecione</option>
+                                    <label class="form-label fw-600">Empresa (opcional):</label>
+                                    <select id="param-sped-empresa" class="form-select">
+                                        <option value="">Nenhuma</option>
                                         {% for emp in empresas_usuario %}
                                             <option value="{{ emp.cod_empresa }}">{{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})</option>
                                         {% endfor %}
@@ -194,6 +199,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <div id="modalUploadZipSpedAlerts"></div>
                 <input type="hidden" id="upload-zip-sped-param-id" value="">
                 <input type="file" id="upload-zip-sped-file" class="form-control" accept=".zip">
             </div>
@@ -220,6 +226,30 @@
                 <hr>
                 <h6>Log</h6>
                 <pre id="modal-sped-job-log" class="bg-light p-3 small" style="max-height: 300px; overflow: auto;"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL - AVISOS (logs de cargas com erros) -->
+<div class="modal fade" id="modalAvisosCargaSped" tabindex="-1" aria-labelledby="modalAvisosCargaSpedLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content modal-avisos-cargasped">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalAvisosCargaSpedLabel">
+                    <i class="fas fa-exclamation-triangle text-warning me-2"></i> Avisos – Logs de cargas com erros
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modal-avisos-cargasped-empty" class="modal-avisos-empty text-center py-5">
+                    <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                    <p class="mb-0 text-muted">Nenhuma carga com erro no momento.</p>
+                </div>
+                <div id="modal-avisos-cargasped-list" class="modal-avisos-list" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary layout-btn" data-bs-dismiss="modal">Fechar</button>
             </div>
         </div>
     </div>

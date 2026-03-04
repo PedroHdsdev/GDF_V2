@@ -47,7 +47,7 @@ function carregarDadosReprocessamento() {
         })
         .catch(error => {
             console.error('Erro ao carregar:', error);
-            mostrarAlerta('❌ Erro ao carregar dados', 'error');
+            Notificacoes.pagina('❌ Erro ao carregar dados', 'error');
             mostrarCarregando(false);
         });
 }
@@ -265,16 +265,16 @@ function reprocessarItem(id) {
         .then(response => response.json())
         .then(data => {
             if (data.sucesso) {
-                mostrarAlerta('✅ Item reprocessado com sucesso!', 'success');
+                Notificacoes.pagina('✅ Item reprocessado com sucesso!', 'success');
                 carregarDadosReprocessamento();
             } else {
-                mostrarAlerta('❌ Erro ao reprocessar: ' + data.mensagem, 'error');
+                Notificacoes.pagina('❌ Erro ao reprocessar: ' + data.mensagem, 'error');
             }
             mostrarCarregando(false);
         })
         .catch(error => {
             console.error('Erro:', error);
-            mostrarAlerta('❌ Erro ao reprocessar', 'error');
+            Notificacoes.pagina('❌ Erro ao reprocessar', 'error');
             mostrarCarregando(false);
         });
 }
@@ -297,16 +297,16 @@ function deletarItem(id) {
         .then(response => response.json())
         .then(data => {
             if (data.sucesso) {
-                mostrarAlerta('✅ Item deletado com sucesso!', 'success');
+                Notificacoes.pagina('✅ Item deletado com sucesso!', 'success');
                 carregarDadosReprocessamento();
             } else {
-                mostrarAlerta('❌ Erro ao deletar: ' + data.mensagem, 'error');
+                Notificacoes.pagina('❌ Erro ao deletar: ' + data.mensagem, 'error');
             }
             mostrarCarregando(false);
         })
         .catch(error => {
             console.error('Erro:', error);
-            mostrarAlerta('❌ Erro ao deletar', 'error');
+            Notificacoes.pagina('❌ Erro ao deletar', 'error');
             mostrarCarregando(false);
         });
 }
@@ -318,7 +318,7 @@ function exibirDetalhes(id) {
     const item = estadoReprocessamento.dados.find(d => d.id === id);
 
     if (!item) {
-        mostrarAlerta('Item não encontrado', 'error');
+        Notificacoes.pagina('Item não encontrado', 'error');
         return;
     }
 
@@ -388,7 +388,7 @@ function fecharModal(id) {
 ================================ */
 function executarReprocessamento() {
     if (estadoReprocessamento.dadosFiltrados.length === 0) {
-        mostrarAlerta('⚠️ Nenhum item para reprocessar', 'warning');
+        Notificacoes.pagina('⚠️ Nenhum item para reprocessar', 'warning');
         return;
     }
 
@@ -409,16 +409,16 @@ function executarReprocessamento() {
         .then(response => response.json())
         .then(data => {
             if (data.sucesso) {
-                mostrarAlerta(`✅ ${data.processados} item(ns) reprocessado(s)!`, 'success');
+                Notificacoes.pagina(`✅ ${data.processados} item(ns) reprocessado(s)!`, 'success');
                 carregarDadosReprocessamento();
             } else {
-                mostrarAlerta('❌ Erro ao reprocessar: ' + data.mensagem, 'error');
+                Notificacoes.pagina('❌ Erro ao reprocessar: ' + data.mensagem, 'error');
             }
             mostrarCarregando(false);
         })
         .catch(error => {
             console.error('Erro:', error);
-            mostrarAlerta('❌ Erro ao reprocessar', 'error');
+            Notificacoes.pagina('❌ Erro ao reprocessar', 'error');
             mostrarCarregando(false);
         });
 }
@@ -428,7 +428,7 @@ function executarReprocessamento() {
 ================================ */
 function exportarDados() {
     if (estadoReprocessamento.dadosFiltrados.length === 0) {
-        mostrarAlerta('⚠️ Nenhum dado para exportar', 'warning');
+        Notificacoes.pagina('⚠️ Nenhum dado para exportar', 'warning');
         return;
     }
 
@@ -442,7 +442,7 @@ function exportarDados() {
     }));
 
     exportarCSV(dados, 'reprocessamento.csv');
-    mostrarAlerta('✅ Dados exportados com sucesso!', 'success');
+    Notificacoes.pagina('✅ Dados exportados com sucesso!', 'success');
 }
 
 /* ===============================
@@ -529,30 +529,6 @@ function obterCSRFToken() {
 function mostrarCarregando(mostrar) {
     // Implementar de acordo com seu sistema de loading
     console.log(mostrar ? 'Carregando...' : 'Carregamento completo');
-}
-
-function mostrarAlerta(mensagem, tipo = 'info') {
-    const container = document.getElementById('alertas-container');
-    if (!container) return;
-
-    const alert = document.createElement('div');
-    alert.className = `alert alert-${tipo === 'success' ? 'success' : tipo === 'error' ? 'danger' : 'warning'}`;
-    alert.innerHTML = `
-        ${mensagem}
-        <button type="button" class="close" onclick="this.parentElement.style.display='none';">
-            <span>&times;</span>
-        </button>
-    `;
-
-    container.appendChild(alert);
-
-    setTimeout(() => {
-        if (alert.parentElement) {
-            alert.style.transition = 'opacity 0.3s ease';
-            alert.style.opacity = '0';
-            setTimeout(() => alert.remove(), 300);
-        }
-    }, 5000);
 }
 
 function exportarCSV(dados, nome) {
