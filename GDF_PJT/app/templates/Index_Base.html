@@ -1,10 +1,12 @@
 {% load static %}
 {% load tz %}
+{% load security %}
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{% csrf_token_value %}">
     <link rel="icon" type="image/png" href="{% static 'img/logo.png' %}" />
     <title>{% block title %}Meu Site{% endblock %}</title>
 

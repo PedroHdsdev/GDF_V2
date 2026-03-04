@@ -28,19 +28,38 @@
         <p class="text-muted small mb-0 mt-1">Como superusuário você pode criar e gerenciar usuários, grupos e empresas para qualquer cliente.</p>
     </section>
     {% endif %}
-    <section class="home-hero">
-        <div class="home-hero-content">
-            <p class="home-eyebrow">Central de operacoes</p>
-            <h1 class="home-title">Painel inicial com foco no que pede acao</h1>
-            <p class="home-subtitle">
-                Acompanhe alertas criticos, atalhos de rotina e o resumo das operacoes em um unico
-                lugar.
+
+    <section class="home-welcome">
+        <div class="home-welcome-main">
+            <h2 class="home-welcome-title">Olá, {{ nome_usuario }}</h2>
+            <p class="home-welcome-meta">
+                {% if cliente_nome %}
+                <span class="home-welcome-badge">{{ cliente_nome }}</span>
+                <span>{{ qtd_empresas }} empresa(s)</span>
+                <span>•</span>
+                {% endif %}
+                <span>Competência: {{ competencia }}</span>
             </p>
         </div>
-        <div class="home-hero-actions">
-            <a class="btn btn-light home-btn" href="{% url 'Mnf_Painel' %}">Abrir painel manifesto</a>
-            <a class="btn btn-outline-light home-btn" href="{% url 'Db_Compras' %}">Dashboard compras</a>
+        {% if stats_docs %}
+        <div class="home-welcome-stats">
+            <div class="home-welcome-stats-row">
+                <div class="home-welcome-stat">
+                    <span class="home-welcome-stat-value">{{ stats_docs.nfe|default:0 }}</span>
+                    <span class="home-welcome-stat-label">NF-e</span>
+                </div>
+                <div class="home-welcome-stat">
+                    <span class="home-welcome-stat-value">{{ stats_docs.cte|default:0 }}</span>
+                    <span class="home-welcome-stat-label">CT-e</span>
+                </div>
+                <div class="home-welcome-stat">
+                    <span class="home-welcome-stat-value">{{ stats_docs.nfse|default:0 }}</span>
+                    <span class="home-welcome-stat-label">NFSe</span>
+                </div>
+            </div>
+            <small class="home-welcome-stats-note">Documentos no mês</small>
         </div>
+        {% endif %}
     </section>
 
     <section class="home-grid">
@@ -50,40 +69,35 @@
                     <p class="home-card-eyebrow">Agora</p>
                     <h3>Alertas e avisos</h3>
                 </div>
-                <div class="home-chips">
-                    <span class="home-chip is-active">Hoje</span>
-                    <span class="home-chip">Semana</span>
-                </div>
             </div>
             <ul class="home-alert-list">
-                <li class="home-alert is-critical">
+                {% for a in alertas %}
+                <li class="home-alert is-{{ a.tipo }}">
                     <span class="home-alert-dot"></span>
                     <div>
-                        <p class="home-alert-title">7 notas aguardando validacao</p>
-                        <p class="home-alert-meta">Manifesto • Ultima atualizacao ha 12 min</p>
+                        <p class="home-alert-title">{{ a.titulo }}</p>
+                        <p class="home-alert-meta">{{ a.meta }}</p>
                     </div>
-                    <span class="home-alert-tag">Urgente</span>
+                    {% if a.url %}
+                    <a href="{% url a.url %}" class="home-alert-tag">{{ a.tag }}</a>
+                    {% else %}
+                    <span class="home-alert-tag">{{ a.tag }}</span>
+                    {% endif %}
                 </li>
-                <li class="home-alert is-warning">
-                    <span class="home-alert-dot"></span>
-                    <div>
-                        <p class="home-alert-title">Certificados expirando em 15 dias</p>
-                        <p class="home-alert-meta">Empresas • 3 pendencias</p>
-                    </div>
-                    <span class="home-alert-tag">Atenção</span>
-                </li>
+                {% empty %}
                 <li class="home-alert is-info">
                     <span class="home-alert-dot"></span>
                     <div>
-                        <p class="home-alert-title">Carga fiscal disponível</p>
-                        <p class="home-alert-meta">Processamento Fiscal • Carga XML e SPED</p>
+                        <p class="home-alert-title">Nenhum alerta no momento</p>
+                        <p class="home-alert-meta">Tudo em dia</p>
                     </div>
-                    <span class="home-alert-tag">Pronto</span>
+                    <span class="home-alert-tag">OK</span>
                 </li>
+                {% endfor %}
             </ul>
             <div class="home-alert-actions">
-                <button class="btn btn-dark" type="button">Revisar alertas</button>
-                <button class="btn btn-outline-dark" type="button">Ver historico</button>
+                {% if tem_mnf %}<a class="btn btn-dark" href="{% url 'Mnf_Painel' %}">Painel manifesto</a>{% endif %}
+                {% if tem_empresas %}<a class="btn btn-outline-dark" href="{% url 'Dm_Empresas' %}">Empresas</a>{% endif %}
             </div>
         </article>
 
@@ -95,26 +109,14 @@
                 </div>
             </div>
             <div class="home-quick-grid">
-                <a class="home-quick-item" href="{% url 'Pro_CargaXml' %}">
-                    <span>Importar XML</span>
-                    <small>Carga diária</small>
+                {% for at in atalhos %}
+                <a class="home-quick-item" href="{% url at.url %}">
+                    <span>{{ at.titulo }}</span>
+                    <small>{{ at.desc }}</small>
                 </a>
-                <a class="home-quick-item" href="{% url 'Pro_CargaSped' %}">
-                    <span>Carga SPED</span>
-                    <small>Arquivos SPED</small>
-                </a>
-                <a class="home-quick-item" href="{% url 'Pro_Relatorio' %}">
-                    <span>Relatório Fiscal</span>
-                    <small>NFe, CTe, NFS, SPED</small>
-                </a>
-                <a class="home-quick-item" href="{% url 'Dm_Empresas' %}">
-                    <span>Empresas</span>
-                    <small>Cadastros</small>
-                </a>
-                <a class="home-quick-item" href="{% url 'Dm_Usuarios' %}">
-                    <span>Usuarios</span>
-                    <small>Acessos</small>
-                </a>
+                {% empty %}
+                <p class="text-muted small mb-0" style="grid-column: 1 / -1;">Nenhum atalho disponível para seu perfil.</p>
+                {% endfor %}
             </div>
         </article>
 
@@ -127,46 +129,61 @@
             </div>
             <div class="home-metric-grid">
                 <div class="home-metric">
-                    <span class="home-metric-label">Notas pendentes</span>
-                    <span class="home-metric-value">32</span>
-                    <span class="home-metric-note">+6 desde ontem</span>
+                    <span class="home-metric-label">Certificados expirando</span>
+                    <span class="home-metric-value">{{ metricas.cert_expirando|default:0 }}</span>
+                    <span class="home-metric-note">Próximos 30 dias</span>
                 </div>
                 <div class="home-metric">
-                    <span class="home-metric-label">Envios concluidos</span>
-                    <span class="home-metric-value">428</span>
-                    <span class="home-metric-note">Ultimas 24h</span>
+                    <span class="home-metric-label">Carga XML concluída</span>
+                    <span class="home-metric-value">{{ metricas.carga_xml_24h|default:0 }}</span>
+                    <span class="home-metric-note">Últimas 24h</span>
                 </div>
                 <div class="home-metric">
-                    <span class="home-metric-label">Tempo medio</span>
-                    <span class="home-metric-value">18 min</span>
-                    <span class="home-metric-note">Manifesto</span>
+                    <span class="home-metric-label">Carga SPED concluída</span>
+                    <span class="home-metric-value">{{ metricas.carga_sped_24h|default:0 }}</span>
+                    <span class="home-metric-note">Últimas 24h</span>
+                </div>
+                <div class="home-metric">
+                    <span class="home-metric-label">Cargas em andamento</span>
+                    <span class="home-metric-value">{{ metricas.carga_em_andamento|default:0 }}</span>
+                    <span class="home-metric-note">XML e SPED</span>
                 </div>
             </div>
         </article>
     </section>
 
-    <section class="home-partners">
-        <div class="home-card home-partners-card">
+    {% if ultima_atividade %}
+    <section class="home-activity">
+        <article class="home-card home-activity-card">
             <div class="home-card-head">
                 <div>
-                    <p class="home-card-eyebrow">Parcerias</p>
-                    <h3>Empresas que confiam no GDF</h3>
+                    <p class="home-card-eyebrow">Atividade</p>
+                    <h3>Últimas cargas</h3>
                 </div>
-                <span class="home-chip">Ativo</span>
             </div>
-            <div class="home-partner-logos">
-                <img src="https://processit.com.br/wp-content/themes/processit-theme/images/parceiros/jundia.png"
-                     class="img-fluid"
-                     alt="Jundia Sorvetes">
-                <img src="https://processit.com.br/wp-content/themes/processit-theme/images/parceiros/peruzzo.png"
-                     class="img-fluid"
-                     alt="Peruzzo">
-                <img src="https://processit.com.br/wp-content/themes/processit-theme/images/parceiros/tenda.png"
-                     class="img-fluid"
-                     alt="Tenda Atacado">
-            </div>
-        </div>
+            <ul class="home-activity-list">
+                {% for a in ultima_atividade %}
+                <li class="home-activity-item">
+                    <span class="home-activity-type home-activity-type-{{ a.tipo|lower }}">{{ a.tipo }}</span>
+                    <div class="home-activity-detail">
+                        <span class="home-activity-status home-activity-status-{{ a.status|lower }}">{{ a.status }}</span>
+                        <span class="home-activity-meta">
+                            {% if a.total %}{{ a.sucesso|default:0 }}/{{ a.total }} arquivo(s){% if a.erro %} • {{ a.erro }} erro(s){% endif %}{% endif %}
+                        </span>
+                    </div>
+                    <div class="home-activity-time">
+                        {% if a.data %}
+                        <time datetime="{{ a.data|date:'c' }}">{{ a.data|timesince }} atrás</time>
+                        {% else %}—{% endif %}
+                    </div>
+                    <a href="{% url a.url %}" class="home-activity-link" title="Ver detalhes">→</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </article>
     </section>
+    {% endif %}
+
 </div>
 {% endblock %}
 

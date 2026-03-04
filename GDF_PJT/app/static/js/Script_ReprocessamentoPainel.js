@@ -185,41 +185,6 @@
         return 'badge bg-secondary';
     }
 
-    function renderizarLinhasDivergencias(tbody, lista) {
-        if (!tbody) return;
-        tbody.innerHTML = '';
-        (lista || []).forEach(function (d) {
-            const tr = document.createElement('tr');
-            tr.setAttribute('data-tipo', d.tipo);
-            tr.setAttribute('data-id-div', d.id_divergencia);
-            const btnResolver = d.status === 'ABERTA'
-                ? '<button type="button" class="btn btn-sm btn-success btn-resolver-div" data-id="' + d.id_divergencia + '"><i class="fas fa-check me-1"></i>Resolver</button>'
-                : '<span class="badge bg-success">Resolvida</span>';
-            const tipoLabel = tipoDivergenciaLabel(d.tipo);
-            const badgeClass = tipoDivergenciaBadgeClass(d.tipo);
-            const doc = d.chave_nfe || (d.numero_nfe ? 'Nº ' + d.numero_nfe + (d.serie_nfe ? '/' + d.serie_nfe : '') : '-');
-            const desc = (d.descricao || '-');
-            const descShort = desc.length > 120 ? desc.substring(0, 120) + '…' : desc;
-            tr.innerHTML =
-                '<td><span class="' + badgeClass + '">' + escapeHtml(tipoLabel) + '</span></td>' +
-                '<td class="col-doc"><code class="doc-chave" title="' + escapeHtml(doc) + '">' + escapeHtml(doc.length > 50 ? doc.substring(0, 50) + '…' : doc) + '</code></td>' +
-                '<td class="col-desc small text-secondary">' + escapeHtml(descShort) + '</td>' +
-                '<td class="text-center">' + btnResolver + '</td>';
-            tbody.appendChild(tr);
-        });
-    }
-
-    function aplicarFiltroModalDivergencias() {
-        const filtro = document.getElementById('filtro-modal-tipo');
-        const tbody = document.getElementById('tbody-divergencias');
-        if (!tbody || !filtro) return;
-        const tipo = filtro.value;
-        tbody.querySelectorAll('tr').forEach(function (tr) {
-            const show = !tipo || tr.getAttribute('data-tipo') === tipo;
-            tr.style.display = show ? '' : 'none';
-        });
-    }
-
     function ativarAbaDivergencias(tabId) {
         document.querySelectorAll('#divergencias-tabs .nav-link').forEach(function (el) {
             el.classList.remove('active');
@@ -234,34 +199,50 @@
     }
 
     function renderizarPorTipo(lista) {
-        const nfeList = document.getElementById('lista-tipo-nfe');
-        const spedList = document.getElementById('lista-tipo-sped');
-        const countNfe = document.getElementById('count-tipo-nfe');
-        const countSped = document.getElementById('count-tipo-sped');
-        if (!nfeList || !spedList) return;
-        nfeList.innerHTML = '';
-        spedList.innerHTML = '';
-        const nfeItems = (lista || []).filter(d => d.tipo === 'NFE_AUSENTE_SPED');
-        const spedItems = (lista || []).filter(d => d.tipo === 'SPED_AUSENTE_NFE');
-        if (countNfe) countNfe.textContent = nfeItems.length;
-        if (countSped) countSped.textContent = spedItems.length;
-        nfeItems.forEach(function (d) {
-            const li = document.createElement('li');
-            li.className = 'list-group-item list-group-item-action py-2 d-flex justify-content-between align-items-center';
-            li.setAttribute('data-id-div', d.id_divergencia);
-            li.innerHTML = '<code class="small">' + escapeHtml(d.chave_nfe || d.numero_nfe || '-') + '</code> <span class="badge bg-secondary">' + (d.status === 'ABERTA' ? 'Aberta' : d.status) + '</span>';
-            li.style.cursor = 'pointer';
-            li.addEventListener('click', function () { mostrarDetalheDivergencia(d); });
-            nfeList.appendChild(li);
+        const tbody = document.getElementById('lista-divergencias-todas');
+        const vazio = document.getElementById('lista-divergencias-vazio');
+        const wrap = document.getElementById('wrap-lista-divergencias');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        const items = lista || [];
+        if (vazio) vazio.classList.toggle('d-none', items.length > 0);
+        if (wrap) wrap.classList.toggle('d-none', items.length === 0);
+        items.forEach(function (d) {
+            const chave = d.chave_nfe || '-';
+            const doc = (d.numero_nfe || d.serie_nfe) ? 'Nº ' + (d.numero_nfe || '-') + '/' + (d.serie_nfe || '-') : '-';
+            const statusLabel = d.status === 'ABERTA' ? 'Aberta' : (d.status === 'RESOLVIDA' ? 'Resolvida' : d.status);
+            const statusBadge = d.status === 'ABERTA' ? 'bg-warning text-dark' : 'bg-success';
+            const btnResolver = d.status === 'ABERTA'
+                ? '<button type="button" class="btn btn-sm btn-success btn-resolver-lista" data-id="' + d.id_divergencia + '" title="Marcar como resolvida"><i class="fas fa-check"></i></button>'
+                : '<span class="badge bg-success">Resolvida</span>';
+            const tr = document.createElement('tr');
+            tr.className = 'por-tipo-row';
+            tr.setAttribute('data-id-div', d.id_divergencia);
+            tr.innerHTML =
+                '<td><code class="por-tipo-chave" title="' + escapeHtml(d.chave_nfe || '-') + '">' + escapeHtml(chave) + '</code></td>' +
+                '<td>' + escapeHtml(doc) + '</td>' +
+                '<td><span class="badge ' + statusBadge + '">' + escapeHtml(statusLabel) + '</span></td>' +
+                '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-primary btn-detalhe-lista me-1" data-id="' + d.id_divergencia + '" title="Ver detalhe"><i class="fas fa-search"></i></button>' + btnResolver + '</td>';
+            tr.style.cursor = 'pointer';
+            tr.addEventListener('click', function (e) {
+                if (e.target.closest('button')) return;
+                mostrarDetalheDivergencia(d);
+            });
+            tbody.appendChild(tr);
         });
-        spedItems.forEach(function (d) {
-            const li = document.createElement('li');
-            li.className = 'list-group-item list-group-item-action py-2 d-flex justify-content-between align-items-center';
-            li.setAttribute('data-id-div', d.id_divergencia);
-            li.innerHTML = '<code class="small">' + escapeHtml(d.chave_nfe || '-') + '</code> <span class="badge bg-secondary">' + (d.status === 'ABERTA' ? 'Aberta' : d.status) + '</span>';
-            li.style.cursor = 'pointer';
-            li.addEventListener('click', function () { mostrarDetalheDivergencia(d); });
-            spedList.appendChild(li);
+        tbody.querySelectorAll('.btn-detalhe-lista').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                const id = parseInt(btn.getAttribute('data-id'), 10);
+                const item = estado.divergenciasLista.find(function (d) { return d.id_divergencia === id; });
+                if (item) mostrarDetalheDivergencia(item);
+            });
+        });
+        tbody.querySelectorAll('.btn-resolver-lista').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                reprocessarDivergencia(parseInt(btn.getAttribute('data-id'), 10));
+            });
         });
     }
 
@@ -273,12 +254,19 @@
         } catch (e) { return iso; }
     }
 
-    function mostrarDetalheDivergencia(d) {
-        estado.divergenciaSelecionada = d;
-        document.getElementById('tab-detalhe-btn')?.style.setProperty('display', '');
-        ativarAbaDivergencias('tab-detalhe');
-        document.getElementById('divergencia-detalhe-panel')?.classList.remove('d-none');
+    function formatarValorMonetario(v) {
+        if (v == null || v === '' || v === undefined) return '—';
+        const n = parseFloat(v);
+        return isNaN(n) ? v : 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
 
+    function preencherSubAbasDetalhe(payload) {
+        const d = payload.divergencia;
+        const nfe = payload.nfe;
+        const sped = payload.sped;
+        const confrontos = payload.confrontos || [];
+
+        // Resumo
         const campos = [
             { label: 'ID', value: d.id_divergencia },
             { label: 'Tipo', value: tipoDivergenciaLabel(d.tipo) },
@@ -309,17 +297,192 @@
             jsonEl.textContent = typeof d.detalhe_json === 'string' ? d.detalhe_json : JSON.stringify(d.detalhe_json, null, 2);
             jsonWrap.classList.remove('d-none');
         } else if (jsonWrap) jsonWrap.classList.add('d-none');
+
+        // Cabeçalho
+        const cabNfe = document.getElementById('detalhe-cabecalho-nfe');
+        const cabSped = document.getElementById('detalhe-cabecalho-sped');
+        if (cabNfe) {
+            if (nfe && nfe['cabeçalho']) {
+                const h = nfe['cabeçalho'];
+                cabNfe.innerHTML = '<table class="table table-sm table-borderless mb-0"><tbody>' +
+                    '<tr><td class="text-muted pe-2">Número/Série</td><td>' + escapeHtml((h.numero || '') + '/' + (h.serie || '')) + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">Emissão</td><td>' + escapeHtml(h.emissao ? h.emissao.substring(0, 10) : '—') + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">Natureza</td><td>' + escapeHtml(h.natureza_operacao || '—') + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">Emitente</td><td>' + escapeHtml(h.emitente || '—') + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">Destinatário</td><td>' + escapeHtml(h.destinatario || '—') + '</td></tr>' +
+                    '</tbody></table>';
+            } else {
+                cabNfe.innerHTML = '<span class="text-muted">NF-e não disponível para esta divergência.</span>';
+            }
+        }
+        if (cabSped) {
+            if (sped && sped['cabeçalho']) {
+                const h = sped['cabeçalho'];
+                cabSped.innerHTML = '<table class="table table-sm table-borderless mb-0"><tbody>' +
+                    '<tr><td class="text-muted pe-2">Número/Série</td><td>' + escapeHtml((h.num_doc || '') + '/' + (h.ser || '')) + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">Data doc</td><td>' + escapeHtml(h.dt_doc || '—') + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">Valor doc</td><td>' + formatarValorMonetario(h.vl_doc) + '</td></tr>' +
+                    '</tbody></table>';
+            } else {
+                cabSped.innerHTML = '<span class="text-muted">SPED não disponível para esta divergência.</span>';
+            }
+        }
+
+        // Itens
+        const itensNfe = document.getElementById('detalhe-itens-nfe');
+        const itensSped = document.getElementById('detalhe-itens-sped');
+        if (itensNfe) {
+            const lista = (nfe && nfe.itens) ? nfe.itens : [];
+            itensNfe.innerHTML = lista.length ? lista.map(function (i) {
+                const icms = (i.icms && i.icms.valor) ? formatarValorMonetario(i.icms.valor) : '—';
+                const pis = (i.pis && i.pis.valor) ? formatarValorMonetario(i.pis.valor) : '—';
+                const cofins = (i.cofins && i.cofins.valor) ? formatarValorMonetario(i.cofins.valor) : '—';
+                return '<tr><td>' + escapeHtml(String(i.numero_item)) + '</td><td>' + escapeHtml((i.descricao || '').substring(0, 25)) + '</td><td>' + escapeHtml(i.cfop || '') + '</td><td>' + escapeHtml(i.unidade || '') + '</td><td>' + escapeHtml(String(i.quantidade || '')) + '</td><td>' + formatarValorMonetario(i.valor_total) + '</td><td>' + icms + '</td><td>' + pis + '</td><td>' + cofins + '</td></tr>';
+            }).join('') : '<tr><td colspan="9" class="text-muted text-center">Nenhum item</td></tr>';
+        }
+        if (itensSped) {
+            const lista = (sped && sped.itens) ? sped.itens : [];
+            itensSped.innerHTML = lista.length ? lista.map(function (i) {
+                const icms = formatarValorMonetario(i.vl_icms);
+                const pis = formatarValorMonetario(i.vl_pis);
+                const cofins = formatarValorMonetario(i.vl_cofins);
+                return '<tr><td>' + escapeHtml(String(i.num_item || '')) + '</td><td>' + escapeHtml((i.descr_compl || i.cod_item || '').substring(0, 25)) + '</td><td>' + escapeHtml(i.cfop || '') + '</td><td>' + escapeHtml(i.unid || '') + '</td><td>' + escapeHtml(String(i.qtd || '')) + '</td><td>' + formatarValorMonetario(i.vl_item) + '</td><td>' + icms + '</td><td>' + pis + '</td><td>' + cofins + '</td></tr>';
+            }).join('') : '<tr><td colspan="9" class="text-muted text-center">Nenhum item</td></tr>';
+        }
+
+        // Impostos
+        const impNfe = document.getElementById('detalhe-impostos-nfe');
+        const impSped = document.getElementById('detalhe-impostos-sped');
+        if (impNfe) {
+            const tot = (nfe && nfe.totalizacao) ? nfe.totalizacao : null;
+            if (tot) {
+                impNfe.innerHTML = '<table class="table table-sm table-borderless mb-0"><tbody>' +
+                    '<tr><td class="text-muted pe-2">Base ICMS</td><td>' + formatarValorMonetario(tot.valor_base_icms) + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">ICMS</td><td>' + formatarValorMonetario(tot.valor_icms) + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">ICMS ST</td><td>' + formatarValorMonetario(tot.valor_icms_st) + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">PIS</td><td>' + formatarValorMonetario(tot.valor_pis) + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">COFINS</td><td>' + formatarValorMonetario(tot.valor_cofins) + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">Total NF-e</td><td><strong>' + formatarValorMonetario(tot.valor_total_nfe) + '</strong></td></tr>' +
+                    '</tbody></table>';
+            } else {
+                impNfe.innerHTML = '<span class="text-muted">Totalização não disponível.</span>';
+            }
+        }
+        if (impSped) {
+            const h = (sped && sped['cabeçalho']) ? sped['cabeçalho'] : null;
+            if (h) {
+                impSped.innerHTML = '<table class="table table-sm table-borderless mb-0"><tbody>' +
+                    '<tr><td class="text-muted pe-2">Base ICMS</td><td>' + formatarValorMonetario(h.vl_bc_icms) + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">ICMS</td><td>' + formatarValorMonetario(h.vl_icms) + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">ICMS ST</td><td>' + formatarValorMonetario(h.vl_icms_st) + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">PIS</td><td>' + formatarValorMonetario(h.vl_pis) + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">COFINS</td><td>' + formatarValorMonetario(h.vl_cofins) + '</td></tr>' +
+                    '<tr><td class="text-muted pe-2">Valor doc</td><td><strong>' + formatarValorMonetario(h.vl_doc) + '</strong></td></tr>' +
+                    '</tbody></table>';
+            } else {
+                impSped.innerHTML = '<span class="text-muted">SPED não disponível.</span>';
+            }
+        }
+
+        // Confrontos
+        const tbodyConf = document.getElementById('detalhe-confrontos');
+        if (tbodyConf) {
+            tbodyConf.innerHTML = confrontos.map(function (c) {
+                const statusClass = c.status === 'OK' ? 'success' : (c.status === 'DIVERGÊNCIA' ? 'danger' : 'secondary');
+                return '<tr><td>' + escapeHtml(c.tipo) + '</td><td>' + escapeHtml(c.descricao || '') + '</td><td><span class="badge bg-' + statusClass + '">' + escapeHtml(c.status) + '</span></td><td class="small">' + escapeHtml(c.detalhe || '—') + '</td></tr>';
+            }).join('');
+        }
+    }
+
+    function mostrarDetalheDivergencia(d) {
+        estado.divergenciaSelecionada = d;
+        document.getElementById('tab-detalhe-btn')?.style.setProperty('display', '');
+        ativarAbaDivergencias('tab-detalhe');
+        document.getElementById('divergencia-detalhe-panel')?.classList.remove('d-none');
+
+        // Mostrar loading nos sub-painéis
+        ['detalhe-cabecalho-nfe', 'detalhe-cabecalho-sped', 'detalhe-impostos-nfe', 'detalhe-impostos-sped'].forEach(function (id) {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '<span class="text-muted"><span class="spinner-reprocessamento" style="display:inline-block;width:1em;height:1em;"></span> Carregando...</span>';
+        });
+        document.getElementById('detalhe-itens-nfe') && (document.getElementById('detalhe-itens-nfe').innerHTML = '<tr><td colspan="5" class="text-muted text-center">Carregando...</td></tr>');
+        document.getElementById('detalhe-itens-sped') && (document.getElementById('detalhe-itens-sped').innerHTML = '<tr><td colspan="5" class="text-muted text-center">Carregando...</td></tr>');
+        document.getElementById('detalhe-confrontos') && (document.getElementById('detalhe-confrontos').innerHTML = '<tr><td colspan="4" class="text-muted text-center">Carregando...</td></tr>');
+
+        // Resumo imediato com dados locais
+        const campos = [
+            { label: 'ID', value: d.id_divergencia },
+            { label: 'Tipo', value: tipoDivergenciaLabel(d.tipo) },
+            { label: 'Status', value: d.status === 'ABERTA' ? 'Aberta' : (d.status === 'RESOLVIDA' ? 'Resolvida' : d.status) },
+            { label: 'Chave NF-e', value: d.chave_nfe || '—' },
+            { label: 'Número', value: d.numero_nfe || '—' },
+            { label: 'Série', value: d.serie_nfe || '—' },
+            { label: 'Registro SPED', value: d.registro_sped || '—' },
+            { label: 'Linha SPED', value: d.linha_sped != null ? d.linha_sped : '—' },
+            { label: 'ID NF-e (sistema)', value: d.id_nfe != null ? d.id_nfe : '—' },
+            { label: 'Valor esperado', value: d.valor_esperado != null ? d.valor_esperado : '—' },
+            { label: 'Valor encontrado', value: d.valor_encontrado != null ? d.valor_encontrado : '—' },
+            { label: 'Data criação', value: formatarDataHoraDetalhe(d.data_criacao) },
+            { label: 'Data reprocessamento', value: formatarDataHoraDetalhe(d.data_reprocessamento) },
+            { label: 'Usuário reprocessamento', value: d.usuario_reprocessamento || '—' },
+        ];
+        const tbody = document.getElementById('detalhe-campos');
+        if (tbody) {
+            tbody.innerHTML = campos.map(function (c) {
+                return '<tr><td class="text-muted small pe-2">' + escapeHtml(c.label) + '</td><td class="small">' + escapeHtml(String(c.value)) + '</td></tr>';
+            }).join('');
+        }
+        const descEl = document.getElementById('detalhe-descricao');
+        if (descEl) descEl.textContent = d.descricao || '—';
+        const jsonWrap = document.getElementById('detalhe-json-wrap');
+        const jsonEl = document.getElementById('detalhe-json');
+        if (d.detalhe_json && jsonWrap && jsonEl) {
+            jsonEl.textContent = typeof d.detalhe_json === 'string' ? d.detalhe_json : JSON.stringify(d.detalhe_json, null, 2);
+            jsonWrap.classList.remove('d-none');
+        } else if (jsonWrap) jsonWrap.classList.add('d-none');
+
         const btnResolver = document.getElementById('btn-resolver-detalhe');
         if (btnResolver) {
             btnResolver.style.display = d.status === 'ABERTA' ? '' : 'none';
             btnResolver.onclick = function () { reprocessarDivergencia(d.id_divergencia); };
         }
+
+        // Buscar detalhe completo via API
+        fetch('/api/reprocessamento/divergencias/' + d.id_divergencia + '/detalhe/', { method: 'GET', credentials: 'same-origin' })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.sucesso && data.detalhe) {
+                    preencherSubAbasDetalhe(data.detalhe);
+                } else {
+                    ['detalhe-cabecalho-nfe', 'detalhe-cabecalho-sped'].forEach(function (id) {
+                        const el = document.getElementById(id);
+                        if (el) el.innerHTML = '<span class="text-danger">Erro ao carregar detalhes.</span>';
+                    });
+                }
+            })
+            .catch(function () {
+                ['detalhe-cabecalho-nfe', 'detalhe-cabecalho-sped', 'detalhe-impostos-nfe', 'detalhe-impostos-sped'].forEach(function (id) {
+                    const el = document.getElementById(id);
+                    if (el) el.innerHTML = '<span class="text-danger">Erro ao carregar.</span>';
+                });
+                document.getElementById('detalhe-itens-nfe') && (document.getElementById('detalhe-itens-nfe').innerHTML = '<tr><td colspan="5" class="text-danger text-center">Erro</td></tr>');
+                document.getElementById('detalhe-itens-sped') && (document.getElementById('detalhe-itens-sped').innerHTML = '<tr><td colspan="5" class="text-danger text-center">Erro</td></tr>');
+                document.getElementById('detalhe-confrontos') && (document.getElementById('detalhe-confrontos').innerHTML = '<tr><td colspan="4" class="text-danger text-center">Erro</td></tr>');
+            });
+
+        // Ativar primeira sub-aba
+        document.querySelectorAll('#detalhe-subtabs .nav-link').forEach(function (btn) { btn.classList.remove('active'); });
+        document.querySelectorAll('#detalhe-subcontent .tab-pane').forEach(function (pane) { pane.classList.remove('show', 'active'); });
+        const firstBtn = document.getElementById('subtab-resumo-btn');
+        const firstPane = document.getElementById('subtab-resumo');
+        if (firstBtn) firstBtn.classList.add('active');
+        if (firstPane) firstPane.classList.add('show', 'active');
     }
 
     function voltarParaListaDivergencias() {
         document.getElementById('tab-detalhe-btn')?.style.setProperty('display', 'none');
         document.getElementById('divergencia-detalhe-panel')?.classList.add('d-none');
-        ativarAbaDivergencias('tab-lista');
+        ativarAbaDivergencias('tab-por-tipo');
     }
 
     /** Exibe empresa conforme escopo: Todas as empresas, Várias empresas ou código da empresa. */
@@ -372,20 +535,13 @@
         const modal = document.getElementById('modal-divergencias');
         const titulo = document.getElementById('modal-divergencias-lote-id');
         const carregando = document.getElementById('divergencias-carregando');
-        const lista = document.getElementById('divergencias-lista');
+        const porTipo = document.getElementById('divergencias-por-tipo');
         const vazio = document.getElementById('divergencias-vazio');
-        const tbody = document.getElementById('tbody-divergencias');
         if (titulo) titulo.textContent = '#' + idLote;
         if (modal) modal.style.display = 'block';
         if (carregando) carregando.classList.remove('d-none');
-        if (lista) lista.classList.add('d-none');
+        if (porTipo) porTipo.classList.add('d-none');
         if (vazio) vazio.classList.add('d-none');
-        if (tbody) tbody.innerHTML = '';
-        document.getElementById('divergencias-resumo')?.classList.add('d-none');
-        document.getElementById('divergencias-toolbar')?.classList.add('d-none');
-        const filtroTipo = document.getElementById('filtro-modal-tipo');
-        if (filtroTipo) filtroTipo.value = '';
-
         fetch('/api/reprocessamento/lotes/' + idLote + '/divergencias/', { method: 'GET', credentials: 'same-origin' })
             .then(res => res.json())
             .then(data => {
@@ -393,8 +549,6 @@
                 if (!data.sucesso || !data.divergencias || data.divergencias.length === 0) {
                     if (vazio) vazio.classList.remove('d-none');
                     document.getElementById('divergencias-subtitulo')?.classList.add('d-none');
-                    document.getElementById('divergencias-resumo')?.classList.add('d-none');
-                    document.getElementById('divergencias-toolbar')?.classList.add('d-none');
                     return;
                 }
                 const total = data.total != null ? data.total : data.divergencias.length;
@@ -406,42 +560,12 @@
                     totalEl.textContent = total;
                     subtitulo.classList.remove('d-none');
                 }
-                const nfeAusente = data.divergencias.filter(function (d) { return d.tipo === 'NFE_AUSENTE_SPED'; }).length;
-                const spedAusente = data.divergencias.filter(function (d) { return d.tipo === 'SPED_AUSENTE_NFE'; }).length;
-                const resumo = document.getElementById('divergencias-resumo');
-                const countNfe = document.getElementById('count-nfe-ausente');
-                const countSped = document.getElementById('count-sped-ausente');
-                if (resumo && countNfe && countSped) {
-                    countNfe.textContent = nfeAusente;
-                    countSped.textContent = spedAusente;
-                    resumo.classList.remove('d-none');
-                }
-                const toolbar = document.getElementById('divergencias-toolbar');
-                if (toolbar) toolbar.classList.remove('d-none');
-                if (lista) lista.classList.remove('d-none');
+                if (porTipo) porTipo.classList.remove('d-none');
                 document.getElementById('divergencias-tabs')?.classList.remove('d-none');
-                document.getElementById('divergencias-por-tipo')?.classList.remove('d-none');
                 estado.divergenciasLista = data.divergencias;
-                renderizarLinhasDivergencias(tbody, data.divergencias);
                 renderizarPorTipo(data.divergencias);
-                aplicarFiltroModalDivergencias();
-                ativarAbaDivergencias('tab-lista');
+                ativarAbaDivergencias('tab-por-tipo');
                 document.getElementById('tab-detalhe-btn')?.style.setProperty('display', 'none');
-                tbody.querySelectorAll('tr').forEach(tr => {
-                    tr.style.cursor = 'pointer';
-                    tr.addEventListener('click', function (e) {
-                        if (e.target.closest('button')) return;
-                        const id = parseInt(this.getAttribute('data-id-div'), 10);
-                        const item = estado.divergenciasLista.find(d => d.id_divergencia === id);
-                        if (item) mostrarDetalheDivergencia(item);
-                    });
-                });
-                tbody.querySelectorAll('.btn-resolver-div').forEach(btn => {
-                    btn.addEventListener('click', function (e) {
-                        e.stopPropagation();
-                        reprocessarDivergencia(parseInt(this.getAttribute('data-id'), 10));
-                    });
-                });
             })
             .catch(() => {
                 if (carregando) carregando.classList.add('d-none');
@@ -649,6 +773,129 @@
             });
     }
 
+    function abrirModalCondicaoParam() {
+        const modal = document.getElementById('modal-condicao-param');
+        const filtroTodos = document.getElementById('filtro-todos');
+        const filtroTexto = document.getElementById('filtro-condicao-texto');
+        if (modal) modal.style.display = 'block';
+        if (filtroTodos) filtroTodos.checked = true;
+        if (filtroTexto) { filtroTexto.value = ''; filtroTexto.classList.add('d-none'); }
+        carregarCondicaoParam();
+    }
+
+    function fecharModalCondicaoParam() {
+        const modal = document.getElementById('modal-condicao-param');
+        if (modal) modal.style.display = 'none';
+    }
+
+    function carregarCondicaoParam() {
+        const carregando = document.getElementById('condicao-param-carregando');
+        const vazio = document.getElementById('condicao-param-vazio');
+        const wrap = document.getElementById('condicao-param-tabela-wrap');
+        const tbody = document.getElementById('tbody-condicao-param');
+        if (carregando) carregando.classList.remove('d-none');
+        if (vazio) vazio.classList.add('d-none');
+        if (wrap) wrap.classList.add('d-none');
+        if (tbody) tbody.innerHTML = '';
+
+        fetch('/api/reprocessamento/condicao-param/', { method: 'GET', credentials: 'same-origin' })
+            .then(res => res.json())
+            .then(data => {
+                if (carregando) carregando.classList.add('d-none');
+                if (!data.sucesso || !data.condicoes || data.condicoes.length === 0) {
+                    if (vazio) vazio.classList.remove('d-none');
+                    return;
+                }
+                if (wrap) wrap.classList.remove('d-none');
+                data.condicoes.forEach(function (c) {
+                    const tr = document.createElement('tr');
+                    tr.setAttribute('data-id', c.id);
+                    const sapVazio = !(c.condicao_pagamento_sap || '').trim();
+                    tr.setAttribute('data-sap-vazio', sapVazio ? '1' : '0');
+                    const valSap = String(c.condicao_pagamento_sap || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    tr.innerHTML =
+                        '<td class="small align-middle">' + escapeHtml(c.condicao_pagamento_nfe || '-') + '</td>' +
+                        '<td><input type="text" class="form-control form-control-sm condicao-sap-input" data-id="' + c.id + '" value="' + valSap + '" maxlength="60" placeholder="Ex: Z001"></td>';
+                    tbody.appendChild(tr);
+                });
+                aplicarFiltroCondicaoParam();
+                tbody.querySelectorAll('.condicao-sap-input').forEach(function (input) {
+                    input.addEventListener('input', aplicarFiltroCondicaoParam);
+                });
+            })
+            .catch(function () {
+                if (carregando) carregando.classList.add('d-none');
+                if (vazio) vazio.classList.remove('d-none');
+                if (typeof Notificacoes !== 'undefined') Notificacoes.pagina('Erro ao carregar parâmetros', 'danger');
+            });
+    }
+
+    function aplicarFiltroCondicaoParam() {
+        const tipo = document.querySelector('input[name="filtro-condicao-tipo"]:checked');
+        const texto = document.getElementById('filtro-condicao-texto');
+        const tbody = document.getElementById('tbody-condicao-param');
+        if (!tbody || !tipo) return;
+        const valor = (tipo.value || '').trim();
+        const termo = (texto && texto.value ? texto.value : '').trim().toLowerCase();
+        const inputEspecifica = document.getElementById('filtro-especifica');
+        if (inputEspecifica && texto) {
+            texto.classList.toggle('d-none', valor !== 'especifica');
+            if (valor !== 'especifica') texto.value = '';
+        }
+        tbody.querySelectorAll('tr').forEach(function (tr) {
+            const tdNfe = tr.querySelector('td:first-child');
+            const inputSap = tr.querySelector('.condicao-sap-input');
+            const nfe = (tdNfe ? tdNfe.textContent : '').toLowerCase();
+            const sap = (inputSap ? (inputSap.value || '') : '').toLowerCase();
+            const sapVazio = !inputSap || !(inputSap.value || '').trim();
+            let show = true;
+            if (valor === 'vazia') {
+                show = sapVazio;
+            } else if (valor === 'especifica' && termo) {
+                show = nfe.indexOf(termo) >= 0 || sap.indexOf(termo) >= 0;
+            }
+            tr.style.display = show ? '' : 'none';
+        });
+    }
+
+    function salvarCondicaoParam() {
+        const tbody = document.getElementById('tbody-condicao-param');
+        if (!tbody) return;
+        const itens = [];
+        tbody.querySelectorAll('.condicao-sap-input').forEach(function (input) {
+            const id = parseInt(input.getAttribute('data-id'), 10);
+            if (!isNaN(id)) {
+                itens.push({ id: id, condicao_pagamento_sap: (input.value || '').trim() });
+            }
+        });
+        if (itens.length === 0) {
+            if (typeof Notificacoes !== 'undefined') Notificacoes.pagina('Nenhum registro para salvar.', 'warning');
+            return;
+        }
+        const btn = document.getElementById('btn-salvar-condicao-param');
+        if (btn) btn.disabled = true;
+        const csrf = getCsrfToken();
+        fetch('/api/reprocessamento/condicao-param/atualizar/', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+            body: JSON.stringify({ itens: itens }),
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (btn) btn.disabled = false;
+                if (data.sucesso) {
+                    if (typeof Notificacoes !== 'undefined') Notificacoes.pagina(data.mensagem || 'Salvo com sucesso.', 'success');
+                } else {
+                    if (typeof Notificacoes !== 'undefined') Notificacoes.pagina(data.mensagem || 'Erro ao salvar', 'danger');
+                }
+            })
+            .catch(function () {
+                if (btn) btn.disabled = false;
+                if (typeof Notificacoes !== 'undefined') Notificacoes.pagina('Erro ao salvar parâmetros', 'danger');
+            });
+    }
+
     function enviarCondicoesSap(idLote) {
         const btn = document.getElementById('btn-enviar-sap');
         if (btn) btn.disabled = true;
@@ -718,6 +965,10 @@
         document.getElementById('btn-gerar-condicoes')?.addEventListener('click', function () {
             if (estado.condicoesLoteId) gerarCondicoes(estado.condicoesLoteId);
         });
+        document.getElementById('btn-abrir-condicao-param')?.addEventListener('click', abrirModalCondicaoParam);
+        document.getElementById('btn-abrir-condicao-param-painel')?.addEventListener('click', abrirModalCondicaoParam);
+        document.getElementById('btn-fechar-modal-condicao-param')?.addEventListener('click', fecharModalCondicaoParam);
+        document.getElementById('btn-salvar-condicao-param')?.addEventListener('click', salvarCondicaoParam);
         document.getElementById('btn-enviar-sap')?.addEventListener('click', function () {
             if (estado.condicoesLoteId) enviarCondicoesSap(estado.condicoesLoteId);
         });
@@ -727,11 +978,32 @@
                 if (e.target === overlayCondicoes) fecharModalCondicoes();
             });
         }
-        document.getElementById('filtro-modal-tipo')?.addEventListener('change', aplicarFiltroModalDivergencias);
+        const overlayCondicaoParam = document.getElementById('modal-condicao-param');
+        if (overlayCondicaoParam) {
+            overlayCondicaoParam.addEventListener('click', function (e) {
+                if (e.target === overlayCondicaoParam) fecharModalCondicaoParam();
+            });
+        }
+        document.querySelectorAll('input[name="filtro-condicao-tipo"]').forEach(function (r) {
+            r.addEventListener('change', aplicarFiltroCondicaoParam);
+        });
+        document.getElementById('filtro-condicao-texto')?.addEventListener('input', aplicarFiltroCondicaoParam);
         document.getElementById('btn-voltar-lista')?.addEventListener('click', voltarParaListaDivergencias);
-        document.getElementById('tab-lista-btn')?.addEventListener('click', function () { ativarAbaDivergencias('tab-lista'); });
         document.getElementById('tab-por-tipo-btn')?.addEventListener('click', function () { ativarAbaDivergencias('tab-por-tipo'); });
         document.getElementById('tab-detalhe-btn')?.addEventListener('click', function () { ativarAbaDivergencias('tab-detalhe'); });
+        function ativarSubAbaDetalhe(subtabId) {
+            document.querySelectorAll('#detalhe-subtabs .nav-link').forEach(function (el) { el.classList.remove('active'); });
+            document.querySelectorAll('#detalhe-subcontent .tab-pane').forEach(function (el) { el.classList.remove('show', 'active'); });
+            const btn = document.getElementById(subtabId + '-btn');
+            const pane = document.getElementById(subtabId);
+            if (btn) btn.classList.add('active');
+            if (pane) pane.classList.add('show', 'active');
+        }
+        document.getElementById('subtab-resumo-btn')?.addEventListener('click', function () { ativarSubAbaDetalhe('subtab-resumo'); });
+        document.getElementById('subtab-cabecalho-btn')?.addEventListener('click', function () { ativarSubAbaDetalhe('subtab-cabecalho'); });
+        document.getElementById('subtab-itens-btn')?.addEventListener('click', function () { ativarSubAbaDetalhe('subtab-itens'); });
+        document.getElementById('subtab-impostos-btn')?.addEventListener('click', function () { ativarSubAbaDetalhe('subtab-impostos'); });
+        document.getElementById('subtab-confrontos-btn')?.addEventListener('click', function () { ativarSubAbaDetalhe('subtab-confrontos'); });
         const overlayDivergencias = document.getElementById('modal-divergencias');
         if (overlayDivergencias) {
             overlayDivergencias.addEventListener('click', function (e) {

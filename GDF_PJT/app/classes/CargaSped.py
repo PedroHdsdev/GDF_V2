@@ -236,14 +236,15 @@ class Carga_sped:
                 vl_bc_icms_st=self._p_dec(partes, 15),
                 aliq_st=self._p_dec(partes, 16),
                 vl_icms_st=self._p_dec(partes, 17),
-                cst_pis=self._p(partes, 22)[:2],
-                vl_bc_pis=self._p_dec(partes, 23),
-                aliq_pis=self._p_dec(partes, 24),
-                vl_pis=self._p_dec(partes, 25),
-                cst_cofins=self._p(partes, 26)[:2],
-                vl_bc_cofins=self._p_dec(partes, 27),
-                aliq_cofins=self._p_dec(partes, 28),
-                vl_cofins=self._p_dec(partes, 29),
+                # PIS/COFINS: campos 25-30 e 31-36 no layout SPED (pos 24-29 e 30-35 em partes)
+                cst_pis=self._p(partes, 24)[:2],
+                vl_bc_pis=self._p_dec(partes, 25),
+                aliq_pis=self._p_dec(partes, 26),
+                vl_pis=self._p_dec(partes, 29),
+                cst_cofins=self._p(partes, 30)[:2],
+                vl_bc_cofins=self._p_dec(partes, 31),
+                aliq_cofins=self._p_dec(partes, 32),
+                vl_cofins=self._p_dec(partes, 35),
             )
         elif reg == 'C190':
             Sped_Reg_C190.objects.create(
@@ -349,8 +350,16 @@ class Carga_sped:
                     errors.append({'file': nome, 'error': msg_dup})
                     continue
                 hash_conteudo = hashlib.sha256(conteudo).hexdigest()
+                cliente_eff = None
+                if cod_cliente:
+                    try:
+                        from app.db_GDF.Public.models import Clientes
+                        cliente_eff = Clientes.objects.get(cod_cliente=cod_cliente)
+                    except Exception:
+                        pass
                 arq = Sped_Arquivo.objects.create(
                     tipo=tipo_char,
+                    cliente=cliente_eff,
                     empresa=empresa_eff,
                     competencia=competencia,
                     nome_arquivo=nome,
@@ -376,9 +385,9 @@ class Carga_sped:
         }
 
     def _extrair_competencia(self, texto: str):
-        """Tenta extrair competência (primeiro dia do mês) do conteúdo SPED. Retorna None se não achar."""
+        """Extrai competência do SPED e retorna sempre o 1º dia do mês (para consistência com reprocessamento)."""
         from datetime import datetime
-        # Ex.: |0001|001|01012024|... ou linha com período
+        dt = None
         for linha in texto.splitlines()[:200]:
             if '|' not in linha:
                 continue
@@ -387,14 +396,20 @@ class Carga_sped:
                 p = (p or '').strip()
                 if len(p) == 8 and p.isdigit():
                     try:
-                        return datetime.strptime(p, '%d%m%Y').date()
+                        dt = datetime.strptime(p, '%d%m%Y').date()
+                        break
                     except ValueError:
                         pass
                 if len(p) == 6 and p.isdigit():
                     try:
-                        return datetime.strptime(p + '01', '%Y%m%d').date()
+                        dt = datetime.strptime(p + '01', '%Y%m%d').date()
+                        break
                     except ValueError:
                         pass
+            if dt:
+                break
+        if dt:
+            return dt.replace(day=1)  # Sempre 1º do mês para reprocessamento
         return None
 
     def _extrair_0000_assinatura(self, texto: str) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
@@ -522,8 +537,16 @@ class Carga_sped:
                     errors.append({'file': nome, 'error': msg_dup})
                     continue
                 hash_conteudo = hashlib.sha256(conteudo).hexdigest()
+                cliente_eff = None
+                if cod_cliente:
+                    try:
+                        from app.db_GDF.Public.models import Clientes
+                        cliente_eff = Clientes.objects.get(cod_cliente=cod_cliente)
+                    except Exception:
+                        pass
                 arq = Sped_Arquivo.objects.create(
                     tipo=tipo_char,
+                    cliente=cliente_eff,
                     empresa=empresa_eff,
                     competencia=competencia,
                     nome_arquivo=nome,

@@ -221,15 +221,24 @@ class CondicaoPagamentoLote(models.Model):
         return f"{self.chave_nfe} — {self.condicao_pagamento_nfe or '-'}"
 
 class CondicaoParam(models.Model):
+    cliente = models.ForeignKey(
+        'app.Clientes',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        db_column='cod_cliente',
+        to_field='cod_cliente',
+        related_name='condicoes_param_reprocessamento',
+    )
     condicao_pagamento_nfe = models.CharField(max_length=120, blank=True, null=True)
     condicao_pagamento_sap = models.CharField(max_length=60, blank=True, null=True)
 
     class Meta:
         managed = True
         db_table = '"reprocessamento"."condicao_param"'
-        unique_together = [['condicao_pagamento_nfe', 'condicao_pagamento_sap']]
+        unique_together = [['cliente', 'condicao_pagamento_nfe', 'condicao_pagamento_sap']]
         indexes = [
-            models.Index(fields=['condicao_pagamento_nfe', 'condicao_pagamento_sap']),
+            models.Index(fields=['cliente', 'condicao_pagamento_nfe', 'condicao_pagamento_sap']),
         ]
         ordering = ['condicao_pagamento_nfe']
         verbose_name = 'Condição de pagamento'

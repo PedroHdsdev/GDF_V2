@@ -4,7 +4,7 @@ Registros sem tabela específica vão para Sped_Registro (registro + linha + cam
 """
 from django.db import models
 from django.utils import timezone
-from app.db_GDF.Public.models import Empresas
+from app.db_GDF.Public.models import Empresas, Clientes
 
 
 class Sped_Arquivo(models.Model):
@@ -24,6 +24,15 @@ class Sped_Arquivo(models.Model):
         max_length=1,
         choices=TIPO_CHOICES,
         help_text="Detectado automaticamente pelo arquivo (0000/cod_ver). C=Contribuição, F=Fiscal (EFD ICMS/IPI).",
+    )
+    cliente = models.ForeignKey(
+        Clientes,
+        on_delete=models.CASCADE,
+        related_name='sped_arquivos',
+        null=True,
+        blank=True,
+        db_column='cod_cliente',
+        to_field='cod_cliente',
     )
     empresa = models.ForeignKey(
         Empresas,
@@ -54,6 +63,7 @@ class Sped_Arquivo(models.Model):
         db_table = '"sped"."sped_arquivo"'
         indexes = [
             models.Index(fields=['tipo']),
+            models.Index(fields=['cliente', 'competencia']),
             models.Index(fields=['empresa', 'competencia']),
             models.Index(fields=['data_carga']),
             models.Index(fields=['hash_conteudo']),

@@ -1,6 +1,6 @@
 from django.db import models
 from django.utils import timezone
-from app.db_GDF.Public.models import Empresas
+from app.db_GDF.Public.models import Empresas, Clientes
 
 
 class NFe_Endereco(models.Model):
@@ -579,6 +579,15 @@ class NFe(models.Model):
     id_nfe = models.AutoField(primary_key=True)
     identificacao = models.OneToOneField(NFe_Identificacao, on_delete=models.CASCADE, related_name='nfe')
     empresa = models.ForeignKey(Empresas, on_delete=models.CASCADE, related_name='nfe_docs', null=True, blank=True)  # Ao apagar empresa (ex.: ao apagar cliente), apaga NFe vinculadas
+    cliente = models.ForeignKey(
+        Clientes,
+        on_delete=models.CASCADE,
+        related_name='nfe_docs',
+        null=True,
+        blank=True,
+        db_column='cod_cliente',
+        to_field='cod_cliente',
+    )
     emitente = models.ForeignKey(NFe_Emitente, on_delete=models.PROTECT)
     destinatario = models.ForeignKey(NFe_Destinatario, on_delete=models.SET_NULL, null=True, blank=True)
     
@@ -620,7 +629,8 @@ class NFe(models.Model):
             models.Index(fields=['status', 'data_criacao']),
             models.Index(fields=['identificacao']),
             models.Index(fields=['emitente', 'destinatario']),
-            models.Index(fields=['empresa']),  # Índice para buscas por empresa
+            models.Index(fields=['empresa']),
+            models.Index(fields=['cliente']),
         ]
         ordering = ['-data_criacao']
 

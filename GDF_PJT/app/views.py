@@ -38,7 +38,7 @@ from app.db_GDF.Public.models       import (
     UserEmpresas, Empresas, Clientes, GrpEmpresas,
     CargaXmlParam, CargaXmlJob,
     CargaSpedParam, CargaSpedJob,
-    SapConnection,
+    SapConnection, SubsolucoesAcesso,
 )
 from app.classes.CargaSped          import Carga_sped
 from app.db_GDF.NFe.models          import (
@@ -55,8 +55,8 @@ from app.db_GDF.NFSe.models        import (
     NFSe, NFSe_Identificacao, NFSe_Prestador, NFSe_Tomador, NFSe_Endereco,
     NFSe_RPS, NFSe_Retencao, NFSe_Pagamento, NFSe_Servico,
 )
-from app.db_GDF.Sped.models        import Sped_Arquivo
-from app.db_Reprocessamento.models import ReprocessamentoLote, Divergencia, ReprocessamentoJob, CondicaoPagamentoLote
+from app.db_GDF.Sped.models        import Sped_Arquivo, Sped_Reg_C100, Sped_Reg_C170
+from app.db_Reprocessamento.models import ReprocessamentoLote, Divergencia, ReprocessamentoJob, CondicaoPagamentoLote, CondicaoParam
 from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
 import re
@@ -75,10 +75,25 @@ def _superuser_acesso_total_painel(request):
         return True
     cod = request.session.get('cod_cliente') or ''
     return cod == '' or str(cod).strip() == COD_CLIENTE_SUPERUSER_PAINEL
+
+
+def _get_subsolucoes_usuario(user):
+    """Retorna set de cod_subsolucao que o usuário tem acesso via seus grupos.
+    Superuser: retorna None (acesso total). Usuário normal: set de códigos."""
+    if getattr(user, 'is_superuser', False):
+        return None  # None = acesso total
+    group_ids = list(user.groups.values_list('id', flat=True))
+    if not group_ids:
+        return set()
+    codigos = SubsolucoesAcesso.objects.filter(
+        group_id__in=group_ids,
+        subsolucao__isnull=False,
+    ).values_list('subsolucao__cod_subsolucao', flat=True).distinct()
+    return set(c for c in codigos if c)
 import json
 import zipfile
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta, timezone as _py_tz
 
 def fn_view_login(request):
     if request.method == "POST":
@@ -165,6 +180,239 @@ def fn_view_home(request):
         if _superuser_acesso_total_painel(request):
             cl_gdf = ClGdf()
             context['lista_clientes'] = cl_gdf.get_clientes()
+
+    # Subsoluções que o usuário tem acesso (None = superuser = acesso total)
+    subsolucoes = _get_subsolucoes_usuario(request.user)
+
+    def _tem_acesso(cod):
+        """Verifica se usuário tem acesso à subsolução."""
+        if subsolucoes is None:
+            return True
+        return cod in subsolucoes
+
+    # Dados reais para alertas e métricas (evita dados falsos)
+    context['alertas'] = []
+    context['metricas'] = {'cert_expirando': 0, 'carga_xml_24h': 0, 'carga_sped_24h': 0, 'carga_em_andamento': 0}
+    desde_24h = timezone.now() - timedelta(hours=24)
+
+    if cod_cliente:
+        hoje = timezone.now().date()
+        limite_cert = hoje + timedelta(days=30)
+
+        # 1. Certificados expirando (requer Dm_Empresas)
+        if _tem_acesso('Dm_Empresas'):
+            cert_expirando = Empresas.objects.filter(
+                cliente__cod_cliente=cod_cliente,
+                cert__isnull=False,
+                cert__fim_validade__isnull=False,
+            ).filter(cert__fim_validade__date__lte=limite_cert).count()
+            context['metricas']['cert_expirando'] = cert_expirando
+            if cert_expirando > 0:
+                context['alertas'].append({
+                    'tipo': 'warning',
+                    'titulo': f'{cert_expirando} certificado(s) expirando em até 30 dias',
+                    'meta': 'Empresas',
+                    'tag': 'Atenção',
+                    'url': 'Dm_Empresas',
+                })
+
+        # 2. Carga XML com erros (requer Pro_CargaXml)
+        if _tem_acesso('Pro_CargaXml'):
+            xml_erros = CargaXmlJob.objects.filter(
+                cliente__cod_cliente=cod_cliente,
+                status='ERROR',
+                finished_at__gte=desde_24h,
+            ).count()
+            if xml_erros > 0:
+                context['alertas'].append({
+                    'tipo': 'critical',
+                    'titulo': f'{xml_erros} carga(s) XML com erro nas últimas 24h',
+                    'meta': 'Processamento Fiscal',
+                    'tag': 'Urgente',
+                    'url': 'Pro_CargaXml',
+                })
+
+        # 3. Carga SPED com erros (requer Pro_CargaSped)
+        if _tem_acesso('Pro_CargaSped'):
+            sped_erros = CargaSpedJob.objects.filter(
+                cliente__cod_cliente=cod_cliente,
+                status='ERROR',
+                finished_at__gte=desde_24h,
+            ).count()
+            if sped_erros > 0:
+                context['alertas'].append({
+                    'tipo': 'critical',
+                    'titulo': f'{sped_erros} carga(s) SPED com erro nas últimas 24h',
+                    'meta': 'Processamento Fiscal',
+                    'tag': 'Urgente',
+                    'url': 'Pro_CargaSped',
+                })
+
+        # 4. Divergências abertas no reprocessamento (requer Reproc_Painel)
+        if _tem_acesso('Reproc_Painel'):
+            empresas_cod = list(Empresas.objects.filter(
+                cliente__cod_cliente=cod_cliente
+            ).values_list('cod_empresa', flat=True))
+            if empresas_cod:
+                divergencias = Divergencia.objects.filter(
+                    lote__cod_empresa__in=empresas_cod,
+                    status='ABERTA',
+                ).count()
+                if divergencias > 0:
+                    context['alertas'].append({
+                        'tipo': 'warning',
+                        'titulo': f'{divergencias} divergência(s) aberta(s) no confronto SPED x NFe',
+                        'meta': 'Reprocessamento',
+                        'tag': 'Revisar',
+                        'url': 'Reproc_Painel',
+                    })
+
+        # 5. Atalhos informativos (apenas um por área, para quem tem acesso)
+        if _tem_acesso('Pro_CargaXml') or _tem_acesso('Pro_CargaSped'):
+            context['alertas'].append({
+                'tipo': 'info',
+                'titulo': 'Carga fiscal disponível',
+                'meta': 'XML e SPED • Importar documentos',
+                'tag': 'Pronto',
+                'url': 'Pro_CargaXml' if _tem_acesso('Pro_CargaXml') else 'Pro_CargaSped',
+            })
+        if _tem_acesso('Mnf_Painel'):
+            context['alertas'].append({
+                'tipo': 'info',
+                'titulo': 'Painel manifesto',
+                'meta': 'NFe, CTe e NFSe',
+                'tag': 'Acessar',
+                'url': 'Mnf_Painel',
+            })
+        if _tem_acesso('Reproc_Painel'):
+            context['alertas'].append({
+                'tipo': 'info',
+                'titulo': 'Confronto SPED x NFe',
+                'meta': 'Reprocessamento',
+                'tag': 'Acessar',
+                'url': 'Reproc_Painel',
+            })
+
+        # Métricas (apenas para quem tem acesso às cargas)
+        if _tem_acesso('Pro_CargaXml') or _tem_acesso('Pro_CargaSped'):
+            xml_concluidos = CargaXmlJob.objects.filter(
+                cliente__cod_cliente=cod_cliente,
+                status='SUCCESS',
+                finished_at__gte=desde_24h,
+            ).count() if _tem_acesso('Pro_CargaXml') else 0
+            sped_concluidos = CargaSpedJob.objects.filter(
+                cliente__cod_cliente=cod_cliente,
+                status='SUCCESS',
+                finished_at__gte=desde_24h,
+            ).count() if _tem_acesso('Pro_CargaSped') else 0
+            xml_em_andamento = CargaXmlJob.objects.filter(
+                cliente__cod_cliente=cod_cliente,
+                status__in=('RUNNING', 'PENDING'),
+            ).count() if _tem_acesso('Pro_CargaXml') else 0
+            sped_em_andamento = CargaSpedJob.objects.filter(
+                cliente__cod_cliente=cod_cliente,
+                status__in=('RUNNING', 'PENDING'),
+            ).count() if _tem_acesso('Pro_CargaSped') else 0
+            context['metricas'].update({
+                'carga_xml_24h': xml_concluidos,
+                'carga_sped_24h': sped_concluidos,
+                'carga_em_andamento': xml_em_andamento + sped_em_andamento,
+            })
+
+    # Se não há alertas (ex.: sem cliente ou sem permissões), mensagem neutra
+    if not context['alertas']:
+        context['alertas'].append({
+            'tipo': 'info',
+            'titulo': 'Nenhum alerta no momento',
+            'meta': 'Selecione um cliente ou verifique suas permissões',
+            'tag': 'OK',
+            'url': None,
+        })
+
+    # Atalhos filtrados por permissão (para o card Acesso rápido)
+    context['atalhos'] = []
+    context['tem_mnf'] = _tem_acesso('Mnf_Painel')
+    context['tem_empresas'] = _tem_acesso('Dm_Empresas')
+    _atalhos_config = [
+        ('Pro_CargaXml', 'Importar XML', 'Carga diária'),
+        ('Pro_CargaSped', 'Carga SPED', 'Arquivos SPED'),
+        ('Pro_Relatorio', 'Relatório Fiscal', 'NFe, CTe, NFS, SPED'),
+        ('Dm_Empresas', 'Empresas', 'Cadastros'),
+        ('Dm_Usuarios', 'Usuários', 'Acessos'),
+    ]
+    for cod, titulo, desc in _atalhos_config:
+        if _tem_acesso(cod):
+            context['atalhos'].append({'url': cod, 'titulo': titulo, 'desc': desc})
+
+    # Contexto enriquecido: welcome, cliente, competência, estatísticas, atividade recente
+    context['nome_usuario'] = request.user.get_full_name() or request.user.username
+    _meses = ('', 'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+              'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro')
+    _agora = timezone.now()
+    context['competencia'] = f"{_meses[_agora.month]}/{_agora.year}"
+    context['stats_docs'] = {}
+    context['ultima_atividade'] = []
+    context['cliente_nome'] = None
+    context['qtd_empresas'] = 0
+
+    if cod_cliente:
+        cliente_obj = Clientes.objects.filter(cod_cliente=cod_cliente).first()
+        if cliente_obj:
+            context['cliente_nome'] = cliente_obj.razao or cod_cliente
+        context['qtd_empresas'] = Empresas.objects.filter(cliente__cod_cliente=cod_cliente).count()
+
+        # Documentos no mês atual (para quem tem Pro_Relatorio ou Reproc_Painel)
+        if _tem_acesso('Pro_Relatorio') or _tem_acesso('Reproc_Painel'):
+            hoje = timezone.now()
+            nfe_mes = NFe.objects.filter(
+                cliente__cod_cliente=cod_cliente,
+                identificacao__emissao__year=hoje.year,
+                identificacao__emissao__month=hoje.month,
+            ).count()
+            cte_mes = CTe.objects.filter(
+                cliente__cod_cliente=cod_cliente,
+                identificacao__emissao__year=hoje.year,
+                identificacao__emissao__month=hoje.month,
+            ).count()
+            nfse_mes = NFSe.objects.filter(
+                cliente__cod_cliente=cod_cliente,
+                identificacao__emissao__year=hoje.year,
+                identificacao__emissao__month=hoje.month,
+            ).count()
+            context['stats_docs'] = {'nfe': nfe_mes, 'cte': cte_mes, 'nfse': nfse_mes}
+
+        # Última atividade: jobs recentes (XML + SPED)
+        if _tem_acesso('Pro_CargaXml') or _tem_acesso('Pro_CargaSped'):
+            atividades = []
+            if _tem_acesso('Pro_CargaXml'):
+                for j in CargaXmlJob.objects.filter(cliente__cod_cliente=cod_cliente).order_by('-started_at')[:3]:
+                    dt = j.finished_at or j.started_at
+                    atividades.append({
+                        'tipo': 'XML',
+                        'status': j.status,
+                        'data': dt,
+                        'total': j.total_arquivos,
+                        'sucesso': j.total_sucesso,
+                        'erro': j.total_erro,
+                        'url': 'Pro_CargaXml',
+                    })
+            if _tem_acesso('Pro_CargaSped'):
+                for j in CargaSpedJob.objects.filter(cliente__cod_cliente=cod_cliente).order_by('-started_at')[:3]:
+                    dt = j.finished_at or j.started_at
+                    atividades.append({
+                        'tipo': 'SPED',
+                        'status': j.status,
+                        'data': dt,
+                        'total': j.total_arquivos,
+                        'sucesso': j.total_sucesso,
+                        'erro': j.total_erro,
+                        'url': 'Pro_CargaSped',
+                    })
+            # Ordenar por data e pegar os 5 mais recentes (None vai por último)
+            _epoch = datetime(1970, 1, 1, tzinfo=_py_tz.utc)
+            atividades.sort(key=lambda x: x['data'] or _epoch, reverse=True)
+            context['ultima_atividade'] = atividades[:5]
+
     return render(request, "Index_Home.html", context)
 
 @login_required
@@ -2828,6 +3076,190 @@ def fn_api_reprocessamento_confronto(request):
 
 
 @login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_reprocessamento_divergencia_detalhe(request, id_divergencia):
+    """Retorna detalhe completo da divergência: resumo, cabeçalho NFe/SPED, itens, impostos e confrontos realizados."""
+    cod_cliente = request.session.get('cod_cliente')
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    div = get_object_or_404(Divergencia, id_divergencia=id_divergencia)
+    if div.lote.cod_empresa not in cod_empresas:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Divergência não pertence ao cliente'}, status=403)
+
+    from decimal import Decimal
+
+    payload = {
+        'divergencia': {
+            'id_divergencia': div.id_divergencia,
+            'tipo': div.tipo,
+            'status': div.status,
+            'chave_nfe': div.chave_nfe,
+            'numero_nfe': div.numero_nfe,
+            'serie_nfe': div.serie_nfe,
+            'descricao': div.descricao,
+            'valor_esperado': str(div.valor_esperado) if div.valor_esperado is not None else None,
+            'valor_encontrado': str(div.valor_encontrado) if div.valor_encontrado is not None else None,
+            'registro_sped': div.registro_sped,
+            'linha_sped': div.linha_sped,
+            'id_nfe': div.id_nfe,
+            'detalhe_json': div.detalhe_json,
+            'data_criacao': div.data_criacao.isoformat() if div.data_criacao else None,
+            'data_reprocessamento': div.data_reprocessamento.isoformat() if div.data_reprocessamento else None,
+            'usuario_reprocessamento': div.usuario_reprocessamento,
+        },
+        'nfe': None,
+        'sped': None,
+        'confrontos': [],
+    }
+
+    # NFe: cabeçalho, itens, impostos (quando id_nfe existe)
+    if div.id_nfe:
+        try:
+            nfe = NFe.objects.filter(id_nfe=div.id_nfe).select_related(
+                'identificacao', 'emitente', 'destinatario'
+            ).prefetch_related(
+                'identificacao__produtos',
+                'identificacao__totalizacao',
+            ).first()
+            if nfe:
+                ide = nfe.identificacao
+                tot = getattr(ide, 'totalizacao', None)
+                produtos = list(ide.produtos.order_by('numero_item').values(
+                    'id_produto', 'numero_item', 'descricao', 'cfop', 'ncm', 'quantidade',
+                    'valor_unitario', 'valor_total', 'unidade'
+                ))
+                for p in produtos:
+                    p['quantidade'] = str(p['quantidade']) if p.get('quantidade') is not None else None
+                    p['valor_unitario'] = str(p['valor_unitario']) if p.get('valor_unitario') is not None else None
+                    p['valor_total'] = str(p['valor_total']) if p.get('valor_total') is not None else None
+                    try:
+                        prod_obj = ide.produtos.get(id_produto=p['id_produto'])
+                        try:
+                            icms = prod_obj.icms
+                            p['icms'] = {'cst': icms.cst, 'valor': str(icms.valor_icms or 0)}
+                        except Exception:
+                            p['icms'] = None
+                        try:
+                            pis = prod_obj.pis
+                            p['pis'] = {'cst': pis.cst, 'valor': str(pis.valor_pis or 0)}
+                        except Exception:
+                            p['pis'] = None
+                        try:
+                            cofins = prod_obj.cofins
+                            p['cofins'] = {'cst': cofins.cst, 'valor': str(cofins.valor_cofins or 0)}
+                        except Exception:
+                            p['cofins'] = None
+                    except Exception:
+                        pass
+
+                payload['nfe'] = {
+                    'cabeçalho': {
+                        'numero': ide.numero,
+                        'serie': ide.serie,
+                        'chave_acesso': ide.chave_acesso,
+                        'emissao': ide.emissao.isoformat() if ide.emissao else None,
+                        'natureza_operacao': ide.natureza_operacao,
+                        'modelo': ide.modelo,
+                        'emitente': nfe.emitente.razao_social if nfe.emitente else None,
+                        'destinatario': nfe.destinatario.razao_social if nfe.destinatario else None,
+                    },
+                    'totalizacao': {
+                        'valor_subtotal_produtos': str(tot.valor_subtotal_produtos) if tot else None,
+                        'valor_frete': str(tot.valor_frete) if tot and tot.valor_frete else None,
+                        'valor_desconto': str(tot.valor_desconto) if tot and tot.valor_desconto else None,
+                        'valor_base_icms': str(tot.valor_base_icms) if tot and tot.valor_base_icms else None,
+                        'valor_icms': str(tot.valor_icms) if tot and tot.valor_icms else None,
+                        'valor_icms_st': str(tot.valor_icms_st) if tot and tot.valor_icms_st else None,
+                        'valor_pis': str(tot.valor_pis) if tot and tot.valor_pis else None,
+                        'valor_cofins': str(tot.valor_cofins) if tot and tot.valor_cofins else None,
+                        'valor_total_nfe': str(tot.valor_total_nfe) if tot else None,
+                    } if tot else None,
+                    'itens': produtos,
+                }
+        except Exception:
+            payload['nfe'] = None
+
+    # SPED: C100 e C170 (quando chave_nfe existe)
+    if div.chave_nfe:
+        try:
+            c100 = Sped_Reg_C100.objects.filter(chv_nfe=div.chave_nfe).select_related('arquivo').first()
+            if c100:
+                c170_list = list(Sped_Reg_C170.objects.filter(c100=c100).order_by('linha', 'num_item').values(
+                    'num_item', 'cod_item', 'descr_compl', 'cfop', 'qtd', 'unid',
+                    'vl_item', 'vl_desc', 'cst_icms', 'vl_bc_icms', 'aliq_icms', 'vl_icms',
+                    'cst_pis', 'vl_bc_pis', 'aliq_pis', 'vl_pis',
+                    'cst_cofins', 'vl_bc_cofins', 'aliq_cofins', 'vl_cofins',
+                ))
+                for c in c170_list:
+                    for k, v in list(c.items()):
+                        if isinstance(v, Decimal):
+                            c[k] = str(v)
+
+                payload['sped'] = {
+                    'cabeçalho': {
+                        'chv_nfe': c100.chv_nfe,
+                        'num_doc': c100.num_doc,
+                        'ser': c100.ser,
+                        'dt_doc': str(c100.dt_doc) if c100.dt_doc else None,
+                        'vl_doc': str(c100.vl_doc) if c100.vl_doc else None,
+                        'vl_bc_icms': str(c100.vl_bc_icms) if c100.vl_bc_icms else None,
+                        'vl_icms': str(c100.vl_icms) if c100.vl_icms else None,
+                        'vl_icms_st': str(c100.vl_icms_st) if c100.vl_icms_st else None,
+                        'vl_pis': str(c100.vl_pis) if c100.vl_pis else None,
+                        'vl_cofins': str(c100.vl_cofins) if c100.vl_cofins else None,
+                    },
+                    'itens': c170_list,
+                }
+        except Exception:
+            payload['sped'] = None
+
+    # Confrontos realizados e status
+    nfe_h = payload.get('nfe', {}).get('cabeçalho') if payload.get('nfe') else None
+    sped_h = payload.get('sped', {}).get('cabeçalho') if payload.get('sped') else None
+    nfe_tot = payload.get('nfe', {}).get('totalizacao') if payload.get('nfe') else None
+
+    payload['confrontos'] = [
+        {
+            'tipo': 'Estrutural (documento)',
+            'descricao': 'Documento presente no SPED e na NF-e',
+            'status': 'DIVERGÊNCIA' if div.tipo in ('NFE_AUSENTE_SPED', 'SPED_AUSENTE_NFE') else 'OK',
+            'detalhe': div.get_tipo_display() if hasattr(div, 'get_tipo_display') else div.tipo,
+        },
+        {
+            'tipo': 'Valor do documento',
+            'descricao': 'Valor total do documento',
+            'status': 'OK' if (div.valor_esperado is None and div.valor_encontrado is None) or (
+                div.valor_esperado == div.valor_encontrado
+            ) else ('DIVERGÊNCIA' if div.valor_esperado or div.valor_encontrado else 'N/A'),
+            'detalhe': f'SPED: {div.valor_esperado} | NFe: {div.valor_encontrado}' if div.valor_esperado or div.valor_encontrado else None,
+        },
+        {
+            'tipo': 'Cabeçalho (data emissão)',
+            'descricao': 'Data de emissão do documento',
+            'status': 'OK' if (nfe_h and sped_h and nfe_h.get('emissao') and sped_h.get('dt_doc') and
+                str(nfe_h.get('emissao', '')[:10]) == str(sped_h.get('dt_doc', ''))) else ('DIVERGÊNCIA' if (nfe_h and sped_h) else 'N/A'),
+            'detalhe': f'NFe: {nfe_h.get("emissao", "")[:10] if nfe_h else "-"} | SPED: {sped_h.get("dt_doc", "-") if sped_h else "-"}' if (nfe_h or sped_h) else None,
+        },
+        {
+            'tipo': 'Itens',
+            'descricao': 'Quantidade e valores dos itens',
+            'status': 'N/A' if not (payload.get('nfe') and payload.get('sped')) else 'OK',
+            'detalhe': f'NFe: {len(payload["nfe"].get("itens", []))} itens | SPED: {len(payload["sped"].get("itens", []))} itens' if (payload.get('nfe') and payload.get('sped')) else None,
+        },
+        {
+            'tipo': 'Impostos (ICMS, PIS, COFINS)',
+            'descricao': 'Valores de impostos do documento',
+            'status': 'OK' if (nfe_tot and sped_h and
+                (not div.valor_esperado or not div.valor_encontrado or div.valor_esperado == div.valor_encontrado)) else ('DIVERGÊNCIA' if (nfe_tot and sped_h) else 'N/A'),
+            'detalhe': f'NFe ICMS: {nfe_tot.get("valor_icms", "-") if nfe_tot else "-"} | SPED ICMS: {sped_h.get("vl_icms", "-") if sped_h else "-"}' if (nfe_tot or sped_h) else None,
+        },
+    ]
+
+    return JsonResponse({'sucesso': True, 'detalhe': payload})
+
+
+@login_required(login_url='Login')
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_reprocessar_divergencia(request, id_divergencia):
     """Marca divergência como resolvida após reprocessamento."""
@@ -2972,3 +3404,47 @@ def fn_api_reprocessamento_condicoes_enviar_sap(request, id_lote):
         'enviados': len(retornos),
         'atualizados': atualizados,
     })
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_reprocessamento_condicao_param_listar(request):
+    """Lista registros da tabela condicao_param (depara condição NFe → SAP) do cliente."""
+    cod_cliente = request.session.get('cod_cliente')
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    qs = CondicaoParam.objects.filter(cliente_id=cod_cliente).order_by('condicao_pagamento_nfe')
+    lista = [
+        {
+            'id': c.id,
+            'condicao_pagamento_nfe': c.condicao_pagamento_nfe or '',
+            'condicao_pagamento_sap': c.condicao_pagamento_sap or '',
+        }
+        for c in qs
+    ]
+    return JsonResponse({'sucesso': True, 'condicoes': lista})
+
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_api_reprocessamento_condicao_param_atualizar(request):
+    """
+    Atualiza condicao_pagamento_sap de registros em condicao_param.
+    Body: { "itens": [ { "id": 1, "condicao_pagamento_sap": "Z001" }, ... ] }
+    """
+    cod_cliente = request.session.get('cod_cliente')
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    data = json.loads(request.body) if request.body else {}
+    itens = data.get('itens') or []
+    if not itens:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Envie "itens" com id e condicao_pagamento_sap.'}, status=400)
+    atualizados = 0
+    for item in itens:
+        pk = item.get('id')
+        if pk is None:
+            continue
+        cond_sap = (item.get('condicao_pagamento_sap') or '').strip()[:60]
+        n = CondicaoParam.objects.filter(pk=pk, cliente_id=cod_cliente).update(condicao_pagamento_sap=cond_sap)
+        atualizados += n
+    return JsonResponse({'sucesso': True, 'atualizados': atualizados, 'mensagem': f'{atualizados} registro(s) atualizado(s).'})

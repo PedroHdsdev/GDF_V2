@@ -74,7 +74,10 @@ urlpatterns = [
     path('api/reprocessamento/lotes/<int:id_lote>/condicoes-pagamento/enviar-sap/', views.fn_api_reprocessamento_condicoes_enviar_sap, name='API_ReprocessamentoCondicoesEnviarSap'),
     path('api/reprocessamento/lotes/<int:id_lote>/condicoes-pagamento/atualizar-retorno/', views.fn_api_reprocessamento_condicoes_atualizar_retorno, name='API_ReprocessamentoCondicoesAtualizarRetorno'),
     path('api/reprocessamento/confronto/', views.fn_api_reprocessamento_confronto, name='API_ReprocessamentoConfronto'),
+    path('api/reprocessamento/divergencias/<int:id_divergencia>/detalhe/', views.fn_api_reprocessamento_divergencia_detalhe, name='API_ReprocessamentoDivergenciaDetalhe'),
     path('api/reprocessamento/divergencias/<int:id_divergencia>/reprocessar/', views.fn_api_reprocessamento_reprocessar_divergencia, name='API_ReprocessamentoReprocessarDivergencia'),
+    path('api/reprocessamento/condicao-param/', views.fn_api_reprocessamento_condicao_param_listar, name='API_ReprocessamentoCondicaoParamListar'),
+    path('api/reprocessamento/condicao-param/atualizar/', views.fn_api_reprocessamento_condicao_param_atualizar, name='API_ReprocessamentoCondicaoParamAtualizar'),
     
         
 #--------------------------------------------------------------------

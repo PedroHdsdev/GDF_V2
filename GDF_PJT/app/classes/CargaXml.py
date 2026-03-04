@@ -29,6 +29,17 @@ class EmpresaNaoCadastradaError(Exception):
     pass
 
 
+def _find_first_child(parent, tag_names, ns):
+    """Retorna o primeiro filho cuja tag (local name) está em tag_names."""
+    if parent is None:
+        return None
+    for child in parent:
+        local = child.tag.split('}')[-1] if '}' in child.tag else child.tag
+        if local in tag_names:
+            return child
+    return None
+
+
 class Carga_xml():
     def __init__(self):
         self.ns = {
@@ -38,12 +49,14 @@ class Carga_xml():
         }
     
     def _get_text(self, element, path, default=''):
-        """Extrai texto de elemento XML com fallback para namespace"""
+        """Extrai texto de elemento XML com fallback para namespace (nfe, cte, sem prefixo)"""
         if element is None:
             return default
-        result = element.findtext(f'.//nfe:{path}', default='', namespaces=self.ns)
-        if not result:
-            result = element.findtext(f'.//{path}', default=default)
+        for prefix in ('nfe', 'cte'):
+            result = element.findtext(f'.//{prefix}:{path}', default='', namespaces=self.ns)
+            if result:
+                return result or default
+        result = element.findtext(f'.//{path}', default=default)
         return result or default
     
     def _to_decimal(self, value, default=0):
@@ -136,19 +149,16 @@ class Carga_xml():
                 self._processar_impostos(imposto, produto)
     
     def _processar_impostos(self, imposto_node, produto):
-        """Processa todos os impostos de um produto"""
+        """Processa todos os impostos de um produto (ICMS, IPI, PIS, COFINS) — todos os tipos."""
         # ICMS
         icms_node = imposto_node.find('.//nfe:ICMS', self.ns) or imposto_node.find('.//ICMS')
         if icms_node:
-            # ICMS pode ter vários tipos (ICMS00, ICMS10, ICMS20, etc)
             icms_tipo = None
             for child in icms_node:
                 if 'ICMS' in child.tag:
                     icms_tipo = child
                     break
-            
             if icms_tipo is not None:
-                # CST (2 dígitos) ou CSOSN/Simples Nacional (3 dígitos: 101, 102, 201, 900)
                 cst_val = (self._get_text(icms_tipo, 'CST') or self._get_text(icms_tipo, 'CSOSN', '00'))[:3]
                 NFe_ICMS.objects.create(
                     produto=produto,
@@ -156,13 +166,15 @@ class Carga_xml():
                     cst=cst_val or '00',
                     valor_base_calculo=self._to_decimal(self._get_text(icms_tipo, 'vBC')),
                     aliquota=self._to_decimal(self._get_text(icms_tipo, 'pICMS')),
-                    valor_icms=self._to_decimal(self._get_text(icms_tipo, 'vICMS'))
+                    valor_icms=self._to_decimal(self._get_text(icms_tipo, 'vICMS')),
+                    valor_base_st=self._to_decimal(self._get_text(icms_tipo, 'vBCST')),
+                    valor_icms_st=self._to_decimal(self._get_text(icms_tipo, 'vICMSST')),
                 )
-        
         # IPI
         ipi_node = imposto_node.find('.//nfe:IPI', self.ns) or imposto_node.find('.//IPI')
         if ipi_node:
             ipi_trib = ipi_node.find('.//nfe:IPITrib', self.ns) or ipi_node.find('.//IPITrib')
+            ipi_nt = ipi_node.find('.//nfe:IPINT', self.ns) or ipi_node.find('.//IPINT')
             if ipi_trib is not None:
                 NFe_IPI.objects.create(
                     produto=produto,
@@ -171,31 +183,53 @@ class Carga_xml():
                     aliquota=self._to_decimal(self._get_text(ipi_trib, 'pIPI')),
                     valor_ipi=self._to_decimal(self._get_text(ipi_trib, 'vIPI'))
                 )
-        
-        # PIS
+            elif ipi_nt is not None:
+                NFe_IPI.objects.create(
+                    produto=produto,
+                    cst=self._get_text(ipi_nt, 'CST', '99'),
+                    valor_base_calculo=Decimal('0'),
+                    aliquota=Decimal('0'),
+                    valor_ipi=Decimal('0')
+                )
+        # PIS — PISAliq, PISQtde, PISOutr, PISNT, PISST
         pis_node = imposto_node.find('.//nfe:PIS', self.ns) or imposto_node.find('.//PIS')
         if pis_node:
-            pis_aliq = pis_node.find('.//nfe:PISAliq', self.ns) or pis_node.find('.//PISAliq')
-            if pis_aliq is not None:
+            pis_el = _find_first_child(pis_node, ['PISAliq', 'PISQtde', 'PISOutr', 'PISNT', 'PISST'], self.ns)
+            if pis_el is not None:
+                cst = self._get_text(pis_el, 'CST', '99')
+                vbc = self._to_decimal(self._get_text(pis_el, 'vBC') or self._get_text(pis_el, 'qBCProd'))
+                pct = self._to_decimal(self._get_text(pis_el, 'pPIS') or self._get_text(pis_el, 'vAliqProd'))
+                vpis = self._to_decimal(self._get_text(pis_el, 'vPIS'))
+                qtd = self._to_decimal(self._get_text(pis_el, 'qBCProd'))
+                aliq_qtd = self._to_decimal(self._get_text(pis_el, 'vAliqProd'))
                 NFe_PIS.objects.create(
                     produto=produto,
-                    cst=self._get_text(pis_aliq, 'CST', '99'),
-                    valor_base_calculo=self._to_decimal(self._get_text(pis_aliq, 'vBC')),
-                    aliquota=self._to_decimal(self._get_text(pis_aliq, 'pPIS')),
-                    valor_pis=self._to_decimal(self._get_text(pis_aliq, 'vPIS'))
+                    cst=cst,
+                    valor_base_calculo=vbc or Decimal('0'),
+                    aliquota=pct,
+                    valor_pis=vpis or Decimal('0'),
+                    quantidade_vendida=qtd,
+                    aliquota_quantidade=aliq_qtd,
                 )
-        
-        # COFINS
+        # COFINS — COFINSAliq, COFINSQtde, COFINSOutr, COFINSNT, COFINSST
         cofins_node = imposto_node.find('.//nfe:COFINS', self.ns) or imposto_node.find('.//COFINS')
         if cofins_node:
-            cofins_aliq = cofins_node.find('.//nfe:COFINSAliq', self.ns) or cofins_node.find('.//COFINSAliq')
-            if cofins_aliq is not None:
+            cofins_el = _find_first_child(cofins_node, ['COFINSAliq', 'COFINSQtde', 'COFINSOutr', 'COFINSNT', 'COFINSST'], self.ns)
+            if cofins_el is not None:
+                cst = self._get_text(cofins_el, 'CST', '99')
+                vbc = self._to_decimal(self._get_text(cofins_el, 'vBC') or self._get_text(cofins_el, 'qBCProd'))
+                pct = self._to_decimal(self._get_text(cofins_el, 'pCOFINS') or self._get_text(cofins_el, 'vAliqProd'))
+                vcof = self._to_decimal(self._get_text(cofins_el, 'vCOFINS'))
+                qtd = self._to_decimal(self._get_text(cofins_el, 'qBCProd'))
+                aliq_qtd = self._to_decimal(self._get_text(cofins_el, 'vAliqProd'))
                 NFe_COFINS.objects.create(
                     produto=produto,
-                    cst=self._get_text(cofins_aliq, 'CST', '99'),
-                    valor_base_calculo=self._to_decimal(self._get_text(cofins_aliq, 'vBC')),
-                    aliquota=self._to_decimal(self._get_text(cofins_aliq, 'pCOFINS')),
-                    valor_cofins=self._to_decimal(self._get_text(cofins_aliq, 'vCOFINS'))
+                    cst=cst,
+                    valor_base_calculo=vbc or Decimal('0'),
+                    aliquota=pct,
+                    valor_cofins=vcof or Decimal('0'),
+                    quantidade_vendida=qtd,
+                    aliquota_quantidade=aliq_qtd,
                 )
     
     def _processar_total(self, infNFe, identificacao):
@@ -311,11 +345,13 @@ class Carga_xml():
         )
         return None
 
-    def _salvar_condicao_param_se_nao_existir(self, identificacao):
+    def _salvar_condicao_param_se_nao_existir(self, identificacao, cod_cliente=None):
         """
-        Se a condição de pagamento da NFe ainda não existir em CondicaoParam, grava (condição NFe, SAP vazio).
-        Se já existir, não faz nada e segue.
+        Se a condição de pagamento da NFe ainda não existir em CondicaoParam, grava (cliente, condição NFe, SAP vazio).
+        Se já existir, não faz nada e segue. Requer cod_cliente para gravar (cada cliente tem sua tabela de parâmetros).
         """
+        if not cod_cliente:
+            return
         from app.classes.Reprocessamento import condicao_pagamento_da_nfe
         from app.db_Reprocessamento.models import CondicaoParam
 
@@ -324,6 +360,7 @@ class Carga_xml():
             return
         cond_nfe = (cond_nfe or '').strip()[:120]
         CondicaoParam.objects.get_or_create(
+            cliente_id=cod_cliente,
             condicao_pagamento_nfe=cond_nfe,
             condicao_pagamento_sap='',
         )
@@ -529,7 +566,15 @@ class Carga_xml():
             else:
                 raise ValueError(f"Não foi possível identificar CNPJ da empresa (tipo: {tipo_nfe})")
             
-            # Permite gravar NFe com empresa=None quando CNPJ não está cadastrado (não é mais obrigatório informar empresa na carga)
+            # Cliente: nunca vazio. Preferir empresa.cliente; se não encontrar, usar cod_cliente (cliente do usuário/parâmetro)
+            cliente_eff = None
+            if empresa and empresa.cliente:
+                cliente_eff = empresa.cliente
+            if not cliente_eff and cod_cliente:
+                try:
+                    cliente_eff = Clientes.objects.get(cod_cliente=cod_cliente)
+                except Clientes.DoesNotExist:
+                    pass
             
             # ========== CRIAR IDENTIFICAÇÃO COMPLETA ==========
             identificacao, _ = NFe_Identificacao.objects.update_or_create(
@@ -563,6 +608,7 @@ class Carga_xml():
                     'emitente': emitente,
                     'destinatario': destinatario,
                     'empresa': empresa,
+                    'cliente': cliente_eff,
                     'status': 'DRAFT',
                     'xml_assinado': xml_data.decode('utf-8', errors='ignore'),
                     'usuario_atualizacao': usuario,
@@ -591,7 +637,8 @@ class Carga_xml():
             self._processar_informacoes_adicionais(infNFe, identificacao)
 
             # ========== SALVAR CONDIÇÃO DE PAGAMENTO EM CondicaoParam (se ainda não existir) ==========
-            self._salvar_condicao_param_se_nao_existir(identificacao)
+            _cod_cliente = cod_cliente or (empresa.cliente_id if empresa and getattr(empresa, 'cliente_id', None) else None)
+            self._salvar_condicao_param_se_nao_existir(identificacao, cod_cliente=_cod_cliente)
 
             return []
         
@@ -661,8 +708,20 @@ class Carga_xml():
             if cnpj_para_busca:
                 try:
                     empresa = Empresas.objects.get(cnpj=cnpj_para_busca)
+                    if cod_cliente and empresa.cliente and empresa.cliente.cod_cliente != cod_cliente:
+                        empresa = None
                 except Empresas.DoesNotExist:
                     empresa = None
+
+            # Cliente: nunca vazio. Preferir empresa.cliente; se não encontrar, usar cod_cliente (cliente do usuário/parâmetro)
+            cliente_eff = None
+            if empresa and empresa.cliente:
+                cliente_eff = empresa.cliente
+            if not cliente_eff and cod_cliente:
+                try:
+                    cliente_eff = Clientes.objects.get(cod_cliente=cod_cliente)
+                except Clientes.DoesNotExist:
+                    pass
 
             # Criar/atualizar identificação
             identificacao, _ = CTe_Identificacao.objects.update_or_create(
@@ -683,6 +742,7 @@ class Carga_xml():
                     'emitente': emitente,
                     'destinatario': destinatario,
                     'empresa': empresa,
+                    'cliente': cliente_eff,
                     'data_atualizacao': timezone.now()
                 }
             )
@@ -773,25 +833,30 @@ class Carga_xml():
                     }
                 )
 
-            # === EXTRAÇÃO DE INFORMAÇÕES FISCAIS ===
+            # === EXTRAÇÃO DE INFORMAÇÕES FISCAIS (ICMS, PIS, COFINS, IRRF) ===
             imp = infCte.find('.//cte:imp', self.ns) or infCte.find('.//imp')
             if imp is not None:
-                icms = imp.find('.//cte:ICMS', self.ns) or imp.find('.//ICMS')
-                if icms is not None:
-                    cte_fiscal, _ = CTe_Fiscal.objects.update_or_create(
-                        cte_identificacao=identificacao,
-                        defaults={
-                            'cfop': self._get_text(icms, 'CFOP'),
-                            'valor_base_icms': self._to_decimal(self._get_text(icms, 'vBC')),
-                            'aliquota_icms': self._to_decimal(self._get_text(icms, 'pICMS')),
-                            'valor_icms': self._to_decimal(self._get_text(icms, 'vICMS')),
-                            'valor_pis': self._to_decimal(self._get_text(imp, 'vPIS')),
-                            'valor_cofins': self._to_decimal(self._get_text(imp, 'vCOFINS')),
-                            'valor_irrf': self._to_decimal(self._get_text(imp, 'vIRRF')),
-                            'cst_icms': self._get_text(icms, 'CST'),
-                            'data_criacao': timezone.now()
-                        }
-                    )
+                icms_wrapper = imp.find('.//cte:ICMS', self.ns) or imp.find('.//ICMS')
+                icms = _find_first_child(icms_wrapper, ['ICMS00', 'ICMS45', 'ICMS90', 'ICMS20', 'ICMS60', 'ICMS10', 'ICMS30'], self.ns) if icms_wrapper is not None else None
+                icms = icms or icms_wrapper
+                cte_fiscal, _ = CTe_Fiscal.objects.update_or_create(
+                    cte_identificacao=identificacao,
+                    defaults={
+                        'cfop': self._get_text(icms, 'CFOP') if icms is not None else None,
+                        'valor_base_icms': self._to_decimal(self._get_text(icms, 'vBC') if icms else None),
+                        'aliquota_icms': self._to_decimal(self._get_text(icms, 'pICMS') if icms else None),
+                        'valor_icms': self._to_decimal(self._get_text(icms, 'vICMS') if icms else None),
+                        'valor_base_pis': self._to_decimal(self._get_text(imp, 'vBCPIS') or self._get_text(imp, 'vBC')),
+                        'aliquota_pis': self._to_decimal(self._get_text(imp, 'pPIS')),
+                        'valor_pis': self._to_decimal(self._get_text(imp, 'vPIS')),
+                        'valor_base_cofins': self._to_decimal(self._get_text(imp, 'vBCCOFINS') or self._get_text(imp, 'vBC')),
+                        'aliquota_cofins': self._to_decimal(self._get_text(imp, 'pCOFINS')),
+                        'valor_cofins': self._to_decimal(self._get_text(imp, 'vCOFINS')),
+                        'valor_irrf': self._to_decimal(self._get_text(imp, 'vIRRF')),
+                        'cst_icms': self._get_text(icms, 'CST') if icms else None,
+                        'data_criacao': timezone.now()
+                    }
+                )
 
             return cte
 
@@ -899,6 +964,31 @@ class Carga_xml():
                         }
                     )
 
+            # Empresa: prestador (emissor) primeiro, depois tomador
+            empresa = None
+            cnpj_para_busca = None
+            if prest is not None:
+                cnpj_para_busca = self._get_text(prest, 'CNPJ') or self._get_text(prest, 'Cpf')
+            if not cnpj_para_busca and tom is not None:
+                cnpj_para_busca = self._get_text(tom, 'CNPJ') or self._get_text(tom, 'CPF')
+            if cnpj_para_busca:
+                try:
+                    empresa = Empresas.objects.get(cnpj=cnpj_para_busca)
+                    if cod_cliente and empresa.cliente and empresa.cliente.cod_cliente != cod_cliente:
+                        empresa = None
+                except Empresas.DoesNotExist:
+                    empresa = None
+
+            # Cliente: nunca vazio. Preferir empresa.cliente; se não encontrar, usar cod_cliente (cliente do usuário/parâmetro)
+            cliente_eff = None
+            if empresa and empresa.cliente:
+                cliente_eff = empresa.cliente
+            if not cliente_eff and cod_cliente:
+                try:
+                    cliente_eff = Clientes.objects.get(cod_cliente=cod_cliente)
+                except Clientes.DoesNotExist:
+                    pass
+
             # Identificacao
             identificacao, _ = NFSe_Identificacao.objects.update_or_create(
                 chave=chave or f"{numero}",
@@ -917,7 +1007,8 @@ class Carga_xml():
                 defaults={
                     'prestador': prestador,
                     'tomador': tomador,
-                    'empresa': None,
+                    'empresa': empresa,
+                    'cliente': cliente_eff,
                     'data_atualizacao': timezone.now()
                 }
             )
@@ -946,25 +1037,50 @@ class Carga_xml():
                         }
                     )
 
-            # === EXTRAÇÃO DE RETENÇÕES ===
-            retencao_node = find_local(inf, 'Retencoes', 'RetencaoDados', 'Deducoes', 'Deducao')
-            if retencao_node is not None:
-                retencao_data = {
-                    'nfse_identificacao': identificacao,
-                    'valor_ir': self._to_decimal(self._get_text(retencao_node, 'DescricaoDeducao') if 'IR' in (self._get_text(retencao_node, 'DescricaoDeducao') or '') else '0'),
-                    'valor_issqn': self._to_decimal(self._get_text(retencao_node, 'ValorDeducao') if 'ISS' in (self._get_text(retencao_node, 'DescricaoDeducao') or '') else '0'),
-                    'valor_inss': self._to_decimal(self._get_text(retencao_node, 'ValorDeducao') if 'INSS' in (self._get_text(retencao_node, 'DescricaoDeducao') or '') else '0'),
-                    'valor_cofins': self._to_decimal(self._get_text(retencao_node, 'ValorDeducao') if 'COFINS' in (self._get_text(retencao_node, 'DescricaoDeducao') or '') else '0'),
-                    'valor_pis': self._to_decimal(self._get_text(retencao_node, 'ValorDeducao') if 'PIS' in (self._get_text(retencao_node, 'DescricaoDeducao') or '') else '0'),
-                    'valor_csll': self._to_decimal(self._get_text(retencao_node, 'ValorDeducao') if 'CSLL' in (self._get_text(retencao_node, 'DescricaoDeducao') or '') else '0'),
-                }
-                retencao_data['valor_total_retencoes'] = (retencao_data['valor_ir'] + retencao_data['valor_issqn'] + 
-                                                          retencao_data['valor_inss'] + retencao_data['valor_cofins'] + 
-                                                          retencao_data['valor_pis'] + retencao_data['valor_csll'])
-                
+            # === EXTRAÇÃO DE RETENÇÕES (nível cabeçalho) ===
+            def _get_retencao(no, *nomes):
+                for n in nomes:
+                    v = self._get_text(no, n) if no else ''
+                    if v:
+                        return self._to_decimal(v)
+                return Decimal('0')
+            valor_ir = _get_retencao(inf, 'ValorIRRetido', 'ValorRetidoIR', 'valor_ir_retido')
+            valor_issqn = _get_retencao(inf, 'ValorISSRetido', 'ValorRetidoISS', 'valor_issqn_retido')
+            valor_inss = _get_retencao(inf, 'ValorINSSRetido', 'ValorRetidoINSS', 'valor_inss_retido')
+            valor_cofins = _get_retencao(inf, 'ValorCOFINSRetido', 'ValorRetidoCOFINS', 'valor_cofins_retido')
+            valor_pis = _get_retencao(inf, 'ValorPISRetido', 'ValorRetidoPIS', 'valor_pis_retido')
+            valor_csll = _get_retencao(inf, 'ValorCSLLRetido', 'ValorRetidoCSLL', 'valor_csll_retido')
+            retencao_parent = find_local(inf, 'Retencoes', 'RetencaoDados', 'Deducoes', 'ImpostosRetidos')
+            if retencao_parent is not None:
+                for ded in list(retencao_parent):
+                    desc = (self._get_text(ded, 'DescricaoDeducao') or self._get_text(ded, 'Tipo') or ded.tag.split('}')[-1] or '').upper()
+                    val = self._to_decimal(self._get_text(ded, 'ValorDeducao') or self._get_text(ded, 'Valor') or self._get_text(ded, 'ValorRetido'))
+                    if 'IR' in desc:
+                        valor_ir += val
+                    elif 'ISS' in desc:
+                        valor_issqn += val
+                    elif 'INSS' in desc:
+                        valor_inss += val
+                    elif 'COFINS' in desc:
+                        valor_cofins += val
+                    elif 'PIS' in desc:
+                        valor_pis += val
+                    elif 'CSLL' in desc:
+                        valor_csll += val
+            total_ret = valor_ir + valor_issqn + valor_inss + valor_cofins + valor_pis + valor_csll
+            if total_ret or valor_ir or valor_issqn or valor_inss or valor_cofins or valor_pis or valor_csll:
                 NFSe_Retencao.objects.update_or_create(
                     nfse_identificacao=identificacao,
-                    defaults={**retencao_data, 'data_criacao': timezone.now()}
+                    defaults={
+                        'valor_ir': valor_ir,
+                        'valor_issqn': valor_issqn,
+                        'valor_inss': valor_inss,
+                        'valor_cofins': valor_cofins,
+                        'valor_pis': valor_pis,
+                        'valor_csll': valor_csll,
+                        'valor_total_retencoes': total_ret,
+                        'data_criacao': timezone.now()
+                    }
                 )
 
             # === EXTRAÇÃO DE PAGAMENTO ===
@@ -1025,10 +1141,16 @@ class Carga_xml():
                         valor_unitario=valor_unit,
                         valor_total=valor_total,
                         nfse_identificacao=identificacao,
-                        codigo_servico=self._get_text(s, 'CodigoServicoMunicipal'),
-                        aliquota_issqn=self._to_decimal(self._get_text(s, 'AliquotaIssqn')),
-                        valor_issqn=self._to_decimal(self._get_text(s, 'ValorISSQN')),
-                        municipio_incidencia=self._get_text(s, 'CodigoMunicipio'),
+                        codigo_servico=self._get_text(s, 'CodigoServicoMunicipal') or self._get_text(s, 'CodigoServico'),
+                        aliquota_issqn=self._to_decimal(self._get_text(s, 'AliquotaIssqn') or self._get_text(s, 'AliquotaISS') or self._get_text(s, 'Aliquota')),
+                        valor_issqn=self._to_decimal(self._get_text(s, 'ValorISSQN') or self._get_text(s, 'ValorISS') or self._get_text(s, 'ValorLiquidoNfse')),
+                        municipio_incidencia=self._get_text(s, 'CodigoMunicipio') or self._get_text(s, 'MunicipioIncidencia'),
+                        valor_ir_retido=self._to_decimal(self._get_text(s, 'ValorIRRetido') or self._get_text(s, 'ValorRetidoIR') or self._get_text(s, 'valor_ir_retido')),
+                        valor_issqn_retido=self._to_decimal(self._get_text(s, 'ValorISSRetido') or self._get_text(s, 'ValorRetidoISS') or self._get_text(s, 'valor_issqn_retido')),
+                        valor_inss_retido=self._to_decimal(self._get_text(s, 'ValorINSSRetido') or self._get_text(s, 'ValorRetidoINSS') or self._get_text(s, 'valor_inss_retido')),
+                        valor_cofins_retido=self._to_decimal(self._get_text(s, 'ValorCOFINSRetido') or self._get_text(s, 'ValorRetidoCOFINS') or self._get_text(s, 'valor_cofins_retido')),
+                        valor_pis_retido=self._to_decimal(self._get_text(s, 'ValorPISRetido') or self._get_text(s, 'ValorRetidoPIS') or self._get_text(s, 'valor_pis_retido')),
+                        valor_csll_retido=self._to_decimal(self._get_text(s, 'ValorCSLLRetido') or self._get_text(s, 'ValorRetidoCSLL') or self._get_text(s, 'valor_csll_retido')),
                         data_criacao=timezone.now()
                     )
 

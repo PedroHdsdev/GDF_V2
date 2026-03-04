@@ -37,8 +37,20 @@ ALLOWED_HOSTS = ["*"]
 
 # HTTPS & Security Configuration
 SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=False)  # True em produção
-SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=True)  # True em produção
-CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=True)  # True em produção
+# Em DEBUG: cookies Secure=False para HTTP funcionar; em produção: True
+SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=not DEBUG)
+CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=not DEBUG)
+# Origens confiáveis para CSRF (HTTPS) - Django 4+ exige para POST via HTTPS
+CSRF_TRUSTED_ORIGINS = env.list(
+    'CSRF_TRUSTED_ORIGINS',
+    default=[
+        'https://localhost:8500',
+        'https://127.0.0.1:8500',
+        'https://0.0.0.0:8500',
+        'http://localhost:8500',
+        'http://127.0.0.1:8500',
+    ]
+)
 SECURE_HSTS_SECONDS = env.int('SECURE_HSTS_SECONDS', default=31536000)  # 1 ano
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=True)
 SECURE_HSTS_PRELOAD = env.bool('SECURE_HSTS_PRELOAD', default=True)
@@ -151,9 +163,11 @@ LOGOUT_REDIRECT_URL = '/login/'
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_SAVE_EVERY_REQUEST = False
 SESSION_COOKIE_AGE = env.int('SESSION_COOKIE_AGE', default=1800)
-SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=True)
+SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=not DEBUG)
 SESSION_COOKIE_HTTPONLY = env.bool('SESSION_COOKIE_HTTPONLY', default=True)
-CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=True)
+CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=not DEBUG)
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = 'Lax'
 
 # Upload limits
 DATA_UPLOAD_MAX_NUMBER_FILES = env.int('DATA_UPLOAD_MAX_NUMBER_FILES', default=2000)
