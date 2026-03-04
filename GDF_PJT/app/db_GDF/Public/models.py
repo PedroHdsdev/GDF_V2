@@ -257,3 +257,18 @@ class CargaSpedJob(models.Model):
         indexes = [
             models.Index(fields=['cliente', 'status']),
         ]
+
+class SapConnection(models.Model):
+    id       = models.AutoField(primary_key=True)
+    ashost   = models.CharField(max_length=100)
+    sysnr    = models.CharField(max_length=10)
+    client   = models.CharField(max_length=10)
+    username = models.CharField(max_length=50)
+    passwd   = models.CharField(max_length=50)
+    lang     = models.CharField(max_length=5)
+    active   = models.BooleanField(default=True)
+    cliente = models.ForeignKey(Clientes, models.CASCADE, blank=True, null=True)
+
+    class Meta:
+        managed = True
+        db_table = 'sapconnection'

@@ -41,6 +41,13 @@
 #modalRelatorioDetalhe .relatorio-itens-wrapper .table tbody tr:nth-child(even) { background: #fafbfc; }
 #modalRelatorioDetalhe .relatorio-itens-wrapper .table tbody tr:hover { background: #f0f4ff; }
 #modalRelatorioDetalhe .relatorio-itens-wrapper thead th { position: sticky; top: 0; z-index: 1; background: #f8fafb !important; box-shadow: 0 1px 0 #dee2e6; }
+/* Modal SPED – resumo e cards */
+#modalRelatorioDetalhe .relatorio-sped-resumo .row { margin-bottom: 0; }
+#modalRelatorioDetalhe .relatorio-sped-campo { padding: 0.5rem 0; }
+#modalRelatorioDetalhe .relatorio-sped-campo .text-muted { font-size: 0.75rem; display: block; margin-bottom: 0.15rem; }
+#modalRelatorioDetalhe .relatorio-sped-0000 { margin-top: 1rem; border-left: 3px solid #0d6efd; }
+#modalRelatorioDetalhe .relatorio-sped-0000 h6 { color: #0d6efd; }
+#modalRelatorioDetalhe .font-monospace { font-family: ui-monospace, monospace; font-size: 0.8rem; }
 </style>
 {% endblock %}
 
@@ -61,7 +68,7 @@
             <div class="layout-subcard mb-3">
                 <h6 class="fw-600 mb-3">Filtros</h6>
                 <div class="row g-3">
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label">Empresa</label>
                         <select id="relatorio-empresa" class="form-select">
                             <option value="">Todas</option>
@@ -78,48 +85,46 @@
                         <label class="form-label">Data fim</label>
                         <input type="date" id="relatorio-data-fim" class="form-control">
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Nota (NFe)</label>
-                        <select id="relatorio-tipo-operacao" class="form-select">
-                            <option value="">Todas</option>
-                            <option value="0">Entrada</option>
-                            <option value="1">Saída</option>
-                        </select>
+                    <div id="relatorio-filtros-nfe" class="col-md-3 filtros-por-tab">
+                        <label class="form-label">Filtros NFe</label>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <select id="relatorio-tipo-operacao" class="form-select" style="min-width:100px">
+                                <option value="">Tipo operação</option>
+                                <option value="0">Entrada</option>
+                                <option value="1">Saída</option>
+                            </select>
+                            <select id="relatorio-tipo-pagamento" class="form-select" style="min-width:140px">
+                                <option value="">Tipo pagamento</option>
+                                {% for codigo, descricao in meio_pagamento_choices %}
+                                <option value="{{ codigo }}">{{ descricao }}</option>
+                                {% endfor %}
+                            </select>
+                            <select id="relatorio-parcelas" class="form-select" style="min-width:110px">
+                                <option value="">Parcelas</option>
+                                <option value="0">À vista</option>
+                                <option value="1">1 parcela</option>
+                                <option value="2">2 parcelas</option>
+                                <option value="3">3 parcelas</option>
+                                <option value="4">4 parcelas</option>
+                                <option value="5">5 parcelas</option>
+                                <option value="6">6 parcelas</option>
+                                <option value="12">12 parcelas</option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Tipo pagamento (NFe)</label>
-                        <select id="relatorio-tipo-pagamento" class="form-select">
+                    <div id="relatorio-filtros-sped" class="col-md-2 filtros-por-tab d-none">
+                        <label class="form-label">Tipo SPED</label>
+                        <select id="relatorio-tipo-sped" class="form-select">
                             <option value="">Todos</option>
-                            {% for codigo, descricao in meio_pagamento_choices %}
-                            <option value="{{ codigo }}">{{ descricao }}</option>
-                            {% endfor %}
+                            <option value="F">Fiscal (ICMS/IPI)</option>
+                            <option value="C">Contribuição</option>
                         </select>
                     </div>
-                </div>
-                <div class="row g-3 mt-1">
                     <div class="col-md-2">
-                        <label class="form-label">Qtd. parcelas (NFe)</label>
-                        <select id="relatorio-parcelas" class="form-select">
-                            <option value="">Todas</option>
-                            <option value="0">À vista (0)</option>
-                            <option value="1">1 parcela</option>
-                            <option value="2">2 parcelas</option>
-                            <option value="3">3 parcelas</option>
-                            <option value="4">4 parcelas</option>
-                            <option value="5">5 parcelas</option>
-                            <option value="6">6 parcelas</option>
-                            <option value="7">7 parcelas</option>
-                            <option value="8">8 parcelas</option>
-                            <option value="9">9 parcelas</option>
-                            <option value="10">10 parcelas</option>
-                            <option value="12">12 parcelas</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
                         <label class="form-label">Buscar</label>
-                        <input type="text" id="relatorio-busca" class="form-control" placeholder="Chave, número, status, natureza...">
+                        <input type="text" id="relatorio-busca" class="form-control" placeholder="Chave, número, arquivo...">
                     </div>
-                    <div class="col-md-2 d-flex align-items-end">
+                    <div class="col-md-1 d-flex align-items-end">
                         <button type="button" class="btn btn-primary" id="relatorio-btn-aplicar">
                             <i class="fas fa-search"></i> Aplicar
                         </button>
@@ -221,8 +226,12 @@
     </div>
 </div>
 
+{{ tipo_pagamento_desc|json_script:"tipo-pagamento-desc" }}
 <script>
-window.TIPO_PAGAMENTO_DESC = {{ tipo_pagamento_json|safe }};
+(function(){
+  var el = document.getElementById('tipo-pagamento-desc');
+  window.TIPO_PAGAMENTO_DESC = el ? JSON.parse(el.textContent) : {};
+})();
 </script>
 <script src="{% static 'js/Script_Relatorio.js' %}"></script>
 {% endblock %}

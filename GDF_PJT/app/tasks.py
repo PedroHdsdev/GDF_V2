@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from typing import Dict, Iterable, List, Tuple
 import shutil
 import time
+import zipfile
 
 from celery import shared_task
 from django.db import transaction
@@ -27,6 +28,41 @@ MODEL_FOLDER_MAP: Dict[str, Tuple[str, str]] = {
 # allowed restricting processing to certain document types.  That column
 # was removed in migration 0013, so the filtering logic is now obsolete.
 # We continue to scan every known folder by default.
+
+
+def _extract_zips_in_folder(base_dir: Path) -> None:
+    """Encontra todos os .zip na pasta (e subpastas), extrai o conteúdo na mesma
+    pasta onde está cada zip e segue. Não altera pastas 'processados' e 'pendentes'.
+    """
+    if not base_dir.exists() or not base_dir.is_dir():
+        return
+
+    excluded_names = {'processados', 'pendentes'}
+    zip_paths: List[Path] = []
+    for p in base_dir.rglob('*.zip'):
+        parts = {part.lower() for part in p.parts}
+        if parts & excluded_names:
+            continue
+        if p.is_file():
+            zip_paths.append(p)
+
+    for zip_path in zip_paths:
+        extract_dir = zip_path.parent
+        extract_resolved = extract_dir.resolve()
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                for member in zf.namelist():
+                    if member.endswith('/'):
+                        continue
+                    # path traversal: extrair só se o path final estiver dentro de extract_dir
+                    dest = (extract_dir / member).resolve()
+                    if not str(dest).startswith(str(extract_resolved)):
+                        continue
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(member, 'r') as src:
+                        dest.write_bytes(src.read())
+        except (zipfile.BadZipFile, OSError, ValueError):
+            pass
 
 
 def _collect_xml_files(base_dir: Path) -> List[Path]:
@@ -140,6 +176,8 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
     # because customers may create arbitrary directories under the base
     # path.
     base_dir = Path(param.diretorio)
+    # Se houver arquivos .zip na pasta, extrair tudo na mesma pasta e continuar
+    _extract_zips_in_folder(base_dir)
     xml_files: List[Path] = _collect_xml_files(base_dir)
 
     job = CargaXmlJob.objects.create(
@@ -235,6 +273,18 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
 
     status = 'SUCCESS' if errors == 0 else 'ERROR'
     finished_at = timezone.localtime()
+
+    # Ordenar: erros e pendentes primeiro para não serem cortados pelo truncamento (5000 chars)
+    def _prioridade_log(line):
+        t = (line or '').strip()
+        if t.startswith('ERRO:'):
+            return 0
+        if t.startswith('PENDENTES'):
+            return 1
+        if t.startswith('OK:'):
+            return 2
+        return 3
+    log_lines = sorted(log_lines, key=_prioridade_log)
 
     with transaction.atomic():
         job.status = status

@@ -443,6 +443,37 @@ function fn_preencher_formulario(data) {
   
   fn_renderizar_solucoes();
   fn_preencher_select_solucoes();
+
+  // Aba Conexão SAP
+  const codCliente = data.cod_cliente || '';
+  document.getElementById('sap_cliente_id').value = codCliente;
+  const formSap = document.getElementById('formSapUpd');
+  if (formSap) formSap.action = `/cliente/${codCliente}/sap/`;
+  const semRegistro = document.getElementById('sap-sem-registro');
+  const formContainer = document.getElementById('sap-form-container');
+  if (data.sap_connection) {
+    semRegistro.classList.add('d-none');
+    formContainer.classList.remove('d-none');
+    document.getElementById('sap_id').value = data.sap_connection.id || '';
+    document.getElementById('sap_ashost').value = data.sap_connection.ashost || '';
+    document.getElementById('sap_sysnr').value = data.sap_connection.sysnr || '';
+    document.getElementById('sap_client').value = data.sap_connection.client || '';
+    document.getElementById('sap_username').value = data.sap_connection.username || '';
+    document.getElementById('sap_passwd').value = data.sap_connection.passwd || '';
+    document.getElementById('sap_lang').value = data.sap_connection.lang || '';
+    document.getElementById('sap_active').checked = Boolean(data.sap_connection.active);
+  } else {
+    semRegistro.classList.remove('d-none');
+    formContainer.classList.add('d-none');
+    document.getElementById('sap_id').value = '';
+    document.getElementById('sap_ashost').value = '';
+    document.getElementById('sap_sysnr').value = '';
+    document.getElementById('sap_client').value = '';
+    document.getElementById('sap_username').value = '';
+    document.getElementById('sap_passwd').value = '';
+    document.getElementById('sap_lang').value = '';
+    document.getElementById('sap_active').checked = true;
+  }
 }
 
 /* ===============================
@@ -600,6 +631,85 @@ function fn_renderizar_solucoes() {
 }
 
 /* ===============================
+   CONEXÃO SAP – CRIAR REGISTRO VAZIO
+================================ */
+async function fn_criar_sap_vazio() {
+  const codCliente = document.getElementById('sap_cliente_id').value;
+  if (!codCliente) {
+    Notificacoes.modal('Cliente não identificado.', 'danger', 'modalClienteUpdAlerts');
+    return;
+  }
+  const formSap = document.getElementById('formSapUpd');
+  const formData = new FormData();
+  formData.append('csrfmiddlewaretoken', formSap.querySelector('input[name="csrfmiddlewaretoken"]').value);
+  formData.append('sap_ashost', '');
+  formData.append('sap_sysnr', '');
+  formData.append('sap_client', '');
+  formData.append('sap_username', '');
+  formData.append('sap_passwd', '');
+  formData.append('sap_lang', '');
+  formData.append('sap_active', 'on');
+  try {
+    const resp = await fetch(`/cliente/${codCliente}/sap/`, {
+      method: 'POST',
+      body: formData,
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    const data = await resp.json();
+    if (data.success && data.sap_connection) {
+      document.getElementById('sap-sem-registro').classList.add('d-none');
+      document.getElementById('sap-form-container').classList.remove('d-none');
+      document.getElementById('sap_id').value = data.sap_connection.id || '';
+      document.getElementById('sap_ashost').value = data.sap_connection.ashost || '';
+      document.getElementById('sap_sysnr').value = data.sap_connection.sysnr || '';
+      document.getElementById('sap_client').value = data.sap_connection.client || '';
+      document.getElementById('sap_username').value = data.sap_connection.username || '';
+      document.getElementById('sap_passwd').value = data.sap_connection.passwd || '';
+      document.getElementById('sap_lang').value = data.sap_connection.lang || '';
+      document.getElementById('sap_active').checked = Boolean(data.sap_connection.active);
+      Notificacoes.modal(data.message || 'Conexão SAP criada. Preencha os dados e salve.', 'success', 'modalClienteUpdAlerts');
+    } else {
+      Notificacoes.modal(data.erro || 'Erro ao criar conexão SAP.', 'danger', 'modalClienteUpdAlerts');
+    }
+  } catch (err) {
+    console.error(err);
+    Notificacoes.modal('Erro ao criar conexão SAP.', 'danger', 'modalClienteUpdAlerts');
+  }
+}
+
+/* ===============================
+   CONEXÃO SAP – SALVAR FORMULÁRIO
+================================ */
+async function fn_submit_sap(form) {
+  const codCliente = document.getElementById('sap_cliente_id').value;
+  if (!codCliente) {
+    Notificacoes.modal('Cliente não identificado.', 'danger', 'modalClienteUpdAlerts');
+    return false;
+  }
+  const formData = new FormData(form);
+  try {
+    const resp = await fetch(form.action, {
+      method: 'POST',
+      body: formData,
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    const data = await resp.json();
+    if (data.success) {
+      Notificacoes.modal(data.message || 'Conexão SAP salva.', 'success', 'modalClienteUpdAlerts');
+      if (data.sap_connection) {
+        document.getElementById('sap_id').value = data.sap_connection.id || '';
+      }
+    } else {
+      Notificacoes.modal(data.erro || 'Erro ao salvar conexão SAP.', 'danger', 'modalClienteUpdAlerts');
+    }
+  } catch (err) {
+    console.error(err);
+    Notificacoes.modal('Erro ao salvar conexão SAP.', 'danger', 'modalClienteUpdAlerts');
+  }
+  return false;
+}
+
+/* ===============================
    RESETAR FORMULÁRIO UPDATE
 ================================ */
 function fn_resetar_formulario() {
@@ -717,6 +827,21 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // ✅ Submeter via AJAX
       fn_submit_form_ajax(this, 'Acesso');
+    });
+  }
+
+  // Botão Criar conexão SAP (quando não existe registro)
+  const btnCriarSap = document.getElementById('btn-criar-sap');
+  if (btnCriarSap) {
+    btnCriarSap.addEventListener('click', fn_criar_sap_vazio);
+  }
+
+  // Form Conexão SAP
+  const formSap = document.getElementById('formSapUpd');
+  if (formSap) {
+    formSap.addEventListener('submit', function(event) {
+      event.preventDefault();
+      fn_submit_sap(event.target);
     });
   }
 });

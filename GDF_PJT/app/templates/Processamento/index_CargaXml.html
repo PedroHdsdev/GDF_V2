@@ -11,7 +11,7 @@
 {% block titlepage %}Carga de XML{% endblock %}
 
 {% block container %}
-<div class="layout-page">
+<div class="layout-page" data-api-processar-xml="{% url 'API_ProcessarXml' %}">
     {% csrf_token %}
     <section class="layout-hero">
         <div class="layout-hero-content">
@@ -31,6 +31,42 @@
     </section>
 
     <section class="layout-panel">
+        <!-- Resumo: Total, Concluídos, Com erros, Em andamento -->
+        <div class="layout-subcard resumo-cargaxml mb-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <span class="fw-semibold text-secondary"><i class="fas fa-chart-pie me-1"></i> Resumo dos jobs</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-atualizar-resumo-cargaxml" title="Atualizar contadores">
+                    <i class="fas fa-sync-alt"></i> Atualizar
+                </button>
+            </div>
+            <div class="row g-2 g-md-3">
+                <div class="col-6 col-md-3">
+                    <div class="resumo-card resumo-total">
+                        <span class="resumo-numero" id="resumo-cargaxml-total">0</span>
+                        <span class="resumo-label">Total de lotes</span>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="resumo-card resumo-concluido">
+                        <span class="resumo-numero" id="resumo-cargaxml-concluidos">0</span>
+                        <span class="resumo-label">Concluídos</span>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="resumo-card resumo-divergencias">
+                        <span class="resumo-numero" id="resumo-cargaxml-com-erros">0</span>
+                        <span class="resumo-label">Com erros</span>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="resumo-card resumo-andamento">
+                        <span class="resumo-numero" id="resumo-cargaxml-em-andamento">0</span>
+                        <span class="resumo-label">Em andamento</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="layout-card">
             <!-- ALERTAS -->
             <div id="alertas-container"></div>
@@ -128,61 +164,38 @@
                 <div class="tab-content">
                     <!-- Aba: Manual (seleção e upload) -->
                     <div class="tab-pane fade show active" id="manual" role="tabpanel" aria-labelledby="tab-manual">
-                        <!-- Por Diretório -->
-                        <div class="card-upload-xml">
-                            <div class="drop-zone" id="drop-zone-diretorio">
-                                <div class="drop-zone-icon">
-                                    <i class="fas fa-folder-open"></i>
+                        <div class="mb-3">
+                            <label class="form-label fw-600">Origem dos Dados:</label>
+                            <select id="select-origem-dados" class="form-select">
+                                <option value="SAP">Importação SAP</option>
+                                <option value="SPED">Importação SPED</option>
+                                <option value="OUTROS">Outros</option>
+                            </select>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <div class="card-upload-xml">
+                                    <div class="drop-zone drop-zone-sped-option" id="drop-zone-xml-arquivo" role="button" tabindex="0">
+                                        <i class="fas fa-file-alt fa-3x text-muted mb-2"></i>
+                                        <div class="drop-zone-text">Clique para selecionar <strong>arquivos</strong> .xml ou .zip</div>
+                                    </div>
                                 </div>
-                                <div class="drop-zone-text">Selecione a pasta com XMLs</div>
-                                <div class="drop-zone-subtext">Clique ou arraste a pasta aqui</div>
+                                <input type="file" id="file-input-xml" multiple accept=".xml,.zip" style="display: none;">
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card-upload-xml">
+                                    <div class="drop-zone drop-zone-sped-option" id="drop-zone-xml-pasta" role="button" tabindex="0">
+                                        <i class="fas fa-folder-open fa-3x text-muted mb-2"></i>
+                                        <div class="drop-zone-text">Clique para selecionar uma <strong>pasta</strong></div>
+                                    <div class="drop-zone-hint small text-muted mt-1">Lê todos os .xml e .zip dentro da pasta e subpastas.</div>
+                                    </div>
+                                </div>
                                 <input type="file" id="file-input-diretorio" webkitdirectory directory multiple style="display: none;">
                             </div>
                         </div>
-
-                        <!-- Configurações de Upload -->
-                        <div class="mt-4 mb-3">
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <label class="form-label fw-600">Origem dos Dados:</label>
-                                    <select id="select-origem-dados" class="form-select">
-                                        <option value="SAP">Importação SAP</option>
-                                        <option value="SPED">Importação SPED</option>
-                                        <option value="OUTROS">Outros</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Preview de arquivos -->
-                        <div class="mt-4">
-                            <h6 class="fw-600 mb-3">Arquivos Selecionados: <span id="contador-arquivos" class="text-muted">0</span></h6>
-                            <table id="tabela-uploads" class="table table-sm table-hover">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Arquivo</th>
-                                        <th>Tamanho</th>
-                                        <th>Status</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td colspan="4" class="text-center text-muted">Nenhum arquivo selecionado</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <!-- Informações -->
-                        <div class="info-section">
-                            <h5>ℹ️ Informações</h5>
-                            <ul>
-                                <li>Formatos aceitos: <strong>.xml</strong></li>
-                                <li>Tamanho máximo por arquivo: <strong>50MB</strong></li>
-                                <li>Tipos suportados: <strong>NFe, CTe, NFSe</strong></li>
-                                <li>Arquivos inválidos serão ignorados automaticamente</li>
-                            </ul>
+                        <p class="text-muted small mt-2">Formatos: .xml, .zip. Tamanho máximo por arquivo: 50MB.</p>
+                        <div class="mt-3">
+                            <strong>Arquivos:</strong> <span id="contador-arquivos">0</span>
                         </div>
                     </div>
 

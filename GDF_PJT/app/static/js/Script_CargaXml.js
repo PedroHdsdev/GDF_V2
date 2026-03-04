@@ -35,6 +35,8 @@ const estadoParametros = {
 /* ===============================
    INICIALIZAR ELEMENTOS
 ================================ */
+var intervaloResumoCargaXml = null;
+
 document.addEventListener('DOMContentLoaded', function () {
     // Tabela principal: parâmetros + filtros ativo/inativo
     carregarParametrosPrincipais();
@@ -44,6 +46,13 @@ document.addEventListener('DOMContentLoaded', function () {
     inicializarDragDropInputFiles();
     inicializarEventosJobsRenderizados();
     carregarAvisosCargaXml();
+    carregarResumoCargaXml();
+
+    var btnAtualizarResumo = document.getElementById('btn-atualizar-resumo-cargaxml');
+    if (btnAtualizarResumo) btnAtualizarResumo.addEventListener('click', function () {
+        carregarResumoCargaXml();
+        carregarTodasAsCargas();
+    });
 
     // Modal Avisos: ao abrir, recarrega lista de logs
     const modalAvisos = document.getElementById('modalAvisosCargaXml');
@@ -76,6 +85,35 @@ document.addEventListener('DOMContentLoaded', function () {
 function obterCsrfToken() {
     const token = document.querySelector('[name=csrfmiddlewaretoken]');
     return token ? token.value : '';
+}
+
+/* ===============================
+   RESUMO DOS JOBS (Total, Concluídos, Com erros, Em andamento)
+================================ */
+function carregarResumoCargaXml() {
+    fetch('/api/cargaxml/resumo/', { method: 'GET', headers: { 'X-CSRFToken': obterCsrfToken() } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.sucesso) return;
+            var elTotal = document.getElementById('resumo-cargaxml-total');
+            var elConcluidos = document.getElementById('resumo-cargaxml-concluidos');
+            var elErros = document.getElementById('resumo-cargaxml-com-erros');
+            var elAndamento = document.getElementById('resumo-cargaxml-em-andamento');
+            if (elTotal) elTotal.textContent = data.total || 0;
+            if (elConcluidos) elConcluidos.textContent = data.concluidos || 0;
+            if (elErros) elErros.textContent = data.com_erros || 0;
+            if (elAndamento) elAndamento.textContent = data.em_andamento || 0;
+            if (data.em_andamento > 0 && !intervaloResumoCargaXml) {
+                intervaloResumoCargaXml = setInterval(function () {
+                    carregarResumoCargaXml();
+                    carregarTodasAsCargas();
+                }, 3000);
+            } else if (data.em_andamento === 0 && intervaloResumoCargaXml) {
+                clearInterval(intervaloResumoCargaXml);
+                intervaloResumoCargaXml = null;
+            }
+        })
+        .catch(function () {});
 }
 
 /* ===============================
@@ -137,15 +175,34 @@ function preencherModalAvisosCargaXml(items) {
         if (t.indexOf('OK:') === 0) return 'aviso-log-ok';
         return 'aviso-log-outro';
     }
+    function ordemPrioridadeLog(line) {
+        var t = (line || '').trim();
+        if (t.indexOf('ERRO:') === 0) return 0;
+        if (t.indexOf('PENDENTES') === 0) return 1;
+        if (t.indexOf('OK:') === 0) return 2;
+        return 3;
+    }
     var html = '';
     items.forEach(function (job) {
         var totalErro = job.total_erro || 0;
         var totalOk = job.total_sucesso || 0;
-        var logLines = (job.log && job.log.length) ? job.log : [];
+        var logLines = (job.log && job.log.length) ? job.log.slice() : [];
+        if (logLines.length) {
+            logLines.sort(function (a, b) {
+                var pa = ordemPrioridadeLog(a);
+                var pb = ordemPrioridadeLog(b);
+                return pa - pb;
+            });
+            // Nos detalhes do aviso mostrar só erros e pendentes (não mostrar OK)
+            logLines = logLines.filter(function (l) {
+                var t = (l || '').trim();
+                return t.indexOf('OK:') !== 0;
+            });
+        }
         var logHtml = '';
         if (logLines.length) {
             logHtml = '<div class="aviso-dados-adicionais">';
-            logHtml += '<div class="aviso-dados-titulo small fw-600 text-uppercase text-muted mb-2">Dados adicionais</div>';
+            logHtml += '<div class="aviso-dados-titulo small fw-600 text-uppercase text-muted mb-2">Erros e pendentes</div>';
             logHtml += '<div class="aviso-log-lines">';
             logLines.forEach(function (l) {
                 var cssClass = classForLogLine(l);
@@ -188,29 +245,42 @@ function preencherModalAvisosCargaXml(items) {
    INICIALIZAR DRAG & DROP E INPUT FILES
 ================================ */
 function inicializarDragDropInputFiles() {
-    // Inicializar drag & drop para diretório
-    const dropZoneDiretorio = document.getElementById('drop-zone-diretorio');
-    const inputDiretorio = document.getElementById('file-input-diretorio');
+    var dropZoneArquivo = document.getElementById('drop-zone-xml-arquivo');
+    var dropZonePasta = document.getElementById('drop-zone-xml-pasta');
+    var fileInputArquivo = document.getElementById('file-input-xml');
+    var fileInputPasta = document.getElementById('file-input-diretorio');
 
-    if (dropZoneDiretorio && inputDiretorio) {
-        dropZoneDiretorio.addEventListener('click', () => inputDiretorio.click());
-
-        inputDiretorio.addEventListener('change', function(e) {
-            if (e.target.files && e.target.files.length > 0) {
-                estadoCargaXml.modoDiretorio = true;
-                estadoCargaXml.nomePasta = extrairNomePasta(e.target.files);
-                processarArquivos(e.target.files);
-                exibirPreviewArquivos();
+    if (dropZoneArquivo && fileInputArquivo) {
+        dropZoneArquivo.addEventListener('click', function () { fileInputArquivo.value = ''; fileInputArquivo.click(); });
+        dropZoneArquivo.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputArquivo.click(); } });
+    }
+    if (dropZonePasta && fileInputPasta) {
+        dropZonePasta.addEventListener('click', function () { fileInputPasta.value = ''; fileInputPasta.click(); });
+        dropZonePasta.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputPasta.click(); } });
+    }
+    if (fileInputArquivo) {
+        fileInputArquivo.addEventListener('change', function () {
+            if (this.files && this.files.length > 0) {
+                estadoCargaXml.modoDiretorio = false;
+                estadoCargaXml.nomePasta = '';
+                processarArquivos(this.files);
             }
         });
     }
+    if (fileInputPasta) {
+        fileInputPasta.addEventListener('change', function () {
+            if (this.files && this.files.length > 0) {
+                estadoCargaXml.modoDiretorio = true;
+                estadoCargaXml.nomePasta = extrairNomePasta(this.files);
+                processarArquivos(this.files);
+            }
+            this.value = '';
+        });
+    }
 
-    // Inicializar botão enviar
     const btnEnviar = document.getElementById('btn-enviar-xml');
     if (btnEnviar) {
-        btnEnviar.addEventListener('click', function() {
-            iniciarUpload();
-        });
+        btnEnviar.addEventListener('click', function () { iniciarUpload(); });
     }
 }
 
@@ -620,9 +690,34 @@ function abrirModalJob(jobId) {
             if (log.length === 0) {
                 tbodyLog.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Sem registros</td></tr>';
             } else {
-                log.forEach((line, idx) => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `<td>${idx+1}</td><td>${line}</td>`;
+                var logOrdenado = log.slice();
+                logOrdenado.sort(function (a, b) {
+                    var pa = (function (line) {
+                        var t = (line || '').trim();
+                        if (t.indexOf('ERRO:') === 0) return 0;
+                        if (t.indexOf('PENDENTES') === 0) return 1;
+                        if (t.indexOf('OK:') === 0) return 2;
+                        return 3;
+                    })(a);
+                    var pb = (function (line) {
+                        var t = (line || '').trim();
+                        if (t.indexOf('ERRO:') === 0) return 0;
+                        if (t.indexOf('PENDENTES') === 0) return 1;
+                        if (t.indexOf('OK:') === 0) return 2;
+                        return 3;
+                    })(b);
+                    return pa - pb;
+                });
+                logOrdenado.forEach(function (line, idx) {
+                    var tr = document.createElement('tr');
+                    var t = (line || '').trim();
+                    var rowClass = '';
+                    if (t.indexOf('ERRO:') === 0) rowClass = 'aviso-log-erro';
+                    else if (t.indexOf('PENDENTES') === 0) rowClass = 'aviso-log-pendente';
+                    else if (t.indexOf('OK:') === 0) rowClass = 'aviso-log-ok';
+                    if (rowClass) tr.className = rowClass;
+                    var text = (line || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    tr.innerHTML = '<td>' + (idx + 1) + '</td><td>' + text + '</td>';
                     tbodyLog.appendChild(tr);
                 });
             }
@@ -846,7 +941,7 @@ function inicializarEventosParametros() {
 
 function criarParametroCarga() {
     const horario = document.getElementById('param-horario')?.value || '';
-    const origemDados = document.getElementById('param-origem-dados')?.value || 'LOCAL';
+    const origemDados = document.getElementById('param-origem-dados')?.value || 'SAP';
     const diretorio = document.getElementById('param-diretorio')?.value || '';
     const ativo = document.getElementById('param-ativo')?.checked || false;
 
@@ -983,7 +1078,7 @@ function atualizarParametroCarga() {
     }
 
     const horario = document.getElementById('param-edit-horario')?.value || '';
-    const origemDados = document.getElementById('param-edit-origem-dados')?.value || 'LOCAL';
+    const origemDados = document.getElementById('param-edit-origem-dados')?.value || 'SAP';
     const diretorio = document.getElementById('param-edit-diretorio')?.value || '';
     const empresaId = document.getElementById('param-edit-empresa')?.value || '';
     const ativo = document.getElementById('param-edit-ativo')?.checked || false;
@@ -1067,122 +1162,41 @@ function inicializarInputFile() {
 
 /* ===============================
    PROCESSAR ARQUIVOS SELECIONADOS
+   Aceita pasta (webkitdirectory) com .xml e .zip; ignora outros tipos.
 ================================ */
 function processarArquivos(files) {
-    const arquivosValidos = [];
+    var arquivosValidos = [];
+    var list = Array.from(files || []);
 
-    for (let file of files) {
-        // Validar extensão
-        if (!file.name.toLowerCase().endsWith('.xml')) {
-            Notificacoes.modal(`${file.name} não é um arquivo XML válido`, 'danger', 'modalCargaXmlAlerts');
+    for (var i = 0; i < list.length; i++) {
+        var file = list[i];
+        var nome = (file.name || '').toLowerCase();
+        if (!nome.endsWith('.xml') && !nome.endsWith('.zip')) {
             continue;
         }
-
-        // Validar tamanho (máximo 50MB)
         if (file.size > 50 * 1024 * 1024) {
-            Notificacoes.modal(`${file.name} excede o tamanho máximo de 50MB`, 'danger', 'modalCargaXmlAlerts');
             continue;
         }
-
         arquivosValidos.push(file);
     }
 
-    if (arquivosValidos.length > 0) {
-        estadoCargaXml.arquivos = arquivosValidos;
-        estadoCargaXml.totalArquivos = arquivosValidos.length;
-        exibirPreviewArquivos();
-    }
+    estadoCargaXml.arquivos = arquivosValidos;
+    estadoCargaXml.totalArquivos = arquivosValidos.length;
+    exibirPreviewArquivos();
 }
 
 /* ===============================
-   INICIAR UPLOAD
-================================ */
-function iniciarUpload() {
-    if (estadoCargaXml.uploadEmProgresso || estadoCargaXml.arquivos.length === 0) {
-        return;
-    }
-
-    estadoCargaXml.uploadEmProgresso = true;
-    estadoCargaXml.uploadosRealizados = 0;
-
-    estadoCargaXml.arquivos.forEach((file, index) => {
-        uploadArquivo(file, index);
-    });
-}
-
-/* ===============================
-   EXIBIR PREVIEW DOS ARQUIVOS
+   EXIBIR PREVIEW DOS ARQUIVOS (apenas contador)
 ================================ */
 function exibirPreviewArquivos(files) {
     if (files) {
         processarArquivos(files);
+        return;
     }
-    
-    const tbody = document.querySelector('#tabela-uploads tbody');
-    const contador = document.getElementById('contador-arquivos');
-
-    if (!tbody) return;
-    
+    var contador = document.getElementById('contador-arquivos');
     if (contador) {
         contador.textContent = estadoCargaXml.arquivos.length;
     }
-
-    tbody.innerHTML = '';
-
-    if (estadoCargaXml.arquivos.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Nenhum arquivo selecionado</td></tr>';
-        return;
-    }
-
-    // MODO DIRETÓRIO: Mostrar apenas resumo da pasta
-    if (estadoCargaXml.modoDiretorio) {
-        const linha = document.createElement('tr');
-        linha.id = 'linha-diretorio';
-        linha.innerHTML = `
-            <td>
-                <i class="fas fa-folder" style="color: #ffc107; margin-right: 8px;"></i>
-                <strong>${estadoCargaXml.nomePasta}</strong>
-            </td>
-            <td>${estadoCargaXml.arquivos.length} arquivo(s)</td>
-            <td>
-                <span class="badge-status badge-info">
-                    <span class="spinner-carga" style="margin-right: 5px;"></span>
-                    Aguardando
-                </span>
-            </td>
-            <td>
-                <button class="btn btn-sm btn-outline-danger" onclick="limparSelecao()">
-                    <i class="fas fa-times"></i> Limpar
-                </button>
-            </td>
-        `;
-        tbody.appendChild(linha);
-        return;
-    }
-
-    // MODO INDIVIDUAL: Mostrar cada arquivo
-    estadoCargaXml.arquivos.forEach((file, index) => {
-        const linha = document.createElement('tr');
-        linha.innerHTML = `
-            <td>
-                <i class="fas fa-file-code" style="color: #007bff; margin-right: 8px;"></i>
-                ${file.name}
-            </td>
-            <td>${formatarTamanhoArquivo(file.size)}</td>
-            <td>
-                <span class="badge-status badge-info">
-                    <span class="spinner-carga" style="margin-right: 5px;"></span>
-                    Aguardando
-                </span>
-            </td>
-            <td>
-                <button class="btn btn-sm btn-outline-danger" onclick="removerArquivo(${index})">
-                    <i class="fas fa-trash"></i> Remover
-                </button>
-            </td>
-        `;
-        tbody.appendChild(linha);
-    });
 }
 
 /* ===============================
@@ -1190,22 +1204,16 @@ function exibirPreviewArquivos(files) {
 ================================ */
 function iniciarUpload() {
     if (estadoCargaXml.uploadEmProgresso || estadoCargaXml.arquivos.length === 0) {
-        Notificacoes.modal('Selecione pelo menos um arquivo XML', 'warning', 'modalCargaXmlAlerts');
+        Notificacoes.modal('Selecione pelo menos um arquivo XML ou ZIP', 'warning', 'modalCargaXmlAlerts');
         return;
     }
 
-    // Obter tipo de documento e origem
-    const tipoDocumento = document.getElementById('select-tipo-documento')?.value || 'NFe';
-    const origemDados = document.getElementById('select-origem-dados')?.value || 'LOCAL';
+    var tipoDocumento = (document.getElementById('select-tipo-documento') && document.getElementById('select-tipo-documento').value) || 'NFe';
+    var origemDados = (document.getElementById('select-origem-dados') && document.getElementById('select-origem-dados').value) || 'SAP';
 
     estadoCargaXml.uploadEmProgresso = true;
-    
-    // Marcar todos como processando
-    estadoCargaXml.arquivos.forEach((file, index) => {
-        atualizarStatusUpload(index, 'processing', 'Processando...');
-    });
-
-    // Enviar todos os arquivos de uma vez (empresa não é mais obrigatória na carga)
+    var btn = document.getElementById('btn-enviar-xml');
+    if (btn) btn.disabled = true;
     uploadArquivosLote(estadoCargaXml.arquivos, tipoDocumento, origemDados);
 }
 
@@ -1230,71 +1238,112 @@ function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
     // Marcar como processando
     atualizarStatusUpload(0, 'processing', 'Enviando arquivos...');
 
-    fetch('/api/processar-xml/', {
+    var apiUrl = (document.querySelector('.layout-page') && document.querySelector('.layout-page').getAttribute('data-api-processar-xml')) || '/api/processar-xml/';
+    fetch(apiUrl, {
         method: 'POST',
         headers: {
             'X-CSRFToken': csrfToken
         },
         body: formData
     })
-        .then(response => response.json())
-        .then(data => {
+        .then(function (response) {
+            return response.json()
+                .then(function (data) {
+                    return { status: response.status, data: data };
+                })
+                .catch(function () {
+                    return { status: response.status, data: { sucesso: false, mensagem: 'Resposta inválida do servidor (status ' + response.status + ')' } };
+                });
+        })
+        .then(function (result) {
+            var status = result.status;
+            var data = result.data;
+
+            // Job em segundo plano (202)
+            if (status === 202) {
+                fecharModalCargaXml();
+                if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                    Notificacoes.pagina(data.mensagem || 'Job criado e em execução. Atualize o painel para acompanhar.', 'success');
+                } else {
+                    alert(data.mensagem || 'Job criado e em execução.');
+                }
+                carregarResumoCargaXml();
+                carregarTodasAsCargas();
+                estadoCargaXml.uploadEmProgresso = false;
+                var btn = document.getElementById('btn-enviar-xml');
+                if (btn) btn.disabled = false;
+                finalizarCargas();
+                return;
+            }
+
             if (data.sucesso) {
                 // MODO DIRETÓRIO: Atualizar status geral
                 if (estadoCargaXml.modoDiretorio) {
-                    const totalSucesso = data.detalhes?.success?.length || 0;
-                    const totalErro = data.detalhes?.errors?.length || 0;
-                    const mensagemStatus = `${totalSucesso} processado(s), ${totalErro} erro(s)`;
-                    
+                    var totalSucesso = (data.detalhes && data.detalhes.success) ? data.detalhes.success.length : 0;
+                    var totalErro = (data.detalhes && data.detalhes.errors) ? data.detalhes.errors.length : 0;
+                    var mensagemStatus = totalSucesso + ' processado(s), ' + totalErro + ' erro(s)';
                     if (totalErro === 0) {
-                        atualizarStatusUpload(arquivos.length - 1, 'success', `✓ ${mensagemStatus}`);
+                        atualizarStatusUpload(arquivos.length - 1, 'success', '✓ ' + mensagemStatus);
                     } else {
-                        atualizarStatusUpload(arquivos.length - 1, 'error', `⚠️ ${mensagemStatus}`);
+                        atualizarStatusUpload(arquivos.length - 1, 'error', '⚠️ ' + mensagemStatus);
                     }
                 } else {
                     // MODO INDIVIDUAL: Atualizar cada arquivo
                     if (data.detalhes && data.detalhes.success) {
-                        data.detalhes.success.forEach((fileName, idx) => {
-                            const index = arquivos.findIndex(f => f.name === fileName);
+                        data.detalhes.success.forEach(function (fileName) {
+                            var index = arquivos.findIndex(function (f) { return f.name === fileName; });
                             if (index !== -1) {
                                 atualizarStatusUpload(index, 'success', '✓ Processado');
                             }
                         });
                     }
-                    
-                    // Atualizar status de arquivos com erro
                     if (data.detalhes && data.detalhes.errors) {
-                        data.detalhes.errors.forEach(erro => {
-                            const index = arquivos.findIndex(f => f.name === erro.file);
+                        data.detalhes.errors.forEach(function (erro) {
+                            var index = arquivos.findIndex(function (f) { return f.name === erro.file; });
                             if (index !== -1) {
-                                atualizarStatusUpload(index, 'error', `✗ ${erro.error}`);
+                                atualizarStatusUpload(index, 'error', '✗ ' + (erro.error || ''));
                             }
                         });
                     }
                 }
-                
-                Notificacoes.modal(data.mensagem, 'success', 'modalCargaXmlAlerts');
+                fecharModalCargaXml();
+                if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                    Notificacoes.pagina(data.mensagem, 'success');
+                } else {
+                    alert(data.mensagem);
+                }
             } else {
-                Notificacoes.modal(data.mensagem || 'Erro ao processar XMLs', 'danger', 'modalCargaXmlAlerts');
-                // Marcar todos como erro
-                arquivos.forEach((file, index) => {
+                fecharModalCargaXml();
+                if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                    Notificacoes.pagina(data.mensagem || 'Erro ao processar XMLs', 'danger');
+                } else {
+                    alert(data.mensagem || 'Erro ao processar XMLs');
+                }
+                arquivos.forEach(function (file, index) {
                     atualizarStatusUpload(index, 'error', '✗ Erro no processamento');
                 });
             }
-            
             estadoCargaXml.uploadEmProgresso = false;
+            var btn = document.getElementById('btn-enviar-xml');
+            if (btn) btn.disabled = false;
             finalizarCargas();
         })
-        .catch(error => {
+        .catch(function (error) {
             console.error('Erro ao fazer upload:', error);
-            Notificacoes.modal('Erro ao enviar arquivos: ' + error.message, 'danger', 'modalCargaXmlAlerts');
-            
+            fecharModalCargaXml();
+            if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                Notificacoes.pagina('Erro ao enviar arquivos: ' + (error.message || 'Erro de conexão'), 'danger');
+            } else {
+                alert('Erro ao enviar arquivos: ' + (error.message || 'Erro de conexão'));
+            }
             // Marcar todos como erro
             arquivos.forEach((file, index) => {
                 atualizarStatusUpload(index, 'error', '✗ Erro de conexão');
             });
             
             estadoCargaXml.uploadEmProgresso = false;
+            var btn = document.getElementById('btn-enviar-xml');
+            if (btn) btn.disabled = false;
             finalizarCargas();
         });
 }
@@ -1303,11 +1352,11 @@ function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
    ATUALIZAR STATUS
 ================================ */
 function atualizarStatusUpload(index, status, mensagem) {
-    // MODO DIRETÓRIO: Atualizar linha única
+    try {
     if (estadoCargaXml.modoDiretorio) {
-        const linhaDiretorio = document.getElementById('linha-diretorio');
+        var linhaDiretorio = document.getElementById('linha-diretorio');
         if (linhaDiretorio) {
-            const statusCell = linhaDiretorio.querySelector('td:nth-child(3)');
+            var statusCell = linhaDiretorio.querySelector('td:nth-child(3)');
             
             let badgeClass = 'badge-info';
             let statusTexto = 'Aguardando';
@@ -1327,20 +1376,14 @@ function atualizarStatusUpload(index, status, mensagem) {
                 iconHtml = '';
             }
 
-            statusCell.innerHTML = `
-                <span class="badge-status ${badgeClass}" title="${mensagem}">
-                    ${iconHtml}${statusTexto}
-                </span>
-            `;
+            if (statusCell) statusCell.innerHTML = '<span class="badge-status ' + badgeClass + '" title="' + (mensagem || '') + '">' + iconHtml + statusTexto + '</span>';
         }
         return;
     }
 
-    // MODO INDIVIDUAL: Atualizar linha específica
-    const linhas = document.querySelectorAll('#tabela-uploads tbody tr');
-
+    var linhas = document.querySelectorAll('#tabela-uploads tbody tr');
     if (linhas[index]) {
-        const statusCell = linhas[index].querySelector('td:nth-child(3)');
+        var statusCell = linhas[index].querySelector('td:nth-child(3)');
 
         let badgeClass = 'badge-info';
         let statusTexto = 'Aguardando';
@@ -1360,11 +1403,27 @@ function atualizarStatusUpload(index, status, mensagem) {
             iconHtml = '';
         }
 
-        statusCell.innerHTML = `
-            <span class="badge-status ${badgeClass}" title="${mensagem}">
-                ${iconHtml}${statusTexto}
-            </span>
-        `;
+        if (statusCell) statusCell.innerHTML = '<span class="badge-status ' + badgeClass + '" title="' + (mensagem || '') + '">' + iconHtml + statusTexto + '</span>';
+    }
+    } catch (e) { console.warn('atualizarStatusUpload:', e); }
+}
+
+function fecharModalCargaXml() {
+    var modal = document.getElementById('modalCargaXml');
+    if (!modal) return;
+    try {
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            var inst = bootstrap.Modal.getInstance(modal) || bootstrap.Modal.getOrCreateInstance(modal);
+            if (inst) inst.hide();
+        } else {
+            modal.classList.remove('show');
+            modal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+            var backdrop = document.querySelector('.modal-backdrop');
+            if (backdrop) backdrop.remove();
+        }
+    } catch (e) {
+        console.warn('fecharModalCargaXml:', e);
     }
 }
 
@@ -1372,40 +1431,28 @@ function atualizarStatusUpload(index, status, mensagem) {
    FINALIZAR CARGAS
 ================================ */
 function finalizarCargas() {
-    const sucessos = document.querySelectorAll('.badge-success').length;
-    const erros = document.querySelectorAll('.badge-danger').length;
-
-    const mensagem = `Upload finalizado: ${sucessos} sucesso(s) e ${erros} erro(s)`;
-
-    if (erros === 0) {
-        Notificacoes.modal(mensagem, 'success', 'modalCargaXmlAlerts');
-    } else {
-        Notificacoes.modal(mensagem, 'warning', 'modalCargaXmlAlerts');
+    var tabela = document.querySelector('#tabela-uploads');
+    if (tabela) {
+        var sucessos = tabela.querySelectorAll('.badge-success').length;
+        var erros = tabela.querySelectorAll('.badge-danger').length;
+        var mensagem = 'Upload finalizado: ' + sucessos + ' sucesso(s) e ' + erros + ' erro(s)';
+        Notificacoes.modal(mensagem, erros === 0 ? 'success' : 'warning', 'modalCargaXmlAlerts');
     }
-
-    // forçar atualização da lista de jobs para que o job recém-criado apareça
     carregarTodasAsCargas();
-
-    // Limpar após 3 segundos
-    setTimeout(() => {
-        limparSelecao();
-    }, 3000);
+    setTimeout(function () { limparSelecao(); }, 3000);
 }
 
 /* ===============================
    LIMPAR SELEÇÃO
 ================================ */
 function limparSelecao() {
-    const inputDiretorio = document.getElementById('file-input-diretorio');
-    const inputArquivo = document.getElementById('file-input-arquivo');
-    
+    var inputDiretorio = document.getElementById('file-input-diretorio');
+    var inputArquivo = document.getElementById('file-input-xml');
     if (inputDiretorio) inputDiretorio.value = '';
     if (inputArquivo) inputArquivo.value = '';
-    
     estadoCargaXml.arquivos = [];
     estadoCargaXml.modoDiretorio = false;
     estadoCargaXml.nomePasta = '';
-    
     exibirPreviewArquivos();
 }
 
@@ -1414,16 +1461,11 @@ function limparSelecao() {
 ================================ */
 function extrairNomePasta(files) {
     if (!files || files.length === 0) return '';
-    
-    // Pegar o caminho do primeiro arquivo
-    const primeiroArquivo = files[0];
-    
-    // Se tem webkitRelativePath, extrair nome da pasta
+    var primeiroArquivo = files[0];
     if (primeiroArquivo.webkitRelativePath) {
-        const partes = primeiroArquivo.webkitRelativePath.split('/');
+        var partes = primeiroArquivo.webkitRelativePath.split('/');
         return partes[0] || 'Pasta selecionada';
     }
-    
     return 'Arquivos selecionados';
 }
 

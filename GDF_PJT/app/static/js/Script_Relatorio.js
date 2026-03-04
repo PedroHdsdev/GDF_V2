@@ -1,15 +1,26 @@
 /* Relatório Fiscal - Filtro mês ao abrir, clique na linha abre modal com abas (cabeçalho, itens, pagamento/parcelas, etc.) */
 
+function relatorioTabAtivo() {
+    var tab = document.querySelector('.tab-pane.active');
+    return tab ? tab.id : 'rel-nfe';
+}
+
 function relatorioParams() {
-    return {
+    var params = {
         empresa_id: (document.getElementById('relatorio-empresa') && document.getElementById('relatorio-empresa').value.trim()) || '',
         data_inicio: (document.getElementById('relatorio-data-inicio') && document.getElementById('relatorio-data-inicio').value.trim()) || '',
         data_fim: (document.getElementById('relatorio-data-fim') && document.getElementById('relatorio-data-fim').value.trim()) || '',
-        busca: (document.getElementById('relatorio-busca') && document.getElementById('relatorio-busca').value.trim()) || '',
-        parcelas: (document.getElementById('relatorio-parcelas') && document.getElementById('relatorio-parcelas').value.trim()) || '',
-        tipo_operacao: (document.getElementById('relatorio-tipo-operacao') && document.getElementById('relatorio-tipo-operacao').value.trim()) || '',
-        tipo_pagamento: (document.getElementById('relatorio-tipo-pagamento') && document.getElementById('relatorio-tipo-pagamento').value.trim()) || ''
+        busca: (document.getElementById('relatorio-busca') && document.getElementById('relatorio-busca').value.trim()) || ''
     };
+    var tab = relatorioTabAtivo();
+    if (tab === 'rel-nfe') {
+        params.parcelas = (document.getElementById('relatorio-parcelas') && document.getElementById('relatorio-parcelas').value.trim()) || '';
+        params.tipo_operacao = (document.getElementById('relatorio-tipo-operacao') && document.getElementById('relatorio-tipo-operacao').value.trim()) || '';
+        params.tipo_pagamento = (document.getElementById('relatorio-tipo-pagamento') && document.getElementById('relatorio-tipo-pagamento').value.trim()) || '';
+    } else if (tab === 'rel-sped') {
+        params.tipo_sped = (document.getElementById('relatorio-tipo-sped') && document.getElementById('relatorio-tipo-sped').value.trim()) || '';
+    }
+    return params;
 }
 
 function relatorioBuildUrl(base, params) {
@@ -18,11 +29,26 @@ function relatorioBuildUrl(base, params) {
     if (params.data_inicio) q.set('data_inicio', params.data_inicio);
     if (params.data_fim) q.set('data_fim', params.data_fim);
     if (params.busca) q.set('busca', params.busca);
-    if (params.parcelas) q.set('parcelas', params.parcelas);
+    if (params.parcelas !== undefined && params.parcelas) q.set('parcelas', params.parcelas);
     if (params.tipo_operacao) q.set('tipo_operacao', params.tipo_operacao);
     if (params.tipo_pagamento) q.set('tipo_pagamento', params.tipo_pagamento);
+    if (params.tipo_sped) q.set('tipo_sped', params.tipo_sped);
     var s = q.toString();
     return s ? base + '?' + s : base;
+}
+
+function relatorioMostrarFiltrosTab() {
+    var tab = relatorioTabAtivo();
+    document.querySelectorAll('.filtros-por-tab').forEach(function (el) {
+        el.classList.add('d-none');
+    });
+    if (tab === 'rel-nfe') {
+        var nfe = document.getElementById('relatorio-filtros-nfe');
+        if (nfe) nfe.classList.remove('d-none');
+    } else if (tab === 'rel-sped') {
+        var sped = document.getElementById('relatorio-filtros-sped');
+        if (sped) sped.classList.remove('d-none');
+    }
 }
 
 function relatorioInicializarDatasMes() {
@@ -60,7 +86,12 @@ var LABEL_CAMPO = {
     valor_rps: 'Valor RPS', status_rps: 'Status RPS', data_emissao_rps: 'Emissão RPS',
     tipo_pagamento: 'Tipo de pagamento', meio_pagamento: 'Meio (código)', valor_pago: 'Valor pago',
     bandeira_cartao: 'Bandeira do cartão', cartao_cnpj: 'CNPJ adquirente', cartao_numero_autoriza: 'Nº autorização',
-    pix_tipo_chave_desc: 'PIX tipo de chave', pix_tipo_chave: 'PIX tipo (cód.)', pix_chave: 'Chave PIX'
+    pix_tipo_chave_desc: 'PIX tipo de chave', pix_tipo_chave: 'PIX tipo (cód.)', pix_chave: 'Chave PIX',
+    cod_ver: 'Versão layout', dt_ini: 'Data início', dt_fin: 'Data fim', ind_mov: 'Ind. movimento',
+    chv_nfe: 'Chave NFe', dt_doc: 'Data doc.', vl_doc: 'Valor doc.', vl_item: 'Valor item',
+    chv_cte: 'Chave CT-e', vl_icms: 'Valor ICMS', cod_part: 'Cód. participante',
+    cod_item: 'Cód. item', descr_item: 'Descrição item', unid_inv: 'Unid. inventário', cod_ncm: 'NCM',
+    fantasia: 'Fantasia', end: 'Endereço', descr_compl: 'Descr. complementar', unid: 'Unidade', descr: 'Descrição'
 };
 
 function labelCampo(key) {
@@ -113,22 +144,34 @@ function wrapBloco(html) {
     return '<div class="relatorio-bloco">' + html + '</div>';
 }
 
-function arrayParaTabela(arr, columns) {
+function arrayParaTabela(arr, columns, formatCols) {
     if (!arr || !arr.length) return '<p class="text-muted">Nenhum registro</p>';
     var allKeys = arr[0] ? Object.keys(arr[0]) : [];
     columns = columns || allKeys;
     columns = columns.filter(function (c) { return !isChaveCampo(c); });
     if (!columns.length) columns = allKeys.filter(function (c) { return !isChaveCampo(c); });
+    formatCols = formatCols || {};
     var html = '<div class="table-responsive"><table class="table table-sm table-detalhe table-hover table-bordered"><thead><tr>';
-    columns.forEach(function (c) { html += '<th>' + escapeHtml(labelCampo(c)) + '</th>'; });
+    columns.forEach(function (c) {
+        var thClass = formatCols[c] === 'moeda' ? ' relatorio-moeda' : (formatCols[c] === 'numero' ? ' relatorio-num' : '');
+        html += '<th class="' + thClass + '">' + escapeHtml(labelCampo(c)) + '</th>';
+    });
     html += '</thead><tbody>';
     arr.forEach(function (row) {
         html += '<tr>';
         columns.forEach(function (col) {
             var val = row[col];
-            if (val !== null && val !== undefined && typeof val === 'object' && typeof val.toISOString === 'function') val = val.toISOString ? val.toISOString().slice(0, 10) : String(val);
-            else if (val !== null && val !== undefined && typeof val === 'number' && val % 1 !== 0) val = Number(val).toFixed(2);
-            html += '<td>' + escapeHtml(val !== undefined && val !== null ? String(val) : '') + '</td>';
+            var fmt = formatCols[col];
+            var disp = '';
+            if (val !== null && val !== undefined) {
+                if (fmt === 'moeda') disp = fmtMoeda(val);
+                else if (fmt === 'numero') disp = fmtNum(val);
+                else if (typeof val === 'object' && typeof val.toISOString === 'function') disp = val.toISOString ? val.toISOString().slice(0, 10) : String(val);
+                else if (typeof val === 'number' && val % 1 !== 0 && !fmt) disp = Number(val).toFixed(2);
+                else disp = String(val);
+            }
+            var tdClass = fmt === 'moeda' ? ' relatorio-moeda' : (fmt === 'numero' ? ' relatorio-num' : '');
+            html += '<td class="' + tdClass + '">' + (disp ? escapeHtml(disp) : '') + '</td>';
         });
         html += '</tr>';
     });
@@ -321,13 +364,88 @@ function buildCabecalhoNFSe(cab) {
     return h || '<p class="text-muted">Sem dados</p>';
 }
 
+function fmtCnpj(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    var s = String(v).replace(/\D/g, '');
+    if (s.length !== 14) return escapeHtml(String(v));
+    return escapeHtml(s.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5'));
+}
+
+function buildCabecalhoSped(cab) {
+    var c = cab || {};
+    var tipoDisp = (c.tipo === 'F' ? 'Fiscal (ICMS/IPI)' : (c.tipo === 'C' ? 'Contribuição' : (c.tipo || '—')));
+    var html = '<div class="relatorio-bloco relatorio-sped-resumo">';
+    html += '<h6><i class="fas fa-file-alt me-2"></i>Resumo do arquivo</h6>';
+    html += '<div class="row g-3">';
+    html += '<div class="col-md-4"><div class="relatorio-sped-campo"><span class="text-muted small">Tipo</span><div class="fw-600">' + escapeHtml(tipoDisp) + '</div></div></div>';
+    html += '<div class="col-md-4"><div class="relatorio-sped-campo"><span class="text-muted small">Arquivo</span><div class="text-truncate" title="' + escapeHtml(c.nome_arquivo || '') + '">' + escapeHtml(c.nome_arquivo || '—') + '</div></div></div>';
+    html += '<div class="col-md-4"><div class="relatorio-sped-campo"><span class="text-muted small">Competência</span><div>' + (c.competencia ? c.competencia.slice(0, 10) : '—') + '</div></div></div>';
+    html += '<div class="col-md-4"><div class="relatorio-sped-campo"><span class="text-muted small">Empresa</span><div>' + escapeHtml(c.empresa || '—') + '</div></div></div>';
+    html += '<div class="col-md-4"><div class="relatorio-sped-campo"><span class="text-muted small">Data da carga</span><div>' + (c.data_carga ? c.data_carga.slice(0, 16).replace('T', ' ') : '—') + '</div></div></div>';
+    html += '</div></div>';
+    return html;
+}
+
+function buildReg0000Card(regs) {
+    if (!regs || !regs.length) return '<p class="text-muted">Nenhum registro 0000</p>';
+    var r = regs[0];
+    var html = '<div class="relatorio-bloco relatorio-sped-0000">';
+    html += '<h6><i class="fas fa-info-circle me-2"></i>Registro 0000 – Abertura do arquivo</h6>';
+    html += '<div class="row g-3">';
+    html += '<div class="col-md-6"><div class="relatorio-sped-campo"><span class="text-muted small">Razão social / Nome</span><div class="fw-600">' + escapeHtml(r.nome || '—') + '</div></div></div>';
+    html += '<div class="col-md-6"><div class="relatorio-sped-campo"><span class="text-muted small">CNPJ</span><div>' + fmtCnpj(r.cnpj) + '</div></div></div>';
+    html += '<div class="col-md-4"><div class="relatorio-sped-campo"><span class="text-muted small">Versão layout</span><div>' + escapeHtml(r.cod_ver || '—') + '</div></div></div>';
+    html += '<div class="col-md-4"><div class="relatorio-sped-campo"><span class="text-muted small">Período início</span><div>' + (r.dt_ini || '—') + '</div></div></div>';
+    html += '<div class="col-md-4"><div class="relatorio-sped-campo"><span class="text-muted small">Período fim</span><div>' + (r.dt_fin || '—') + '</div></div></div>';
+    html += '</div></div>';
+    return html;
+}
+
 function preencherModalSped(data, tabsContainer, tabContentContainer) {
+    var r0000 = data.reg_0000 || [], r0001 = data.reg_0001 || [], r0005 = data.reg_0005 || [];
+    var r0150 = data.reg_0150 || [], r0190 = data.reg_0190 || [], r0200 = data.reg_0200 || [];
+    var rC001 = data.reg_c001 || [], rC100 = data.reg_c100 || [], rC170 = data.reg_c170 || [];
+    var rC190 = data.reg_c190 || [], rD100 = data.reg_d100 || [], registros = data.registros || [];
+    var moedaCols = { vl_doc: 'moeda', vl_item: 'moeda', vl_icms: 'moeda' };
+
     var tabs = [
-        { id: 'cab', label: 'Cabeçalho', content: wrapBloco(objParaTabela(data.cabecalho, [], 'relatorio-cab')) },
-        { id: 'fiscal', label: 'Registros Fiscal', content: wrapBloco(arrayParaTabela(data.registros_fiscal, ['bloco', 'registro', 'linha', 'conteudo'])) },
-        { id: 'contrib', label: 'Registros Contribuição', content: wrapBloco(arrayParaTabela(data.registros_contribuicao, ['bloco', 'registro', 'linha', 'conteudo'])) }
+        { id: 'resumo', label: 'Resumo', content: buildCabecalhoSped(data.cabecalho) + buildReg0000Card(r0000) },
+        { id: 'reg0005', label: '0005 Dados complementares' + (r0005.length ? ' (' + r0005.length + ')' : ''), content: wrapBloco(arrayParaTabela(r0005, ['linha', 'fantasia', 'end', 'bairro', 'email'], {})) },
+        { id: 'reg0150', label: '0150 Participantes' + (r0150.length ? ' (' + r0150.length + ')' : ''), content: wrapBloco(arrayParaTabela(r0150, ['linha', 'cod_part', 'nome', 'cnpj', 'end'], {})) },
+        { id: 'reg0190', label: '0190 Unidades' + (r0190.length ? ' (' + r0190.length + ')' : ''), content: wrapBloco(arrayParaTabela(r0190, ['linha', 'unid', 'descr'], {})) },
+        { id: 'reg0200', label: '0200 Itens' + (r0200.length ? ' (' + r0200.length + ')' : ''), content: wrapBloco(arrayParaTabela(r0200, ['linha', 'cod_item', 'descr_item', 'unid_inv', 'cod_ncm'], {})) },
+        { id: 'regc100', label: 'C100 Documentos fiscais' + (rC100.length ? ' (' + rC100.length + ')' : ''), content: wrapBloco(arrayParaTabela(rC100, ['linha', 'chv_nfe', 'dt_doc', 'vl_doc'], moedaCols)) },
+        { id: 'regc170', label: 'C170 Itens dos documentos' + (rC170.length ? ' (' + rC170.length + ')' : ''), content: wrapBloco(arrayParaTabela(rC170, ['linha', 'cod_item', 'descr_compl', 'vl_item'], moedaCols)) },
+        { id: 'regc190', label: 'C190 Analítico ICMS' + (rC190.length ? ' (' + rC190.length + ')' : ''), content: wrapBloco(arrayParaTabela(rC190, ['linha', 'cst_icms', 'cfop', 'vl_icms'], moedaCols)) },
+        { id: 'regd100', label: 'D100 Transporte (CT-e)' + (rD100.length ? ' (' + rD100.length + ')' : ''), content: wrapBloco(arrayParaTabela(rD100, ['linha', 'chv_cte', 'dt_doc', 'vl_doc'], moedaCols)) },
+        { id: 'registros', label: 'Outros registros' + (registros.length ? ' (' + registros.length + ')' : ''), content: buildOutrosRegistrosSped(registros) }
     ];
     renderTabs(tabs, tabsContainer, tabContentContainer);
+}
+
+function buildOutrosRegistrosSped(registros) {
+    if (!registros || !registros.length) return '<p class="text-muted">Nenhum outro registro</p>';
+    var porTipo = {};
+    registros.forEach(function (r) {
+        var t = r.registro || '?';
+        if (!porTipo[t]) porTipo[t] = [];
+        porTipo[t].push(r);
+    });
+    var html = '';
+    Object.keys(porTipo).sort().forEach(function (tipo) {
+        var itens = porTipo[tipo];
+        html += '<div class="relatorio-bloco"><h6>Registro ' + escapeHtml(tipo) + ' (' + itens.length + ')</h6>';
+        html += '<div class="table-responsive"><table class="table table-sm table-detalhe table-hover table-bordered"><thead><tr><th>Linha</th><th>Conteúdo</th></tr></thead><tbody>';
+        itens.slice(0, 50).forEach(function (r) {
+            var conteudo = (r.conteudo || '').substring(0, 120);
+            if ((r.conteudo || '').length > 120) conteudo += '…';
+            html += '<tr><td>' + (r.linha != null ? r.linha : '') + '</td><td class="small font-monospace" style="word-break:break-all">' + escapeHtml(conteudo || '') + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+        if (itens.length > 50) html += '<p class="small text-muted mt-2">Exibindo 50 de ' + itens.length + ' registros.</p>';
+        html += '</div>';
+    });
+    return html || '<p class="text-muted">Nenhum outro registro</p>';
 }
 
 function renderTabs(tabs, tabsContainer, tabContentContainer) {
@@ -472,8 +590,12 @@ function relatorioAplicar() {
 
 document.addEventListener('DOMContentLoaded', function () {
     relatorioInicializarDatasMes();
+    relatorioMostrarFiltrosTab();
     document.getElementById('relatorio-btn-aplicar').addEventListener('click', relatorioAplicar);
     document.querySelectorAll('#tab-rel-nfe, #tab-rel-cte, #tab-rel-nfse, #tab-rel-sped').forEach(function (btn) {
-        btn.addEventListener('shown.bs.tab', function () { relatorioAplicar(); });
+        btn.addEventListener('shown.bs.tab', function () {
+            relatorioMostrarFiltrosTab();
+            relatorioAplicar();
+        });
     });
 });

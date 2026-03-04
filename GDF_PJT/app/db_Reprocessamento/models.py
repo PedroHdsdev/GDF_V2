@@ -174,3 +174,66 @@ class ReprocessamentoJob(models.Model):
 
     def __str__(self):
         return f"Job #{self.id_job} {self.get_tipo_display()} ({self.get_status_display()})"
+
+
+class CondicaoPagamentoLote(models.Model):
+    """
+    Tabela de chaves NF-e (44) e condições de pagamento por lote.
+    Usada para ajustar no SAP a condição de pagamento do pedido de compra via RFC.
+    condicao_pagamento_sap: preenchida antes do RFC e/ou atualizada com o retorno do SAP.
+    """
+    STATUS_CHOICES = [
+        ('PENDENTE', 'Pendente'),
+        ('ENVIADO_SAP', 'Enviado ao SAP'),
+        ('PROCESSADO_SAP', 'Processado no SAP'),
+    ]
+
+    id_reg = models.BigAutoField(primary_key=True)
+    lote = models.ForeignKey(
+        ReprocessamentoLote,
+        on_delete=models.CASCADE,
+        related_name='condicoes_pagamento',
+        db_index=True,
+    )
+    chave_nfe = models.CharField(max_length=44, db_index=True)
+    numero_nfe = models.CharField(max_length=20, blank=True, null=True)
+    serie_nfe = models.CharField(max_length=5, blank=True, null=True)
+    # Condição extraída da NF-e (ex.: "3x em 28/35/42 dias")
+    condicao_pagamento_nfe = models.CharField(max_length=120, blank=True, null=True)
+    # Condição SAP: preenchida antes do RFC e atualizada com o retorno após processamento
+    condicao_pagamento_sap = models.CharField(max_length=60, blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDENTE', db_index=True)
+    data_criacao = models.DateTimeField(auto_now_add=True)
+    data_atualizacao = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        managed = True
+        db_table = '"reprocessamento"."condicao_pagamento_lote"'
+        unique_together = [['lote', 'chave_nfe']]
+        indexes = [
+            models.Index(fields=['lote', 'status']),
+        ]
+        ordering = ['chave_nfe']
+        verbose_name = 'Condição de pagamento (lote)'
+        verbose_name_plural = 'Condições de pagamento (lote)'
+
+    def __str__(self):
+        return f"{self.chave_nfe} — {self.condicao_pagamento_nfe or '-'}"
+
+class CondicaoParam(models.Model):
+    condicao_pagamento_nfe = models.CharField(max_length=120, blank=True, null=True)
+    condicao_pagamento_sap = models.CharField(max_length=60, blank=True, null=True)
+
+    class Meta:
+        managed = True
+        db_table = '"reprocessamento"."condicao_param"'
+        unique_together = [['condicao_pagamento_nfe', 'condicao_pagamento_sap']]
+        indexes = [
+            models.Index(fields=['condicao_pagamento_nfe', 'condicao_pagamento_sap']),
+        ]
+        ordering = ['condicao_pagamento_nfe']
+        verbose_name = 'Condição de pagamento'
+        verbose_name_plural = 'Condições de pagamento'
+    
+    def __str__(self):
+        return f"{self.condicao_pagamento_nfe} — {self.condicao_pagamento_sap or '-'}"

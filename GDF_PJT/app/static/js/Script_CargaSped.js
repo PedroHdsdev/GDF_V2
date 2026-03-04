@@ -13,6 +13,33 @@ function obterCsrfToken() {
     return t ? t.value : '';
 }
 
+var intervaloResumoSped = null;
+
+function carregarResumoCargaSped() {
+    fetch('/api/cargasped/resumo/', { method: 'GET', headers: { 'X-CSRFToken': obterCsrfToken() } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.sucesso) return;
+            var elTotal = document.getElementById('resumo-sped-total');
+            var elConcluidos = document.getElementById('resumo-sped-concluidos');
+            var elErros = document.getElementById('resumo-sped-com-erros');
+            var elAndamento = document.getElementById('resumo-sped-em-andamento');
+            if (elTotal) elTotal.textContent = data.total || 0;
+            if (elConcluidos) elConcluidos.textContent = data.concluidos || 0;
+            if (elErros) elErros.textContent = data.com_erros || 0;
+            if (elAndamento) elAndamento.textContent = data.em_andamento || 0;
+            if (data.em_andamento > 0 && !intervaloResumoSped) {
+                intervaloResumoSped = setInterval(function () {
+                    carregarResumoCargaSped();
+                }, 3000);
+            } else if (data.em_andamento === 0 && intervaloResumoSped) {
+                clearInterval(intervaloResumoSped);
+                intervaloResumoSped = null;
+            }
+        })
+        .catch(function () {});
+}
+
 function carregarAvisosCargaSped(preencherModal) {
     fetch('/api/cargasped/avisos/', {
         method: 'GET',
@@ -70,14 +97,22 @@ function preencherModalAvisosCargaSped(items) {
         return 'aviso-log-outro';
     }
     var html = '';
-    items.forEach(function (job) {
+    items.forEach(function (job, index) {
         var totalErro = job.total_erro || 0;
         var totalOk = job.total_sucesso || 0;
         var logLines = (job.log && job.log.length) ? job.log : [];
+        if (logLines.length === 0 && (job.mensagem || '').trim()) {
+            logLines = (job.mensagem || '').trim().split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+        }
+        // Nos detalhes do aviso mostrar só erros e pendentes (não mostrar OK)
+        logLines = logLines.filter(function (l) {
+            var t = (l || '').trim();
+            return t.indexOf('OK:') !== 0;
+        });
         var logHtml = '';
         if (logLines.length) {
             logHtml = '<div class="aviso-dados-adicionais">';
-            logHtml += '<div class="aviso-dados-titulo small fw-600 text-uppercase text-muted mb-2">Dados adicionais</div>';
+            logHtml += '<div class="aviso-dados-titulo small fw-600 text-uppercase text-muted mb-2">Erros e pendentes</div>';
             logHtml += '<div class="aviso-log-lines">';
             logLines.forEach(function (l) {
                 var cssClass = classForLogLine(l);
@@ -87,14 +122,15 @@ function preencherModalAvisosCargaSped(items) {
         } else {
             logHtml = '<div class="aviso-dados-adicionais"><div class="text-muted small">Sem log</div></div>';
         }
+        var bodyVisible = index === 0;
         html += '<div class="aviso-item layout-subcard">';
         html += '  <div class="aviso-item-header d-flex justify-content-between align-items-center" role="button" tabindex="0">';
-        html += '    <span class="aviso-item-info"><strong>Job #' + job.id + '</strong> &middot; ' + formatDt(job.started_at) + ' <span class="text-muted small ms-1">(clique para detalhes)</span></span>';
+        html += '    <span class="aviso-item-info"><strong>Job #' + job.id + '</strong> &middot; ' + formatDt(job.started_at) + ' <span class="text-muted small ms-1">(clique para ' + (bodyVisible ? 'recolher' : 'expandir') + ')</span></span>';
         html += '    <span class="d-flex align-items-center gap-2">';
         if (totalOk > 0) html += '<span class="badge aviso-badge-ok">' + totalOk + ' OK</span>';
-        html += '<span class="badge aviso-badge-erro">' + totalErro + ' erro(s)</span> <i class="fas fa-chevron-right aviso-chevron small"></i></span>';
+        html += '<span class="badge aviso-badge-erro">' + totalErro + ' erro(s)</span> <i class="fas fa-chevron-' + (bodyVisible ? 'down' : 'right') + ' aviso-chevron small"></i></span>';
         html += '  </div>';
-        html += '  <div class="aviso-item-body d-none">' + logHtml + '</div>';
+        html += '  <div class="aviso-item-body ' + (bodyVisible ? '' : 'd-none') + '">' + logHtml + '</div>';
         html += '</div>';
     });
     listEl.innerHTML = html;
@@ -103,9 +139,12 @@ function preencherModalAvisosCargaSped(items) {
             var card = header.closest('.aviso-item');
             var body = card.querySelector('.aviso-item-body');
             var chevron = header.querySelector('.aviso-chevron');
+            if (!body || !chevron) return;
             body.classList.toggle('d-none');
             chevron.classList.toggle('fa-chevron-right');
             chevron.classList.toggle('fa-chevron-down');
+            var spanHint = header.querySelector('.aviso-item-info .text-muted');
+            if (spanHint) spanHint.textContent = body.classList.contains('d-none') ? ' (clique para expandir)' : ' (clique para recolher)';
         });
         header.addEventListener('keydown', function (e) {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -146,7 +185,7 @@ function aplicarFiltrosSped() {
         const busca = estadoSped.filtros.busca;
         if (!ativoOk) return false;
         if (!busca) return true;
-        const s = (p.diretorio + ' ' + p.tipo_sped + ' ' + p.horario + ' ' + p.empresa_nome).toLowerCase();
+        const s = (p.diretorio + ' ' + p.horario + ' ' + p.empresa_nome).toLowerCase();
         return s.indexOf(busca) !== -1;
     });
     estadoSped.filtrados = list;
@@ -161,7 +200,7 @@ function renderizarTabelaParametrosSped() {
     const page = estadoSped.filtrados.slice(start, start + estadoSped.itemsPerPage);
 
     if (page.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Nenhum parâmetro cadastrado</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">Nenhum parâmetro cadastrado</td></tr>';
         document.getElementById('paginacao-cargas').innerHTML = '';
         return;
     }
@@ -169,7 +208,6 @@ function renderizarTabelaParametrosSped() {
     tbody.innerHTML = page.map(p => `
         <tr class="align-middle">
             <td>${p.horario}</td>
-            <td>${p.tipo_sped}</td>
             <td class="text-truncate" style="max-width:200px" title="${(p.diretorio || '').replace(/"/g, '&quot;')}">${p.diretorio || '-'}</td>
             <td>${p.empresa_nome || '-'}</td>
             <td><span class="badge ${p.ativo ? 'bg-success' : 'bg-secondary'}">${p.ativo ? 'Ativo' : 'Inativo'}</span></td>
@@ -196,13 +234,12 @@ function carregarParametrosModal() {
         .then(data => {
             const items = data.items || [];
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum parâmetro</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum parâmetro</td></tr>';
                 return;
             }
             tbody.innerHTML = items.map(p => `
                 <tr>
                     <td>${p.horario || ''}</td>
-                    <td>${p.tipo_sped || ''}</td>
                     <td class="text-truncate" style="max-width:120px">${p.diretorio || '-'}</td>
                     <td>${p.empresa_nome || '-'}</td>
                     <td><span class="badge ${p.ativo ? 'bg-success' : 'bg-secondary'}">${p.ativo ? 'Ativo' : 'Inativo'}</span></td>
@@ -225,7 +262,6 @@ function enviarArquivosManuais() {
     }
     const fd = new FormData();
     estadoSped.arquivosManuais.forEach(f => fd.append('arquivo', f));
-    fd.append('tipo_sped', document.getElementById('select-tipo-sped-manual').value);
     fd.append('csrfmiddlewaretoken', obterCsrfToken());
     const btn = document.getElementById('btn-enviar-sped');
     btn.disabled = true;
@@ -233,13 +269,23 @@ function enviarArquivosManuais() {
         .then(r => r.json())
         .then(data => {
             btn.disabled = false;
-            Notificacoes.modal(data.mensagem || (data.sucesso ? 'Enviado.' : 'Erro.'), data.sucesso ? 'success' : 'danger', 'modalCargaSpedAlerts');
+            Notificacoes.modal(data.mensagem || (data.sucesso ? 'Job em execução.' : 'Erro.'), data.sucesso ? 'success' : 'danger', 'modalCargaSpedAlerts');
             if (data.sucesso) {
                 estadoSped.arquivosManuais = [];
-                document.getElementById('contador-sped').textContent = '0';
-                document.getElementById('file-input-sped').value = '';
-                bootstrap.Modal.getInstance(document.getElementById('modalCargaSped')).hide();
+                var contador = document.getElementById('contador-sped');
+                if (contador) contador.textContent = '0';
+                var fileInput = document.getElementById('file-input-sped');
+                var fileInputPasta = document.getElementById('file-input-sped-pasta');
+                if (fileInput) fileInput.value = '';
+                if (fileInputPasta) fileInputPasta.value = '';
+                var modal = document.getElementById('modalCargaSped');
+                if (modal && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    var inst = bootstrap.Modal.getInstance(modal);
+                    if (inst) inst.hide();
+                }
                 carregarParametrosPrincipais();
+                carregarResumoCargaSped();
+                carregarAvisosCargaSped();
             }
         })
         .catch(() => { btn.disabled = false; Notificacoes.modal('Erro na requisição.', 'danger', 'modalCargaSpedAlerts'); });
@@ -247,7 +293,11 @@ function enviarArquivosManuais() {
 
 document.addEventListener('DOMContentLoaded', function () {
     carregarParametrosPrincipais();
+    carregarResumoCargaSped();
     carregarAvisosCargaSped();
+
+    var btnAtualizarResumo = document.getElementById('btn-atualizar-resumo-sped');
+    if (btnAtualizarResumo) btnAtualizarResumo.addEventListener('click', function () { carregarResumoCargaSped(); });
 
     var modalAvisos = document.getElementById('modalAvisosCargaSped');
     if (modalAvisos) {
@@ -264,14 +314,31 @@ document.addEventListener('DOMContentLoaded', function () {
     if (chkAtivos) chkAtivos.addEventListener('change', function () { estadoSped.filtros.mostrarAtivos = this.checked; aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
     if (chkInativos) chkInativos.addEventListener('change', function () { estadoSped.filtros.mostrarInativos = this.checked; aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
 
-    const dropZone = document.getElementById('drop-zone-sped');
+    const dropZoneArquivo = document.getElementById('drop-zone-sped-arquivo');
+    const dropZonePasta = document.getElementById('drop-zone-sped-pasta');
     const fileInput = document.getElementById('file-input-sped');
-    if (dropZone && fileInput) {
-        dropZone.addEventListener('click', () => fileInput.click());
+    const fileInputPasta = document.getElementById('file-input-sped-pasta');
+    if (dropZoneArquivo && fileInput) {
+        dropZoneArquivo.addEventListener('click', function () { fileInput.value = ''; fileInput.click(); });
+        dropZoneArquivo.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+    }
+    if (dropZonePasta && fileInputPasta) {
+        dropZonePasta.addEventListener('click', function () { fileInputPasta.value = ''; fileInputPasta.click(); });
+        dropZonePasta.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputPasta.click(); } });
+    }
+    if (fileInput) {
         fileInput.addEventListener('change', function () {
             const files = Array.from(this.files || []).filter(f => (f.name || '').toLowerCase().endsWith('.txt'));
             estadoSped.arquivosManuais = files;
             document.getElementById('contador-sped').textContent = files.length;
+        });
+    }
+    if (fileInputPasta) {
+        fileInputPasta.addEventListener('change', function () {
+            const files = Array.from(this.files || []).filter(f => (f.name || '').toLowerCase().endsWith('.txt'));
+            estadoSped.arquivosManuais = files;
+            document.getElementById('contador-sped').textContent = files.length;
+            this.value = '';
         });
     }
 
@@ -286,7 +353,6 @@ document.addEventListener('DOMContentLoaded', function () {
         e.preventDefault();
         const payload = {
             horario: document.getElementById('param-sped-horario').value,
-            tipo_sped: document.getElementById('param-sped-tipo').value,
             diretorio: document.getElementById('param-sped-diretorio').value.trim(),
             empresa_id: document.getElementById('param-sped-empresa').value,
             ativo: document.getElementById('param-sped-ativo').checked

@@ -1,5 +1,8 @@
 import json
 import os
+import shutil
+import tempfile
+import threading
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts               import get_object_or_404, render
 from django.shortcuts               import render, redirect
@@ -35,6 +38,7 @@ from app.db_GDF.Public.models       import (
     UserEmpresas, Empresas, Clientes, GrpEmpresas,
     CargaXmlParam, CargaXmlJob,
     CargaSpedParam, CargaSpedJob,
+    SapConnection,
 )
 from app.classes.CargaSped          import Carga_sped
 from app.db_GDF.NFe.models          import (
@@ -51,9 +55,10 @@ from app.db_GDF.NFSe.models        import (
     NFSe, NFSe_Identificacao, NFSe_Prestador, NFSe_Tomador, NFSe_Endereco,
     NFSe_RPS, NFSe_Retencao, NFSe_Pagamento, NFSe_Servico,
 )
-from app.db_GDF.Sped.models        import Sped_Arquivo, Sped_Fiscal, Sped_Contribuicao
-from app.db_Reprocessamento.models import ReprocessamentoLote, Divergencia, ReprocessamentoJob
+from app.db_GDF.Sped.models        import Sped_Arquivo
+from app.db_Reprocessamento.models import ReprocessamentoLote, Divergencia, ReprocessamentoJob, CondicaoPagamentoLote
 from django.utils import timezone
+from django.core.files.uploadedfile import SimpleUploadedFile
 import re
 
 # Cliente ao qual superusuários têm acesso total ao painel (todos os clientes)
@@ -870,6 +875,79 @@ def fn_view_atualizar_acesso_cliente(request):
     if not is_ajax:
         return redirect('Dm_Clientes')
 
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_view_cliente_sap(request, cod_cliente):
+    """Cria ou atualiza a conexão SAP do cliente (uma por cliente)."""
+    cod_cliente_sessao = request.session.get('cod_cliente', None)
+    if not cod_cliente_sessao:
+        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+    if str(cod_cliente) != str(cod_cliente_sessao):
+        return JsonResponse({"erro": "Acesso negado."}, status=403)
+
+    try:
+        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
+    except Clientes.DoesNotExist:
+        return JsonResponse({"erro": "Cliente não encontrado"}, status=404)
+
+    sap = SapConnection.objects.filter(cliente=cliente).first()
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+    if request.method == "POST":
+        ashost = (request.POST.get("sap_ashost") or "").strip()
+        sysnr = (request.POST.get("sap_sysnr") or "").strip()
+        client = (request.POST.get("sap_client") or "").strip()
+        username = (request.POST.get("sap_username") or "").strip()
+        passwd = (request.POST.get("sap_passwd") or "").strip()
+        lang = (request.POST.get("sap_lang") or "").strip()
+        active = request.POST.get("sap_active") == "on"
+
+        if not sap:
+            sap = SapConnection.objects.create(
+                cliente=cliente,
+                ashost=ashost,
+                sysnr=sysnr,
+                client=client,
+                username=username,
+                passwd=passwd,
+                lang=lang,
+                active=active,
+            )
+            message = "Conexão SAP criada. Preencha os dados e salve novamente."
+        else:
+            sap.ashost = ashost
+            sap.sysnr = sysnr
+            sap.client = client
+            sap.username = username
+            if passwd:
+                sap.passwd = passwd
+            sap.lang = lang
+            sap.active = active
+            sap.save()
+            message = "Conexão SAP atualizada com sucesso."
+
+        sap_data = {
+            "id": sap.id,
+            "ashost": sap.ashost or "",
+            "sysnr": sap.sysnr or "",
+            "client": sap.client or "",
+            "username": sap.username or "",
+            "passwd": sap.passwd or "",
+            "lang": sap.lang or "",
+            "active": sap.active,
+        }
+        if is_ajax:
+            return JsonResponse({
+                "success": True,
+                "message": message,
+                "sap_connection": sap_data,
+            }, status=200)
+        messages.success(request, message, extra_tags='MODAL_UPD')
+        return redirect('Dm_Clientes')
+    return JsonResponse({"erro": "Método não permitido"}, status=405)
+
+
 @login_required(login_url='Login')
 @require_http_methods(["GET"])
 def fn_view_CargaXml(request):
@@ -902,10 +980,98 @@ def fn_view_CargaXml(request):
     }
     return render(request, 'Processamento/index_CargaXml.html', context)
 
+def _processar_job_xml_background(job_id, temp_dir, type_xml, origem_dados, user_id, cod_cliente, empresa_id):
+    """Executa em thread: processa XMLs da pasta temp e atualiza o job."""
+    from django.db import connection
+    from app.db_GDF.Public.models import CargaXmlJob
+    from app.classes.CargaXml import Carga_xml
+
+    try:
+        from django.contrib.auth.models import User as AuthUser
+        job = CargaXmlJob.objects.get(id=job_id)
+        user = AuthUser.objects.filter(id=user_id).first()
+        username = user.username if user else 'SYSTEM'
+
+        xml_files = []
+        for fname in sorted(os.listdir(temp_dir)):
+            if not fname.lower().endswith('.xml'):
+                continue
+            path = os.path.join(temp_dir, fname)
+            if not os.path.isfile(path):
+                continue
+            with open(path, 'rb') as f:
+                xml_bytes = f.read()
+            nome = fname.split('_', 1)[-1] if '_' in fname else fname
+            xml_files.append(SimpleUploadedFile(nome, xml_bytes))
+
+        if not xml_files:
+            job.status = 'ERROR'
+            job.mensagem = 'Nenhum arquivo XML encontrado na pasta temporária.'
+            job.finished_at = timezone.localtime()
+            job.save(update_fields=['status', 'mensagem', 'finished_at'])
+            return
+
+        cl_xml = Carga_xml()
+        upload_result = cl_xml.set_upload_xml(
+            xml_files,
+            type_xml,
+            origem_dados,
+            username,
+            cod_cliente,
+        )
+
+        # Erros e pendentes primeiro para não serem cortados pelo truncamento (5000 chars)
+        mensagem_lines = []
+        for err in upload_result.get('errors', []):
+            mensagem_lines.append(f"ERRO: {err.get('file', '')} - {err.get('error', '')}")
+        for p in upload_result.get('pendentes', []):
+            mensagem_lines.append(f"PENDENTES (empresa não cadastrada): {p.get('file', '')} - {p.get('motivo', '')}")
+        for name in upload_result.get('success', []):
+            mensagem_lines.append(f"OK: {name}")
+        resumo = '\n'.join(mensagem_lines)[:5000]
+
+        empresa_prefixo = ''
+        if empresa_id:
+            try:
+                empresa = Empresas.objects.get(
+                    cod_empresa=empresa_id,
+                    cliente__cod_cliente=cod_cliente,
+                )
+                nome_emp = empresa.fantasia or empresa.razao or empresa.cod_empresa
+                empresa_prefixo = f"EMPRESA: {empresa.cod_empresa} - {nome_emp}\n"
+            except Empresas.DoesNotExist:
+                empresa_prefixo = f"EMPRESA: {empresa_id} (não encontrada)\n"
+
+        total_arquivos = len(upload_result['success']) + len(upload_result['errors']) + len(upload_result.get('pendentes', []))
+        job.total_arquivos = total_arquivos
+        job.total_sucesso = len(upload_result['success'])
+        job.total_erro = len(upload_result['errors'])
+        job.status = 'ERROR' if upload_result['errors'] else 'SUCCESS'
+        job.mensagem = (empresa_prefixo + resumo)[:5000]
+        job.finished_at = timezone.localtime()
+        job.save(update_fields=['total_arquivos', 'total_sucesso', 'total_erro', 'status', 'mensagem', 'finished_at'])
+    except Exception as e:
+        try:
+            job = CargaXmlJob.objects.get(id=job_id)
+            job.status = 'ERROR'
+            job.mensagem = str(e)[:5000]
+            job.finished_at = timezone.localtime()
+            job.save(update_fields=['status', 'mensagem', 'finished_at'])
+        except Exception:
+            pass
+    finally:
+        try:
+            if temp_dir and os.path.isdir(temp_dir):
+                shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception:
+            pass
+        connection.close()
+
+
 @login_required(login_url='Login')
 @require_http_methods(["POST"])
 def fn_api_processar_xml(request):
-    """API para processar upload de XMLs"""
+    """API para processar upload de XMLs em segundo plano (job)."""
     cod_cliente = request.session.get('cod_cliente', None)
     
     if not cod_cliente:
@@ -923,72 +1089,79 @@ def fn_api_processar_xml(request):
         if not lsl_Xml:
             return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo selecionado'}, status=400)
 
-        # validação básica de cada arquivo
+        # Aceitar .xml e .zip; se for .zip, extrair XMLs na "mesma pasta" (lista) e processar
+        MAX_SIZE = 50 * 1024 * 1024
+        expanded = []
         for f in lsl_Xml:
-            if not f.name.lower().endswith('.xml'):
-                return JsonResponse({'sucesso': False, 'mensagem': f'Arquivo inválido: {f.name}'}, status=400)
-            if f.size > 50 * 1024 * 1024:
-                return JsonResponse({'sucesso': False, 'mensagem': f'Arquivo muito grande: {f.name}'}, status=400)
-
-        upload_result = cl_xml.set_upload_xml(
-            lsl_Xml,
-            l_v_type_xml,
-            l_v_origem_dados,
-            request.user.username,
-            cod_cliente
-        )
-        
-        # registrar job manual para histórico com detalhes de cada arquivo
-        try:
-            from django.utils import timezone
-            mensagem_lines = []
-            for name in upload_result.get('success', []):
-                mensagem_lines.append(f"OK: {name}")
-            for err in upload_result.get('errors', []):
-                mensagem_lines.append(f"ERRO: {err.get('file','')} - {err.get('error','')}")
-            for p in upload_result.get('pendentes', []):
-                mensagem_lines.append(f"PENDENTES (empresa não cadastrada): {p.get('file','')} - {p.get('motivo','')}")
-            resumo = '\n'.join(mensagem_lines)[:5000]
-
-            # Montar prefixo com empresa (se enviada e válida)
-            empresa_prefixo = ''
-            if l_v_empresa_id:
+            name_lower = f.name.lower()
+            if name_lower.endswith('.xml'):
+                if f.size > MAX_SIZE:
+                    return JsonResponse({'sucesso': False, 'mensagem': f'Arquivo muito grande: {f.name}'}, status=400)
+                expanded.append(f)
+            elif name_lower.endswith('.zip'):
+                if f.size > MAX_SIZE:
+                    return JsonResponse({'sucesso': False, 'mensagem': f'Arquivo ZIP muito grande: {f.name}'}, status=400)
                 try:
-                    empresa = Empresas.objects.get(
-                        cod_empresa=l_v_empresa_id,
-                        cliente__cod_cliente=cod_cliente
-                    )
-                    nome_emp = empresa.fantasia or empresa.razao or empresa.cod_empresa
-                    empresa_prefixo = f"EMPRESA: {empresa.cod_empresa} - {nome_emp}\n"
-                except Empresas.DoesNotExist:
-                    empresa_prefixo = f"EMPRESA: {l_v_empresa_id} (não encontrada)\n"
+                    with zipfile.ZipFile(f, 'r') as zf:
+                        for member in zf.namelist():
+                            if member.endswith('/') or not member.lower().endswith('.xml'):
+                                continue
+                            safe_name = os.path.basename(member)
+                            with zf.open(member, 'r') as src:
+                                xml_bytes = src.read()
+                            if len(xml_bytes) > MAX_SIZE:
+                                return JsonResponse({'sucesso': False, 'mensagem': f'XML dentro do ZIP muito grande: {safe_name}'}, status=400)
+                            expanded.append(SimpleUploadedFile(safe_name, xml_bytes))
+                except (zipfile.BadZipFile, OSError, ValueError) as e:
+                    return JsonResponse({'sucesso': False, 'mensagem': f'ZIP inválido ou corrompido: {f.name} - {e}'}, status=400)
+            else:
+                continue  # Ignorar arquivos que não sejam .xml ou .zip (ex.: PDF em pasta)
 
-            total_arquivos = len(upload_result['success']) + len(upload_result['errors']) + len(upload_result.get('pendentes', []))
-            CargaXmlJob.objects.create(
-                cliente=get_object_or_404(Clientes, cod_cliente=cod_cliente),
-                parametro=None,
-                status='SUCCESS' if len(upload_result['errors']) == 0 else 'ERROR',
-                total_arquivos=total_arquivos,
-                total_sucesso=len(upload_result['success']),
-                total_erro=len(upload_result['errors']),
-                mensagem=(empresa_prefixo + resumo)[:5000],
-                started_at=timezone.localtime(),
-                finished_at=timezone.localtime(),
-                usuario_execucao=request.user
-            )
-        except Exception:
-            pass
+        if not expanded:
+            return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo XML encontrado (envie .xml ou .zip com XMLs dentro)'}, status=400)
 
-        pendentes_count = len(upload_result.get('pendentes', []))
-        msg = f"{len(upload_result['success'])} arquivo(s) registrado(s), {len(upload_result['errors'])} erro(s)"
-        if pendentes_count:
-            msg += f", {pendentes_count} enviado(s) para pendentes (empresa não cadastrada no GDF - não registrado)"
+        # Salvar XMLs em pasta temp e processar em segundo plano (job)
+        temp_dir = tempfile.mkdtemp(prefix='cargaxml_')
+        try:
+            for i, item in enumerate(expanded):
+                xml_bytes = item.read() if hasattr(item, 'read') else item
+                nome = getattr(item, 'name', f'{i}.xml')
+                safe_name = os.path.basename(nome).replace('..', '_') or f'{i}.xml'
+                dest = os.path.join(temp_dir, f'{i}_{safe_name}')
+                with open(dest, 'wb') as out:
+                    out.write(xml_bytes)
+        except Exception as e:
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception:
+                pass
+            return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao salvar arquivos: {e}'}, status=500)
+
+        cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
+        job = CargaXmlJob.objects.create(
+            cliente=cliente,
+            parametro=None,
+            status='RUNNING',
+            total_arquivos=len(expanded),
+            total_sucesso=0,
+            total_erro=0,
+            mensagem=f'Carga manual – em execução ({len(expanded)} arquivo(s))...',
+            started_at=timezone.localtime(),
+            finished_at=None,
+            usuario_execucao=request.user,
+        )
+        t = threading.Thread(
+            target=_processar_job_xml_background,
+            args=(job.id, temp_dir, l_v_type_xml, l_v_origem_dados, request.user.id, cod_cliente, l_v_empresa_id),
+            daemon=True,
+        )
+        t.start()
         return JsonResponse({
-            'sucesso': len(upload_result['errors']) == 0,
-            'mensagem': msg,
-            'detalhes': upload_result
-        }, status=200)
-    
+            'sucesso': True,
+            'mensagem': f'Job #{job.id} criado e em execução em segundo plano. Atualize o painel para acompanhar.',
+            'job_id': job.id,
+        }, status=202)
+
     except Exception as e:
         return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao processar: {str(e)}'}, status=500)
 
@@ -1337,8 +1510,21 @@ def fn_api_cargaxml_avisos(request):
         status='ERROR'
     ).order_by('-started_at')[:100]
     items = []
+    def _ordem_log_erros_primeiro(lines):
+        def prioridade(line):
+            t = (line or '').strip()
+            if t.startswith('ERRO:'):
+                return 0
+            if t.startswith('PENDENTES'):
+                return 1
+            if t.startswith('OK:'):
+                return 2
+            return 3
+        return sorted(lines, key=prioridade)
+
     for job in jobs:
         log_lines = [line.strip() for line in (job.mensagem or '').splitlines() if line.strip()]
+        log_lines = _ordem_log_erros_primeiro(log_lines)
         items.append({
             'id': job.id,
             'started_at': job.started_at.isoformat() if job.started_at else None,
@@ -1381,6 +1567,27 @@ def fn_api_cargaxml_jobs(request):
 
 @login_required(login_url='Login')
 @require_http_methods(["GET"])
+def fn_api_cargaxml_resumo(request):
+    """Retorna contagens para o painel: total de jobs, concluídos, com erros, em andamento."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    qs = CargaXmlJob.objects.filter(cliente__cod_cliente=cod_cliente)
+    total = qs.count()
+    concluidos = qs.filter(status='SUCCESS').count()
+    com_erros = qs.filter(status='ERROR').count()
+    em_andamento = qs.filter(status__in=('RUNNING', 'PENDING')).count()
+    return JsonResponse({
+        'sucesso': True,
+        'total': total,
+        'concluidos': concluidos,
+        'com_erros': com_erros,
+        'em_andamento': em_andamento,
+    }, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
 def fn_api_cargaxml_job_details(request, job_id):
     """Retorna detalhes e log de um job específico"""
     cod_cliente = request.session.get('cod_cliente', None)
@@ -1389,6 +1596,18 @@ def fn_api_cargaxml_job_details(request, job_id):
 
     job = get_object_or_404(CargaXmlJob, id=job_id, cliente__cod_cliente=cod_cliente)
     log_lines = [line.strip() for line in (job.mensagem or '').splitlines() if line.strip()]
+
+    def _prioridade_log(line):
+        t = (line or '').strip()
+        if t.startswith('ERRO:'):
+            return 0
+        if t.startswith('PENDENTES'):
+            return 1
+        if t.startswith('OK:'):
+            return 2
+        return 3
+    log_lines = sorted(log_lines, key=_prioridade_log)
+
     param_data = None
     if job.parametro:
         p = job.parametro
@@ -1420,42 +1639,102 @@ def fn_api_cargaxml_job_details(request, job_id):
 
 # ========== APIs Carga SPED (mesma linha de raciocínio da Carga XML) ==========
 
+def _processar_job_sped_background(job_id, temp_dir, cod_cliente, user_id):
+    """Executa em thread: processa arquivos na pasta temp e atualiza o job."""
+    from django.db import connection
+    from app.db_GDF.Public.models import CargaSpedJob, Clientes
+    from app.classes.CargaSped import Carga_sped
+
+    try:
+        job = CargaSpedJob.objects.get(id=job_id)
+        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
+        cl_sped = Carga_sped()
+        result = cl_sped.processar_pasta_temp(temp_dir, cod_cliente, empresa=None)
+        total = len(result['success']) + len(result['errors'])
+        job.total_arquivos = total
+        job.total_sucesso = len(result['success'])
+        job.total_erro = len(result['errors'])
+        job.status = 'ERROR' if result['errors'] else 'SUCCESS'
+        # Erros primeiro para não serem cortados pelo truncamento (5000 chars)
+        log_lines = [f"ERRO: {e.get('file', '')} - {e.get('error', '')}" for e in result['errors']] + [f"OK: {n}" for n in result['success']]
+        job.mensagem = '\n'.join(log_lines) if log_lines else f"Processado: {total} arquivo(s). Sucesso: {len(result['success'])}, Erro: {len(result['errors'])}."
+        job.mensagem = job.mensagem[:5000]
+        job.finished_at = timezone.localtime()
+        job.save(update_fields=['status', 'total_arquivos', 'total_sucesso', 'total_erro', 'mensagem', 'finished_at'])
+    except Exception as e:
+        try:
+            job = CargaSpedJob.objects.get(id=job_id)
+            job.status = 'ERROR'
+            job.mensagem = str(e)[:5000]
+            job.finished_at = timezone.localtime()
+            job.save(update_fields=['status', 'mensagem', 'finished_at'])
+        except Exception:
+            pass
+    finally:
+        try:
+            import shutil
+            if temp_dir and os.path.isdir(temp_dir):
+                shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception:
+            pass
+        connection.close()
+
+
 @login_required(login_url='Login')
 @require_http_methods(["POST"])
 def fn_api_processar_sped(request):
-    """API para processar upload de arquivos SPED (.txt)."""
+    """API para processar upload de arquivos SPED (.txt). Cria job e executa em segundo plano."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     arquivos = request.FILES.getlist('arquivo')
-    tipo_sped = request.POST.get('tipo_sped', 'EFD_ICMS')
+    if not arquivos and request.FILES.get('arquivo'):
+        arquivos = [request.FILES.get('arquivo')]
     if not arquivos:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo selecionado'}, status=400)
-    cl_sped = Carga_sped()
-    upload_result = cl_sped.set_upload_sped(arquivos, tipo_sped, request.user.username, cod_cliente)
+        return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo selecionado. Selecione arquivos .txt ou uma pasta.'}, status=400)
+
+    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
+    temp_dir = tempfile.mkdtemp(prefix='cargasped_')
     try:
-        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
-        total = len(upload_result['success']) + len(upload_result['errors'])
-        CargaSpedJob.objects.create(
-            cliente=cliente,
-            parametro=None,
-            status='SUCCESS' if len(upload_result['errors']) == 0 else 'ERROR',
-            total_arquivos=total,
-            total_sucesso=len(upload_result['success']),
-            total_erro=len(upload_result['errors']),
-            mensagem='\n'.join([f"OK: {n}" for n in upload_result['success']] + [f"ERRO: {e.get('file','')} - {e.get('error','')}" for e in upload_result['errors']])[:5000],
-            started_at=timezone.localtime(),
-            finished_at=timezone.localtime(),
-            usuario_execucao=request.user
-        )
-    except Exception:
-        pass
+        for i, f in enumerate(arquivos):
+            if not getattr(f, 'name', None) or not (f.name or '').lower().endswith('.txt'):
+                continue
+            safe_name = os.path.basename(f.name).replace('..', '_')
+            dest = os.path.join(temp_dir, f'{i}_{safe_name}')
+            with open(dest, 'wb') as out:
+                for chunk in f.chunks():
+                    out.write(chunk)
+    except Exception as e:
+        try:
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception:
+            pass
+        return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao salvar arquivos: {e}'}, status=500)
+
+    job = CargaSpedJob.objects.create(
+        cliente=cliente,
+        parametro=None,
+        status='RUNNING',
+        total_arquivos=0,
+        total_sucesso=0,
+        total_erro=0,
+        mensagem=f'Carga manual – em execução ({len(arquivos)} arquivo(s))...',
+        started_at=timezone.localtime(),
+        finished_at=None,
+        usuario_execucao=request.user,
+    )
+    t = threading.Thread(
+        target=_processar_job_sped_background,
+        args=(job.id, temp_dir, cod_cliente, request.user.id),
+        daemon=True,
+    )
+    t.start()
     return JsonResponse({
-        'sucesso': len(upload_result['errors']) == 0,
-        'mensagem': f"{len(upload_result['success'])} arquivo(s) recebido(s), {len(upload_result['errors'])} erro(s).",
-        'total_sucesso': len(upload_result['success']),
-        'total_erro': len(upload_result['errors']),
-    }, status=200)
+        'sucesso': True,
+        'mensagem': f'Job #{job.id} criado e em execução em segundo plano. Atualize o painel para acompanhar.',
+        'job_id': job.id,
+    }, status=202)
 
 
 @login_required(login_url='Login')
@@ -1485,7 +1764,7 @@ def fn_api_cargasped_parametros(request):
     elif request.method == "POST":
         payload = json.loads(request.body.decode('utf-8')) if request.content_type and 'application/json' in request.content_type else request.POST
         horario_raw = (payload.get('horario') or '').strip()
-        tipo_sped = (payload.get('tipo_sped') or 'EFD_ICMS').strip()
+        tipo_sped = (payload.get('tipo_sped') or 'EFD_ICMS').strip()  # mantido para compatibilidade; tipo é detectado automaticamente na carga
         diretorio = (payload.get('diretorio') or '').strip()
         empresa_id = (payload.get('empresa_id') or '').strip()
         ativo = payload.get('ativo', True)
@@ -1645,6 +1924,27 @@ def fn_api_cargasped_param_toggle(request, param_id):
 
 @login_required(login_url='Login')
 @require_http_methods(["GET"])
+def fn_api_cargasped_resumo(request):
+    """Retorna contagens para o painel: total de jobs, concluídos, com erros, em andamento."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    qs = CargaSpedJob.objects.filter(cliente__cod_cliente=cod_cliente)
+    total = qs.count()
+    concluidos = qs.filter(status='SUCCESS').count()
+    com_erros = qs.filter(status='ERROR').count()
+    em_andamento = qs.filter(status__in=('RUNNING', 'PENDING')).count()
+    return JsonResponse({
+        'sucesso': True,
+        'total': total,
+        'concluidos': concluidos,
+        'com_erros': com_erros,
+        'em_andamento': em_andamento,
+    }, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
 def fn_api_cargasped_avisos(request):
     """Retorna jobs de carga SPED com status ERROR (para o botão Avisos e modal de logs)."""
     cod_cliente = request.session.get('cod_cliente', None)
@@ -1656,7 +1956,10 @@ def fn_api_cargasped_avisos(request):
     ).order_by('-started_at')[:100]
     items = []
     for job in jobs:
-        log_lines = [line.strip() for line in (job.mensagem or '').splitlines() if line.strip()]
+        msg = job.mensagem or ''
+        log_lines = [line.strip() for line in msg.splitlines() if line.strip()]
+        if not log_lines and msg.strip():
+            log_lines = [msg.strip()]
         items.append({
             'id': job.id,
             'started_at': job.started_at.isoformat() if job.started_at else None,
@@ -1664,7 +1967,7 @@ def fn_api_cargasped_avisos(request):
             'total_arquivos': job.total_arquivos,
             'total_sucesso': job.total_sucesso,
             'total_erro': job.total_erro,
-            'mensagem': job.mensagem or '',
+            'mensagem': msg,
             'log': log_lines,
         })
     return JsonResponse({'sucesso': True, 'total_erros': len(items), 'items': items}, status=200)
@@ -1956,8 +2259,11 @@ def fn_api_relatorio_sped(request):
     data_inicio = request.GET.get('data_inicio', '').strip()
     data_fim = request.GET.get('data_fim', '').strip()
     busca = request.GET.get('busca', '').strip()
+    tipo_sped = request.GET.get('tipo_sped', '').strip().upper()  # F=Fiscal, C=Contribuição
 
     qs = Sped_Arquivo.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('empresa')
+    if tipo_sped in ('F', 'C'):
+        qs = qs.filter(tipo=tipo_sped)
     if busca:
         qs = qs.filter(
             Q(nome_arquivo__icontains=busca) |
@@ -2190,22 +2496,60 @@ def fn_api_relatorio_nfse_detalhe(request, id_nfse):
 @login_required(login_url='Login')
 @require_http_methods(["GET"])
 def fn_api_relatorio_sped_detalhe(request, id_arquivo):
-    """Detalhe do arquivo SPED: cabeçalho e registros fiscal/contribuição."""
+    """Detalhe do arquivo SPED: cabeçalho e registros (tabelas por tipo + genérico)."""
+    from app.db_GDF.Sped.models import (
+        Sped_Reg_0000, Sped_Reg_0001, Sped_Reg_0005, Sped_Reg_0150, Sped_Reg_0190, Sped_Reg_0200,
+        Sped_Reg_C001, Sped_Reg_C100, Sped_Reg_C170, Sped_Reg_C190, Sped_Reg_D100, Sped_Registro,
+    )
+    from decimal import Decimal
+
     empresas = _relatorio_empresas_queryset(request)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
     arq = get_object_or_404(
-        Sped_Arquivo.objects.prefetch_related('registros_fiscal', 'registros_contribuicao').select_related('empresa'),
+        Sped_Arquivo.objects.prefetch_related(
+            'reg_0000', 'reg_0001', 'reg_0005', 'reg_0150', 'reg_0190', 'reg_0200',
+            'reg_c001', 'reg_c100', 'reg_c170', 'reg_c190', 'reg_d100', 'registros',
+        ).select_related('empresa'),
         id_arquivo=id_arquivo,
         empresa__cod_empresa__in=cod_empresas,
     )
     cabecalho = _serialize_model(arq)
     if cabecalho and 'empresa' in cabecalho:
         cabecalho['empresa'] = arq.empresa.cod_empresa if arq.empresa else None
-    registros_fiscal = [{'bloco': r.bloco, 'registro': r.registro, 'conteudo': r.conteudo, 'linha': r.linha} for r in arq.registros_fiscal.all()[:500]]
-    registros_contribuicao = [{'bloco': r.bloco, 'registro': r.registro, 'conteudo': r.conteudo, 'linha': r.linha} for r in arq.registros_contribuicao.all()[:500]]
+
+    def _serialize_dec(v):
+        return float(v) if v is not None and isinstance(v, Decimal) else v
+
+    reg_0000 = [{'linha': r.linha, 'cod_ver': r.cod_ver, 'dt_ini': str(r.dt_ini) if r.dt_ini else None, 'dt_fin': str(r.dt_fin) if r.dt_fin else None, 'nome': r.nome, 'cnpj': r.cnpj} for r in arq.reg_0000.all()[:50]]
+    reg_0001 = [{'linha': r.linha, 'ind_mov': r.ind_mov} for r in arq.reg_0001.all()[:50]]
+    reg_0005 = [{'linha': r.linha, 'fantasia': r.fantasia, 'end': r.end, 'bairro': r.bairro, 'email': r.email} for r in arq.reg_0005.all()[:20]]
+    reg_0150 = [{'linha': r.linha, 'cod_part': r.cod_part, 'nome': r.nome, 'cnpj': r.cnpj, 'end': r.end} for r in arq.reg_0150.all()[:100]]
+    reg_0190 = [{'linha': r.linha, 'unid': r.unid, 'descr': r.descr} for r in arq.reg_0190.all()[:50]]
+    reg_0200 = [{'linha': r.linha, 'cod_item': r.cod_item, 'descr_item': r.descr_item, 'unid_inv': r.unid_inv, 'cod_ncm': r.cod_ncm} for r in arq.reg_0200.all()[:200]]
+    reg_c001 = [{'linha': r.linha, 'ind_mov': r.ind_mov} for r in arq.reg_c001.all()[:20]]
+    reg_c100 = [{'linha': r.linha, 'chv_nfe': r.chv_nfe, 'dt_doc': str(r.dt_doc) if r.dt_doc else None, 'vl_doc': _serialize_dec(r.vl_doc)} for r in arq.reg_c100.all()[:200]]
+    reg_c170 = [{'linha': r.linha, 'cod_item': r.cod_item, 'descr_compl': r.descr_compl, 'vl_item': _serialize_dec(r.vl_item)} for r in arq.reg_c170.all()[:500]]
+    reg_c190 = [{'linha': r.linha, 'cst_icms': r.cst_icms, 'cfop': r.cfop, 'vl_icms': _serialize_dec(r.vl_icms), 'c100_id': r.c100_id} for r in arq.reg_c190.all()[:300]]
+    reg_d100 = [{'linha': r.linha, 'chv_cte': r.chv_cte, 'dt_doc': str(r.dt_doc) if r.dt_doc else None, 'vl_doc': _serialize_dec(r.vl_doc)} for r in arq.reg_d100.all()[:200]]
+    registros = [{'registro': r.registro, 'linha': r.linha, 'campos': r.campos, 'conteudo': (r.conteudo or '')[:500]} for r in arq.registros.all()[:300]]
+    registros_fiscal = []
+    registros_contribuicao = []
+
     return JsonResponse({
         'sucesso': True,
         'cabecalho': cabecalho,
+        'reg_0000': reg_0000,
+        'reg_0001': reg_0001,
+        'reg_0005': reg_0005,
+        'reg_0150': reg_0150,
+        'reg_0190': reg_0190,
+        'reg_0200': reg_0200,
+        'reg_c001': reg_c001,
+        'reg_c100': reg_c100,
+        'reg_c170': reg_c170,
+        'reg_c190': reg_c190,
+        'reg_d100': reg_d100,
+        'registros': registros,
         'registros_fiscal': registros_fiscal,
         'registros_contribuicao': registros_contribuicao,
     }, status=200)
@@ -2236,7 +2580,7 @@ def fn_view_Relatorio_Fiscal(request):
     context = {
         'cod_cliente': cod_cliente,
         'empresas_usuario': empresas_usuario,
-        'tipo_pagamento_json': json.dumps(TIPO_PAGAMENTO_DESC),
+        'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC,
         'meio_pagamento_choices': meio_pagamento_choices,
     }
     return render(request, 'Processamento/index_Relatorio.html', context)
@@ -2357,7 +2701,8 @@ def fn_api_reprocessamento_divergencias(request, id_lote):
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
     lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
-    divs = Divergencia.objects.filter(lote=lote).order_by('-data_criacao')[:1000]
+    total_divs = Divergencia.objects.filter(lote=lote).count()
+    divs = Divergencia.objects.filter(lote=lote).order_by('tipo', 'chave_nfe', '-data_criacao')[:5000]
     lista = [
         {
             'id_divergencia': d.id_divergencia,
@@ -2369,11 +2714,23 @@ def fn_api_reprocessamento_divergencias(request, id_lote):
             'descricao': d.descricao,
             'valor_esperado': str(d.valor_esperado) if d.valor_esperado is not None else None,
             'valor_encontrado': str(d.valor_encontrado) if d.valor_encontrado is not None else None,
+            'registro_sped': d.registro_sped,
+            'linha_sped': d.linha_sped,
+            'id_nfe': d.id_nfe,
+            'detalhe_json': d.detalhe_json,
+            'data_reprocessamento': d.data_reprocessamento.isoformat() if d.data_reprocessamento else None,
+            'usuario_reprocessamento': d.usuario_reprocessamento,
             'data_criacao': d.data_criacao.isoformat(),
+            'data_atualizacao': d.data_atualizacao.isoformat() if d.data_atualizacao else None,
         }
         for d in divs
     ]
-    return JsonResponse({'sucesso': True, 'divergencias': lista, 'lote_id': lote.id_lote})
+    return JsonResponse({
+        'sucesso': True,
+        'divergencias': lista,
+        'lote_id': lote.id_lote,
+        'total': total_divs,
+    })
 
 
 @login_required(login_url='Login')
@@ -2487,3 +2844,131 @@ def fn_api_reprocessamento_reprocessar_divergencia(request, id_divergencia):
     div.usuario_reprocessamento = usuario
     div.save(update_fields=['status', 'data_reprocessamento', 'usuario_reprocessamento'])
     return JsonResponse({'sucesso': True, 'mensagem': 'Divergência marcada como resolvida.'})
+
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_api_reprocessamento_condicoes_gerar(request, id_lote):
+    """Gera/atualiza registros de condição de pagamento para o lote (chaves 44 + condição NFe)."""
+    cod_cliente = request.session.get('cod_cliente')
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
+    try:
+        from app.classes.Reprocessamento import gerar_condicoes_pagamento_lote
+        criados, atualizados = gerar_condicoes_pagamento_lote(lote.id_lote)
+        return JsonResponse({
+            'sucesso': True,
+            'criados': criados,
+            'atualizados': atualizados,
+            'mensagem': f'Gerado: {criados} novos, {atualizados} atualizados.',
+        })
+    except Exception as e:
+        return JsonResponse({'sucesso': False, 'mensagem': str(e)[:500]}, status=500)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["GET"])
+def fn_api_reprocessamento_condicoes_listar(request, id_lote):
+    """Lista condições de pagamento do lote (chave, condição NFe, SAP, retorno SAP, status)."""
+    cod_cliente = request.session.get('cod_cliente')
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
+    qs = CondicaoPagamentoLote.objects.filter(lote=lote).order_by('chave_nfe')
+    lista = [
+        {
+            'id_reg': c.id_reg,
+            'chave_nfe': c.chave_nfe,
+            'numero_nfe': c.numero_nfe,
+            'serie_nfe': c.serie_nfe,
+            'condicao_pagamento_nfe': c.condicao_pagamento_nfe,
+            'condicao_pagamento_sap': c.condicao_pagamento_sap,
+            'status': c.status,
+            'data_criacao': c.data_criacao.isoformat() if c.data_criacao else None,
+            'data_atualizacao': c.data_atualizacao.isoformat() if c.data_atualizacao else None,
+        }
+        for c in qs
+    ]
+    return JsonResponse({'sucesso': True, 'condicoes': lista, 'total': len(lista)})
+
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_api_reprocessamento_condicoes_atualizar_retorno(request, id_lote):
+    """
+    Atualiza condicao_pagamento_sap e status (ex.: PROCESSADO_SAP) por chave.
+    Body: { "itens": [ { "chave_nfe": "44...", "condicao_sap_retorno": "Z001" }, ... ] }
+    """
+    cod_cliente = request.session.get('cod_cliente')
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
+    data = json.loads(request.body) if request.body else {}
+    itens = data.get('itens') or data.get('retornos') or []
+    if not itens:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Envie "itens" com chave_nfe e condicao_sap_retorno.'}, status=400)
+    atualizados = 0
+    chaves_lote = set(
+        CondicaoPagamentoLote.objects.filter(lote=lote).values_list('chave_nfe', flat=True)
+    )
+    for item in itens:
+        chave = item.get('chave_nfe') or item.get('chave')
+        retorno = item.get('condicao_sap_retorno') or item.get('condicao_sap')
+        if not chave or chave not in chaves_lote:
+            continue
+        n = CondicaoPagamentoLote.objects.filter(lote=lote, chave_nfe=chave).update(
+            condicao_pagamento_sap=retorno or '',
+            status=item.get('status', 'PROCESSADO_SAP'),
+        )
+        atualizados += n
+    return JsonResponse({'sucesso': True, 'atualizados': atualizados, 'mensagem': f'{atualizados} registro(s) atualizado(s).'})
+
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_api_reprocessamento_condicoes_enviar_sap(request, id_lote):
+    """
+    Chama RFC e envia as condições de pagamento do lote ao SAP.
+    Atualiza a tabela com a condição retornada pelo SAP para cada chave e status PROCESSADO_SAP.
+    """
+    cod_cliente = request.session.get('cod_cliente')
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
+    condicoes = list(
+        CondicaoPagamentoLote.objects.filter(lote=lote).order_by('chave_nfe').values(
+            'chave_nfe', 'numero_nfe', 'serie_nfe', 'condicao_pagamento_nfe', 'condicao_pagamento_sap'
+        )
+    )
+    if not condicoes:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Gere a tabela de condições antes de enviar ao SAP.'}, status=400)
+    try:
+        from app.classes.SapRfc import enviar_condicoes_pagamento_sap
+        resultado = enviar_condicoes_pagamento_sap(lote.id_lote, lote.cod_empresa, condicoes)
+    except Exception as e:
+        return JsonResponse({'sucesso': False, 'mensagem': str(e)[:500]}, status=500)
+    if not resultado.get('sucesso'):
+        return JsonResponse({'sucesso': False, 'mensagem': resultado.get('mensagem', 'Erro ao enviar ao SAP.')}, status=500)
+    retornos = resultado.get('retornos') or []
+    chaves_lote = {c['chave_nfe'] for c in condicoes}
+    atualizados = 0
+    for item in retornos:
+        chave = item.get('chave_nfe')
+        cond_sap = item.get('condicao_sap') or ''
+        if chave and chave in chaves_lote:
+            n = CondicaoPagamentoLote.objects.filter(lote=lote, chave_nfe=chave).update(
+                condicao_pagamento_sap=cond_sap,
+                status='PROCESSADO_SAP',
+            )
+            atualizados += n
+    return JsonResponse({
+        'sucesso': True,
+        'mensagem': resultado.get('mensagem', 'Enviado ao SAP.'),
+        'enviados': len(retornos),
+        'atualizados': atualizados,
+    })

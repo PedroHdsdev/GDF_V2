@@ -6,6 +6,7 @@ from django.contrib.auth.models     import User, Group
 from app.db_GDF.Public.models       import Empresas, Clientes, Cert, UserEmpresas
 from app.db_GDF.Public.models       import GrupoCliente, GrpEmpresas 
 from app.db_GDF.Public.models       import Solucoes, Subsolucoes, SolucoesAcesso, SubsolucoesAcesso
+from app.db_GDF.Public.models       import SapConnection
 from datetime                       import datetime
 from django.db.utils                import OperationalError
 from django.contrib.auth.hashers    import make_password
@@ -300,6 +301,21 @@ class ClGdf():
                 cod_solucao__in=l_v_query_solucoes_acesso.values_list('solucao__cod_solucao', flat=True)
             )
             
+            # Conexão SAP do cliente (no máximo uma por cliente)
+            sap_conn = SapConnection.objects.filter(cliente=l_v_cliente).first()
+            sap_connection_data = None
+            if sap_conn:
+                sap_connection_data = {
+                    "id": sap_conn.id,
+                    "ashost": sap_conn.ashost or "",
+                    "sysnr": sap_conn.sysnr or "",
+                    "client": sap_conn.client or "",
+                    "username": sap_conn.username or "",
+                    "passwd": sap_conn.passwd or "",
+                    "lang": sap_conn.lang or "",
+                    "active": sap_conn.active,
+                }
+            
             self.Retorn = {
                 "cod_cliente": l_v_cliente.cod_cliente,
                 "razao": l_v_cliente.razao,
@@ -313,7 +329,8 @@ class ClGdf():
                         }
                         for sa in l_v_query_solucoes_acesso
                     ],
-                "solucoes_disponiveis": list(l_v_queryset_solucoes_disponiveis.values('cod_solucao', 'descricao'))
+                "solucoes_disponiveis": list(l_v_queryset_solucoes_disponiveis.values('cod_solucao', 'descricao')),
+                "sap_connection": sap_connection_data,
             }
 
         except Clientes.DoesNotExist as e:

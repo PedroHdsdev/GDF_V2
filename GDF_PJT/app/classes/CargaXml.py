@@ -311,6 +311,23 @@ class Carga_xml():
         )
         return None
 
+    def _salvar_condicao_param_se_nao_existir(self, identificacao):
+        """
+        Se a condição de pagamento da NFe ainda não existir em CondicaoParam, grava (condição NFe, SAP vazio).
+        Se já existir, não faz nada e segue.
+        """
+        from app.classes.Reprocessamento import condicao_pagamento_da_nfe
+        from app.db_Reprocessamento.models import CondicaoParam
+
+        cond_nfe = condicao_pagamento_da_nfe(identificacao)
+        if not (cond_nfe or '').strip():
+            return
+        cond_nfe = (cond_nfe or '').strip()[:120]
+        CondicaoParam.objects.get_or_create(
+            condicao_pagamento_nfe=cond_nfe,
+            condicao_pagamento_sap='',
+        )
+
     def _processar_informacoes_adicionais(self, infNFe, identificacao):
         """
         Processa o bloco infAdic da NFe (informações adicionais) e grava em NFe_Informacoes_Adicionais.
@@ -421,7 +438,20 @@ class Carga_xml():
             # Dados de emissão e operação
             data_emissao = self._to_datetime(self._get_text(ide, 'dhEmi') or self._get_text(ide, 'dEmi'), '%Y-%m-%dT%H:%M:%S') or self._to_datetime(self._get_text(ide, 'dEmi'))
             data_saida = self._to_datetime(self._get_text(ide, 'dhSaiEnt') or self._get_text(ide, 'dSaiEnt'), '%Y-%m-%dT%H:%M:%S')
-            tipo_operacao = self._get_text(ide, 'tpNF', '1')
+            # tpNF: 0 = Entrada, 1 = Saída (manual NFe). Default '0' para não marcar entrada como saída quando tag faltar.
+            tipo_operacao = (self._get_text(ide, 'tpNF', '0') or '0').strip()
+            if tipo_operacao not in ('0', '1'):
+                # Fallback: inferir pelo primeiro CFOP (1,2,3 = entrada; 5,6,7 = saída)
+                primeiro_cfop = None
+                for det in (infNFe.findall('.//nfe:det', self.ns) or infNFe.findall('.//det'))[:1]:
+                    prod = det.find('.//nfe:prod', self.ns) or det.find('.//prod')
+                    if prod is not None:
+                        primeiro_cfop = (self._get_text(prod, 'CFOP') or '').strip()
+                        break
+                if primeiro_cfop and len(primeiro_cfop) >= 1:
+                    tipo_operacao = '0' if primeiro_cfop[0] in ('1', '2', '3') else '1'
+                else:
+                    tipo_operacao = '0'
             tipo_documento = self._get_text(ide, 'tpEmis', '1')
             
             # ========== EMITENTE ==========
@@ -559,7 +589,10 @@ class Carga_xml():
 
             # ========== PROCESSAR INFORMAÇÕES ADICIONAIS (infAdic) ==========
             self._processar_informacoes_adicionais(infNFe, identificacao)
-            
+
+            # ========== SALVAR CONDIÇÃO DE PAGAMENTO EM CondicaoParam (se ainda não existir) ==========
+            self._salvar_condicao_param_se_nao_existir(identificacao)
+
             return []
         
         except EmpresaNaoCadastradaError:

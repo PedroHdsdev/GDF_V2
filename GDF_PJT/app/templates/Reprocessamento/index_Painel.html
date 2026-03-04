@@ -159,7 +159,7 @@
                                 <th class="text-end">Diverg.</th>
                                 <th class="text-center">Status</th>
                                 <th>Criação</th>
-                                <th class="text-center" style="width: 8rem;">Ações</th>
+                                <th class="text-center" style="width: 12rem;">Ações</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -187,9 +187,9 @@
 <!-- Modal: Novo confronto -->
 <div id="modal-novo-confronto" class="modal-reprocessamento" style="display: none;">
     <div class="modal-reprocessamento-content" style="max-width: 520px;">
-        <div class="modal-reprocessamento-header">
+        <div class="modal-reprocessamento-header modal-reprocessamento-header-close">
             <h5>Novo confronto SPED x NFe</h5>
-            <button type="button" class="close-modal" id="btn-fechar-modal-confronto">&times;</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary close-modal" id="btn-fechar-modal-confronto" title="Fechar" aria-label="Fechar"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-reprocessamento-body">
             <p class="text-muted small mb-3">Escolha as empresas e o mês/ano de competência para executar o confronto.</p>
@@ -252,32 +252,173 @@
 </div>
 
 <!-- Modal: Divergências do lote -->
-<div id="modal-divergencias" class="modal-reprocessamento" style="display: none;">
-    <div class="modal-reprocessamento-content" style="max-width: 900px;">
-        <div class="modal-reprocessamento-header">
-            <h5>Divergências do lote <span id="modal-divergencias-lote-id"></span></h5>
-            <button type="button" class="close-modal" id="btn-fechar-modal-divergencias">&times;</button>
+<div id="modal-divergencias" class="modal-reprocessamento modal-divergencias" style="display: none;">
+    <div class="modal-reprocessamento-content modal-divergencias-content">
+        <div class="modal-reprocessamento-header modal-divergencias-header modal-reprocessamento-header-close">
+            <div>
+                <h5 class="mb-0"><i class="fas fa-balance-scale-right text-primary me-2"></i>Divergências — Lote <span id="modal-divergencias-lote-id"></span></h5>
+                <p id="divergencias-subtitulo" class="small text-muted mb-0 mt-1 d-none">Exibindo <span id="divergencias-count">0</span> de <span id="divergencias-total">0</span> divergências</p>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary close-modal" id="btn-fechar-modal-divergencias" title="Fechar" aria-label="Fechar">X<i class="fas fa-times"></i></button>
         </div>
-        <div class="modal-reprocessamento-body">
-            <div id="divergencias-carregando" class="text-center py-3 text-muted">Carregando...</div>
-            <div id="divergencias-lista" class="d-none">
+        <div id="divergencias-resumo" class="modal-divergencias-resumo d-none">
+            <span class="badge rounded-pill bg-warning text-dark me-2" id="badge-nfe-ausente"><i class="fas fa-file-excel me-1"></i><span id="count-nfe-ausente">0</span> NF-e ausente no SPED</span>
+            <span class="badge rounded-pill bg-info text-dark me-2" id="badge-sped-ausente"><i class="fas fa-file-alt me-1"></i><span id="count-sped-ausente">0</span> SPED sem NF-e</span>
+        </div>
+
+        <!-- Abas -->
+        <ul class="nav nav-tabs modal-divergencias-tabs d-none" id="divergencias-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tab-lista-btn" type="button" role="tab"><i class="fas fa-list me-1"></i>Lista</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-por-tipo-btn" type="button" role="tab"><i class="fas fa-layer-group me-1"></i>Por tipo</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-detalhe-btn" type="button" role="tab" style="display: none;"><i class="fas fa-info-circle me-1"></i>Detalhe</button>
+            </li>
+        </ul>
+
+        <div class="modal-reprocessamento-body modal-divergencias-body tab-content" id="divergencias-tab-content">
+            <div id="divergencias-carregando" class="text-center py-5 text-muted">
+                <div class="spinner-reprocessamento mb-2"></div>
+                <p class="small mb-0">Carregando divergências...</p>
+            </div>
+
+            <!-- Aba Lista -->
+            <div class="tab-pane fade show active" id="tab-lista" role="tabpanel">
+                <div class="modal-divergencias-toolbar d-none mb-2" id="divergencias-toolbar">
+                    <label class="small text-muted me-2">Filtrar:</label>
+                    <select id="filtro-modal-tipo" class="form-select form-select-sm" style="max-width: 220px;">
+                        <option value="">Todos os tipos</option>
+                        <option value="NFE_AUSENTE_SPED">NF-e ausente no SPED</option>
+                        <option value="SPED_AUSENTE_NFE">SPED sem NF-e</option>
+                    </select>
+                </div>
+                <div id="divergencias-lista" class="d-none">
+                    <div class="table-responsive modal-divergencias-table-wrap">
+                        <table class="table table-sm table-hover table-divergencias" id="table-divergencias">
+                            <thead>
+                                <tr>
+                                    <th class="col-tipo">Tipo</th>
+                                    <th class="col-doc">Documento / Chave</th>
+                                    <th class="col-desc">Descrição</th>
+                                    <th class="text-center col-acao">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-divergencias"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Aba Por tipo -->
+            <div class="tab-pane fade" id="tab-por-tipo" role="tabpanel">
+                <div id="divergencias-por-tipo" class="d-none">
+                    <div class="card mb-3">
+                        <div class="card-header bg-warning bg-opacity-25 d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-file-excel me-1"></i>NF-e ausente no SPED</span>
+                            <span class="badge bg-warning text-dark" id="count-tipo-nfe">0</span>
+                        </div>
+                        <div class="card-body py-2">
+                            <ul class="list-group list-group-flush list-group-sm" id="lista-tipo-nfe"></ul>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header bg-info bg-opacity-25 d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-file-alt me-1"></i>SPED sem NF-e</span>
+                            <span class="badge bg-info text-dark" id="count-tipo-sped">0</span>
+                        </div>
+                        <div class="card-body py-2">
+                            <ul class="list-group list-group-flush list-group-sm" id="lista-tipo-sped"></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Aba Detalhe -->
+            <div class="tab-pane fade" id="tab-detalhe" role="tabpanel">
+                <div id="divergencia-detalhe-panel" class="d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0 text-secondary">Detalhe da divergência</h6>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-voltar-lista"><i class="fas fa-arrow-left me-1"></i>Voltar à lista</button>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <table class="table table-sm table-borderless tabela-detalhe">
+                                <tbody id="detalhe-campos"></tbody>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-2">
+                                <label class="small fw-semibold text-muted">Descrição</label>
+                                <p id="detalhe-descricao" class="small mb-0 text-break"></p>
+                            </div>
+                            <div id="detalhe-json-wrap" class="d-none">
+                                <label class="small fw-semibold text-muted">Dados adicionais (JSON)</label>
+                                <pre id="detalhe-json" class="small bg-light p-2 rounded mb-0" style="max-height: 180px; overflow: auto;"></pre>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-top">
+                        <button type="button" class="btn btn-success btn-sm btn-resolver-detalhe" id="btn-resolver-detalhe" style="display: none;"><i class="fas fa-check me-1"></i>Marcar como resolvida</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="divergencias-vazio" class="text-center py-5 d-none">
+                <i class="fas fa-check-circle text-success" style="font-size: 2.5rem;"></i>
+                <p class="text-muted mt-2 mb-0">Nenhuma divergência neste lote.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Condições de pagamento (lote → SAP) -->
+<div id="modal-condicoes-pagamento" class="modal-reprocessamento modal-condicoes-pagamento" style="display: none;">
+    <div class="modal-reprocessamento-content modal-condicoes-content">
+        <div class="modal-reprocessamento-header modal-divergencias-header modal-reprocessamento-header-close">
+            <div>
+                <h5 class="mb-0"><i class="fas fa-file-invoice-dollar text-primary me-2"></i>Condições de pagamento — Lote <span id="modal-condicoes-lote-id"></span></h5>
+                <p class="small text-muted mb-0 mt-1">Chaves NF-e (44), condição da NFe e condição SAP. Use para ajustar pedido de compra no SAP via RFC e depois atualizar com o retorno.</p>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary close-modal" id="btn-fechar-modal-condicoes" title="Fechar" aria-label="Fechar">X<i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-reprocessamento-body modal-condicoes-body">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <button type="button" class="btn btn-primary btn-sm" id="btn-gerar-condicoes" title="Gerar tabela a partir das NF-e do lote">
+                    <i class="fas fa-cogs me-1"></i>Gerar tabela
+                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btn-enviar-sap" title="Chamar RFC e enviar condições ao SAP">
+                    <i class="fas fa-paper-plane me-1"></i>Enviar ao SAP
+                </button>
+                <span id="condicoes-resumo" class="small text-muted ms-2"></span>
+            </div>
+            <div id="condicoes-carregando" class="text-center py-4 text-muted d-none">
+                <div class="spinner-reprocessamento mb-2"></div>
+                <p class="small mb-0">Carregando...</p>
+            </div>
+            <div id="condicoes-vazio" class="text-center py-4 d-none">
+                <i class="fas fa-table text-muted" style="font-size: 2rem;"></i>
+                <p class="text-muted mt-2 mb-1">Nenhum registro de condição de pagamento.</p>
+                <p class="small text-muted mb-0">Clique em <strong>Gerar tabela</strong> para preencher a partir das NF-e do lote.</p>
+            </div>
+            <div id="condicoes-tabela-wrap" class="d-none">
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover table-divergencias">
-                        <thead>
+                    <table class="table table-sm table-hover mb-0" id="tabela-condicoes-pagamento">
+                        <thead class="table-light">
                             <tr>
-                                <th class="col-tipo">Tipo</th>
-                                <th>Chave / Número</th>
-                                <th>Descrição</th>
-                                <th class="text-center col-acao">Ação</th>
+                                <th class="text-center">Chave (44)</th>
+                                <th>Nº / Série</th>
+                                <th>Condição NFe</th>
+                                <th>Condição SAP</th>
+                                <th class="text-center">Status</th>
                             </tr>
                         </thead>
-                        <tbody id="tbody-divergencias"></tbody>
+                        <tbody id="tbody-condicoes-pagamento"></tbody>
                     </table>
                 </div>
             </div>
-            <p id="divergencias-vazio" class="text-muted text-center py-3 d-none">
-                <i class="fas fa-check-circle me-1"></i> Nenhuma divergência neste lote.
-            </p>
         </div>
     </div>
 </div>

@@ -45,11 +45,13 @@ urlpatterns = [
     path('api/cargaxml/avisos/', views.fn_api_cargaxml_avisos, name='API_CargaXmlAvisos'),
     path('api/cargaxml/jobs/', views.fn_api_cargaxml_jobs, name='API_CargaXmlJobs'),
     path('api/cargaxml/jobs/<int:job_id>/', views.fn_api_cargaxml_job_details, name='API_CargaXmlJobDetails'),
+    path('api/cargaxml/resumo/', views.fn_api_cargaxml_resumo, name='API_CargaXmlResumo'),
 
     path('api/cargasped/parametros/', views.fn_api_cargasped_parametros, name='API_CargaSpedParams'),
     path('api/cargasped/parametros/<int:param_id>/', views.fn_api_cargasped_parametro_detail, name='API_CargaSpedParamDetail'),
     path('api/cargasped/parametros/<int:param_id>/toggle/', views.fn_api_cargasped_param_toggle, name='API_CargaSpedParamToggle'),
     path('api/cargasped/parametros/<int:param_id>/upload-zip/', views.fn_api_cargasped_upload_zip, name='API_CargaSpedUploadZip'),
+    path('api/cargasped/resumo/', views.fn_api_cargasped_resumo, name='API_CargaSpedResumo'),
     path('api/cargasped/avisos/', views.fn_api_cargasped_avisos, name='API_CargaSpedAvisos'),
     path('api/cargasped/jobs/', views.fn_api_cargasped_jobs, name='API_CargaSpedJobs'),
     path('api/cargasped/jobs/<int:job_id>/', views.fn_api_cargasped_job_details, name='API_CargaSpedJobDetails'),
@@ -67,6 +69,10 @@ urlpatterns = [
     # API Reprocessamento (Painel: lotes, divergências, confronto)
     path('api/reprocessamento/lotes/', views.fn_api_reprocessamento_lotes, name='API_ReprocessamentoLotes'),
     path('api/reprocessamento/lotes/<int:id_lote>/divergencias/', views.fn_api_reprocessamento_divergencias, name='API_ReprocessamentoDivergencias'),
+    path('api/reprocessamento/lotes/<int:id_lote>/condicoes-pagamento/gerar/', views.fn_api_reprocessamento_condicoes_gerar, name='API_ReprocessamentoCondicoesGerar'),
+    path('api/reprocessamento/lotes/<int:id_lote>/condicoes-pagamento/', views.fn_api_reprocessamento_condicoes_listar, name='API_ReprocessamentoCondicoesListar'),
+    path('api/reprocessamento/lotes/<int:id_lote>/condicoes-pagamento/enviar-sap/', views.fn_api_reprocessamento_condicoes_enviar_sap, name='API_ReprocessamentoCondicoesEnviarSap'),
+    path('api/reprocessamento/lotes/<int:id_lote>/condicoes-pagamento/atualizar-retorno/', views.fn_api_reprocessamento_condicoes_atualizar_retorno, name='API_ReprocessamentoCondicoesAtualizarRetorno'),
     path('api/reprocessamento/confronto/', views.fn_api_reprocessamento_confronto, name='API_ReprocessamentoConfronto'),
     path('api/reprocessamento/divergencias/<int:id_divergencia>/reprocessar/', views.fn_api_reprocessamento_reprocessar_divergencia, name='API_ReprocessamentoReprocessarDivergencia'),
     
@@ -88,6 +94,7 @@ urlpatterns = [
     path('cliente/inserir/', views.fn_view_inserir_cliente, name='Cliente_ins'),
     path('cliente/Acesso/', views.fn_view_atualizar_acesso_cliente, name='Cliente_acesso_upd'),
     path('cliente/<str:cod_cliente>/', views.fn_view_atualizar_cliente, name='Cliente_upd'),
-    
+    path('cliente/<str:cod_cliente>/sap/', views.fn_view_cliente_sap, name='Cliente_sap'),
+
     path('',views.fn_view_login),
 ]
