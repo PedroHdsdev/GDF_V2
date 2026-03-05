@@ -5,6 +5,7 @@ Funciona mesmo sem SPED (só XML): todas as NF-e do mês aparecem como divergên
 Condições de pagamento: extração a partir das parcelas da NFe e geração da tabela por lote para uso no SAP.
 """
 import re
+from django.db import models
 from django.utils import timezone
 
 
@@ -19,11 +20,16 @@ def _normalizar_chave(chave):
 def _extrair_chaves_sped(competencia, cod_empresa):
     """
     Busca arquivos SPED da empresa/competência e extrai chaves NF-e dos registros C100/D100.
-    Considera tanto EFD ICMS/IPI (tipo F) quanto EFD Contribuições (tipo C) — ambos têm C100 com chv_nfe.
-    Usa Sped_Reg_C100 (chv_nfe) e Sped_Registro (D100). Retorna set de chaves (44 dígitos).
-    Filtra por mês/ano da competência. Considera empresa, cliente ou empresa=None com CNPJ no 0000.
+    Considera sped_fiscal e sped_contribuicao — ambos têm C100 com chv_nfe.
+    Usa SpedFiscalReg_C100/SpedContribuicaoReg_C100 e SpedFiscalRegistro/SpedContribuicaoRegistro (D100).
+    Retorna set de chaves (44 dígitos).
     """
-    from app.db_GDF.Sped.models import Sped_Arquivo, Sped_Reg_C100, Sped_Registro, Sped_Reg_0000
+    from app.db_GDF.sped_fiscal.models import (
+        SpedFiscalArquivo, SpedFiscalReg_C100, SpedFiscalRegistro, SpedFiscalReg_0000,
+    )
+    from app.db_GDF.sped_contribuicao.models import (
+        SpedContribuicaoArquivo, SpedContribuicaoReg_C100, SpedContribuicaoRegistro, SpedContribuicaoReg_0000,
+    )
     from app.db_GDF.Public.models import Empresas
 
     chaves = set()
@@ -32,68 +38,54 @@ def _extrair_chaves_sped(competencia, cod_empresa):
         cnpj_empresa = (empresa.cnpj or '').replace('.', '').replace('/', '').replace('-', '').strip()[:14]
     except Empresas.DoesNotExist:
         return chaves
-    # Filtro por mês/ano. Tipo F (Fiscal) e C (Contribuições) — ambos têm C100 com chaves NF-e
-    arquivos = Sped_Arquivo.objects.filter(
+
+    arqs_f = SpedFiscalArquivo.objects.filter(
         empresa=empresa,
-        tipo__in=['F', 'C'],
         competencia__year=competencia.year,
         competencia__month=competencia.month,
     )
-    # Se não achou com empresa vinculada, tenta arquivos com cliente (SPED vinculado ao cliente)
-    # ou empresa=None cujo 0000 tem mesmo CNPJ
+    arqs_c = SpedContribuicaoArquivo.objects.filter(
+        empresa=empresa,
+        competencia__year=competencia.year,
+        competencia__month=competencia.month,
+    )
     cod_cliente = getattr(empresa.cliente, 'cod_cliente', None) if empresa.cliente else None
-    if not arquivos.exists():
-        # Por cliente: SPED vinculado ao cliente da empresa (filtra por CNPJ pois 1 cliente = várias empresas)
+    arquivos = list(arqs_f) + list(arqs_c)
+    if not arquivos:
         if cod_cliente and cnpj_empresa:
-            qs_cliente = Sped_Arquivo.objects.filter(
-                cliente_id=cod_cliente,
-                tipo__in=['F', 'C'],
-                competencia__year=competencia.year,
-                competencia__month=competencia.month,
-            )
-            ids_por_cliente = []
-            for arq in qs_cliente:
-                reg0000 = Sped_Reg_0000.objects.filter(arquivo=arq).first()
-                if not reg0000 or not reg0000.cnpj:
-                    continue
-                cnpj_arq = (reg0000.cnpj or '').replace('.', '').replace('/', '').replace('-', '').strip()[:14]
-                if cnpj_arq == cnpj_empresa:
-                    ids_por_cliente.append(arq.id_arquivo)
-            if ids_por_cliente:
-                arquivos = Sped_Arquivo.objects.filter(id_arquivo__in=ids_por_cliente)
-        # Fallback: empresa=None, mesmo CNPJ no 0000
-        if not arquivos.exists() and cnpj_empresa:
-            ids_sem_empresa = []
-            qs_sem_empresa = Sped_Arquivo.objects.filter(empresa__isnull=True, tipo__in=['F', 'C'])
+            qs_cf = SpedFiscalArquivo.objects.filter(cliente_id=cod_cliente, competencia__year=competencia.year, competencia__month=competencia.month)
+            qs_cc = SpedContribuicaoArquivo.objects.filter(cliente_id=cod_cliente, competencia__year=competencia.year, competencia__month=competencia.month)
+            for arq in list(qs_cf) + list(qs_cc):
+                Reg0000 = SpedFiscalReg_0000 if isinstance(arq, SpedFiscalArquivo) else SpedContribuicaoReg_0000
+                reg0000 = Reg0000.objects.filter(arquivo=arq).first()
+                if reg0000 and reg0000.cnpj:
+                    cnpj_arq = (reg0000.cnpj or '').replace('.', '').replace('/', '').replace('-', '').strip()[:14]
+                    if cnpj_arq == cnpj_empresa:
+                        arquivos.append(arq)
+        if not arquivos and cnpj_empresa:
+            qs_sem_f = SpedFiscalArquivo.objects.filter(empresa__isnull=True, competencia__year=competencia.year, competencia__month=competencia.month)
+            qs_sem_c = SpedContribuicaoArquivo.objects.filter(empresa__isnull=True, competencia__year=competencia.year, competencia__month=competencia.month)
             if cod_cliente:
-                qs_sem_empresa = qs_sem_empresa.filter(cliente_id=cod_cliente)
-            qs_sem_empresa = qs_sem_empresa.filter(
-                competencia__year=competencia.year,
-                competencia__month=competencia.month,
-            )
-            for arq in qs_sem_empresa:
-                reg0000 = Sped_Reg_0000.objects.filter(arquivo=arq).first()
-                if not reg0000 or not reg0000.cnpj:
-                    continue
-                cnpj_arq = (reg0000.cnpj or '').replace('.', '').replace('/', '').replace('-', '').strip()[:14]
-                if cnpj_arq != cnpj_empresa:
-                    continue
-                # Verifica mês: por competencia ou por dt_ini do 0000
-                if arq.competencia and arq.competencia.year == competencia.year and arq.competencia.month == competencia.month:
-                    ids_sem_empresa.append(arq.id_arquivo)
-                elif reg0000.dt_ini and reg0000.dt_ini.year == competencia.year and reg0000.dt_ini.month == competencia.month:
-                    ids_sem_empresa.append(arq.id_arquivo)
-            if ids_sem_empresa:
-                arquivos = Sped_Arquivo.objects.filter(id_arquivo__in=ids_sem_empresa)
-    if not arquivos.exists():
+                qs_sem_f = qs_sem_f.filter(cliente_id=cod_cliente)
+                qs_sem_c = qs_sem_c.filter(cliente_id=cod_cliente)
+            for arq in list(qs_sem_f) + list(qs_sem_c):
+                Reg0000 = SpedFiscalReg_0000 if isinstance(arq, SpedFiscalArquivo) else SpedContribuicaoReg_0000
+                reg0000 = Reg0000.objects.filter(arquivo=arq).first()
+                if reg0000 and reg0000.cnpj:
+                    cnpj_arq = (reg0000.cnpj or '').replace('.', '').replace('/', '').replace('-', '').strip()[:14]
+                    if cnpj_arq == cnpj_empresa:
+                        arquivos.append(arq)
+    if not arquivos:
         return chaves
     padrao_chave = re.compile(r'\d{44}')
     for arq in arquivos:
-        for c100 in Sped_Reg_C100.objects.filter(arquivo=arq):
+        Reg_C100 = SpedFiscalReg_C100 if isinstance(arq, SpedFiscalArquivo) else SpedContribuicaoReg_C100
+        Reg_Registro = SpedFiscalRegistro if isinstance(arq, SpedFiscalArquivo) else SpedContribuicaoRegistro
+        for c100 in Reg_C100.objects.filter(arquivo=arq):
             ch = _normalizar_chave(c100.chv_nfe)
             if ch:
                 chaves.add(ch)
-        for reg in Sped_Registro.objects.filter(arquivo=arq, registro='D100'):
+        for reg in Reg_Registro.objects.filter(arquivo=arq, registro='D100'):
             texto = reg.conteudo or str(reg.campos or '')
             for match in padrao_chave.findall(texto):
                 ch = _normalizar_chave(match)
@@ -147,25 +139,54 @@ def condicao_pagamento_da_nfe(identificacao):
     return f"{len(parcelas)}x em {'/'.join(str(d) for d in dias)} dias"
 
 
-def _condicao_sap_da_param(condicao_nfe, cod_cliente=None):
+def tipo_pagamento_da_nfe(identificacao):
     """
-    Busca condicao_pagamento_sap em CondicaoParam pelo condicao_pagamento_nfe (depara).
-    Filtra por cod_cliente quando informado. Retorna string ou '' se não houver correspondência.
+    Retorna o código do tipo de pagamento (tPag) da NF-e, ex.: '01', '02', '20'.
+    Usa o primeiro detPag (meio_pagamento) do NFe_Pagamento. Retorna '' se não houver.
+    """
+    try:
+        pag = identificacao.pagamento
+        t = (pag.meio_pagamento or '').strip()
+        return t[:2] if t else ''
+    except Exception:
+        return ''
+
+
+def _condicao_sap_da_param(condicao_nfe, tipo_pagamento=None, cod_cliente=None):
+    """
+    Busca condicao_pagamento_sap em CondicaoParam pelo condicao_pagamento_nfe e tipo_pagamento (depara).
+    Filtra por cod_cliente quando informado.
+    Primeiro tenta com tipo_pagamento específico; se não achar, tenta com tipo vazio (fallback).
+    Retorna string ou '' se não houver correspondência.
     """
     from app.db_Reprocessamento.models import CondicaoParam
 
     if not (condicao_nfe or '').strip():
         return ''
     cond_nfe = (condicao_nfe or '').strip()[:120]
-    base_qs = CondicaoParam.objects.filter(condicao_pagamento_nfe=cond_nfe)
-    if cod_cliente:
-        base_qs = base_qs.filter(cliente_id=cod_cliente)
-    # Preferir registro com condicao_pagamento_sap preenchida
-    obj = base_qs.exclude(condicao_pagamento_sap='').order_by('condicao_pagamento_sap').first()
-    if obj:
-        return (obj.condicao_pagamento_sap or '').strip()
-    obj = base_qs.first()
-    return (obj.condicao_pagamento_sap or '').strip() if obj else ''
+    tipo = (tipo_pagamento or '').strip()[:2] if tipo_pagamento else None
+
+    def _buscar(tipo_val):
+        qs = CondicaoParam.objects.filter(condicao_pagamento_nfe=cond_nfe)
+        if tipo_val is not None and tipo_val != '':
+            qs = qs.filter(tipo_pagamento=tipo_val)
+        else:
+            qs = qs.filter(models.Q(tipo_pagamento='') | models.Q(tipo_pagamento__isnull=True))
+        if cod_cliente:
+            qs = qs.filter(cliente_id=cod_cliente)
+        obj = qs.exclude(condicao_pagamento_sap='').exclude(condicao_pagamento_sap__isnull=True).order_by('condicao_pagamento_sap').first()
+        if obj:
+            return (obj.condicao_pagamento_sap or '').strip()
+        obj = qs.first()
+        return (obj.condicao_pagamento_sap or '').strip() if obj else ''
+
+    # Primeiro tenta com tipo específico
+    if tipo:
+        result = _buscar(tipo)
+        if result:
+            return result
+    # Fallback: tipo vazio (compatibilidade com registros antigos)
+    return _buscar(None)
 
 
 def gerar_condicoes_pagamento_lote(id_lote):
@@ -194,7 +215,7 @@ def gerar_condicoes_pagamento_lote(id_lote):
     nfe_por_id = {
         nfe.id_nfe: nfe
         for nfe in NFe.objects.filter(id_nfe__in=ids).select_related(
-            'identificacao'
+            'identificacao', 'identificacao__pagamento'
         ).prefetch_related('identificacao__cobranca__parcelas')
     }
     criados = 0
@@ -204,7 +225,8 @@ def gerar_condicoes_pagamento_lote(id_lote):
         if not nfe:
             continue
         condicao_nfe = condicao_pagamento_da_nfe(nfe.identificacao)
-        condicao_sap = _condicao_sap_da_param(condicao_nfe, cod_cliente=cod_cliente)
+        tipo_pag = tipo_pagamento_da_nfe(nfe.identificacao)
+        condicao_sap = _condicao_sap_da_param(condicao_nfe, tipo_pagamento=tipo_pag, cod_cliente=cod_cliente)
         obj, created = CondicaoPagamentoLote.objects.update_or_create(
             lote=lote,
             chave_nfe=item['chave_acesso'],
@@ -213,7 +235,8 @@ def gerar_condicoes_pagamento_lote(id_lote):
                 'serie_nfe': item.get('serie'),
                 'condicao_pagamento_nfe': condicao_nfe,
                 'condicao_pagamento_sap': condicao_sap,
-                'status': 'PENDENTE',
+                'tipo_pagamento': tipo_pag or None,
+                'status': 'P',
             },
         )
         if created:

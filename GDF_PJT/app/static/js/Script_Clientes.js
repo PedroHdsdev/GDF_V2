@@ -806,6 +806,48 @@ async function fn_submit_sap(form) {
 }
 
 /* ===============================
+   CONEXÃO SAP – TESTAR CONEXÃO
+================================ */
+async function fn_testar_sap() {
+  const codCliente = document.getElementById('sap_cliente_id').value;
+  if (!codCliente) {
+    Notificacoes.modal('Cliente não identificado.', 'danger', 'modalClienteUpdAlerts');
+    return;
+  }
+  const btn = document.getElementById('btn-testar-sap');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Testando...';
+  }
+  try {
+    const csrf = document.querySelector('#formSapUpd input[name="csrfmiddlewaretoken"]');
+    const resp = await fetch('/api/sap/testar-conexao/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': csrf ? csrf.value : ''
+      },
+      body: JSON.stringify({ cod_cliente: codCliente })
+    });
+    const data = await resp.json();
+    if (data.sucesso) {
+      Notificacoes.modal(data.mensagem || 'Conexão SAP OK.', 'success', 'modalClienteUpdAlerts');
+    } else {
+      Notificacoes.modal(data.mensagem || 'Falha ao testar conexão SAP.', 'danger', 'modalClienteUpdAlerts');
+    }
+  } catch (err) {
+    console.error(err);
+    Notificacoes.modal('Erro ao testar conexão SAP.', 'danger', 'modalClienteUpdAlerts');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-plug"></i> Testar conexão';
+    }
+  }
+}
+
+/* ===============================
    RESETAR FORMULÁRIO UPDATE
 ================================ */
 function fn_resetar_formulario() {
@@ -948,6 +990,12 @@ document.addEventListener('DOMContentLoaded', () => {
       event.preventDefault();
       fn_submit_sap(event.target);
     });
+  }
+
+  // Botão Testar conexão SAP
+  const btnTestarSap = document.getElementById('btn-testar-sap');
+  if (btnTestarSap) {
+    btnTestarSap.addEventListener('click', fn_testar_sap);
   }
 });
 

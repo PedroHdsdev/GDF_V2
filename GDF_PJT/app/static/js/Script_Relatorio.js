@@ -8,6 +8,7 @@ function relatorioTabAtivo() {
 function relatorioParams() {
     var params = {
         empresa_id: (document.getElementById('relatorio-empresa') && document.getElementById('relatorio-empresa').value.trim()) || '',
+        grp_empresa: (document.getElementById('relatorio-grp-empresa') && document.getElementById('relatorio-grp-empresa').value.trim()) || '',
         data_inicio: (document.getElementById('relatorio-data-inicio') && document.getElementById('relatorio-data-inicio').value.trim()) || '',
         data_fim: (document.getElementById('relatorio-data-fim') && document.getElementById('relatorio-data-fim').value.trim()) || '',
         busca: (document.getElementById('relatorio-busca') && document.getElementById('relatorio-busca').value.trim()) || ''
@@ -26,6 +27,7 @@ function relatorioParams() {
 function relatorioBuildUrl(base, params) {
     var q = new URLSearchParams();
     if (params.empresa_id) q.set('empresa_id', params.empresa_id);
+    if (params.grp_empresa) q.set('grp_empresa', params.grp_empresa);
     if (params.data_inicio) q.set('data_inicio', params.data_inicio);
     if (params.data_fim) q.set('data_fim', params.data_fim);
     if (params.busca) q.set('busca', params.busca);
@@ -179,7 +181,7 @@ function arrayParaTabela(arr, columns, formatCols) {
     return html;
 }
 
-function abrirDetalhe(tipo, id) {
+function abrirDetalhe(tipo, id, tipoSped) {
     var modal = document.getElementById('modalRelatorioDetalhe');
     var loading = document.getElementById('modal-rel-loading');
     var content = document.getElementById('modal-rel-content');
@@ -196,7 +198,9 @@ function abrirDetalhe(tipo, id) {
     var modalBs = new bootstrap.Modal(modal);
     modalBs.show();
 
-    var url = '/api/relatorio/' + tipo.toLowerCase() + '/' + id + '/';
+    var url = (tipo === 'sped' && tipoSped)
+        ? '/api/relatorio/sped/' + tipoSped + '/' + id + '/'
+        : '/api/relatorio/' + tipo.toLowerCase() + '/' + id + '/';
     fetch(url)
         .then(function (r) { return r.json(); })
         .then(function (data) {
@@ -626,14 +630,17 @@ function relatorioCarregarSped() {
                 return;
             }
             tbody.innerHTML = items.map(function (x) {
-                return '<tr class="tr-relatorio-click" data-tipo="sped" data-id="' + (x.id_arquivo || '') + '">' +
+                return '<tr class="tr-relatorio-click" data-tipo="sped" data-id="' + (x.id_arquivo || '') + '" data-tipo-sped="' + (x.tipo || 'F') + '">' +
                     '<td>' + (x.tipo_display || x.tipo || '-') + '</td>' +
                     '<td>' + (x.competencia ? x.competencia.slice(0, 10) : '-') + '</td>' +
                     '<td class="text-truncate" style="max-width:200px">' + (x.nome_arquivo || '-') + '</td>' +
                     '<td>' + (x.data_carga ? x.data_carga.slice(0, 16) : '-') + '</td><td>' + (x.empresa || '-') + '</td></tr>';
             }).join('');
             tbody.querySelectorAll('tr[data-id]').forEach(function (tr) {
-                tr.addEventListener('click', function () { abrirDetalhe(tr.getAttribute('data-tipo'), tr.getAttribute('data-id')); });
+                var t = tr.getAttribute('data-tipo');
+                var id = tr.getAttribute('data-id');
+                var tipoSped = tr.getAttribute('data-tipo-sped');
+                tr.addEventListener('click', function () { abrirDetalhe(t, id, tipoSped); });
             });
         })
         .catch(function () { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('sped', 0); });

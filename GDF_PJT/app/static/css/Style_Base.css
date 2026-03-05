@@ -179,6 +179,21 @@
     padding: 0.5rem;
 }
 
+/* Botão de ação dentro do alerta (ex: "Atualizar painel") */
+.alert-padrao .alert-padrao-acao {
+    flex-shrink: 0;
+    border: 1px solid currentColor;
+    color: inherit;
+    background: transparent;
+    opacity: 0.9;
+}
+.alert-padrao .alert-padrao-acao:hover {
+    opacity: 1;
+    background-color: rgba(0,0,0,0.06);
+    border-color: currentColor;
+    color: inherit;
+}
+
 /* Cores por tipo (página e modal) */
 .alert.alert-error {
     color: #721c24;

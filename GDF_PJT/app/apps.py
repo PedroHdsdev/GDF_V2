@@ -16,7 +16,8 @@ class AppConfig(AppConfig):
         try:
             import app.db_GDF.CTe.models  # noqa: F401
             import app.db_GDF.NFSe.models  # noqa: F401
-            import app.db_GDF.Sped.models  # noqa: F401
+            import app.db_GDF.sped_fiscal.models  # noqa: F401
+            import app.db_GDF.sped_contribuicao.models  # noqa: F401
             import app.db_Reprocessamento.models  # noqa: F401
         except ImportError:
             # during early development the modules may not exist yet

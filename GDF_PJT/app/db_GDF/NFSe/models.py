@@ -327,3 +327,27 @@ class NFSe(models.Model):
 
     def __str__(self):
         return f"NFSe {self.identificacao.numero}"
+
+
+class NFSe_Evento(models.Model):
+    """Eventos vinculados à NFSe (cancelamento, etc.) - carregados via XML de evento."""
+    id_evento = models.AutoField(primary_key=True)
+    nfse_identificacao = models.ForeignKey(NFSe_Identificacao, on_delete=models.CASCADE, related_name='eventos')
+    tipo_evento = models.CharField(max_length=20, blank=True, null=True)
+    descricao_evento = models.CharField(max_length=100, blank=True, null=True)
+    justificativa = models.TextField(blank=True, null=True)
+    data_evento = models.DateTimeField(blank=True, null=True)
+    numero_sequencia = models.IntegerField(default=1)
+    xml_evento = models.TextField(blank=True, null=True)
+    data_criacao = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        managed = True
+        db_table = '"nfse"."nfse_evento"'
+        unique_together = [['nfse_identificacao', 'tipo_evento', 'numero_sequencia']]
+        indexes = [
+            models.Index(fields=['nfse_identificacao', 'tipo_evento']),
+        ]
+
+    def __str__(self):
+        return f"Evento {self.tipo_evento or '?'} - NFSe {self.nfse_identificacao.numero}"

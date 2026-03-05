@@ -17,7 +17,12 @@ class Command(BaseCommand):
         parser.add_argument('--empresa', help='Código da empresa (opcional; se omitido, lista todas)')
 
     def handle(self, *args, **options):
-        from app.db_GDF.Sped.models import Sped_Arquivo, Sped_Reg_C100, Sped_Reg_0000
+        from app.db_GDF.sped_fiscal.models import (
+            SpedFiscalArquivo, SpedFiscalReg_C100, SpedFiscalReg_0000,
+        )
+        from app.db_GDF.sped_contribuicao.models import (
+            SpedContribuicaoArquivo, SpedContribuicaoReg_C100, SpedContribuicaoReg_0000,
+        )
         from app.db_GDF.NFe.models import NFe
         from app.db_GDF.Public.models import Empresas
 
@@ -42,39 +47,44 @@ class Command(BaseCommand):
             self.stdout.write(f'\nEmpresa: {emp.cod_empresa} - {emp.fantasia or emp.razao}')
             self.stdout.write(f'  CNPJ: {emp.cnpj}')
 
-            # SPED (Fiscal e Contribuições — ambos têm C100 com chaves NF-e)
-            arqs = Sped_Arquivo.objects.filter(
-                empresa=emp,
-                tipo__in=['F', 'C'],
-                competencia__year=dt.year,
-                competencia__month=dt.month,
-            )
-            arqs_sem_emp = Sped_Arquivo.objects.filter(
-                empresa__isnull=True,
-                tipo__in=['F', 'C'],
-                competencia__year=dt.year,
-                competencia__month=dt.month,
-            )
+            arqs_f = SpedFiscalArquivo.objects.filter(empresa=emp, competencia__year=dt.year, competencia__month=dt.month)
+            arqs_c = SpedContribuicaoArquivo.objects.filter(empresa=emp, competencia__year=dt.year, competencia__month=dt.month)
+            arqs_sem_f = SpedFiscalArquivo.objects.filter(empresa__isnull=True, competencia__year=dt.year, competencia__month=dt.month)
+            arqs_sem_c = SpedContribuicaoArquivo.objects.filter(empresa__isnull=True, competencia__year=dt.year, competencia__month=dt.month)
             cnpj_emp = (emp.cnpj or '').replace('.', '').replace('/', '').replace('-', '')[:14]
-            ids_match_cnpj = []
-            for a in arqs_sem_emp:
-                r = Sped_Reg_0000.objects.filter(arquivo=a).first()
+            ids_match = []
+            for a in arqs_sem_f:
+                r = SpedFiscalReg_0000.objects.filter(arquivo=a).first()
                 if r and r.cnpj:
                     cnpj_a = (r.cnpj or '').replace('.', '').replace('/', '').replace('-', '')[:14]
                     if cnpj_a == cnpj_emp:
-                        ids_match_cnpj.append(a.id_arquivo)
+                        ids_match.append(('F', a.id_arquivo))
+            for a in arqs_sem_c:
+                r = SpedContribuicaoReg_0000.objects.filter(arquivo=a).first()
+                if r and r.cnpj:
+                    cnpj_a = (r.cnpj or '').replace('.', '').replace('/', '').replace('-', '')[:14]
+                    if cnpj_a == cnpj_emp:
+                        ids_match.append(('C', a.id_arquivo))
 
-            total_sped = arqs.count() + len(ids_match_cnpj)
-            self.stdout.write(f'  SPED (empresa vinculada): {arqs.count()} arquivo(s)')
-            for a in arqs:
-                n_c100 = Sped_Reg_C100.objects.filter(arquivo=a).count()
+            total_sped = arqs_f.count() + arqs_c.count() + len(ids_match)
+            self.stdout.write(f'  SPED Fiscal (empresa vinculada): {arqs_f.count()} arquivo(s)')
+            for a in arqs_f:
+                n_c100 = SpedFiscalReg_C100.objects.filter(arquivo=a).count()
                 self.stdout.write(f'    - id={a.id_arquivo} competencia={a.competencia} C100={n_c100}')
-            if ids_match_cnpj:
-                self.stdout.write(f'  SPED (empresa=None, CNPJ match): {len(ids_match_cnpj)} arquivo(s)')
-                for aid in ids_match_cnpj:
-                    a = Sped_Arquivo.objects.get(id_arquivo=aid)
-                    n_c100 = Sped_Reg_C100.objects.filter(arquivo=a).count()
-                    self.stdout.write(f'    - id={a.id_arquivo} competencia={a.competencia} C100={n_c100}')
+            self.stdout.write(f'  SPED Contribuição (empresa vinculada): {arqs_c.count()} arquivo(s)')
+            for a in arqs_c:
+                n_c100 = SpedContribuicaoReg_C100.objects.filter(arquivo=a).count()
+                self.stdout.write(f'    - id={a.id_arquivo} competencia={a.competencia} C100={n_c100}')
+            if ids_match:
+                self.stdout.write(f'  SPED (empresa=None, CNPJ match): {len(ids_match)} arquivo(s)')
+                for tipo, aid in ids_match:
+                    if tipo == 'F':
+                        a = SpedFiscalArquivo.objects.get(id_arquivo=aid)
+                        n_c100 = SpedFiscalReg_C100.objects.filter(arquivo=a).count()
+                    else:
+                        a = SpedContribuicaoArquivo.objects.get(id_arquivo=aid)
+                        n_c100 = SpedContribuicaoReg_C100.objects.filter(arquivo=a).count()
+                    self.stdout.write(f'    - [{tipo}] id={a.id_arquivo} competencia={a.competencia} C100={n_c100}')
 
             # NF-e
             nfe_count = NFe.objects.filter(

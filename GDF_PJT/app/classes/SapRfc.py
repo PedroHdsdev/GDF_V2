@@ -256,7 +256,7 @@ class SapRfc:
         """
         return SapRfc.call(
             cod_cliente,
-            '/BRGMN/CUSTR_IMP_CUSTO',
+            '/PRCIT/GDF_condicoes_pagamento',
             I_V_BUKRS=bukrs,
             I_V_BRANCH=branch,
             I_V_PSDAT_INI=psdat_ini,
@@ -317,14 +317,24 @@ def enviar_condicoes_pagamento_sap(id_lote, cod_empresa, condicoes_lista):
             'retornos': retornos,
         }
 
+    # Mapear para estrutura ZGDF_S_COND_PAGAMENTO: CHAVE, COND_PAG_NFE, COND_PAG_SAP
+    # (SAP retorna a mesma tabela com STATUS preenchido em R_T_COND)
+    t_cond_pagamento = []
+    for c in condicoes_lista:
+        t_cond_pagamento.append({
+            'CHAVE': (c.get('chave_nfe') or '')[:44],
+            'COND_PAG_NFE': (c.get('condicao_pagamento_nfe') or '')[:50],
+            'COND_PAG_SAP': (c.get('condicao_pagamento_sap') or '')[:4],
+        })
+
     success, result = SapRfc.call(
         cod_cliente,
-        'Z_ATUALIZAR_COND_PAGAMENTO_PO',  # nome do FM a ajustar
-        IT_CONDICOES=condicoes_lista,
-        IV_EMPRESA=cod_empresa,
+        'ZGDF_CONDICOES_PAGAMENTO',
+        T_COND_PAGAMENTO=t_cond_pagamento,
     )
+
     retornos = [
-        {'chave_nfe': (c.get('chave_nfe') or ''), 'condicao_sap': (c.get('condicao_pagamento_sap') or c.get('condicao_pagamento_nfe') or '-')}
+        {'chave_nfe': (c.get('chave_nfe') or ''), 'condicao_sap': (c.get('condicao_pagamento_sap') or c.get('condicao_pagamento_nfe') or '-'), 'status': 'S'}
         for c in condicoes_lista
     ]
     if not success:
@@ -333,8 +343,18 @@ def enviar_condicoes_pagamento_sap(id_lote, cod_empresa, condicoes_lista):
             'mensagem': result or 'Erro ao chamar SAP.',
             'retornos': retornos,
         }
+    # SAP retorna R_T_COND (mesma tabela com STATUS preenchido: U=update, I=insert)
     if result:
-        retornos = result.get('ET_RETORNOS', retornos)
+        r_t_cond = result.get('R_T_COND') or result.get('T_COND_PAGAMENTO') or []
+        retornos = []
+        for r in r_t_cond:
+            status_sap = (r.get('STATUS') or r.get('status') or '').strip().upper()
+            status_lote = 'U' if status_sap == 'U' else ('I' if status_sap == 'I' else 'S')
+            retornos.append({
+                'chave_nfe': (r.get('CHAVE') or r.get('chave') or ''),
+                'condicao_sap': (r.get('COND_PAG_SAP') or r.get('cond_pag_sap') or ''),
+                'status': status_lote,
+            })
     return {
         'sucesso': True,
         'mensagem': f'{len(retornos)} registro(s) enviado(s) ao SAP.',

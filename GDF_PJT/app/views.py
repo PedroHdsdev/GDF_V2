@@ -55,7 +55,7 @@ from app.db_GDF.NFSe.models        import (
     NFSe, NFSe_Identificacao, NFSe_Prestador, NFSe_Tomador, NFSe_Endereco,
     NFSe_RPS, NFSe_Retencao, NFSe_Pagamento, NFSe_Servico,
 )
-from app.db_GDF.Sped.models        import Sped_Arquivo, Sped_Reg_C100, Sped_Reg_C170
+from app.db_GDF.sped_fiscal.models import SpedFiscalArquivo, SpedFiscalReg_C100, SpedFiscalReg_C170
 from app.db_Reprocessamento.models import ReprocessamentoLote, Divergencia, ReprocessamentoJob, CondicaoPagamentoLote, CondicaoParam
 from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -2347,10 +2347,14 @@ def fn_view_CargaSped(request):
 # ========== APIs Relatório Fiscal (NFe, CTe, NFS, SPED nível cabeçalho) ==========
 
 def _relatorio_empresas_queryset(request):
-    """Retorna queryset de empresas do cliente que o usuário pode acessar."""
+    """Retorna queryset de empresas do cliente que o usuário pode acessar.
+    Superuser ou usuário cliente 1000: todas as empresas do cliente selecionado (igual Painel Reprocessamento).
+    Demais usuários: apenas empresas vinculadas via userempresas."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return Empresas.objects.none()
+    if _usuario_acesso_total_painel(request):
+        return Empresas.objects.filter(cliente__cod_cliente=cod_cliente).distinct()
     return Empresas.objects.filter(
         cliente__cod_cliente=cod_cliente,
         userempresas__user=request.user
@@ -2360,11 +2364,15 @@ def _relatorio_empresas_queryset(request):
 @login_required(login_url='Login')
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfe(request):
-    """Lista NFe nível cabeçalho com filtros empresa e período."""
+    """Lista NFe nível cabeçalho com filtros empresa, grupo de empresa e período."""
     empresas = _relatorio_empresas_queryset(request)
-    if not empresas.exists():
-        return JsonResponse({'sucesso': True, 'items': []}, status=200)
+    grp_empresa = request.GET.get('grp_empresa', '').strip()
+    if grp_empresa:
+        empresas = empresas.filter(grp_empresa_id=grp_empresa)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_empresas and not cod_cliente:
+        return JsonResponse({'sucesso': True, 'items': []}, status=200)
     empresa_id = request.GET.get('empresa_id', '').strip()
     if empresa_id:
         cod_empresas = [empresa_id] if empresa_id in cod_empresas else []
@@ -2375,7 +2383,13 @@ def fn_api_relatorio_nfe(request):
     tipo_operacao = request.GET.get('tipo_operacao', '').strip()  # '0'=Entrada, '1'=Saída
     tipo_pagamento = request.GET.get('tipo_pagamento', '').strip()  # código meio_pagamento (01, 02, 20, etc.)
 
-    qs = NFe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    if empresa_id:
+        qs = NFe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    else:
+        qs = NFe.objects.filter(
+            Q(empresa__cod_empresa__in=cod_empresas) |
+            Q(empresa__isnull=True, cliente__cod_cliente=cod_cliente)
+        ).select_related('identificacao', 'empresa')
     if tipo_operacao in ('0', '1'):
         qs = qs.filter(identificacao__tipo_operacao=tipo_operacao)
     if tipo_pagamento:
@@ -2432,11 +2446,15 @@ def fn_api_relatorio_nfe(request):
 @login_required(login_url='Login')
 @require_http_methods(["GET"])
 def fn_api_relatorio_cte(request):
-    """Lista CTe nível cabeçalho com filtros."""
+    """Lista CTe nível cabeçalho com filtros empresa, grupo de empresa e período."""
     empresas = _relatorio_empresas_queryset(request)
-    if not empresas.exists():
-        return JsonResponse({'sucesso': True, 'items': []}, status=200)
+    grp_empresa = request.GET.get('grp_empresa', '').strip()
+    if grp_empresa:
+        empresas = empresas.filter(grp_empresa_id=grp_empresa)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_empresas and not cod_cliente:
+        return JsonResponse({'sucesso': True, 'items': []}, status=200)
     empresa_id = request.GET.get('empresa_id', '').strip()
     if empresa_id:
         cod_empresas = [empresa_id] if empresa_id in cod_empresas else []
@@ -2444,7 +2462,13 @@ def fn_api_relatorio_cte(request):
     data_fim = request.GET.get('data_fim', '').strip()
     busca = request.GET.get('busca', '').strip()
 
-    qs = CTe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    if empresa_id:
+        qs = CTe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    else:
+        qs = CTe.objects.filter(
+            Q(empresa__cod_empresa__in=cod_empresas) |
+            Q(empresa__isnull=True, cliente__cod_cliente=cod_cliente)
+        ).select_related('identificacao', 'empresa')
     if busca:
         qs = qs.filter(
             Q(identificacao__chave_acesso__icontains=busca) |
@@ -2485,11 +2509,15 @@ def fn_api_relatorio_cte(request):
 @login_required(login_url='Login')
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfse(request):
-    """Lista NFSe nível cabeçalho com filtros."""
+    """Lista NFSe nível cabeçalho com filtros empresa, grupo de empresa e período."""
     empresas = _relatorio_empresas_queryset(request)
-    if not empresas.exists():
-        return JsonResponse({'sucesso': True, 'items': []}, status=200)
+    grp_empresa = request.GET.get('grp_empresa', '').strip()
+    if grp_empresa:
+        empresas = empresas.filter(grp_empresa_id=grp_empresa)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_empresas and not cod_cliente:
+        return JsonResponse({'sucesso': True, 'items': []}, status=200)
     empresa_id = request.GET.get('empresa_id', '').strip()
     if empresa_id:
         cod_empresas = [empresa_id] if empresa_id in cod_empresas else []
@@ -2497,7 +2525,13 @@ def fn_api_relatorio_nfse(request):
     data_fim = request.GET.get('data_fim', '').strip()
     busca = request.GET.get('busca', '').strip()
 
-    qs = NFSe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    if empresa_id:
+        qs = NFSe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    else:
+        qs = NFSe.objects.filter(
+            Q(empresa__cod_empresa__in=cod_empresas) |
+            Q(empresa__isnull=True, cliente__cod_cliente=cod_cliente)
+        ).select_related('identificacao', 'empresa')
     if busca:
         qs = qs.filter(
             Q(identificacao__chave__icontains=busca) |
@@ -2536,8 +2570,13 @@ def fn_api_relatorio_nfse(request):
 @login_required(login_url='Login')
 @require_http_methods(["GET"])
 def fn_api_relatorio_sped(request):
-    """Lista SPED nível cabeçalho (Sped_Arquivo) com filtros. tipo: C=Contribuição, F=Fiscal."""
+    """Lista SPED nível cabeçalho. tipo_sped: C=Contribuição, F=Fiscal. Busca em sped_fiscal e sped_contribuicao."""
+    from app.db_GDF.sped_contribuicao.models import SpedContribuicaoArquivo
+
     empresas = _relatorio_empresas_queryset(request)
+    grp_empresa = request.GET.get('grp_empresa', '').strip()
+    if grp_empresa:
+        empresas = empresas.filter(grp_empresa_id=grp_empresa)
     if not empresas.exists():
         return JsonResponse({'sucesso': True, 'items': []}, status=200)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
@@ -2549,14 +2588,57 @@ def fn_api_relatorio_sped(request):
     busca = request.GET.get('busca', '').strip()
     tipo_sped = request.GET.get('tipo_sped', '').strip().upper()  # F=Fiscal, C=Contribuição
 
-    qs = Sped_Arquivo.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('empresa')
+    items = []
     if tipo_sped in ('F', 'C'):
-        qs = qs.filter(tipo=tipo_sped)
+        qs = (SpedFiscalArquivo if tipo_sped == 'F' else SpedContribuicaoArquivo).objects.filter(
+            empresa__cod_empresa__in=cod_empresas
+        ).select_related('empresa')
+    else:
+        qs_f = SpedFiscalArquivo.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('empresa')
+        qs_c = SpedContribuicaoArquivo.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('empresa')
+        qs = list(qs_f) + list(qs_c)
+        qs = sorted(qs, key=lambda a: (a.data_carga or timezone.now()), reverse=True)[:500]
+        for arq in qs:
+            t = 'F' if isinstance(arq, SpedFiscalArquivo) else 'C'
+            items.append({
+                'id_arquivo': arq.id_arquivo,
+                'tipo': t,
+                'tipo_display': 'Fiscal' if t == 'F' else 'Contribuição',
+                'competencia': arq.competencia.isoformat() if arq.competencia else None,
+                'nome_arquivo': arq.nome_arquivo,
+                'data_carga': arq.data_carga.isoformat() if arq.data_carga else None,
+                'empresa': arq.empresa.cod_empresa if arq.empresa else None,
+            })
+        if data_inicio or data_fim or busca:
+            from django.utils.dateparse import parse_date
+            filtered = []
+            dt_ini = parse_date(data_inicio) if data_inicio else None
+            dt_fim = parse_date(data_fim) if data_fim else None
+            for it in items:
+                if dt_ini and it.get('competencia'):
+                    try:
+                        from datetime import datetime
+                        comp = datetime.fromisoformat(it['competencia'].replace('Z', '+00:00')).date() if it['competencia'] else None
+                        if comp and comp < dt_ini:
+                            continue
+                    except Exception:
+                        pass
+                if dt_fim and it.get('competencia'):
+                    try:
+                        from datetime import datetime
+                        comp = datetime.fromisoformat(it['competencia'].replace('Z', '+00:00')).date() if it['competencia'] else None
+                        if comp and comp > dt_fim:
+                            continue
+                    except Exception:
+                        pass
+                if busca and busca.lower() not in (it.get('nome_arquivo') or '').lower() and busca.lower() not in (it.get('tipo_display') or '').lower():
+                    continue
+                filtered.append(it)
+            items = filtered[:500]
+        return JsonResponse({'sucesso': True, 'items': items}, status=200)
+
     if busca:
-        qs = qs.filter(
-            Q(nome_arquivo__icontains=busca) |
-            Q(tipo__icontains=busca)
-        )
+        qs = qs.filter(Q(nome_arquivo__icontains=busca))
     if data_inicio:
         try:
             from django.utils.dateparse import parse_date
@@ -2574,12 +2656,11 @@ def fn_api_relatorio_sped(request):
         except Exception:
             pass
     qs = qs.order_by('-data_carga')[:500]
-    items = []
     for arq in qs:
         items.append({
             'id_arquivo': arq.id_arquivo,
-            'tipo': arq.tipo,
-            'tipo_display': arq.get_tipo_display(),
+            'tipo': tipo_sped,
+            'tipo_display': 'Fiscal' if tipo_sped == 'F' else 'Contribuição',
             'competencia': arq.competencia.isoformat() if arq.competencia else None,
             'nome_arquivo': arq.nome_arquivo,
             'data_carga': arq.data_carga.isoformat() if arq.data_carga else None,
@@ -2612,8 +2693,13 @@ def fn_api_relatorio_nfe_detalhe(request, id_nfe):
     """Detalhe completo da NFe para modal: cabeçalho, itens, total, cobrança/parcelas, pagamento, transporte, info adicionais."""
     empresas = _relatorio_empresas_queryset(request)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    cod_cliente = request.session.get('cod_cliente', None)
+    qs_acesso = NFe.objects.filter(
+        Q(empresa__cod_empresa__in=cod_empresas) |
+        Q(empresa__isnull=True, cliente__cod_cliente=cod_cliente)
+    )
     nfe = get_object_or_404(
-        NFe.objects.select_related(
+        qs_acesso.select_related(
             'identificacao', 'emitente', 'destinatario', 'empresa',
             'emitente__endereco', 'destinatario__endereco',
         ).prefetch_related(
@@ -2628,7 +2714,6 @@ def fn_api_relatorio_nfe_detalhe(request, id_nfe):
             'identificacao__informacoes_adicionais',
         ),
         id_nfe=id_nfe,
-        empresa__cod_empresa__in=cod_empresas,
     )
     ide = nfe.identificacao
     cabecalho = {
@@ -2696,13 +2781,17 @@ def fn_api_relatorio_cte_detalhe(request, id_cte):
     """Detalhe completo do CTe para modal: cabeçalho, valor, transporte, carga, serviço, veículo, motorista, percurso, fiscal."""
     empresas = _relatorio_empresas_queryset(request)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    cod_cliente = request.session.get('cod_cliente', None)
+    qs_acesso = CTe.objects.filter(
+        Q(empresa__cod_empresa__in=cod_empresas) |
+        Q(empresa__isnull=True, cliente__cod_cliente=cod_cliente)
+    )
     cte = get_object_or_404(
-        CTe.objects.select_related(
+        qs_acesso.select_related(
             'identificacao', 'emitente', 'destinatario', 'empresa',
             'emitente__endereco', 'destinatario__endereco',
         ),
         id_cte=id_cte,
-        empresa__cod_empresa__in=cod_empresas,
     )
     ide = cte.identificacao
     cabecalho = {
@@ -2744,8 +2833,13 @@ def fn_api_relatorio_nfse_detalhe(request, id_nfse):
     """Detalhe completo da NFSe para modal: cabeçalho, prestador, tomador, serviços, RPS, retenção, pagamento."""
     empresas = _relatorio_empresas_queryset(request)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
+    cod_cliente = request.session.get('cod_cliente', None)
+    qs_acesso = NFSe.objects.filter(
+        Q(empresa__cod_empresa__in=cod_empresas) |
+        Q(empresa__isnull=True, cliente__cod_cliente=cod_cliente)
+    )
     nfse = get_object_or_404(
-        NFSe.objects.select_related(
+        qs_acesso.select_related(
             'identificacao', 'prestador', 'tomador', 'empresa',
             'prestador__endereco', 'tomador__endereco',
         ).prefetch_related(
@@ -2753,7 +2847,6 @@ def fn_api_relatorio_nfse_detalhe(request, id_nfse):
             'identificacao__rps_list',
         ),
         id_nfse=id_nfse,
-        empresa__cod_empresa__in=cod_empresas,
     )
     ide = nfse.identificacao
     cabecalho = {
@@ -2783,18 +2876,31 @@ def fn_api_relatorio_nfse_detalhe(request, id_nfse):
 
 @login_required(login_url='Login')
 @require_http_methods(["GET"])
-def fn_api_relatorio_sped_detalhe(request, id_arquivo):
-    """Detalhe do arquivo SPED: cabeçalho e registros (tabelas por tipo + genérico)."""
-    from app.db_GDF.Sped.models import (
-        Sped_Reg_0000, Sped_Reg_0001, Sped_Reg_0005, Sped_Reg_0150, Sped_Reg_0190, Sped_Reg_0200,
-        Sped_Reg_C001, Sped_Reg_C100, Sped_Reg_C170, Sped_Reg_C190, Sped_Reg_D100, Sped_Registro,
+def fn_api_relatorio_sped_detalhe(request, tipo, id_arquivo):
+    """Detalhe do arquivo SPED: cabeçalho e registros. tipo: F=Fiscal, C=Contribuição."""
+    from app.db_GDF.sped_fiscal.models import (
+        SpedFiscalArquivo,
+        SpedFiscalReg_0000, SpedFiscalReg_0001, SpedFiscalReg_0005, SpedFiscalReg_0150,
+        SpedFiscalReg_0190, SpedFiscalReg_0200, SpedFiscalReg_C001, SpedFiscalReg_C100,
+        SpedFiscalReg_C170, SpedFiscalReg_C190, SpedFiscalReg_D100, SpedFiscalRegistro,
+    )
+    from app.db_GDF.sped_contribuicao.models import (
+        SpedContribuicaoArquivo,
+        SpedContribuicaoReg_0000, SpedContribuicaoReg_0001, SpedContribuicaoReg_0005,
+        SpedContribuicaoReg_0150, SpedContribuicaoReg_0190, SpedContribuicaoReg_0200,
+        SpedContribuicaoReg_C001, SpedContribuicaoReg_C100, SpedContribuicaoReg_C170,
+        SpedContribuicaoReg_C190, SpedContribuicaoReg_D100, SpedContribuicaoRegistro,
     )
     from decimal import Decimal
+
+    if tipo not in ('F', 'C'):
+        return JsonResponse({'sucesso': False, 'mensagem': 'Tipo SPED inválido'}, status=400)
+    Arquivo = SpedFiscalArquivo if tipo == 'F' else SpedContribuicaoArquivo
 
     empresas = _relatorio_empresas_queryset(request)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
     arq = get_object_or_404(
-        Sped_Arquivo.objects.prefetch_related(
+        Arquivo.objects.prefetch_related(
             'reg_0000', 'reg_0001', 'reg_0005', 'reg_0150', 'reg_0190', 'reg_0200',
             'reg_c001', 'reg_c100', 'reg_c170', 'reg_c190', 'reg_d100', 'registros',
         ).select_related('empresa'),
@@ -2802,8 +2908,10 @@ def fn_api_relatorio_sped_detalhe(request, id_arquivo):
         empresa__cod_empresa__in=cod_empresas,
     )
     cabecalho = _serialize_model(arq)
-    if cabecalho and 'empresa' in cabecalho:
+    if cabecalho:
         cabecalho['empresa'] = arq.empresa.cod_empresa if arq.empresa else None
+        cabecalho['tipo'] = tipo
+        cabecalho['tipo_display'] = 'Fiscal' if tipo == 'F' else 'Contribuição'
 
     def _serialize_dec(v):
         return float(v) if v is not None and isinstance(v, Decimal) else v
@@ -2834,9 +2942,12 @@ def fn_api_relatorio_sped_detalhe(request, id_arquivo):
         'cst_pis': r.cst_pis, 'vl_bc_pis': _serialize_dec(r.vl_bc_pis), 'aliq_pis': _serialize_dec(r.aliq_pis), 'vl_pis': _serialize_dec(r.vl_pis),
         'cst_cofins': r.cst_cofins, 'vl_bc_cofins': _serialize_dec(r.vl_bc_cofins), 'aliq_cofins': _serialize_dec(r.aliq_cofins), 'vl_cofins': _serialize_dec(r.vl_cofins),
     } for r in arq.reg_c170.all()[:500]]
-    # C190: analítico ICMS por CST/CFOP
+    # C190: Fiscal=analítico ICMS (CST/CFOP); Contribuição=consolidação por item (COD_ITEM, PIS/COFINS)
     reg_c190 = [{
-        'linha': r.linha, 'cst_icms': r.cst_icms, 'cfop': r.cfop,
+        'linha': r.linha, 'cod_item': getattr(r, 'cod_item', None), 'cst_icms': r.cst_icms, 'cfop': r.cfop,
+        'cst_pis': getattr(r, 'cst_pis', None), 'vl_bc_pis': _serialize_dec(getattr(r, 'vl_bc_pis', None)),
+        'vl_pis': _serialize_dec(getattr(r, 'vl_pis', None)), 'cst_cofins': getattr(r, 'cst_cofins', None),
+        'vl_bc_cofins': _serialize_dec(getattr(r, 'vl_bc_cofins', None)), 'vl_cofins': _serialize_dec(getattr(r, 'vl_cofins', None)),
         'vl_opr': _serialize_dec(r.vl_opr), 'vl_bc_icms': _serialize_dec(r.vl_bc_icms), 'aliq_icms': _serialize_dec(r.aliq_icms),
         'vl_icms': _serialize_dec(r.vl_icms), 'vl_bc_icms_st': _serialize_dec(r.vl_bc_icms_st), 'vl_icms_st': _serialize_dec(r.vl_icms_st),
         'vl_red_bc': _serialize_dec(r.vl_red_bc), 'vl_ipi': _serialize_dec(r.vl_ipi),
@@ -2869,18 +2980,29 @@ def fn_api_relatorio_sped_detalhe(request, id_arquivo):
 @login_required(login_url='Login')
 @require_http_methods(["GET"])
 def fn_view_Relatorio_Fiscal(request):
-    """Relatório com dados e filtros das tabelas carregadas: NFe, CTe, NFS e SPED (nível cabeçalho)."""
+    """Relatório com dados e filtros das tabelas carregadas: NFe, CTe, NFS e SPED (nível cabeçalho).
+    Superuser ou cliente 1000: vê todas as empresas do cliente selecionado (igual Painel Reprocessamento)."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return render(request, 'Index_Login.html', {'error_message': 'Cliente não identificado'})
     try:
         cliente = Clientes.objects.get(cod_cliente=cod_cliente)
-        empresas_usuario = Empresas.objects.filter(
-            cliente=cliente,
-            userempresas__user=request.user
-        ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
+        if _usuario_acesso_total_painel(request):
+            empresas_usuario = Empresas.objects.filter(cliente=cliente).order_by('fantasia', 'razao', 'cod_empresa').distinct()
+        else:
+            empresas_usuario = Empresas.objects.filter(
+                cliente=cliente,
+                userempresas__user=request.user
+            ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
     except Clientes.DoesNotExist:
         empresas_usuario = []
+        grupos_empresa = []
+    else:
+        grupos_empresa = list(
+            GrpEmpresas.objects.filter(cliente__cod_cliente=cod_cliente)
+            .order_by('grp_empresa')
+            .values('grp_empresa', 'descricao')
+        )
     # Opções de tipo de pagamento (NFe) para o filtro do relatório (código 2 dígitos = valor no XML tPag)
     try:
         meio_pagamento_choices = list(
@@ -2891,6 +3013,7 @@ def fn_view_Relatorio_Fiscal(request):
     context = {
         'cod_cliente': cod_cliente,
         'empresas_usuario': empresas_usuario,
+        'grupos_empresa': grupos_empresa,
         'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC,
         'meio_pagamento_choices': meio_pagamento_choices,
     }
@@ -2911,7 +3034,7 @@ def fn_view_Reprocessamento_Painel(request):
     """Painel de Reprocessamento: confronto SPED x NFe, divergências e reprocessamento controlado."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
-        context = {'cod_cliente': None, 'empresas': []}
+        context = {'cod_cliente': None, 'empresas': [], 'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC}
         return render(request, 'Reprocessamento/index_Painel.html', context)
     empresas = list(
         Empresas.objects.filter(cliente_id=cod_cliente).values('cod_empresa', 'razao', 'fantasia').order_by('razao')
@@ -2919,6 +3042,7 @@ def fn_view_Reprocessamento_Painel(request):
     context = {
         'cod_cliente': cod_cliente,
         'empresas': empresas,
+        'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC,
     }
     return render(request, 'Reprocessamento/index_Painel.html', context)
 
@@ -3243,12 +3367,16 @@ def fn_api_reprocessamento_divergencia_detalhe(request, id_divergencia):
         except Exception:
             payload['nfe'] = None
 
-    # SPED: C100 e C170 (quando chave_nfe existe)
+    # SPED: C100 e C170 (busca em sped_fiscal e sped_contribuicao)
     if div.chave_nfe:
         try:
-            c100 = Sped_Reg_C100.objects.filter(chv_nfe=div.chave_nfe).select_related('arquivo').first()
+            from app.db_GDF.sped_contribuicao.models import SpedContribuicaoReg_C100, SpedContribuicaoReg_C170
+            c100 = SpedFiscalReg_C100.objects.filter(chv_nfe=div.chave_nfe).select_related('arquivo').first()
+            if not c100:
+                c100 = SpedContribuicaoReg_C100.objects.filter(chv_nfe=div.chave_nfe).select_related('arquivo').first()
             if c100:
-                c170_list = list(Sped_Reg_C170.objects.filter(c100=c100).order_by('linha', 'num_item').values(
+                Reg_C170 = SpedFiscalReg_C170 if isinstance(c100, SpedFiscalReg_C100) else SpedContribuicaoReg_C170
+                c170_list = list(Reg_C170.objects.filter(c100=c100).order_by('linha', 'num_item').values(
                     'num_item', 'cod_item', 'descr_compl', 'cfop', 'qtd', 'unid',
                     'vl_item', 'vl_desc', 'cst_icms', 'vl_bc_icms', 'aliq_icms', 'vl_icms',
                     'cst_pis', 'vl_bc_pis', 'aliq_pis', 'vl_pis',
@@ -3381,6 +3509,7 @@ def fn_api_reprocessamento_condicoes_listar(request, id_lote):
             'serie_nfe': c.serie_nfe,
             'condicao_pagamento_nfe': c.condicao_pagamento_nfe,
             'condicao_pagamento_sap': c.condicao_pagamento_sap,
+            'tipo_pagamento': c.tipo_pagamento or '',
             'status': c.status,
             'data_criacao': c.data_criacao.isoformat() if c.data_criacao else None,
             'data_atualizacao': c.data_atualizacao.isoformat() if c.data_atualizacao else None,
@@ -3394,7 +3523,7 @@ def fn_api_reprocessamento_condicoes_listar(request, id_lote):
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_condicoes_atualizar_retorno(request, id_lote):
     """
-    Atualiza condicao_pagamento_sap e status (ex.: PROCESSADO_SAP) por chave.
+    Atualiza condicao_pagamento_sap e status (P/E/S/U/I) por chave.
     Body: { "itens": [ { "chave_nfe": "44...", "condicao_sap_retorno": "Z001" }, ... ] }
     """
     cod_cliente = request.session.get('cod_cliente')
@@ -3417,7 +3546,7 @@ def fn_api_reprocessamento_condicoes_atualizar_retorno(request, id_lote):
             continue
         n = CondicaoPagamentoLote.objects.filter(lote=lote, chave_nfe=chave).update(
             condicao_pagamento_sap=retorno or '',
-            status=item.get('status', 'PROCESSADO_SAP'),
+            status=item.get('status', 'S'),
         )
         atualizados += n
     return JsonResponse({'sucesso': True, 'atualizados': atualizados, 'mensagem': f'{atualizados} registro(s) atualizado(s).'})
@@ -3428,7 +3557,7 @@ def fn_api_reprocessamento_condicoes_atualizar_retorno(request, id_lote):
 def fn_api_reprocessamento_condicoes_enviar_sap(request, id_lote):
     """
     Chama RFC e envia as condições de pagamento do lote ao SAP.
-    Atualiza a tabela com a condição retornada pelo SAP para cada chave e status PROCESSADO_SAP.
+    Atualiza a tabela com a condição retornada pelo SAP para cada chave e status (U/I/S).
     """
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
@@ -3454,11 +3583,10 @@ def fn_api_reprocessamento_condicoes_enviar_sap(request, id_lote):
     atualizados = 0
     for item in retornos:
         chave = item.get('chave_nfe')
-        cond_sap = item.get('condicao_sap') or ''
+        status_sap = item.get('status', 'S')  # U=atualizado, I=processado
         if chave and chave in chaves_lote:
             n = CondicaoPagamentoLote.objects.filter(lote=lote, chave_nfe=chave).update(
-                condicao_pagamento_sap=cond_sap,
-                status='PROCESSADO_SAP',
+                status=status_sap,
             )
             atualizados += n
     return JsonResponse({
@@ -3476,12 +3604,13 @@ def fn_api_reprocessamento_condicao_param_listar(request):
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    qs = CondicaoParam.objects.filter(cliente_id=cod_cliente).order_by('condicao_pagamento_nfe')
+    qs = CondicaoParam.objects.filter(cliente_id=cod_cliente).order_by('condicao_pagamento_nfe', 'tipo_pagamento')
     lista = [
         {
             'id': c.id,
             'condicao_pagamento_nfe': c.condicao_pagamento_nfe or '',
             'condicao_pagamento_sap': c.condicao_pagamento_sap or '',
+            'tipo_pagamento': c.tipo_pagamento or '',
         }
         for c in qs
     ]
@@ -3511,3 +3640,52 @@ def fn_api_reprocessamento_condicao_param_atualizar(request):
         n = CondicaoParam.objects.filter(pk=pk, cliente_id=cod_cliente).update(condicao_pagamento_sap=cond_sap)
         atualizados += n
     return JsonResponse({'sucesso': True, 'atualizados': atualizados, 'mensagem': f'{atualizados} registro(s) atualizado(s).'})
+
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_api_sap_testar_conexao(request):
+    """
+    Testa a conexão SAP do cliente.
+    Body (JSON): { "cod_cliente": "COD" } - opcional; se omitido, usa cod_cliente da sessão.
+    Usuário com acesso total pode testar qualquer cliente.
+    """
+    cod_cliente_sessao = request.session.get('cod_cliente')
+    if not cod_cliente_sessao and not _usuario_acesso_total_painel(request):
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+
+    data = json.loads(request.body) if request.body else {}
+    cod_cliente = (data.get('cod_cliente') or '').strip() or cod_cliente_sessao
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Informe cod_cliente ou selecione um cliente na sessão.'}, status=400)
+    if not _usuario_acesso_total_painel(request) and str(cod_cliente) != str(cod_cliente_sessao):
+        return JsonResponse({'sucesso': False, 'mensagem': 'Acesso negado.'}, status=403)
+
+    try:
+        from app.classes.SapRfc import SapRfc
+        if not SapRfc.is_available():
+            return JsonResponse({
+                'sucesso': False,
+                'mensagem': 'PyRFC não disponível. Instale o SAP NetWeaver RFC SDK e o pacote pyrfc. Ver DOCUMENTACAO_MD/SAP_RFC_SETUP.md',
+            }, status=503)
+        conn = SapRfc.get_connection(cod_cliente)
+        if not conn:
+            return JsonResponse({
+                'sucesso': False,
+                'mensagem': f'Nenhuma conexão SAP ativa para o cliente "{cod_cliente}". Configure na aba Conexão SAP do cliente.',
+            }, status=404)
+        # Testa conexão chamando RFC de ping (RFC_PING é padrão SAP)
+        success, result = SapRfc.call(cod_cliente, 'RFC_PING')
+        if success:
+            return JsonResponse({
+                'sucesso': True,
+                'mensagem': 'Conexão SAP OK.',
+                'cliente': cod_cliente,
+            })
+        return JsonResponse({
+            'sucesso': False,
+            'mensagem': result or 'Falha ao conectar ao SAP.',
+            'cliente': cod_cliente,
+        }, status=502)
+    except Exception as e:
+        return JsonResponse({'sucesso': False, 'mensagem': str(e)[:500]}, status=500)

@@ -109,7 +109,7 @@
         {% if messages %}
         {% for message in messages %}
         <div class="alert alert-padrao alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-            <span class="alert-padrao-rotulo">{% if message.tags == 'error' or message.tags == 'danger' %}Erro{% elif message.tags == 'success' %}Sucesso{% elif message.tags == 'warning' %}Aviso{% else %}Informação{% endif %}</span>
+            <span class="alert-padrao-rotulo">{% if message.tags == 'error' or message.tags == 'danger' %}Erro{% elif message.tags == 'success' %}Sucesso{% elif message.tags == 'warning' %}Aviso{% else %}Informação{% endif %}:</span>
             <span class="alert-padrao-texto">{{ message }}</span>
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
         </div>

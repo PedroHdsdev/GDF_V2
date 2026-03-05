@@ -66,7 +66,7 @@
    * Cria o elemento DOM do alerta (rótulo + texto + botão fechar)
    * @param {string} mensagem - Texto da mensagem (pode conter \n para quebras de linha)
    * @param {string} tipo - success | danger | warning | info
-   * @param {Object} opcoes - { dismissible: boolean, comIcone: boolean }
+   * @param {Object} opcoes - { dismissible: boolean, comIcone: boolean, acaoTexto: string, acaoCallback: function }
    */
   function criarElementoAlerta(mensagem, tipo, opcoes) {
     const tipoNorm = normalizarTipo(tipo);
@@ -84,12 +84,29 @@
     if (comIcone) {
       html += '<i class="fas ' + icone + ' me-2" aria-hidden="true"></i>';
     }
-    html += '<span class="alert-padrao-rotulo">' + prepararMensagem(rotulo) + '</span>';
+    html += '<span class="alert-padrao-rotulo">' + prepararMensagem(rotulo) + ':</span>';
     html += '<span class="alert-padrao-texto">' + textoEscapado + '</span>';
+    if (opcoes.acaoTexto && typeof opcoes.acaoCallback === 'function') {
+      html += '<button type="button" class="btn btn-sm alert-padrao-acao ms-2" aria-label="' + prepararMensagem(opcoes.acaoTexto) + '">' + prepararMensagem(opcoes.acaoTexto) + '</button>';
+    }
     if (dismissible) {
       html += '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>';
     }
     alertDiv.innerHTML = html;
+    if (opcoes.acaoTexto && typeof opcoes.acaoCallback === 'function') {
+      var btnAcao = alertDiv.querySelector('.alert-padrao-acao');
+      if (btnAcao) {
+        btnAcao.addEventListener('click', function () {
+          opcoes.acaoCallback();
+          try {
+            var inst = global.bootstrap && bootstrap.Alert.getOrCreateInstance(alertDiv);
+            if (inst) inst.close(); else alertDiv.remove();
+          } catch (_) {
+            alertDiv.remove();
+          }
+        });
+      }
+    }
     return alertDiv;
   }
 
@@ -99,7 +116,7 @@
    *
    * @param {string} mensagem - Texto da mensagem
    * @param {string} tipo - 'success' | 'danger' | 'warning' | 'info' (ou 'error' como alias de danger)
-   * @param {Object|string} opcoes - Se string, é o containerId. Objeto: { containerId, autoCloseMs, dismissible, comIcone }
+   * @param {Object|string} opcoes - Se string, é o containerId. Objeto: { containerId, autoCloseMs, dismissible, comIcone, acaoTexto, acaoCallback }
    */
   function pagina(mensagem, tipo, opcoes) {
     const cfg = typeof opcoes === 'string'
@@ -126,7 +143,9 @@
 
     const alertEl = criarElementoAlerta(mensagem, tipo, {
       dismissible: true,
-      comIcone: cfg.comIcone !== false
+      comIcone: cfg.comIcone !== false,
+      acaoTexto: cfg.acaoTexto,
+      acaoCallback: cfg.acaoCallback
     });
     container.appendChild(alertEl);
 

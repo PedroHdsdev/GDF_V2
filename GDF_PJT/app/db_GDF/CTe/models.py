@@ -139,6 +139,30 @@ class CTe(models.Model):
         return f"CTe {self.identificacao.numero}/{self.identificacao.serie}"
 
 
+class CTe_Evento(models.Model):
+    """Eventos vinculados ao CT-e (cancelamento, CCe, etc.) - carregados via XML de evento."""
+    id_evento = models.AutoField(primary_key=True)
+    cte_identificacao = models.ForeignKey(CTe_Identificacao, on_delete=models.CASCADE, related_name='eventos')
+    tipo_evento = models.CharField(max_length=6)  # 110111=cancelamento, 110110=CCe, etc
+    descricao_evento = models.CharField(max_length=100, blank=True, null=True)
+    justificativa = models.TextField(blank=True, null=True)  # xJust (cancelamento) ou xCorrecao (CCe)
+    data_evento = models.DateTimeField(blank=True, null=True)
+    numero_sequencia = models.IntegerField(default=1)
+    xml_evento = models.TextField(blank=True, null=True)
+    data_criacao = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        managed = True
+        db_table = '"cte"."cte_evento"'
+        unique_together = [['cte_identificacao', 'tipo_evento', 'numero_sequencia']]
+        indexes = [
+            models.Index(fields=['cte_identificacao', 'tipo_evento']),
+        ]
+
+    def __str__(self):
+        return f"Evento {self.tipo_evento} - CT-e {self.cte_identificacao.numero}/{self.cte_identificacao.serie}"
+
+
 class CTe_Carga(models.Model):
     """Informações de carga do CT-e"""
     id_carga = models.AutoField(primary_key=True)

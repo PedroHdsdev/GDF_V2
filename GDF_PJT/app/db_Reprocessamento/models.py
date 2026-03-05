@@ -183,9 +183,11 @@ class CondicaoPagamentoLote(models.Model):
     condicao_pagamento_sap: preenchida antes do RFC e/ou atualizada com o retorno do SAP.
     """
     STATUS_CHOICES = [
-        ('PENDENTE', 'Pendente'),
-        ('ENVIADO_SAP', 'Enviado ao SAP'),
-        ('PROCESSADO_SAP', 'Processado no SAP'),
+        ('P', 'Pendente'),
+        ('E', 'Enviado ao SAP'),
+        ('S', 'Processado no SAP'),
+        ('U', 'Atualizado no SAP (U)'),
+        ('I', 'Processado no SAP (I)'),
     ]
 
     id_reg = models.BigAutoField(primary_key=True)
@@ -202,7 +204,9 @@ class CondicaoPagamentoLote(models.Model):
     condicao_pagamento_nfe = models.CharField(max_length=120, blank=True, null=True)
     # Condição SAP: preenchida antes do RFC e atualizada com o retorno após processamento
     condicao_pagamento_sap = models.CharField(max_length=60, blank=True, null=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDENTE', db_index=True)
+    # Tipo de pagamento da NF-e (código tPag: 01, 02, 20, etc.) para depara com CondicaoParam
+    tipo_pagamento = models.CharField(max_length=2, blank=True, null=True)
+    status = models.CharField(max_length=1, choices=STATUS_CHOICES, default='P', db_index=True)
     data_criacao = models.DateTimeField(auto_now_add=True)
     data_atualizacao = models.DateTimeField(auto_now=True)
 
@@ -232,17 +236,20 @@ class CondicaoParam(models.Model):
     )
     condicao_pagamento_nfe = models.CharField(max_length=120, blank=True, null=True)
     condicao_pagamento_sap = models.CharField(max_length=60, blank=True, null=True)
+    # Tipo de pagamento (código tPag do XML: 01, 02, 20, etc.). Permite mapear mesma condição para diferentes tipos.
+    tipo_pagamento = models.CharField(max_length=2, blank=True, null=True)
 
     class Meta:
         managed = True
         db_table = '"reprocessamento"."condicao_param"'
-        unique_together = [['cliente', 'condicao_pagamento_nfe', 'condicao_pagamento_sap']]
+        unique_together = [['cliente', 'condicao_pagamento_nfe', 'tipo_pagamento']]
         indexes = [
-            models.Index(fields=['cliente', 'condicao_pagamento_nfe', 'condicao_pagamento_sap']),
+            models.Index(fields=['cliente', 'condicao_pagamento_nfe', 'tipo_pagamento']),
         ]
-        ordering = ['condicao_pagamento_nfe']
+        ordering = ['condicao_pagamento_nfe', 'tipo_pagamento']
         verbose_name = 'Condição de pagamento'
         verbose_name_plural = 'Condições de pagamento'
     
     def __str__(self):
-        return f"{self.condicao_pagamento_nfe} — {self.condicao_pagamento_sap or '-'}"
+        tipo = f" [{self.tipo_pagamento}]" if (self.tipo_pagamento or '').strip() else ''
+        return f"{self.condicao_pagamento_nfe}{tipo} — {self.condicao_pagamento_sap or '-'}"

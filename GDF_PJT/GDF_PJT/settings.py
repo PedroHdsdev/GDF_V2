@@ -16,6 +16,16 @@ import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# SAP RFC: configurar SDK antes de qualquer import do pyrfc
+_NWRFC_PATH = BASE_DIR.parent / 'nwrfcsdk'
+if _NWRFC_PATH.exists():
+    os.environ.setdefault('SAPNWRFC_HOME', str(_NWRFC_PATH))
+    _lib = _NWRFC_PATH / 'lib'
+    if _lib.exists():
+        ld_path = os.environ.get('LD_LIBRARY_PATH', '')
+        if str(_lib) not in ld_path.split(':'):
+            os.environ['LD_LIBRARY_PATH'] = f"{_lib}:{ld_path}".rstrip(':')
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/

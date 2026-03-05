@@ -2,11 +2,8 @@
 """
 Comando: python manage.py backfill_sped_reg_0000
 
-Preenche sped_reg_0000 para Sped_Arquivo que têm registro em sped_arquivo
-mas não têm correspondente em sped_reg_0000. Usa dados de Sped_Registro
-(registro='0000') quando disponível, ou re-lê o arquivo se não houver.
-
-Útil após correção que passou a gravar 0000 também para SPED Contribuição.
+Preenche sped_reg_0000 para arquivos SPED (fiscal e contribuição) que não têm registro 0000.
+Usa dados de SpedRegistro (registro='0000') quando disponível.
 """
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -36,41 +33,21 @@ class Command(BaseCommand):
                 pass
         return None
 
-    def handle(self, *args, **options):
-        from app.db_GDF.Sped.models import Sped_Arquivo, Sped_Reg_0000, Sped_Registro
-
-        dry_run = options.get('dry_run', False)
-        if dry_run:
-            self.stdout.write('Modo dry-run: nenhuma alteração será feita.')
-
-        # Arquivos que não têm reg_0000
-        ids_com_0000 = set(
-            Sped_Reg_0000.objects.values_list('arquivo_id', flat=True).distinct()
-        )
-        arquivos_sem_0000 = Sped_Arquivo.objects.exclude(id_arquivo__in=ids_com_0000)
-        total = arquivos_sem_0000.count()
-
-        if total == 0:
-            self.stdout.write(self.style.SUCCESS('Todos os arquivos SPED já têm sped_reg_0000.'))
-            return
-
-        self.stdout.write(f'Arquivos sem sped_reg_0000: {total}')
-
+    def _processar(self, Arquivo, Reg_0000, Registro, dry_run):
+        ids_com_0000 = set(Reg_0000.objects.values_list('arquivo_id', flat=True).distinct())
+        arquivos_sem_0000 = Arquivo.objects.exclude(id_arquivo__in=ids_com_0000)
         criados = 0
         sem_dados = 0
 
         for arq in arquivos_sem_0000:
-            # Tentar obter 0000 de Sped_Registro
-            reg0000 = Sped_Registro.objects.filter(
-                arquivo=arq, registro='0000'
-            ).first()
+            reg0000 = Registro.objects.filter(arquivo=arq, registro='0000').first()
 
             if reg0000 and reg0000.campos:
                 campos = reg0000.campos
                 cnpj_raw = (campos.get('6') or '').replace('.', '').replace('/', '').replace('-', '').strip()[:14]
 
                 if not dry_run:
-                    Sped_Reg_0000.objects.create(
+                    Reg_0000.objects.create(
                         arquivo=arq,
                         linha=reg0000.linha,
                         cod_ver=(campos.get('1') or '')[:3],
@@ -90,15 +67,36 @@ class Command(BaseCommand):
                     )
 
                 criados += 1
-                self.stdout.write(f'  OK: {arq.nome_arquivo} (id={arq.id_arquivo}) - criado a partir de Sped_Registro')
+                self.stdout.write(f'  OK: {arq.nome_arquivo} (id={arq.id_arquivo}) - criado a partir de SpedRegistro')
             else:
                 sem_dados += 1
                 self.stdout.write(
                     self.style.WARNING(
                         f'  Sem dados: {arq.nome_arquivo} (id={arq.id_arquivo}) - '
-                        'não há Sped_Registro 0000. Recarregue o arquivo SPED.'
+                        'não há SpedRegistro 0000. Recarregue o arquivo SPED.'
                     )
                 )
+
+        return criados, sem_dados
+
+    def handle(self, *args, **options):
+        from app.db_GDF.sped_fiscal.models import (
+            SpedFiscalArquivo, SpedFiscalReg_0000, SpedFiscalRegistro,
+        )
+        from app.db_GDF.sped_contribuicao.models import (
+            SpedContribuicaoArquivo, SpedContribuicaoReg_0000, SpedContribuicaoRegistro,
+        )
+
+        dry_run = options.get('dry_run', False)
+        if dry_run:
+            self.stdout.write('Modo dry-run: nenhuma alteração será feita.')
+
+        criados_f, sem_f = self._processar(SpedFiscalArquivo, SpedFiscalReg_0000, SpedFiscalRegistro, dry_run)
+        self.stdout.write('---')
+        criados_c, sem_c = self._processar(SpedContribuicaoArquivo, SpedContribuicaoReg_0000, SpedContribuicaoRegistro, dry_run)
+
+        criados = criados_f + criados_c
+        sem_dados = sem_f + sem_c
 
         if not dry_run:
             self.stdout.write(self.style.SUCCESS(f'Criados {criados} registros sped_reg_0000.'))
@@ -108,7 +106,7 @@ class Command(BaseCommand):
         if sem_dados:
             self.stdout.write(
                 self.style.WARNING(
-                    f'{sem_dados} arquivo(s) sem dados de 0000 em Sped_Registro - '
+                    f'{sem_dados} arquivo(s) sem dados de 0000 em SpedRegistro - '
                     'recarregue esses arquivos para preencher.'
                 )
             )

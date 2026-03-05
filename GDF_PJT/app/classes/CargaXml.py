@@ -6,15 +6,15 @@ from app.db_GDF.Public.models       import Clientes, Empresas
 from app.db_GDF.NFe.models          import (
     NFe, NFe_Total, NFe_Produto, NFe_Identificacao, NFe_Emitente, NFe_Destinatario,
     NFe_Endereco, NFe_ICMS, NFe_IPI, NFe_PIS, NFe_COFINS, NFe_Transporte,
-    NFe_Cobranca, NFe_Parcela, NFe_Pagamento, NFe_Informacoes_Adicionais
+    NFe_Cobranca, NFe_Parcela, NFe_Pagamento, NFe_Informacoes_Adicionais, NFe_Evento
 )
 from app.db_GDF.CTe.models          import (
     CTe, CTe_Identificacao, CTe_Emitente, CTe_Destinatario, CTe_Transporte, CTe_Valor,
-    CTe_Carga, CTe_Servico, CTe_Veiculo, CTe_Motorista, CTe_Percurso, CTe_Fiscal
+    CTe_Carga, CTe_Servico, CTe_Veiculo, CTe_Motorista, CTe_Percurso, CTe_Fiscal, CTe_Evento
 )
 from app.db_GDF.NFSe.models         import (
     NFSe, NFSe_Identificacao, NFSe_Prestador, NFSe_Tomador, NFSe_Servico, NFSe_Endereco,
-    NFSe_RPS, NFSe_Retencao, NFSe_Pagamento, NFSe_Credenciamento
+    NFSe_RPS, NFSe_Retencao, NFSe_Pagamento, NFSe_Credenciamento, NFSe_Evento
 )
 from typing                        import List, Dict, Optional
 from datetime import datetime, time
@@ -347,22 +347,26 @@ class Carga_xml():
 
     def _salvar_condicao_param_se_nao_existir(self, identificacao, cod_cliente=None):
         """
-        Se a condição de pagamento da NFe ainda não existir em CondicaoParam, grava (cliente, condição NFe, SAP vazio).
-        Se já existir, não faz nada e segue. Requer cod_cliente para gravar (cada cliente tem sua tabela de parâmetros).
+        Se a condição de pagamento da NFe ainda não existir em CondicaoParam, grava
+        (cliente, condição NFe, tipo_pagamento, SAP vazio).
+        Considera tipo_pagamento para permitir mesma condição com mapeamentos diferentes por tipo.
+        Requer cod_cliente para gravar (cada cliente tem sua tabela de parâmetros).
         """
         if not cod_cliente:
             return
-        from app.classes.Reprocessamento import condicao_pagamento_da_nfe
+        from app.classes.Reprocessamento import condicao_pagamento_da_nfe, tipo_pagamento_da_nfe
         from app.db_Reprocessamento.models import CondicaoParam
 
         cond_nfe = condicao_pagamento_da_nfe(identificacao)
         if not (cond_nfe or '').strip():
             return
         cond_nfe = (cond_nfe or '').strip()[:120]
+        tipo_pag = tipo_pagamento_da_nfe(identificacao) or None
         CondicaoParam.objects.get_or_create(
             cliente_id=cod_cliente,
             condicao_pagamento_nfe=cond_nfe,
-            condicao_pagamento_sap='',
+            tipo_pagamento=tipo_pag,
+            defaults={'condicao_pagamento_sap': ''},
         )
 
     def _processar_informacoes_adicionais(self, infNFe, identificacao):
@@ -399,6 +403,131 @@ class Carga_xml():
         )
         return None
 
+    def _find_local(self, parent, *tag_names):
+        """Busca filho por nome local (ignora namespace)."""
+        if parent is None:
+            return None
+        for child in parent.iter():
+            local = child.tag.split('}')[-1] if '}' in child.tag else child.tag
+            if local in tag_names:
+                return child
+        return None
+
+    def _extrair_dados_evento(self, xml_data: bytes) -> Optional[Dict]:
+        """
+        Detecta se o XML é de evento (procEventoNFe, procEventoCTe) e extrai chave, tipo, justificativa.
+        Retorna dict com chave, tipo_doc ('NFe'|'CTe'), tp_evento, desc_evento, justificativa, dh_evento, n_seq, xml_str
+        ou None se não for XML de evento.
+        """
+        try:
+            root = ET.fromstring(xml_data)
+            tag_root = root.tag.split('}')[-1] if '}' in root.tag else root.tag
+            if tag_root not in ('procEventoNFe', 'procEventoCTe'):
+                return None
+
+            tipo_doc = 'NFe' if 'NFe' in tag_root else 'CTe'
+            tag_chave = 'chNFe' if tipo_doc == 'NFe' else 'chCTe'
+
+            inf_evento = self._find_local(root, 'infEvento')
+            if inf_evento is None:
+                return None
+
+            chave = self._get_text(inf_evento, tag_chave, '').strip()
+            if not chave or len(chave) != 44 or not chave.isdigit():
+                return None
+
+            tp_evento = self._get_text(inf_evento, 'tpEvento', '').strip()
+            n_seq = int(self._get_text(inf_evento, 'nSeqEvento', '1') or '1')
+            dh_evento = self._to_datetime(self._get_text(inf_evento, 'dhEvento'), '%Y-%m-%dT%H:%M:%S%z')
+
+            det_evento = self._find_local(inf_evento, 'detEvento')
+            desc_evento = ''
+            justificativa = ''
+            if det_evento is not None:
+                desc_evento = self._get_text(det_evento, 'descEvento', '').strip()
+                justificativa = self._get_text(det_evento, 'xJust', '').strip() or self._get_text(det_evento, 'xCorrecao', '').strip()
+
+            return {
+                'chave': chave,
+                'tipo_doc': tipo_doc,
+                'tp_evento': tp_evento,
+                'desc_evento': desc_evento or tp_evento,
+                'justificativa': justificativa,
+                'dh_evento': dh_evento,
+                'n_seq': n_seq,
+                'xml_str': xml_data.decode('utf-8', errors='ignore'),
+            }
+        except Exception:
+            return None
+
+    def set_evento(self, xml_data: bytes, origem_dados: str, usuario: str, cod_cliente: str = None) -> bool:
+        """
+        Processa XML de evento: busca a chave (44) em NFe, CTe e NFSe, salva evento e justificativa.
+        Retorna True se processou com sucesso, False se não for evento ou chave não encontrada.
+        """
+        dados = self._extrair_dados_evento(xml_data)
+        if not dados:
+            return False
+
+        chave = dados['chave']
+        tipo_doc = dados['tipo_doc']
+        tp_evento = dados['tp_evento']
+        desc_evento = dados['desc_evento']
+        justificativa = dados['justificativa']
+        dh_evento = dados['dh_evento']
+        n_seq = dados['n_seq']
+        xml_str = dados['xml_str']
+
+        # Buscar na ordem: NFe, CTe, NFSe (chave 44)
+        identificacao_nfe = NFe_Identificacao.objects.filter(chave_acesso=chave).first()
+        if identificacao_nfe:
+            NFe_Evento.objects.update_or_create(
+                nfe_identificacao=identificacao_nfe,
+                tipo_evento=tp_evento,
+                numero_sequencia=n_seq,
+                defaults={
+                    'descricao_evento': desc_evento,
+                    'justificativa': justificativa,
+                    'data_evento': dh_evento,
+                    'xml_evento': xml_str,
+                }
+            )
+            if tp_evento == '110111':  # Cancelamento
+                NFe.objects.filter(identificacao=identificacao_nfe).update(status='CANCELADA', data_atualizacao=timezone.now())
+            return True
+
+        identificacao_cte = CTe_Identificacao.objects.filter(chave_acesso=chave).first()
+        if identificacao_cte:
+            CTe_Evento.objects.update_or_create(
+                cte_identificacao=identificacao_cte,
+                tipo_evento=tp_evento,
+                numero_sequencia=n_seq,
+                defaults={
+                    'descricao_evento': desc_evento,
+                    'justificativa': justificativa,
+                    'data_evento': dh_evento,
+                    'xml_evento': xml_str,
+                }
+            )
+            return True
+
+        identificacao_nfse = NFSe_Identificacao.objects.filter(chave=chave).first()
+        if identificacao_nfse:
+            NFSe_Evento.objects.update_or_create(
+                nfse_identificacao=identificacao_nfse,
+                tipo_evento=tp_evento,
+                numero_sequencia=n_seq,
+                defaults={
+                    'descricao_evento': desc_evento,
+                    'justificativa': justificativa,
+                    'data_evento': dh_evento,
+                    'xml_evento': xml_str,
+                }
+            )
+            return True
+
+        return False  # Chave não encontrada em nenhuma tabela
+
     def set_upload_xml(self, I_LsXml, i_type, I_origem_dados, i_usuario, i_cod_cliente=None) -> Dict:
         """
         Processa upload de múltiplos XMLs
@@ -419,6 +548,18 @@ class Carga_xml():
         for xml_file in I_LsXml:
             try:
                 xml_data = xml_file.read()
+
+                # Verificar se é XML de evento (procEventoNFe, procEventoCTe) - chave 44
+                if self._extrair_dados_evento(xml_data):
+                    if self.set_evento(xml_data, I_origem_dados, i_usuario, i_cod_cliente):
+                        result['success'].append(xml_file.name)
+                    else:
+                        result['errors'].append({
+                            'file': xml_file.name,
+                            'error': 'Chave do evento não encontrada em NFe, CTe ou NFSe.',
+                            'type': 'ChaveNaoEncontrada'
+                        })
+                    continue
 
                 if i_type == 'NFe':
                     self.set_nfe(xml_data, I_origem_dados, i_usuario, i_cod_cliente)

@@ -668,7 +668,12 @@
                 if (btn) btn.disabled = false;
                 fecharModalNovoConfronto();
                 if (data.sucesso) {
-                    if (typeof Notificacoes !== 'undefined') Notificacoes.pagina(data.mensagem || 'Confronto iniciado.', 'success');
+                    if (typeof Notificacoes !== 'undefined') {
+                        Notificacoes.pagina(data.mensagem || 'Confronto iniciado.', 'success', {
+                            acaoTexto: 'Atualizar painel',
+                            acaoCallback: carregarLotes
+                        });
+                    }
                     carregarLotes();
                 } else {
                     if (typeof Notificacoes !== 'undefined') Notificacoes.pagina(data.mensagem || 'Erro ao iniciar confronto', 'danger');
@@ -724,17 +729,24 @@
                 if (resumo) resumo.textContent = data.condicoes.length + ' registro(s).';
                 if (wrap) wrap.classList.remove('d-none');
                 const statusBadge = function (s) {
-                    const m = { PENDENTE: 'badge bg-secondary', ENVIADO_SAP: 'badge bg-info', PROCESSADO_SAP: 'badge bg-success' };
-                    return '<span class="' + (m[s] || 'badge bg-light text-dark') + '">' + (s || '-') + '</span>';
+                    const m = { P: 'badge bg-secondary', E: 'badge bg-info', S: 'badge bg-success', U: 'badge bg-success', I: 'badge bg-success' };
+                    const lbl = { P: 'Pendente', E: 'Enviado', S: 'Processado', U: 'Atualizado (U)', I: 'Processado (I)' };
+                    return '<span class="' + (m[s] || 'badge bg-light text-dark') + '" title="' + (s || '') + '">' + (lbl[s] || s || '-') + '</span>';
+                };
+                const descTipo = function (cod) {
+                    const m = window.TIPO_PAGAMENTO_DESC || {};
+                    return (cod && m[String(cod)]) ? m[String(cod)] : (cod || '-');
                 };
                 data.condicoes.forEach(function (c) {
                     const tr = document.createElement('tr');
                     const chaveShort = (c.chave_nfe || '').length > 20 ? (c.chave_nfe.substring(0, 10) + '…' + c.chave_nfe.slice(-10)) : (c.chave_nfe || '-');
                     const condSap = c.condicao_pagamento_sap || '-';
+                    const tipoExibir = descTipo(c.tipo_pagamento);
                     tr.innerHTML =
                         '<td class="small font-monospace" title="' + escapeHtml(c.chave_nfe || '') + '">' + escapeHtml(chaveShort) + '</td>' +
                         '<td class="small">' + escapeHtml(c.numero_nfe || '-') + ' / ' + escapeHtml(c.serie_nfe || '-') + '</td>' +
                         '<td class="small">' + escapeHtml(c.condicao_pagamento_nfe || '-') + '</td>' +
+                        '<td class="small text-center" title="' + escapeHtml(c.tipo_pagamento || '') + '">' + escapeHtml(tipoExibir) + '</td>' +
                         '<td class="small">' + escapeHtml(condSap) + '</td>' +
                         '<td class="text-center">' + statusBadge(c.status) + '</td>';
                     tbody.appendChild(tr);
@@ -777,9 +789,11 @@
         const modal = document.getElementById('modal-condicao-param');
         const filtroTodos = document.getElementById('filtro-todos');
         const filtroTexto = document.getElementById('filtro-condicao-texto');
+        const filtroTipo = document.getElementById('filtro-tipo-pagamento');
         if (modal) modal.style.display = 'block';
         if (filtroTodos) filtroTodos.checked = true;
-        if (filtroTexto) { filtroTexto.value = ''; filtroTexto.classList.add('d-none'); }
+        if (filtroTexto) filtroTexto.value = '';
+        if (filtroTipo) filtroTipo.value = '';
         carregarCondicaoParam();
     }
 
@@ -807,17 +821,37 @@
                     return;
                 }
                 if (wrap) wrap.classList.remove('d-none');
+                const descTipo = function (cod) {
+                    const m = window.TIPO_PAGAMENTO_DESC || {};
+                    return (cod && m[String(cod)]) ? m[String(cod)] : (cod || '-');
+                };
+                const tiposUnicos = {};
                 data.condicoes.forEach(function (c) {
                     const tr = document.createElement('tr');
                     tr.setAttribute('data-id', c.id);
                     const sapVazio = !(c.condicao_pagamento_sap || '').trim();
                     tr.setAttribute('data-sap-vazio', sapVazio ? '1' : '0');
                     const valSap = String(c.condicao_pagamento_sap || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const tipoExibir = descTipo(c.tipo_pagamento);
+                    const tipoCod = String(c.tipo_pagamento || '');
+                    tiposUnicos[tipoCod] = tipoExibir;
                     tr.innerHTML =
+                        '<td class="small text-center align-middle" title="' + escapeHtml(c.tipo_pagamento || '') + '" data-tipo="' + escapeHtml(tipoCod) + '">' + escapeHtml(tipoExibir) + '</td>' +
                         '<td class="small align-middle">' + escapeHtml(c.condicao_pagamento_nfe || '-') + '</td>' +
                         '<td><input type="text" class="form-control form-control-sm condicao-sap-input" data-id="' + c.id + '" value="' + valSap + '" maxlength="60" placeholder="Ex: Z001"></td>';
                     tbody.appendChild(tr);
                 });
+                const selTipo = document.getElementById('filtro-tipo-pagamento');
+                if (selTipo) {
+                    const opts = selTipo.querySelectorAll('option:not(:first-child)');
+                    opts.forEach(function (o) { o.remove(); });
+                    Object.keys(tiposUnicos).sort().forEach(function (cod) {
+                        const opt = document.createElement('option');
+                        opt.value = cod;
+                        opt.textContent = tiposUnicos[cod] || cod || '-';
+                        selTipo.appendChild(opt);
+                    });
+                }
                 aplicarFiltroCondicaoParam();
                 tbody.querySelectorAll('.condicao-sap-input').forEach(function (input) {
                     input.addEventListener('input', aplicarFiltroCondicaoParam);
@@ -831,28 +865,34 @@
     }
 
     function aplicarFiltroCondicaoParam() {
-        const tipo = document.querySelector('input[name="filtro-condicao-tipo"]:checked');
+        const tipoFiltro = document.querySelector('input[name="filtro-condicao-tipo"]:checked');
         const texto = document.getElementById('filtro-condicao-texto');
+        const selTipo = document.getElementById('filtro-tipo-pagamento');
         const tbody = document.getElementById('tbody-condicao-param');
-        if (!tbody || !tipo) return;
-        const valor = (tipo.value || '').trim();
+        if (!tbody || !tipoFiltro) return;
+        const valor = (tipoFiltro.value || '').trim();
         const termo = (texto && texto.value ? texto.value : '').trim().toLowerCase();
-        const inputEspecifica = document.getElementById('filtro-especifica');
-        if (inputEspecifica && texto) {
-            texto.classList.toggle('d-none', valor !== 'especifica');
-            if (valor !== 'especifica') texto.value = '';
-        }
+        const tipoPagSel = (selTipo && selTipo.value ? selTipo.value : '').trim();
         tbody.querySelectorAll('tr').forEach(function (tr) {
-            const tdNfe = tr.querySelector('td:first-child');
+            const tdTipo = tr.querySelector('td:first-child');
+            const tdNfe = tr.querySelector('td:nth-child(2)');
             const inputSap = tr.querySelector('.condicao-sap-input');
             const nfe = (tdNfe ? tdNfe.textContent : '').toLowerCase();
+            const tipoTexto = (tdTipo ? tdTipo.textContent : '').toLowerCase();
+            const tipoCod = (tdTipo && tdTipo.getAttribute('data-tipo')) ? tdTipo.getAttribute('data-tipo') : '';
             const sap = (inputSap ? (inputSap.value || '') : '').toLowerCase();
             const sapVazio = !inputSap || !(inputSap.value || '').trim();
             let show = true;
             if (valor === 'vazia') {
                 show = sapVazio;
-            } else if (valor === 'especifica' && termo) {
-                show = nfe.indexOf(termo) >= 0 || sap.indexOf(termo) >= 0;
+            } else if (valor === 'preenchida') {
+                show = !sapVazio;
+            }
+            if (show && tipoPagSel && tipoCod !== tipoPagSel) {
+                show = false;
+            }
+            if (show && termo) {
+                show = nfe.indexOf(termo) >= 0 || tipoTexto.indexOf(termo) >= 0 || sap.indexOf(termo) >= 0;
             }
             tr.style.display = show ? '' : 'none';
         });
@@ -988,6 +1028,7 @@
             r.addEventListener('change', aplicarFiltroCondicaoParam);
         });
         document.getElementById('filtro-condicao-texto')?.addEventListener('input', aplicarFiltroCondicaoParam);
+        document.getElementById('filtro-tipo-pagamento')?.addEventListener('change', aplicarFiltroCondicaoParam);
         document.getElementById('btn-voltar-lista')?.addEventListener('click', voltarParaListaDivergencias);
         document.getElementById('tab-por-tipo-btn')?.addEventListener('click', function () { ativarAbaDivergencias('tab-por-tipo'); });
         document.getElementById('tab-detalhe-btn')?.addEventListener('click', function () { ativarAbaDivergencias('tab-detalhe'); });

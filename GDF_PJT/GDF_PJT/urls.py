@@ -64,7 +64,7 @@ urlpatterns = [
     path('api/relatorio/nfse/', views.fn_api_relatorio_nfse, name='API_RelatorioNFSe'),
     path('api/relatorio/nfse/<int:id_nfse>/', views.fn_api_relatorio_nfse_detalhe, name='API_RelatorioNFSEDetalhe'),
     path('api/relatorio/sped/', views.fn_api_relatorio_sped, name='API_RelatorioSped'),
-    path('api/relatorio/sped/<int:id_arquivo>/', views.fn_api_relatorio_sped_detalhe, name='API_RelatorioSpedDetalhe'),
+    path('api/relatorio/sped/<str:tipo>/<int:id_arquivo>/', views.fn_api_relatorio_sped_detalhe, name='API_RelatorioSpedDetalhe'),
 
     # API Reprocessamento (Painel: lotes, divergências, confronto)
     path('api/reprocessamento/lotes/', views.fn_api_reprocessamento_lotes, name='API_ReprocessamentoLotes'),
@@ -78,6 +78,7 @@ urlpatterns = [
     path('api/reprocessamento/divergencias/<int:id_divergencia>/reprocessar/', views.fn_api_reprocessamento_reprocessar_divergencia, name='API_ReprocessamentoReprocessarDivergencia'),
     path('api/reprocessamento/condicao-param/', views.fn_api_reprocessamento_condicao_param_listar, name='API_ReprocessamentoCondicaoParamListar'),
     path('api/reprocessamento/condicao-param/atualizar/', views.fn_api_reprocessamento_condicao_param_atualizar, name='API_ReprocessamentoCondicaoParamAtualizar'),
+    path('api/sap/testar-conexao/', views.fn_api_sap_testar_conexao, name='API_SapTestarConexao'),
     
         
 #--------------------------------------------------------------------
