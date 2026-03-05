@@ -142,64 +142,93 @@ def render_comparativo(df_merged, grafico_mod, tipo_relatorio: str = "Vendas"):
 
 
 def render_ranking(df_merged, tipo_relatorio: str):
-    """Tab: Ranking (Clientes/Cidades ou Fornecedores)."""
-    col_rank1, col_rank2 = st.columns(2)
+    """Tab: Ranking por Clientes, Cidades ou Fornecedores."""
+    st.caption("Maiores por faturamento, quantidade ou impostos.")
+
+    col_rank1, col_rank2, col_rank3 = st.columns([2, 2, 1])
 
     with col_rank1:
         if tipo_relatorio == "Compras":
-            dimensao_rank = "Fornecedores (CNPJ)"
+            dimensao_rank = "Fornecedores"
         else:
             dimensao_rank = st.selectbox(
-                "Dimensão para ranking",
-                options=["Cidades", "Clientes (CNPJ)"],
-                key="rank_dimensao"
+                "Dimensão",
+                options=["Clientes", "Cidades"],
+                key="rank_dimensao",
+                help="Clientes: por CNPJ/razão social. Cidades: por município.",
             )
 
     with col_rank2:
         metrica_rank = st.selectbox(
-            "Métrica",
-            options=["Faturamento", "Quantidade Total", "Total Impostos"],
-            key="rank_metrica"
+            "Ordenar por",
+            options=["Faturamento", "Quantidade Total", "Total Impostos", "Valor Líquido"],
+            key="rank_metrica",
+            help="Métrica para ordenar o ranking.",
         )
+
+    with col_rank3:
+        top_n = st.slider("Top N", min_value=5, max_value=30, value=10, key="rank_top")
 
     try:
         df_rank_src = df_merged.copy()
         df_rank_src['Faturamento'] = pd.to_numeric(df_rank_src['Faturamento'], errors='coerce').fillna(0)
         df_rank_src['Quantidade Total'] = pd.to_numeric(df_rank_src['Quantidade Total'], errors='coerce').fillna(0)
         df_rank_src['Total Impostos'] = pd.to_numeric(df_rank_src['Total Impostos'], errors='coerce').fillna(0)
-        col_sort = 'Faturamento' if metrica_rank == "Faturamento" else (
-            'Quantidade Total' if metrica_rank == "Quantidade Total" else 'Total Impostos'
-        )
+        df_rank_src['Valor Líquido'] = df_rank_src['Faturamento'] - df_rank_src['Total Impostos']
 
-        if tipo_relatorio == "Compras" or dimensao_rank == "Fornecedores (CNPJ)":
+        col_sort = metrica_rank
+
+        if tipo_relatorio == "Compras" or dimensao_rank == "Fornecedores":
             key_cnpj = 'cnpj_fornecedor' if tipo_relatorio == "Compras" else 'cnpj_cliente'
             key_nome = 'nome_fornecedor' if tipo_relatorio == "Compras" else 'nome_cliente'
             df_rank = df_rank_src.dropna(subset=[key_cnpj]).groupby([key_cnpj, key_nome]).agg({
-                'Faturamento': 'sum', 'Quantidade Total': 'sum', 'Total Impostos': 'sum'
+                'Faturamento': 'sum', 'Quantidade Total': 'sum', 'Total Impostos': 'sum', 'Valor Líquido': 'sum'
             }).reset_index()
-            df_rank['cliente_label'] = df_rank[key_cnpj].astype(str) + ' - ' + df_rank[key_nome].fillna('S/N')
-            df_rank = df_rank.nlargest(10, col_sort)
-            chart_rank = alt.Chart(df_rank).mark_bar().encode(
-                y=alt.Y('cliente_label:N', title='Fornecedor' if tipo_relatorio == "Compras" else 'Cliente',
-                        sort=alt.EncodingSortField(field=col_sort, order='descending')),
+            df_rank['label'] = df_rank[key_nome].fillna('S/N').str[:40] + ' (' + df_rank[key_cnpj].astype(str).str[-8:] + ')'
+            df_rank = df_rank.nlargest(top_n, col_sort)
+            total_geral = df_rank_src[col_sort].sum()
+            df_rank['pct_total'] = (df_rank[col_sort] / total_geral * 100).round(1) if total_geral else 0
+
+            titulo_eixo = "Fornecedor" if tipo_relatorio == "Compras" else "Cliente"
+            titulo_chart = f"Top {top_n} {titulo_eixo}s por {col_sort}"
+
+            chart_rank = alt.Chart(df_rank).mark_bar(cornerRadius=6).encode(
+                y=alt.Y('label:N', title=titulo_eixo, sort=alt.EncodingSortField(field=col_sort, order='descending')),
                 x=alt.X(f'{col_sort}:Q', title=col_sort),
-                color=alt.value('#1f77d4')
-            ).properties(
-                height=500,
-                title=f"Top 10 Fornecedores por {col_sort}" if tipo_relatorio == "Compras" else f"Top 10 Clientes por {col_sort}"
-            )
+                color=alt.Color('label:N', scale=alt.Scale(scheme='blues'), legend=None),
+                tooltip=[
+                    alt.Tooltip('label:N', title=titulo_eixo),
+                    alt.Tooltip(f'{col_sort}:Q', title=col_sort, format=',.2f' if col_sort != 'Quantidade Total' else ',.0f'),
+                    alt.Tooltip('pct_total:Q', title='% do total', format='.1f'),
+                    alt.Tooltip('Faturamento:Q', title='Faturamento', format=',.2f'),
+                    alt.Tooltip('Quantidade Total:Q', title='Quantidade', format=',.0f'),
+                ]
+            ).properties(height=max(300, len(df_rank) * 36), title=titulo_chart)
             st.altair_chart(chart_rank, use_container_width=True)
+
         elif dimensao_rank == "Cidades":
             df_rank = df_rank_src.dropna(subset=['cidade']).groupby('cidade').agg({
                 'Faturamento': 'sum', 'Quantidade Total': 'sum', 'Total Impostos': 'sum'
             }).reset_index()
-            df_rank = df_rank.nlargest(10, col_sort)
-            chart_rank = alt.Chart(df_rank).mark_bar().encode(
+            df_rank['Valor Líquido'] = df_rank['Faturamento'] - df_rank['Total Impostos']
+            df_rank = df_rank.nlargest(top_n, col_sort)
+            total_geral = df_rank_src[col_sort].sum()
+            df_rank['pct_total'] = (df_rank[col_sort] / total_geral * 100).round(1) if total_geral else 0
+
+            chart_rank = alt.Chart(df_rank).mark_bar(cornerRadius=6).encode(
                 y=alt.Y('cidade:N', title='Cidade', sort=alt.EncodingSortField(field=col_sort, order='descending')),
                 x=alt.X(f'{col_sort}:Q', title=col_sort),
-                color=alt.value('#1f77d4')
-            ).properties(height=400, title=f"Top 10 Cidades por {col_sort}")
+                color=alt.Color('cidade:N', scale=alt.Scale(scheme='blues'), legend=None),
+                tooltip=[
+                    alt.Tooltip('cidade:N', title='Cidade'),
+                    alt.Tooltip(f'{col_sort}:Q', title=col_sort, format=',.2f' if col_sort != 'Quantidade Total' else ',.0f'),
+                    alt.Tooltip('pct_total:Q', title='% do total', format='.1f'),
+                    alt.Tooltip('Faturamento:Q', title='Faturamento', format=',.2f'),
+                    alt.Tooltip('Quantidade Total:Q', title='Quantidade', format=',.0f'),
+                ]
+            ).properties(height=max(300, len(df_rank) * 36), title=f"Top {top_n} Cidades por {col_sort}")
             st.altair_chart(chart_rank, use_container_width=True)
+
     except Exception as err_rank:
         st.error(f"❌ Erro ao gerar ranking: {str(err_rank)}")
 
@@ -280,11 +309,6 @@ def render_por_tipo_pagamento(df_pagamento):
 
 def render_condicoes_pagamento(df_parcelas, df_merged):
     """Tab: Condições de pagamento mais usadas (Vendas)."""
-    st.markdown("### Condições de pagamento que mais se repetem")
-    st.caption(
-        "Cada condição considera o número de parcelas e o prazo em dias (emissão → vencimento) de cada parcela. "
-        "Ex.: \"5x em 15/30/30/30/30 dias\"."
-    )
     if not df_parcelas.empty and "id_identificacao" in df_parcelas.columns:
         df_emissao = df_merged[["id_identificacao", "emissao"]].drop_duplicates()
         df_cp = df_parcelas.merge(df_emissao, on="id_identificacao", how="left")
@@ -319,14 +343,6 @@ def render_condicoes_pagamento(df_parcelas, df_merged):
             tooltip=[alt.Tooltip("Condição de pagamento:N"), alt.Tooltip("Quantidade de NF-e:Q")],
         ).properties(height=max(300, len(cond_plot) * 28), title="Condições de pagamento mais usadas (prazo por parcela)")
         st.altair_chart(chart_cond, use_container_width=True)
-
-        with st.expander("Ver todas as condições e detalhes"):
-            st.dataframe(cond_counts, use_container_width=True)
-            st.markdown(
-                "**Como é definida cada condição:** para cada NF-e, são consideradas as parcelas em ordem; "
-                "calcula-se o número de dias entre a emissão da nota e o vencimento de cada parcela. "
-                "Condições iguais (mesmo número de parcelas e mesmos prazos) são agrupadas."
-            )
     else:
         st.info("ℹ️ Nenhuma parcela cadastrada para analisar condições de pagamento.")
 

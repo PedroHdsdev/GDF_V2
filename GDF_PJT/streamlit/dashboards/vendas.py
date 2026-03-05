@@ -21,33 +21,26 @@ class DashboardVendas(BaseDashboard):
 
     def render_content(self):
         """Renderiza gráficos e seções de Vendas."""
+        # Análise de Dados
         st.subheader("📈 Análise de Dados")
-
         tab_evolucao, tab_comparacao = st.tabs(["📈 Evolução Temporal", "⚖️ Comparar Períodos"])
-
         with tab_evolucao:
-            render_evolucao_temporal(
-                self.data.df_merged,
-                tv,
-                self.TIPO_RELATORIO
-            )
-
+            render_evolucao_temporal(self.data.df_merged, tv, self.TIPO_RELATORIO)
         with tab_comparacao:
             render_comparativo(self.data.df_merged, tv, self.TIPO_RELATORIO)
 
         # Ranking
-        with st.tabs(["📊 Ranks de Vendas"])[0]:
-            st.markdown("### 🏆 Ranking de Vendas (por Cliente e Localização)")
+        st.subheader("📊 Ranking")
+        with st.tabs(["📊 Ranking"])[0]:
             render_ranking(self.data.df_merged, self.TIPO_RELATORIO)
 
-        # Grupo de mercadorias
+        # Grupo de Mercadorias
+        st.subheader("📦 Grupo de Mercadorias")
         with st.tabs(["📦 Grupo de Mercadorias"])[0]:
-            st.markdown("### 📦 Análise por Grupo de Mercadorias")
             render_grupo_mercadorias(self.data.df_produtos)
 
-        # Pagamentos (Vendas)
-        st.markdown("---")
-        st.subheader("💰 Pagamentos (Vendas)")
+        # Pagamentos
+        st.subheader("💰 Pagamentos")
         tab_cond_pag, tab_tipo_pag = st.tabs([
             "📋 Condições de pagamento mais usadas",
             "💳 Por tipo de pagamento",
