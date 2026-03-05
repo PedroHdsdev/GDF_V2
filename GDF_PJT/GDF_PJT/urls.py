@@ -96,6 +96,7 @@ urlpatterns = [
     # Clientes
     path('cliente/inserir/', views.fn_view_inserir_cliente, name='Cliente_ins'),
     path('cliente/Acesso/', views.fn_view_atualizar_acesso_cliente, name='Cliente_acesso_upd'),
+    path('cliente/Grupos/', views.fn_view_atualizar_grupos_cliente, name='Cliente_grupos_upd'),
     path('cliente/<str:cod_cliente>/', views.fn_view_atualizar_cliente, name='Cliente_upd'),
     path('cliente/<str:cod_cliente>/sap/', views.fn_view_cliente_sap, name='Cliente_sap'),
 

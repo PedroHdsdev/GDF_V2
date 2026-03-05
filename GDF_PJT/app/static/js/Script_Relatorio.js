@@ -386,6 +386,60 @@ function buildCabecalhoSped(cab) {
     return html;
 }
 
+function buildTabelaC100ComImpostos(regs) {
+    if (!regs || !regs.length) return '<p class="text-muted">Nenhum documento C100</p>';
+    var groupRow = '<thead class="relatorio-thead-grupo"><tr>' +
+        '<th colspan="5">Documento</th><th colspan="6">Impostos</th></tr></thead>';
+    var colRow = '<thead class="relatorio-thead-col"><tr>' +
+        '<th>Linha</th><th>Chave NFe</th><th>Data</th><th>Nº Doc</th><th>Valor Doc.</th>' +
+        '<th>BC ICMS</th><th>ICMS</th><th>BC ST</th><th>ICMS ST</th><th>PIS</th><th>COFINS</th><th>IPI</th></tr></thead>';
+    var tbody = '<tbody>';
+    regs.forEach(function (r) {
+        tbody += '<tr>' +
+            '<td>' + (r.linha != null ? r.linha : '') + '</td>' +
+            '<td class="small font-monospace" style="min-width:300px; word-break:break-all" title="' + escapeHtml(r.chv_nfe || '') + '">' + escapeHtml(r.chv_nfe || '—') + '</td>' +
+            '<td>' + (r.dt_doc || '—') + '</td><td>' + escapeHtml(r.num_doc || '—') + '</td>' +
+            '<td class="relatorio-moeda">' + fmtMoeda(r.vl_doc) + '</td>' +
+            '<td class="relatorio-moeda">' + fmtMoeda(r.vl_bc_icms) + '</td><td class="relatorio-moeda">' + fmtMoeda(r.vl_icms) + '</td>' +
+            '<td class="relatorio-moeda">' + fmtMoeda(r.vl_bc_icms_st) + '</td><td class="relatorio-moeda">' + fmtMoeda(r.vl_icms_st) + '</td>' +
+            '<td class="relatorio-moeda">' + fmtMoeda(r.vl_pis) + '</td><td class="relatorio-moeda">' + fmtMoeda(r.vl_cofins) + '</td>' +
+            '<td class="relatorio-moeda">' + fmtMoeda(r.vl_ipi) + '</td></tr>';
+    });
+    tbody += '</tbody>';
+    return '<div class="relatorio-itens-wrapper"><table class="table table-sm table-hover table-bordered table-detalhe">' + groupRow + colRow + tbody + '</table></div>';
+}
+
+function buildTabelaC170ComImpostos(regs) {
+    if (!regs || !regs.length) return '<p class="text-muted">Nenhum item C170</p>';
+    var groupRow = '<thead class="relatorio-thead-grupo"><tr>' +
+        '<th colspan="7">Produto</th><th colspan="5">ICMS</th><th colspan="4">PIS</th><th colspan="4">COFINS</th></tr></thead>';
+    var colRow = '<thead class="relatorio-thead-col"><tr>' +
+        '<th>Item</th><th>Cód.</th><th>Descrição</th><th>Qtd</th><th>Un</th><th>V. Item</th><th>Desconto</th>' +
+        '<th>CST</th><th>BC</th><th>Alíq %</th><th>ICMS</th><th>ICMS ST</th>' +
+        '<th>CST</th><th>BC</th><th>Alíq %</th><th>PIS</th>' +
+        '<th>CST</th><th>BC</th><th>Alíq %</th><th>COFINS</th></tr></thead>';
+    var tbody = '<tbody>';
+    regs.forEach(function (r) {
+        tbody += '<tr>' +
+            '<td>' + escapeHtml(r.num_item != null ? String(r.num_item) : '') + '</td>' +
+            '<td>' + escapeHtml(r.cod_item || '—') + '</td>' +
+            '<td style="max-width:180px" title="' + escapeHtml(r.descr_compl || '') + '">' + escapeHtml(r.descr_compl || '—') + '</td>' +
+            '<td class="relatorio-num">' + fmtNum(r.qtd) + '</td><td>' + escapeHtml(r.unid || '—') + '</td>' +
+            '<td class="relatorio-moeda">' + fmtMoeda(r.vl_item) + '</td><td class="relatorio-moeda">' + fmtMoeda(r.vl_desc) + '</td>' +
+            '<td>' + escapeHtml(r.cst_icms != null ? String(r.cst_icms) : '—') + '</td>' +
+            '<td class="relatorio-moeda">' + fmtMoeda(r.vl_bc_icms) + '</td><td class="relatorio-num">' + fmtNum(r.aliq_icms) + '</td>' +
+            '<td class="relatorio-moeda">' + fmtMoeda(r.vl_icms) + '</td><td class="relatorio-moeda">' + fmtMoeda(r.vl_icms_st) + '</td>' +
+            '<td>' + escapeHtml(r.cst_pis != null ? String(r.cst_pis) : '—') + '</td>' +
+            '<td class="relatorio-moeda">' + fmtMoeda(r.vl_bc_pis) + '</td><td class="relatorio-num">' + fmtNum(r.aliq_pis) + '</td>' +
+            '<td class="relatorio-moeda">' + fmtMoeda(r.vl_pis) + '</td>' +
+            '<td>' + escapeHtml(r.cst_cofins != null ? String(r.cst_cofins) : '—') + '</td>' +
+            '<td class="relatorio-moeda">' + fmtMoeda(r.vl_bc_cofins) + '</td><td class="relatorio-num">' + fmtNum(r.aliq_cofins) + '</td>' +
+            '<td class="relatorio-moeda">' + fmtMoeda(r.vl_cofins) + '</td></tr>';
+    });
+    tbody += '</tbody>';
+    return '<div class="relatorio-itens-wrapper"><table class="table table-sm table-hover table-bordered table-detalhe">' + groupRow + colRow + tbody + '</table></div>';
+}
+
 function buildReg0000Card(regs) {
     if (!regs || !regs.length) return '<p class="text-muted">Nenhum registro 0000</p>';
     var r = regs[0];
@@ -406,7 +460,13 @@ function preencherModalSped(data, tabsContainer, tabContentContainer) {
     var r0150 = data.reg_0150 || [], r0190 = data.reg_0190 || [], r0200 = data.reg_0200 || [];
     var rC001 = data.reg_c001 || [], rC100 = data.reg_c100 || [], rC170 = data.reg_c170 || [];
     var rC190 = data.reg_c190 || [], rD100 = data.reg_d100 || [], registros = data.registros || [];
-    var moedaCols = { vl_doc: 'moeda', vl_item: 'moeda', vl_icms: 'moeda' };
+    var moedaColsC100 = { vl_doc: 'moeda', vl_bc_icms: 'moeda', vl_icms: 'moeda', vl_bc_icms_st: 'moeda', vl_icms_st: 'moeda', vl_ipi: 'moeda', vl_pis: 'moeda', vl_cofins: 'moeda' };
+    var moedaColsC170 = { vl_item: 'moeda', vl_desc: 'moeda', vl_bc_icms: 'moeda', vl_icms: 'moeda', vl_bc_icms_st: 'moeda', vl_icms_st: 'moeda', vl_bc_pis: 'moeda', vl_pis: 'moeda', vl_bc_cofins: 'moeda', vl_cofins: 'moeda' };
+    var moedaColsC190 = { vl_opr: 'moeda', vl_bc_icms: 'moeda', vl_icms: 'moeda', vl_bc_icms_st: 'moeda', vl_icms_st: 'moeda', vl_red_bc: 'moeda', vl_ipi: 'moeda' };
+    var numColsC170 = { qtd: 'numero', aliq_icms: 'numero', aliq_st: 'numero', aliq_pis: 'numero', aliq_cofins: 'numero' };
+    var numColsC190 = { aliq_icms: 'numero' };
+    Object.assign(moedaColsC170, numColsC170);
+    Object.assign(moedaColsC190, numColsC190);
 
     var tabs = [
         { id: 'resumo', label: 'Resumo', content: buildCabecalhoSped(data.cabecalho) + buildReg0000Card(r0000) },
@@ -414,10 +474,10 @@ function preencherModalSped(data, tabsContainer, tabContentContainer) {
         { id: 'reg0150', label: '0150 Participantes' + (r0150.length ? ' (' + r0150.length + ')' : ''), content: wrapBloco(arrayParaTabela(r0150, ['linha', 'cod_part', 'nome', 'cnpj', 'end'], {})) },
         { id: 'reg0190', label: '0190 Unidades' + (r0190.length ? ' (' + r0190.length + ')' : ''), content: wrapBloco(arrayParaTabela(r0190, ['linha', 'unid', 'descr'], {})) },
         { id: 'reg0200', label: '0200 Itens' + (r0200.length ? ' (' + r0200.length + ')' : ''), content: wrapBloco(arrayParaTabela(r0200, ['linha', 'cod_item', 'descr_item', 'unid_inv', 'cod_ncm'], {})) },
-        { id: 'regc100', label: 'C100 Documentos fiscais' + (rC100.length ? ' (' + rC100.length + ')' : ''), content: wrapBloco(arrayParaTabela(rC100, ['linha', 'chv_nfe', 'dt_doc', 'vl_doc'], moedaCols)) },
-        { id: 'regc170', label: 'C170 Itens dos documentos' + (rC170.length ? ' (' + rC170.length + ')' : ''), content: wrapBloco(arrayParaTabela(rC170, ['linha', 'cod_item', 'descr_compl', 'vl_item'], moedaCols)) },
-        { id: 'regc190', label: 'C190 Analítico ICMS' + (rC190.length ? ' (' + rC190.length + ')' : ''), content: wrapBloco(arrayParaTabela(rC190, ['linha', 'cst_icms', 'cfop', 'vl_icms'], moedaCols)) },
-        { id: 'regd100', label: 'D100 Transporte (CT-e)' + (rD100.length ? ' (' + rD100.length + ')' : ''), content: wrapBloco(arrayParaTabela(rD100, ['linha', 'chv_cte', 'dt_doc', 'vl_doc'], moedaCols)) },
+        { id: 'regc100', label: 'C100 Documentos fiscais (impostos)' + (rC100.length ? ' (' + rC100.length + ')' : ''), content: wrapBloco(buildTabelaC100ComImpostos(rC100)) },
+        { id: 'regc170', label: 'C170 Itens com impostos' + (rC170.length ? ' (' + rC170.length + ')' : ''), content: wrapBloco(buildTabelaC170ComImpostos(rC170)) },
+        { id: 'regc190', label: 'C190 Analítico ICMS' + (rC190.length ? ' (' + rC190.length + ')' : ''), content: wrapBloco(arrayParaTabela(rC190, ['linha', 'cst_icms', 'cfop', 'vl_opr', 'vl_bc_icms', 'aliq_icms', 'vl_icms', 'vl_bc_icms_st', 'vl_icms_st', 'vl_red_bc', 'vl_ipi'], moedaColsC190)) },
+        { id: 'regd100', label: 'D100 Transporte (CT-e)' + (rD100.length ? ' (' + rD100.length + ')' : ''), content: wrapBloco(arrayParaTabela(rD100, ['linha', 'chv_cte', 'dt_doc', 'vl_doc'], { vl_doc: 'moeda' })) },
         { id: 'registros', label: 'Outros registros' + (registros.length ? ' (' + registros.length + ')' : ''), content: buildOutrosRegistrosSped(registros) }
     ];
     renderTabs(tabs, tabsContainer, tabContentContainer);

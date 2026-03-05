@@ -10,7 +10,9 @@ const og_estado_clientes = {
     originalFormData: {},
     modalAberto: null,    // ✅ Controlar qual modal está aberto
     solucoesSelecionadas: [],  // ✅ Array de soluções selecionadas
-    solucoesDisponiveis: []    // ✅ Lista de soluções disponíveis para adicionar
+    solucoesDisponiveis: [],   // ✅ Lista de soluções disponíveis para adicionar
+    gruposClienteSelecionados: [],  // Grupos vinculados ao cliente
+    gruposClienteDisponiveis: []    // Grupos disponíveis para adicionar
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -444,6 +446,25 @@ function fn_preencher_formulario(data) {
   fn_renderizar_solucoes();
   fn_preencher_select_solucoes();
 
+  // Aba Grupo de usuários
+  document.getElementById('Grupos_cliente_id').value = data.cod_cliente || '';
+  og_estado_clientes.gruposClienteSelecionados = [];
+  og_estado_clientes.gruposClienteDisponiveis = [];
+  if (data.grupos_vinculados && Array.isArray(data.grupos_vinculados)) {
+    og_estado_clientes.gruposClienteSelecionados = data.grupos_vinculados.map(g => ({
+      id: Number(g.id),
+      name: g.name
+    }));
+  }
+  if (data.grupos_disponiveis && Array.isArray(data.grupos_disponiveis)) {
+    og_estado_clientes.gruposClienteDisponiveis = data.grupos_disponiveis.map(g => ({
+      id: Number(g.id),
+      name: g.name
+    }));
+  }
+  fn_renderizar_grupos_cliente();
+  fn_preencher_select_grupos_cliente();
+
   // Aba Conexão SAP
   const codCliente = data.cod_cliente || '';
   document.getElementById('sap_cliente_id').value = codCliente;
@@ -628,6 +649,81 @@ function fn_renderizar_solucoes() {
   
   console.log('[fn_renderizar_solucoes] hidden.value:', hidden.value);
   console.log('[fn_renderizar_solucoes] solucoesSelecionadas:', JSON.stringify(og_estado_clientes.solucoesSelecionadas));
+}
+
+/* ===============================
+   PREENCHER SELECT DE GRUPOS (cliente)
+================================ */
+function fn_preencher_select_grupos_cliente() {
+  const select = document.getElementById('upd_grupos_cliente_select');
+  if (!select) return;
+  while (select.options.length > 1) select.removeChild(select.lastChild);
+  og_estado_clientes.gruposClienteDisponiveis.forEach(g => {
+    const option = document.createElement('option');
+    option.value = g.id;
+    option.textContent = g.name;
+    select.appendChild(option);
+  });
+}
+
+/* ===============================
+   RENDERIZAR GRUPOS DO CLIENTE
+================================ */
+function fn_renderizar_grupos_cliente() {
+  const tbody = document.getElementById('upd_grupos_cliente_tbody');
+  const hidden = document.getElementById('upd_grupos_cliente_hidden');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (og_estado_clientes.gruposClienteSelecionados.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Nenhum grupo vinculado</td></tr>';
+    if (hidden) hidden.value = '';
+    return;
+  }
+  og_estado_clientes.gruposClienteSelecionados.forEach(g => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${(g.name || '').replace(/</g, '&lt;')}</td>
+      <td class="text-center">
+        <button type="button" class="btn btn-sm btn-danger" onclick="fn_remover_grupo_cliente(${g.id})">Remover</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+  if (hidden) hidden.value = og_estado_clientes.gruposClienteSelecionados.map(g => g.id).join(',');
+}
+
+/* ===============================
+   ADICIONAR GRUPO AO CLIENTE
+================================ */
+function fn_adicionar_grupo_cliente() {
+  const select = document.getElementById('upd_grupos_cliente_select');
+  if (!select || !select.value) {
+    Notificacoes.modal('Selecione um grupo!', 'warning', 'modalClienteUpdAlerts');
+    return;
+  }
+  const gid = parseInt(select.value, 10);
+  const gname = select.options[select.selectedIndex].text;
+  if (og_estado_clientes.gruposClienteSelecionados.some(g => g.id === gid)) {
+    Notificacoes.modal('Este grupo já foi adicionado!', 'warning', 'modalClienteUpdAlerts');
+    return;
+  }
+  og_estado_clientes.gruposClienteSelecionados.push({ id: gid, name: gname });
+  og_estado_clientes.gruposClienteDisponiveis = og_estado_clientes.gruposClienteDisponiveis.filter(g => g.id !== gid);
+  select.value = '';
+  fn_renderizar_grupos_cliente();
+  fn_preencher_select_grupos_cliente();
+}
+
+/* ===============================
+   REMOVER GRUPO DO CLIENTE
+================================ */
+function fn_remover_grupo_cliente(grupoId) {
+  const g = og_estado_clientes.gruposClienteSelecionados.find(x => x.id === grupoId);
+  if (!g) return;
+  og_estado_clientes.gruposClienteDisponiveis.push({ id: g.id, name: g.name });
+  og_estado_clientes.gruposClienteSelecionados = og_estado_clientes.gruposClienteSelecionados.filter(x => x.id !== grupoId);
+  fn_renderizar_grupos_cliente();
+  fn_preencher_select_grupos_cliente();
 }
 
 /* ===============================
@@ -827,6 +923,15 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // ✅ Submeter via AJAX
       fn_submit_form_ajax(this, 'Acesso');
+    });
+  }
+
+  const formGrupos = document.getElementById('formGruposUpd');
+  if (formGrupos) {
+    formGrupos.addEventListener('submit', function(event) {
+      event.preventDefault();
+      fn_renderizar_grupos_cliente();
+      fn_submit_form_ajax(this, 'Grupos');
     });
   }
 

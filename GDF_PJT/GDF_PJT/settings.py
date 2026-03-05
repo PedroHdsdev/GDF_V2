@@ -47,8 +47,10 @@ CSRF_TRUSTED_ORIGINS = env.list(
         'https://localhost:8500',
         'https://127.0.0.1:8500',
         'https://0.0.0.0:8500',
+        'https://10.0.1.158:8500',
         'http://localhost:8500',
         'http://127.0.0.1:8500',
+        'http://10.0.1.158:8500',
     ]
 )
 SECURE_HSTS_SECONDS = env.int('SECURE_HSTS_SECONDS', default=31536000)  # 1 ano
@@ -303,6 +305,7 @@ CONTENT_SECURITY_POLICY = {
         "frame-src": (
             "'self'",
             "https://10.0.1.19:8600",
+            "https://10.0.1.158:8600",
             "https://localhost:8600",
             "https://127.0.0.1:8600",
             "https://201.6.103.133:8600",

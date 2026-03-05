@@ -9,6 +9,14 @@
     font-family: 'Poppins', sans-serif;
 }
 
+/* Seletor de cliente no topo do sidebar (superuser) */
+.sidebar-cliente-selector {
+    background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+}
+.sidebar-cliente-form .form-select {
+    font-size: 0.8125rem;
+}
+
 /* Header do Sidebar */
 .sidebar-header {
     padding: 1rem 1.5rem;

@@ -45,6 +45,7 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
             [
                 'https://localhost:8600',
                 'https://10.0.1.19:8600',
+                'https://10.0.1.158:8600',
             ],
         )
         csp_directives = [

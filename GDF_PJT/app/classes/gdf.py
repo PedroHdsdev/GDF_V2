@@ -90,6 +90,10 @@ class ClGdf():
         g_v_iat = int(time.time())
         g_v_exp = g_v_iat + (30 * 60)  # +30 minutos em segundos
         
+        cod_cliente = (request.session.get('cod_cliente') or '').strip() if request else ''
+        is_superuser = getattr(user, 'is_superuser', False)
+        usuario_cliente_1000 = request.session.get('usuario_cliente_1000', False) if request else False
+        
         payload = {
             "user_id": user.id,
             "username": user.username,
@@ -97,6 +101,12 @@ class ClGdf():
             "iat": g_v_iat,
             "exp": g_v_exp,
         }
+        if cod_cliente:
+            payload["cod_cliente"] = cod_cliente
+        if is_superuser:
+            payload["is_superuser"] = True
+        if usuario_cliente_1000:
+            payload["usuario_cliente_1000"] = True
 
         try:
             g_og_token = jwt_encode(payload, settings.SECRET_KEY, algorithm='HS256')
@@ -156,8 +166,11 @@ class ClGdf():
     def get_solucoes(self):
         self.Retorn = []
         try:
-            # Superuser: acesso a todas as soluções e subsoluções (controle total por cliente)
+            # Superuser: acesso total
             if getattr(self, '_is_superuser', False):
+                return self._get_solucoes_superuser()
+            # Usuário com empresas no cliente 1000 (dona do projeto): acesso total
+            if self.Empresas.filter(cliente__cod_cliente='1000').exists():
                 return self._get_solucoes_superuser()
 
             if not hasattr(self, 'subsolucoes_acesso') or not hasattr(self, 'solucoes_acesso'):
@@ -315,6 +328,18 @@ class ClGdf():
                     "lang": sap_conn.lang or "",
                     "active": sap_conn.active,
                 }
+
+            # Grupos de usuários vinculados ao cliente (GrupoCliente)
+            grupos_vinculados = list(
+                GrupoCliente.objects.filter(cliente=l_v_cliente)
+                .select_related('group')
+                .values('group__id', 'group__name')
+            )
+            grupos_vinculados = [{"id": g["group__id"], "name": g["group__name"]} for g in grupos_vinculados]
+            ids_vinculados = [g["id"] for g in grupos_vinculados]
+            grupos_disponiveis = list(
+                Group.objects.exclude(id__in=ids_vinculados).values('id', 'name')
+            )
             
             self.Retorn = {
                 "cod_cliente": l_v_cliente.cod_cliente,
@@ -330,6 +355,8 @@ class ClGdf():
                         for sa in l_v_query_solucoes_acesso
                     ],
                 "solucoes_disponiveis": list(l_v_queryset_solucoes_disponiveis.values('cod_solucao', 'descricao')),
+                "grupos_vinculados": grupos_vinculados,
+                "grupos_disponiveis": grupos_disponiveis,
                 "sap_connection": sap_connection_data,
             }
 
@@ -457,6 +484,29 @@ class ClGdf():
             return {"success": False, "message": "Solução inválida"}
         except Exception as e:
             return {"success": False, "message": f"Erro ao atualizar soluções: {str(e)}"}
+
+    def set_cliente_grupos(self, i_v_cod_cliente, ls_grupos_ids):
+        """Atualiza vínculos de grupos de usuários ao cliente. ls_grupos_ids: string de IDs separados por vírgula."""
+        try:
+            cliente = Clientes.objects.get(cod_cliente=i_v_cod_cliente)
+            if isinstance(ls_grupos_ids, str):
+                grupo_ids = [int(g.strip()) for g in ls_grupos_ids.split(",") if g.strip()]
+            else:
+                grupo_ids = list(ls_grupos_ids) if ls_grupos_ids else []
+
+            with transaction.atomic():
+                GrupoCliente.objects.filter(cliente=cliente).delete()
+                for gid in grupo_ids:
+                    group = Group.objects.get(id=gid)
+                    GrupoCliente.objects.create(cliente=cliente, group=group)
+
+            return {"success": True, "message": "Grupos atualizados com sucesso"}
+        except Clientes.DoesNotExist:
+            return {"success": False, "message": "Cliente não encontrado"}
+        except Group.DoesNotExist:
+            return {"success": False, "message": "Grupo inválido"}
+        except Exception as e:
+            return {"success": False, "message": f"Erro ao atualizar grupos: {str(e)}"}
 
 #********************************************************************************
 #--------------------------------------------------------------------------------

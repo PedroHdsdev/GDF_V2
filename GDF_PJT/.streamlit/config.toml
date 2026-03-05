@@ -1,0 +1,20 @@
+# Tema alinhado ao layout Django (GDF)
+# Cores: --gdf-ink #0f172a, --gdf-sky #0ea5e9, --gdf-sun #f97316
+
+[theme]
+base = "dark"
+primaryColor = "#0ea5e9"
+backgroundColor = "#0f172a"
+secondaryBackgroundColor = "#1e293b"
+textColor = "#f8fafc"
+font = "sans serif"
+
+# Sidebar clara (como Django offcanvas)
+[theme.sidebar]
+primaryColor = "#0ea5e9"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f8fafc"
+textColor = "#0f172a"
+
+[browser]
+gatherUsageStats = false

@@ -12,23 +12,6 @@
 
 {% block container %}
 <div class="home-page">
-    {% if is_superuser and lista_clientes %}
-    <section class="mb-3 p-3 bg-white rounded shadow-sm border">
-        <form method="post" action="{% url 'Home' %}" class="d-flex align-items-center gap-2 flex-wrap">
-            {% csrf_token %}
-            <label class="fw-semibold mb-0">Cliente ativo (contexto):</label>
-            <select name="cod_cliente" class="form-select form-select-sm" style="max-width: 280px;">
-                <option value="">-- Selecione --</option>
-                {% for c in lista_clientes %}
-                <option value="{{ c.cod_cliente }}" {% if cod_cliente == c.cod_cliente %}selected{% endif %}>{{ c.cod_cliente }} – {{ c.razao|default:"" }}</option>
-                {% endfor %}
-            </select>
-            <button type="submit" class="btn btn-primary btn-sm">Usar este cliente</button>
-        </form>
-        <p class="text-muted small mb-0 mt-1">Como superusuário você pode criar e gerenciar usuários, grupos e empresas para qualquer cliente.</p>
-    </section>
-    {% endif %}
-
     <section class="home-welcome">
         <div class="home-welcome-main">
             <h2 class="home-welcome-title">Olá, {{ nome_usuario }}</h2>
@@ -188,5 +171,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/script_Home.js' %}"></script>
+<script src="{% static 'js/Script_Home.js' %}"></script>
 {% endblock %}

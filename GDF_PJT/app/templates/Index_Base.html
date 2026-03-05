@@ -54,6 +54,23 @@
     </div>
 
     <div class="offcanvas-body p-0">
+        {% if pode_trocar_cliente and lista_clientes %}
+        <div class="sidebar-cliente-selector p-3 border-bottom">
+            <form id="formSidebarCliente" class="sidebar-cliente-form" method="post" action="#" onsubmit="return false;">
+                {% csrf_token %}
+                <label class="form-label small fw-semibold mb-1">Cliente ativo</label>
+                <select name="cod_cliente" id="sidebarSelectCliente" class="form-select form-select-sm mb-2">
+                    <option value="">-- Selecione --</option>
+                    {% for c in lista_clientes %}
+                    <option value="{{ c.cod_cliente }}" {% if cod_cliente == c.cod_cliente %}selected{% endif %}>{{ c.cod_cliente }} – {{ c.razao|default:""|truncatechars:25 }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary btn-sm w-100">Usar este cliente</button>
+                <div id="sidebarClienteMsg" class="small mt-2" style="display:none;"></div>
+            </form>
+            <p class="text-muted small mb-0 mt-2">Superusuário ou cliente 1000 (dona do projeto): gerencie qualquer cliente.</p>
+        </div>
+        {% endif %}
         <ul class="list-group list-group-flush sidebar-list">
             {% for solucoes in t_solucoes %}
                 <li class="list-group-item sidebar-item">
@@ -114,6 +131,67 @@
 
 <!-- CSRF Protection for AJAX -->
 <script src="{% static 'js/csrf_protection.js' %}"></script>
+
+<!-- Sidebar: trocar cliente via AJAX (evita redirect para login) -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var form = document.getElementById('formSidebarCliente');
+  if (!form) return;
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var select = document.getElementById('sidebarSelectCliente');
+    var msgEl = document.getElementById('sidebarClienteMsg');
+    var cod = select ? select.value.trim() : '';
+    if (!cod) {
+      if (msgEl) { msgEl.textContent = 'Selecione um cliente.'; msgEl.style.display = 'block'; msgEl.className = 'small mt-2 text-warning'; }
+      return;
+    }
+    var fd = new FormData();
+    fd.append('cod_cliente', cod);
+    var csrfToken = (typeof getCsrfToken === 'function') ? getCsrfToken() : '';
+    if (!csrfToken) { var el = document.querySelector('[name=csrfmiddlewaretoken]'); if (el) csrfToken = el.value; }
+    var headers = { 'X-Requested-With': 'XMLHttpRequest' };
+    if (csrfToken) headers['X-CSRFToken'] = csrfToken;
+    fetch('{% url "API_SessaoCliente" %}', {
+      method: 'POST',
+      body: fd,
+      headers: headers,
+      credentials: 'same-origin',
+      redirect: 'manual'
+    }).then(function(r) {
+      return r.text().then(function(text) {
+        var data = null;
+        try { data = text ? JSON.parse(text) : {}; } catch (e) {}
+        return { ok: r.ok, status: r.status, data: data, raw: text };
+      });
+    }).then(function(result) {
+      if (msgEl) {
+        msgEl.style.display = 'block';
+        if (result.ok && result.data && result.data.sucesso) {
+          msgEl.textContent = 'Cliente alterado. Recarregando...';
+          msgEl.className = 'small mt-2 text-success';
+          setTimeout(function() { window.location.reload(); }, 800);
+        } else if (result.data && result.data.erro) {
+          msgEl.textContent = result.data.erro;
+          msgEl.className = 'small mt-2 text-danger';
+        } else if (result.status === 302 || (result.raw && result.raw.indexOf('login') !== -1)) {
+          msgEl.textContent = 'Sessão expirada. Faça login novamente.';
+          msgEl.className = 'small mt-2 text-danger';
+        } else {
+          msgEl.textContent = 'Erro na requisição (status ' + result.status + ').';
+          msgEl.className = 'small mt-2 text-danger';
+        }
+      }
+    }).catch(function(err) {
+      if (msgEl) {
+        msgEl.textContent = 'Erro na requisição. Verifique a conexão.';
+        msgEl.style.display = 'block';
+        msgEl.className = 'small mt-2 text-danger';
+      }
+    });
+  });
+});
+</script>
 
 {% block scripts %}{% endblock %}
 </body>

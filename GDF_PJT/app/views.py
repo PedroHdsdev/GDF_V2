@@ -61,27 +61,44 @@ from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
 import re
 
-# Cliente ao qual superusuários têm acesso total ao painel (todos os clientes)
-COD_CLIENTE_SUPERUSER_PAINEL = '1000'
+# Cliente 1000 = empresa dona do projeto (IT Process). Superusers e usuários vinculados a este cliente têm acesso total.
+COD_CLIENTE_PROJETO = '1000'
+
+
+def _usuario_vinculado_cliente_1000(user):
+    """Retorna True se o usuário tem empresas vinculadas ao cliente 1000 (dona do projeto)."""
+    if not user or not user.is_authenticated:
+        return False
+    return Empresas.objects.filter(
+        userempresas__user=user,
+        cliente__cod_cliente=COD_CLIENTE_PROJETO,
+    ).exists()
+
+
+def _usuario_acesso_total_painel(request):
+    """Retorna True se o usuário pode fazer tudo em todos os clientes.
+    - Superuser: acesso total.
+    - Usuário vinculado ao cliente 1000 (empresa dona do projeto): acesso total.
+    Mantém regras de soluções/subsoluções para demais usuários."""
+    if not request.user.is_authenticated:
+        return False
+    if getattr(request.user, 'is_superuser', False):
+        return True
+    return request.session.get('usuario_cliente_1000', False)
 
 
 def _superuser_acesso_total_painel(request):
-    """Retorna True se o superuser tem acesso total ao painel (todos os clientes).
-    Superusers vinculados ao cliente 1000 (session superuser_cliente_1000) têm sempre acesso total.
-    Outros superusers têm seletor de cliente apenas quando cod_cliente é None ou 1000."""
-    if not request.session.get('is_superuser', False):
-        return False
-    if request.session.get('superuser_cliente_1000', False):
-        return True
-    cod = request.session.get('cod_cliente') or ''
-    return cod == '' or str(cod).strip() == COD_CLIENTE_SUPERUSER_PAINEL
+    """Compatibilidade: retorna True se superuser OU usuário cliente 1000 tem acesso total."""
+    return _usuario_acesso_total_painel(request)
 
 
 def _get_subsolucoes_usuario(user):
     """Retorna set de cod_subsolucao que o usuário tem acesso via seus grupos.
-    Superuser: retorna None (acesso total). Usuário normal: set de códigos."""
+    Superuser ou usuário vinculado ao cliente 1000: retorna None (acesso total). Usuário normal: set de códigos."""
     if getattr(user, 'is_superuser', False):
         return None  # None = acesso total
+    if _usuario_vinculado_cliente_1000(user):
+        return None  # Cliente 1000 (dona do projeto) = acesso total
     group_ids = list(user.groups.values_list('id', flat=True))
     if not group_ids:
         return set()
@@ -111,11 +128,15 @@ def fn_view_login(request):
 
             request.session['is_superuser'] = getattr(user, 'is_superuser', False)
             request.session['is_staff'] = getattr(user, 'is_staff', False)
-            # Superuser vinculado ao cliente 1000 tem acesso total ao painel (todos os clientes)
+            # Superuser vinculado ao cliente 1000: acesso total (compatibilidade)
             _cliente = getattr(cl_gdf_instance, 'Cliente', None)
             _cod = getattr(_cliente, 'cod_cliente', None) if _cliente else None
             request.session['superuser_cliente_1000'] = (
-                getattr(user, 'is_superuser', False) and _cod is not None and str(_cod).strip() == COD_CLIENTE_SUPERUSER_PAINEL
+                getattr(user, 'is_superuser', False) and _cod is not None and str(_cod).strip() == COD_CLIENTE_PROJETO
+            )
+            # Usuário (não superuser) vinculado ao cliente 1000: acesso total como empresa dona do projeto
+            request.session['usuario_cliente_1000'] = (
+                not getattr(user, 'is_superuser', False) and _usuario_vinculado_cliente_1000(user)
             )
 
             if not cl_gdf_instance.Retorn:
@@ -127,13 +148,7 @@ def fn_view_login(request):
                 if solucoes or getattr(user, 'is_superuser', False):
                     request.session['t_solucoes'] = solucoes or []
                     request.session['cod_cliente'] = cod_cliente
-                    # Contexto para Index_Home (evita erro de is_superuser/lista_clientes indefinidos)
-                    context = {'cod_cliente': cod_cliente}
-                    if getattr(user, 'is_superuser', False):
-                        context['is_superuser'] = True
-                        if not cod_cliente or str(cod_cliente).strip() == COD_CLIENTE_SUPERUSER_PAINEL:
-                            context['lista_clientes'] = cl_gdf_instance.get_clientes()
-                    return render(request, 'Index_Home.html', context)
+                    return redirect('Home')
                 return render(request, 'Index_Login.html', {'error_message': 'Problema de Acesso.'})
             return redirect('Home')   
         else:
@@ -159,27 +174,27 @@ def fn_view_obter_subsolucao(request, cod_sub):
 def fn_view_home(request):
     if not request.user.is_authenticated:
         return redirect('Login')
-    is_superuser = request.session.get('is_superuser', False)
     cod_cliente = request.session.get('cod_cliente')
-    # Superuser (cliente 1000): permitir trocar cliente por POST; opcionalmente redirecionar para "next"
+    # Superuser ou usuário cliente 1000: permitir trocar cliente por POST
     _REDIRECT_NAMES = ('Home', 'Dm_Empresas', 'Dm_Usuarios', 'Dm_Clientes')
     if request.method == "POST":
         codigo = request.POST.get('codigo')
         novo_cliente = request.POST.get('cod_cliente', '').strip()
         next_name = (request.POST.get('next') or '').strip()
-        if is_superuser and novo_cliente:
+        if _usuario_acesso_total_painel(request) and novo_cliente:
             request.session['cod_cliente'] = novo_cliente
             if next_name in _REDIRECT_NAMES:
+                return redirect(next_name)
+            if next_name.startswith('/'):
                 return redirect(next_name)
             return redirect('Home')
         if codigo:
             return redirect(codigo)
     context = {'cod_cliente': cod_cliente}
-    if is_superuser:
-        context['is_superuser'] = True
-        if _superuser_acesso_total_painel(request):
-            cl_gdf = ClGdf()
-            context['lista_clientes'] = cl_gdf.get_clientes()
+    if _usuario_acesso_total_painel(request):
+        context['is_superuser'] = request.session.get('is_superuser', False)
+        cl_gdf = ClGdf()
+        context['lista_clientes'] = cl_gdf.get_clientes()
 
     # Subsoluções que o usuário tem acesso (None = superuser = acesso total)
     subsolucoes = _get_subsolucoes_usuario(request.user)
@@ -472,15 +487,13 @@ def fn_view_listar_empresas(request):
 @login_required(login_url='Login')
 def fn_view_listar_clientes(request):
     cod_cliente = request.session.get('cod_cliente', None)
-    is_superuser = request.session.get('is_superuser', False)
-    if not cod_cliente and not is_superuser:
+    if not cod_cliente and not _usuario_acesso_total_painel(request):
         return redirect('Login')
     cl_gdf = ClGdf()
     t_clientes = cl_gdf.get_clientes()
     context = {'t_clientes': t_clientes, 'cod_cliente': cod_cliente}
-    if is_superuser and _superuser_acesso_total_painel(request):
-        context['is_superuser'] = True
-        context['lista_clientes'] = t_clientes  # mesma lista para o seletor de contexto
+    if _usuario_acesso_total_painel(request):
+        context['is_superuser'] = request.session.get('is_superuser', False)
     return render(request, 'Clientes/Index_Clientes.html', context)
 
 #--------------------------------------------------------------------
@@ -1018,14 +1031,11 @@ def fn_view_inserir_cliente(request):
 def fn_view_atualizar_cliente(request, cod_cliente):
     """Atualizar cliente existente - seguindo padrão Usuario_upd"""
     cod_cliente_sessao = request.session.get('cod_cliente', None)
-    if not cod_cliente_sessao:
+    if not cod_cliente_sessao and not _usuario_acesso_total_painel(request):
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
-    
-    # ✅ VALIDAÇÃO IDOR: cliente só pode atualizar a si mesmo
-    if str(cod_cliente) != str(cod_cliente_sessao):
-        return JsonResponse({
-            "erro": "Acesso negado: você não pode editar outro cliente"
-        }, status=403)
+    # Usuário normal: só pode editar o cliente da sessão. Acesso total: qualquer cliente.
+    if not _usuario_acesso_total_painel(request) and str(cod_cliente) != str(cod_cliente_sessao):
+        return JsonResponse({"erro": "Acesso negado: você não pode editar outro cliente"}, status=403)
     
     cl_gdf = ClGdf()
     if request.method == "GET":
@@ -1082,7 +1092,7 @@ def fn_view_atualizar_cliente(request, cod_cliente):
 def fn_view_atualizar_acesso_cliente(request):
     """Atualizar acessos do cliente existente"""
     cod_cliente_sessao = request.session.get('cod_cliente', None)
-    if not cod_cliente_sessao:
+    if not cod_cliente_sessao and not _usuario_acesso_total_painel(request):
         return JsonResponse({"erro": "Cliente não identificado na sessão"}, status=403)
     
     # ✅ Obter o cod_cliente do formulário (cliente sendo editado)
@@ -1126,12 +1136,37 @@ def fn_view_atualizar_acesso_cliente(request):
 
 @login_required(login_url='Login')
 @require_http_methods(["POST"])
+def fn_view_atualizar_grupos_cliente(request):
+    """Atualiza grupos de usuários vinculados ao cliente."""
+    cod_cliente_sessao = request.session.get('cod_cliente', None)
+    if not cod_cliente_sessao and not _usuario_acesso_total_painel(request):
+        return JsonResponse({"erro": "Cliente não identificado na sessão"}, status=403)
+
+    cod_cliente = request.POST.get("Grupos_cliente_id", "").strip()
+    if not cod_cliente:
+        return JsonResponse({"erro": "Cliente não identificado no formulário"}, status=400)
+
+    ls_grupos = request.POST.get("ls_grupos", "").strip()
+    cl_gdf = ClGdf()
+    resultado = cl_gdf.set_cliente_grupos(
+        i_v_cod_cliente=cod_cliente,
+        ls_grupos_ids=ls_grupos
+    )
+
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    if not resultado.get("success"):
+        return JsonResponse({"success": False, "message": resultado.get("message", "Erro ao atualizar grupos")}, status=400)
+    return JsonResponse({"success": True, "message": resultado.get("message", "Grupos atualizados com sucesso")}, status=200)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
 def fn_view_cliente_sap(request, cod_cliente):
     """Cria ou atualiza a conexão SAP do cliente (uma por cliente)."""
     cod_cliente_sessao = request.session.get('cod_cliente', None)
-    if not cod_cliente_sessao:
+    if not cod_cliente_sessao and not _usuario_acesso_total_painel(request):
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
-    if str(cod_cliente) != str(cod_cliente_sessao):
+    if not _usuario_acesso_total_painel(request) and str(cod_cliente) != str(cod_cliente_sessao):
         return JsonResponse({"erro": "Acesso negado."}, status=403)
 
     try:
@@ -1718,12 +1753,17 @@ def fn_api_cargaxml_param_toggle(request, param_id):
 @login_required(login_url='Login')
 @require_http_methods(["POST"])
 def fn_api_sessao_cliente(request):
-    """Define o cliente ativo na sessão (apenas superuser). Uso: troca de contexto multi-cliente."""
-    if not request.session.get('is_superuser', False):
+    """Define o cliente ativo na sessão. Superuser ou cliente 1000 (dona do projeto)."""
+    if not _usuario_acesso_total_painel(request):
         return JsonResponse({'sucesso': False, 'erro': 'Acesso negado'}, status=403)
     try:
-        body = json.loads(request.body) if request.body else {}
-        cod_cliente = (body.get('cod_cliente') or request.POST.get('cod_cliente') or '').strip()
+        # Aceita FormData (request.POST) ou JSON (request.body) - ler apenas um para evitar RawPostDataException
+        ct = (request.content_type or '').lower()
+        if 'application/json' in ct:
+            body = json.loads(request.body) if request.body else {}
+            cod_cliente = (body.get('cod_cliente') or '').strip()
+        else:
+            cod_cliente = (request.POST.get('cod_cliente') or '').strip()
         if not cod_cliente:
             return JsonResponse({'sucesso': False, 'erro': 'cod_cliente obrigatório'}, status=400)
         if not Clientes.objects.filter(cod_cliente=cod_cliente, is_active=True).exists():
@@ -2775,9 +2815,32 @@ def fn_api_relatorio_sped_detalhe(request, id_arquivo):
     reg_0190 = [{'linha': r.linha, 'unid': r.unid, 'descr': r.descr} for r in arq.reg_0190.all()[:50]]
     reg_0200 = [{'linha': r.linha, 'cod_item': r.cod_item, 'descr_item': r.descr_item, 'unid_inv': r.unid_inv, 'cod_ncm': r.cod_ncm} for r in arq.reg_0200.all()[:200]]
     reg_c001 = [{'linha': r.linha, 'ind_mov': r.ind_mov} for r in arq.reg_c001.all()[:20]]
-    reg_c100 = [{'linha': r.linha, 'chv_nfe': r.chv_nfe, 'dt_doc': str(r.dt_doc) if r.dt_doc else None, 'vl_doc': _serialize_dec(r.vl_doc)} for r in arq.reg_c100.all()[:200]]
-    reg_c170 = [{'linha': r.linha, 'cod_item': r.cod_item, 'descr_compl': r.descr_compl, 'vl_item': _serialize_dec(r.vl_item)} for r in arq.reg_c170.all()[:500]]
-    reg_c190 = [{'linha': r.linha, 'cst_icms': r.cst_icms, 'cfop': r.cfop, 'vl_icms': _serialize_dec(r.vl_icms), 'c100_id': r.c100_id} for r in arq.reg_c190.all()[:300]]
+    # C100: documento fiscal com impostos (ICMS, PIS, COFINS, IPI)
+    reg_c100 = [{
+        'linha': r.linha, 'chv_nfe': r.chv_nfe, 'dt_doc': str(r.dt_doc) if r.dt_doc else None,
+        'vl_doc': _serialize_dec(r.vl_doc), 'num_doc': r.num_doc, 'ser': r.ser,
+        'ind_oper': r.ind_oper, 'ind_emit': r.ind_emit,
+        'vl_bc_icms': _serialize_dec(r.vl_bc_icms), 'vl_icms': _serialize_dec(r.vl_icms),
+        'vl_bc_icms_st': _serialize_dec(r.vl_bc_icms_st), 'vl_icms_st': _serialize_dec(r.vl_icms_st),
+        'vl_ipi': _serialize_dec(r.vl_ipi), 'vl_pis': _serialize_dec(r.vl_pis), 'vl_cofins': _serialize_dec(r.vl_cofins),
+    } for r in arq.reg_c100.all()[:200]]
+    # C170: itens com impostos por produto (ICMS, PIS, COFINS)
+    reg_c170 = [{
+        'linha': r.linha, 'num_item': r.num_item, 'cod_item': r.cod_item, 'descr_compl': r.descr_compl,
+        'qtd': _serialize_dec(r.qtd), 'unid': r.unid, 'vl_item': _serialize_dec(r.vl_item), 'vl_desc': _serialize_dec(r.vl_desc),
+        'cst_icms': r.cst_icms, 'cfop': r.cfop,
+        'vl_bc_icms': _serialize_dec(r.vl_bc_icms), 'aliq_icms': _serialize_dec(r.aliq_icms), 'vl_icms': _serialize_dec(r.vl_icms),
+        'vl_bc_icms_st': _serialize_dec(r.vl_bc_icms_st), 'aliq_st': _serialize_dec(r.aliq_st), 'vl_icms_st': _serialize_dec(r.vl_icms_st),
+        'cst_pis': r.cst_pis, 'vl_bc_pis': _serialize_dec(r.vl_bc_pis), 'aliq_pis': _serialize_dec(r.aliq_pis), 'vl_pis': _serialize_dec(r.vl_pis),
+        'cst_cofins': r.cst_cofins, 'vl_bc_cofins': _serialize_dec(r.vl_bc_cofins), 'aliq_cofins': _serialize_dec(r.aliq_cofins), 'vl_cofins': _serialize_dec(r.vl_cofins),
+    } for r in arq.reg_c170.all()[:500]]
+    # C190: analítico ICMS por CST/CFOP
+    reg_c190 = [{
+        'linha': r.linha, 'cst_icms': r.cst_icms, 'cfop': r.cfop,
+        'vl_opr': _serialize_dec(r.vl_opr), 'vl_bc_icms': _serialize_dec(r.vl_bc_icms), 'aliq_icms': _serialize_dec(r.aliq_icms),
+        'vl_icms': _serialize_dec(r.vl_icms), 'vl_bc_icms_st': _serialize_dec(r.vl_bc_icms_st), 'vl_icms_st': _serialize_dec(r.vl_icms_st),
+        'vl_red_bc': _serialize_dec(r.vl_red_bc), 'vl_ipi': _serialize_dec(r.vl_ipi),
+    } for r in arq.reg_c190.all()[:300]]
     reg_d100 = [{'linha': r.linha, 'chv_cte': r.chv_cte, 'dt_doc': str(r.dt_doc) if r.dt_doc else None, 'vl_doc': _serialize_dec(r.vl_doc)} for r in arq.reg_d100.all()[:200]]
     registros = [{'registro': r.registro, 'linha': r.linha, 'campos': r.campos, 'conteudo': (r.conteudo or '')[:500]} for r in arq.registros.all()[:300]]
     registros_fiscal = []
