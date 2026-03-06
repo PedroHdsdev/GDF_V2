@@ -225,8 +225,9 @@ class CondicaoPagamentoLote(models.Model):
         return f"{self.chave_nfe} — {self.condicao_pagamento_nfe or '-'}"
 
 class CondicaoParam(models.Model):
-    cliente = models.ForeignKey(
-        'app.Clientes',
+    """Condição de pagamento NFe <-> SAP por GdfCliente."""
+    gdfcliente = models.ForeignKey(
+        'app.ClienteGdf',
         on_delete=models.CASCADE,
         null=True,
         blank=True,
@@ -242,9 +243,9 @@ class CondicaoParam(models.Model):
     class Meta:
         managed = True
         db_table = '"reprocessamento"."condicao_param"'
-        unique_together = [['cliente', 'condicao_pagamento_nfe', 'tipo_pagamento']]
+        unique_together = [['gdfcliente', 'condicao_pagamento_nfe', 'tipo_pagamento']]
         indexes = [
-            models.Index(fields=['cliente', 'condicao_pagamento_nfe', 'tipo_pagamento']),
+            models.Index(fields=['gdfcliente', 'condicao_pagamento_nfe', 'tipo_pagamento']),
         ]
         ordering = ['condicao_pagamento_nfe', 'tipo_pagamento']
         verbose_name = 'Condição de pagamento'

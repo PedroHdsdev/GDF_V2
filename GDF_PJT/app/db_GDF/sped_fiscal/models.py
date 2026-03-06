@@ -4,14 +4,14 @@ cod_ver 017+
 """
 from django.db import models
 from django.utils import timezone
-from app.db_GDF.Public.models import Empresas, Clientes
+from app.db_GDF.Public.models import Empresa, ClienteGdf
 
 
 class SpedFiscalArquivo(models.Model):
     """Cabeçalho do arquivo SPED Fiscal (EFD ICMS/IPI)."""
     id_arquivo = models.AutoField(primary_key=True)
-    cliente = models.ForeignKey(
-        Clientes,
+    gdfcliente = models.ForeignKey(
+        ClienteGdf,
         on_delete=models.CASCADE,
         related_name='sped_fiscal_arquivos',
         null=True,
@@ -20,7 +20,7 @@ class SpedFiscalArquivo(models.Model):
         to_field='cod_cliente',
     )
     empresa = models.ForeignKey(
-        Empresas,
+        Empresa,
         on_delete=models.CASCADE,
         related_name='sped_fiscal_arquivos',
         null=True,
@@ -37,7 +37,7 @@ class SpedFiscalArquivo(models.Model):
         managed = True
         db_table = '"sped_fiscal"."sped_arquivo"'
         indexes = [
-            models.Index(fields=['cliente', 'competencia'], name='sf_arquivo_cli_comp'),
+            models.Index(fields=['gdfcliente', 'competencia'], name='sf_arquivo_cli_comp'),
             models.Index(fields=['empresa', 'competencia'], name='sf_arquivo_emp_comp'),
             models.Index(fields=['data_carga'], name='sf_arquivo_data_carga'),
             models.Index(fields=['hash_conteudo'], name='sf_arquivo_hash'),

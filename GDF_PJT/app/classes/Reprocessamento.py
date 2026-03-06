@@ -30,13 +30,13 @@ def _extrair_chaves_sped(competencia, cod_empresa):
     from app.db_GDF.sped_contribuicao.models import (
         SpedContribuicaoArquivo, SpedContribuicaoReg_C100, SpedContribuicaoRegistro, SpedContribuicaoReg_0000,
     )
-    from app.db_GDF.Public.models import Empresas
+    from app.db_GDF.Public.models import Empresa
 
     chaves = set()
     try:
-        empresa = Empresas.objects.get(cod_empresa=cod_empresa)
+        empresa = Empresa.objects.get(cod_empresa=cod_empresa)
         cnpj_empresa = (empresa.cnpj or '').replace('.', '').replace('/', '').replace('-', '').strip()[:14]
-    except Empresas.DoesNotExist:
+    except Empresa.DoesNotExist:
         return chaves
 
     arqs_f = SpedFiscalArquivo.objects.filter(
@@ -49,12 +49,12 @@ def _extrair_chaves_sped(competencia, cod_empresa):
         competencia__year=competencia.year,
         competencia__month=competencia.month,
     )
-    cod_cliente = getattr(empresa.cliente, 'cod_cliente', None) if empresa.cliente else None
+    cod_cliente = getattr(empresa.gdfcliente, 'cod_cliente', None) if empresa.gdfcliente else None
     arquivos = list(arqs_f) + list(arqs_c)
     if not arquivos:
         if cod_cliente and cnpj_empresa:
-            qs_cf = SpedFiscalArquivo.objects.filter(cliente_id=cod_cliente, competencia__year=competencia.year, competencia__month=competencia.month)
-            qs_cc = SpedContribuicaoArquivo.objects.filter(cliente_id=cod_cliente, competencia__year=competencia.year, competencia__month=competencia.month)
+            qs_cf = SpedFiscalArquivo.objects.filter(gdfcliente_id=cod_cliente, competencia__year=competencia.year, competencia__month=competencia.month)
+            qs_cc = SpedContribuicaoArquivo.objects.filter(gdfcliente_id=cod_cliente, competencia__year=competencia.year, competencia__month=competencia.month)
             for arq in list(qs_cf) + list(qs_cc):
                 Reg0000 = SpedFiscalReg_0000 if isinstance(arq, SpedFiscalArquivo) else SpedContribuicaoReg_0000
                 reg0000 = Reg0000.objects.filter(arquivo=arq).first()
@@ -66,8 +66,8 @@ def _extrair_chaves_sped(competencia, cod_empresa):
             qs_sem_f = SpedFiscalArquivo.objects.filter(empresa__isnull=True, competencia__year=competencia.year, competencia__month=competencia.month)
             qs_sem_c = SpedContribuicaoArquivo.objects.filter(empresa__isnull=True, competencia__year=competencia.year, competencia__month=competencia.month)
             if cod_cliente:
-                qs_sem_f = qs_sem_f.filter(cliente_id=cod_cliente)
-                qs_sem_c = qs_sem_c.filter(cliente_id=cod_cliente)
+                qs_sem_f = qs_sem_f.filter(gdfcliente_id=cod_cliente)
+                qs_sem_c = qs_sem_c.filter(gdfcliente_id=cod_cliente)
             for arq in list(qs_sem_f) + list(qs_sem_c):
                 Reg0000 = SpedFiscalReg_0000 if isinstance(arq, SpedFiscalArquivo) else SpedContribuicaoReg_0000
                 reg0000 = Reg0000.objects.filter(arquivo=arq).first()
@@ -173,7 +173,7 @@ def _condicao_sap_da_param(condicao_nfe, tipo_pagamento=None, cod_cliente=None):
         else:
             qs = qs.filter(models.Q(tipo_pagamento='') | models.Q(tipo_pagamento__isnull=True))
         if cod_cliente:
-            qs = qs.filter(cliente_id=cod_cliente)
+            qs = qs.filter(gdfcliente_id=cod_cliente)
         obj = qs.exclude(condicao_pagamento_sap='').exclude(condicao_pagamento_sap__isnull=True).order_by('condicao_pagamento_sap').first()
         if obj:
             return (obj.condicao_pagamento_sap or '').strip()
@@ -199,14 +199,14 @@ def gerar_condicoes_pagamento_lote(id_lote):
     """
     from app.db_Reprocessamento.models import ReprocessamentoLote, CondicaoPagamentoLote
     from app.db_GDF.NFe.models import NFe
-    from app.db_GDF.Public.models import Empresas
+    from app.db_GDF.Public.models import Empresa
 
     lote = ReprocessamentoLote.objects.get(id_lote=id_lote)
     cod_cliente = None
     try:
-        emp = Empresas.objects.get(cod_empresa=lote.cod_empresa)
-        cod_cliente = emp.cliente_id if emp.cliente_id else None
-    except Empresas.DoesNotExist:
+        emp = Empresa.objects.get(cod_empresa=lote.cod_empresa)
+        cod_cliente = emp.gdfcliente_id if emp.gdfcliente_id else None
+    except Empresa.DoesNotExist:
         pass
     nfe_list = _nfe_do_mes(lote.cod_empresa, lote.competencia)
     if not nfe_list:

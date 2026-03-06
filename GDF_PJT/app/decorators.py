@@ -14,7 +14,7 @@ def validate_idor_empresa(view_func):
     """
     @wraps(view_func)
     def wrapper(request, cod_empresa=None, *args, **kwargs):
-        from app.db_GDF.Public.models import Empresas
+        from app.db_GDF.Public.models import Empresa
         
         cod_cliente = request.session.get('cod_cliente', None)
         if not cod_cliente:
@@ -24,7 +24,7 @@ def validate_idor_empresa(view_func):
         if cod_empresa:
             empresa_pertence = Empresas.objects.filter(
                 cod_empresa=cod_empresa,
-                cliente__cod_cliente=cod_cliente
+                gdfcliente__cod_cliente=cod_cliente
             ).exists()
             
             if not empresa_pertence:
@@ -46,7 +46,7 @@ def validate_idor_usuario(view_func):
     @wraps(view_func)
     def wrapper(request, user_id=None, *args, **kwargs):
         from django.contrib.auth.models import User
-        from app.db_GDF.Public.models import Clientes
+        from app.db_GDF.Public.models import ClienteGdf
         
         cod_cliente = request.session.get('cod_cliente', None)
         if not cod_cliente:
@@ -56,7 +56,7 @@ def validate_idor_usuario(view_func):
         if user_id:
             user_pertence = User.objects.filter(
                 id=user_id,
-                clientes__cod_cliente=cod_cliente
+                userempresas__empresa__gdfcliente__cod_cliente=cod_cliente
             ).exists()
             
             if not user_pertence:

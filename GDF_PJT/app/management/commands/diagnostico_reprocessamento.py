@@ -24,7 +24,7 @@ class Command(BaseCommand):
             SpedContribuicaoArquivo, SpedContribuicaoReg_C100, SpedContribuicaoReg_0000,
         )
         from app.db_GDF.NFe.models import NFe
-        from app.db_GDF.Public.models import Empresas
+        from app.db_GDF.Public.models import Empresa
 
         comp_str = options['competencia'].strip()
         try:

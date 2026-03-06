@@ -18,8 +18,8 @@ except ImportError:
 
 
 def _get_sap_connection_model():
-    from app.db_GDF.Public.models import SapConnection
-    return SapConnection
+    from app.db_GDF.Public.models import ConexaoSap
+    return ConexaoSap
 
 
 class SapRfc:
@@ -51,7 +51,7 @@ class SapRfc:
         if not cod_cliente:
             return None
         SapConnection = _get_sap_connection_model()
-        return SapConnection.objects.filter(cliente_id=cod_cliente, active=True).first()
+        return SapConnection.objects.filter(gdfcliente_id=cod_cliente, active=True).first()
 
     @staticmethod
     def get_active_connections(cod_cliente=None, queryset=None):
@@ -65,7 +65,7 @@ class SapRfc:
             return list(queryset)
         qs = SapConnection.objects.filter(active=True)
         if cod_cliente:
-            qs = qs.filter(cliente_id=cod_cliente)
+            qs = qs.filter(gdfcliente_id=cod_cliente)
         return list(qs)
 
     @staticmethod
@@ -130,7 +130,7 @@ class SapRfc:
             return False, "PyRFC não disponível. SAP desativado."
         conn = SapRfc._resolve_conn(cod_cliente_or_conn)
         if conn is None:
-            cod = cod_cliente_or_conn if isinstance(cod_cliente_or_conn, str) else getattr(cod_cliente_or_conn, 'cliente_id', '?')
+            cod = cod_cliente_or_conn if isinstance(cod_cliente_or_conn, str) else getattr(cod_cliente_or_conn, 'gdfcliente_id', '?')
             return False, f"Nenhuma conexão SAP ativa para o cliente '{cod}' (tabela SapConnection)."
         sap = None
         try:
@@ -166,7 +166,7 @@ class SapRfc:
             return False, "PyRFC não disponível. SAP desativado."
         conn = SapRfc._resolve_conn(cod_cliente_or_conn)
         if conn is None:
-            cod = cod_cliente_or_conn if isinstance(cod_cliente_or_conn, str) else getattr(cod_cliente_or_conn, 'cliente_id', '?')
+            cod = cod_cliente_or_conn if isinstance(cod_cliente_or_conn, str) else getattr(cod_cliente_or_conn, 'gdfcliente_id', '?')
             return False, f"Nenhuma conexão SAP ativa para o cliente '{cod}' (tabela SapConnection)."
         sap = None
         try:
@@ -296,14 +296,14 @@ def enviar_condicoes_pagamento_sap(id_lote, cod_empresa, condicoes_lista):
             'retornos': retornos,
         }
 
-    from app.db_GDF.Public.models import Empresas
+    from app.db_GDF.Public.models import Empresa
 
     cod_cliente = None
     try:
-        empresa = Empresas.objects.select_related('cliente').get(cod_empresa=cod_empresa)
-        if empresa.cliente:
-            cod_cliente = empresa.cliente.cod_cliente
-    except Empresas.DoesNotExist:
+        empresa = Empresa.objects.select_related('cliente').get(cod_empresa=cod_empresa)
+        if empresa.gdfcliente:
+            cod_cliente = empresa.gdfcliente.cod_cliente
+    except Empresa.DoesNotExist:
         pass
 
     if not cod_cliente:

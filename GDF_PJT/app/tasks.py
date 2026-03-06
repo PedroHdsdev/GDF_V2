@@ -11,8 +11,8 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
-from app.classes.CargaXml import Carga_xml, EmpresaNaoCadastradaError
-from app.db_GDF.Public.models import CargaXmlJob, CargaXmlParam
+from app.classes.CargaXml import CargaXml, EmpresaNaoCadastradaError
+from app.db_GDF.Public.models import JobCargaXml, ParametroCargaXml
 
 
 MODEL_FOLDER_MAP: Dict[str, Tuple[str, str]] = {
@@ -148,7 +148,7 @@ def _safe_move(src: Path, dest_dir: Path) -> Path:
 @shared_task
 def scan_cargaxml_params() -> int:
     now = timezone.localtime()
-    params = CargaXmlParam.objects.filter(ativo=True)
+    params = ParametroCargaXml.objects.filter(ativo=True)
     enqueued = 0
 
     for param in params:
@@ -168,7 +168,7 @@ def scan_cargaxml_params() -> int:
 
 @shared_task
 def process_cargaxml_param(param_id: int) -> Dict[str, int]:
-    param = CargaXmlParam.objects.select_related('cliente', 'usuario_criacao').get(id=param_id)
+    param = ParametroCargaXml.objects.select_related('gdfcliente', 'usuario_criacao').get(id=param_id)
     now = timezone.localtime()
 
     # build list of files to process; walk company directory recursively and
@@ -181,7 +181,7 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
     xml_files: List[Path] = _collect_xml_files(base_dir)
 
     job = CargaXmlJob.objects.create(
-        cliente=param.cliente,
+        cliente=param.gdfcliente,
         parametro=param,
         status='RUNNING',
         total_arquivos=len(xml_files),
@@ -193,7 +193,7 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
     errors = 0
     log_lines: List[str] = []
 
-    processor = Carga_xml()
+    processor = CargaXml()
 
     if not base_dir.exists() or not base_dir.is_dir():
         errors = 1
@@ -234,7 +234,7 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
             if tipo == 'NFe':
                 try:
                     processor.set_nfe(xml_bytes, param.origem_dados, 'SYSTEM',
-                                      param.cliente.cod_cliente if param.cliente else None)
+                                      param.gdfcliente.cod_cliente if param.gdfcliente else None)
                 except EmpresaNaoCadastradaError as exc:
                     errors += 1
                     log_lines.append(f'PENDENTES (empresa nao cadastrada): {xml_path.name} - {exc}')
@@ -245,10 +245,10 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
                     continue
             elif tipo == 'CTe':
                 processor.set_cte(xml_bytes, param.origem_dados, 'SYSTEM',
-                                  param.cliente.cod_cliente if param.cliente else None)
+                                  param.gdfcliente.cod_cliente if param.gdfcliente else None)
             elif tipo == 'NFSe':
                 processor.set_nfse(xml_bytes, param.origem_dados, 'SYSTEM',
-                                   param.cliente.cod_cliente if param.cliente else None)
+                                   param.gdfcliente.cod_cliente if param.gdfcliente else None)
             else:
                 # should never happen because _detect_doc_type returns only
                 # known values, but protect against future regressions

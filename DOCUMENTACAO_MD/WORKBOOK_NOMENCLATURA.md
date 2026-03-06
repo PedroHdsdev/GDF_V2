@@ -3,6 +3,39 @@
 
 ---
 
+## 📌 REFERÊNCIA RÁPIDA – Nomenclatura Oficial do Projeto
+
+### Models do schema Public (`app.db_GDF.Public.models`)
+| Uso no código | Classe Django | Tabela (db_table) |
+|---------------|---------------|-------------------|
+| Cliente GDF | `ClienteGdf` | `cliente_gdf` |
+| Empresa | `Empresa` | `empresa` |
+| Grupo de empresas | `GrupoEmpresa` | `grupo_empresa` |
+| Permissão grupo ↔ cliente | `PermissaoGrupoCliente` | `permissao_grupo_cliente` |
+| Vínculo usuário ↔ empresa | `UsuarioEmpresa` | `usuario_empresa` |
+| Acesso solução por cliente | `AcessoSolucaoCliente` | `acesso_solucao_cliente` |
+| Acesso subsolução por grupo | `AcessoSubsolucaoGrupo` | `acesso_subsolucao_grupo` |
+| Certificado digital | `CertificadoDigital` | `certificado_digital` |
+| Conexão SAP | `ConexaoSap` | `conexao_sap` |
+| Solução / Subsolução | `Solucao`, `Subsolucao` | `solucao`, `subsolucao` |
+
+**Relacionamentos:** `Empresa.gdfcliente` → `ClienteGdf`; `ClienteGdf.empresa_set` (reverse). Filtros multi-tenant: `gdfcliente__cod_cliente` ou `empresa__gdfcliente__cod_cliente`.
+
+### Módulo de classes de negócio (`app.classes`)
+| Classe / Função | Arquivo | Descrição |
+|-----------------|---------|-----------|
+| `ClGdf` | `gdf.py` | Sessão, cliente, empresas, grupos, soluções, certificados, JWT, CRUD |
+| `CargaXml` | `CargaXml.py` | Processamento e persistência de XML (NFe, CTe, NFSe) |
+| `CargaSped` | `CargaSped.py` | Carga de arquivos SPED (EFD Fiscal/Contribuições) |
+| `SapRfc` | `SapRfc.py` | Integração SAP (RFC) |
+| `EmpresaNaoCadastradaError` | `CargaXml.py` | Exceção quando CNPJ do XML não está cadastrado |
+| `confrontar_sped_nfe`, `gerar_condicoes_pagamento_lote`, `condicao_pagamento_da_nfe`, `tipo_pagamento_da_nfe` | `Reprocessamento.py` | Reprocessamento e condições de pagamento |
+| `enviar_condicoes_pagamento_sap` | `SapRfc.py` | Envio de condições ao SAP |
+
+**Atributos da instância `ClGdf`:** `self.ClienteGdf` (instância ou None), `self.empresas`, `self.groups`, `self.solucoes_acesso`, `self.subsolucoes_acesso`.
+
+---
+
 ## 🎯 PRINCÍPIOS FUNDAMENTAIS
 
 ### 1. **CLAREZA > BREVIDADE**
@@ -139,7 +172,7 @@ dg_erros_nfe = {
 ```python
 lol_gdf_instance = ClGdf()
 lol_usuario = User.objects.get(id=user_id)
-lol_empresa = Empresas.objects.filter(cnpj=lv_cnpj).first()
+lol_empresa = Empresa.objects.filter(cnpj=lv_cnpj).first()
 ```
 
 #### `og` - Objeto Global (singleton, manager)
@@ -155,8 +188,8 @@ class ClGdf:
     """Classe de negócio principal do sistema GDF"""
     pass
 
-class ClCargaXml:
-    """Classe para processamento de arquivos XML de NF-e"""
+class CargaXml:
+    """Classe para processamento de arquivos XML de NF-e, CT-e e NFSe"""
     pass
 ```
 
@@ -178,7 +211,7 @@ def set_usuario(i_v_username: str, i_v_email: str) -> User:
     """Cria novo usuário no sistema"""
     pass
 
-def set_empresa(i_ld_dados: Dict) -> Empresas:
+def set_empresa(i_ld_dados: Dict) -> Empresa:
     """Insere nova empresa"""
     pass
 
@@ -256,7 +289,7 @@ def fn_api_processar_xml(i_request):
 #### `_get_`, `_set_`, `_upd_`, `_del_` - Métodos privados CRUD
 ```python
 class ClGdf:
-    def _get_empresas_cache(self, i_v_cod_cliente: str) -> List[Empresas]:
+    def _get_empresas_cache(self, i_v_cod_cliente: str) -> List[Empresa]:
         """Busca empresas do cache interno (privado)"""
         pass
     
@@ -267,7 +300,7 @@ class ClGdf:
 
 #### `_fn_` - Funções auxiliares privadas
 ```python
-class ClCargaXml:
+class CargaXml:
     def _fn_get_text(self, i_element, i_v_path, i_v_default=''):
         """Extrai texto de elemento XML com fallback para namespace"""
         pass
@@ -283,7 +316,7 @@ class ClCargaXml:
 
 ---
 
-## � DIFERENCIAÇÃO: MÉTODOS vs FUNÇÕES
+## 🔀 DIFERENCIAÇÃO: MÉTODOS vs FUNÇÕES
 
 ### **Quando usar `get_`, `set_`, `upd_`, `del_` (Métodos CRUD)**
 Operações que **manipulam dados** diretamente (banco, cache, sessão):
@@ -295,9 +328,9 @@ class ClGdf:
         """Query no banco"""
         return User.objects.filter(...)
     
-    def set_empresa(self, i_ld_dados: Dict) -> Empresas:
+    def set_empresa(self, i_ld_dados: Dict) -> Empresa:
         """Cria registro no banco"""
-        return Empresas.objects.create(...)
+        return Empresa.objects.create(...)
     
     def upd_certificado(self, i_v_cod_empresa: str, i_file) -> bool:
         """Atualiza registro existente"""
@@ -400,7 +433,7 @@ def set_usuario(
     
     # Vincular empresas
     for lv_empresa_id in i_lsl_empresas:
-        UserEmpresas.objects.create(
+        UsuarioEmpresa.objects.create(
             user=lol_user,
             empresa_id=lv_empresa_id
         )
@@ -413,11 +446,11 @@ def set_usuario(
 - Facilita identificação do valor de retorno na leitura
 
 ```python
-def fn_get_empresas_usuario(i_ol_user: User) -> List[Empresas]:
+def fn_get_empresas_usuario(i_ol_user: User) -> List[Empresa]:
     """Retorna lista de empresas vinculadas ao usuário"""
     
-    r_lsl_empresas = Empresas.objects.filter(
-        userempresas__user=i_ol_user
+    r_lsl_empresas = Empresa.objects.filter(
+        usuarioempresa_set__user=i_ol_user
     ).distinct()
     
     return r_lsl_empresas
@@ -468,14 +501,14 @@ class NFe_Produto(models.Model):
     id_produto = models.AutoField(primary_key=True)
     nfe = models.ForeignKey(NFe, on_delete=models.CASCADE)
 
-# Modelos públicos (sem prefixo de domínio)
-class Clientes(models.Model):
+# Modelos públicos (schema Public) – nomes oficiais
+class ClienteGdf(models.Model):
     cod_cliente = models.CharField(primary_key=True, max_length=10)
     razao = models.CharField(max_length=120)
 
-class Empresas(models.Model):
+class Empresa(models.Model):
     cod_empresa = models.CharField(primary_key=True, max_length=10)
-    cliente = models.ForeignKey(Clientes, on_delete=models.CASCADE)
+    gdfcliente = models.ForeignKey(ClienteGdf, on_delete=models.CASCADE, db_column='gdfcliente_id')
 ```
 
 #### Campos de Modelo (snake_case descritivo)
@@ -555,7 +588,7 @@ def fn_api_processar_xml(i_request):
                 'message': 'Arquivo XML não enviado'
             }, status=400)
         
-        lol_carga_xml = ClCargaXml()
+        lol_carga_xml = CargaXml()
         r_ld_resultado = lol_carga_xml.fn_processar_nfe(i_file=lv_xml_file)
         
         return JsonResponse({
@@ -581,11 +614,11 @@ class ClGdf:
     """
     
     def __init__(self):
-        self.Cliente: int = None
-        self.Empresas: List[Dict] = []
-        self.Groups: List[str] = []
-        self.solucoes_acesso: List[Dict] = []
-        self.subsolucoes_acesso: List[Dict] = []
+        self.ClienteGdf = None
+        self.empresas = []
+        self.groups = []
+        self.solucoes_acesso = []
+        self.subsolucoes_acesso = []
     
     def get_dados(self, i_ol_user: User):
         """Carrega dados iniciais do usuário na sessão"""
@@ -613,7 +646,7 @@ class ClGdf:
         pass
 
 
-class ClCargaXml:
+class CargaXml:
     """
     Processamento de arquivos XML de NF-e
     Valida schema, extrai dados e persiste no banco
@@ -790,7 +823,7 @@ def fn_view_listar_notas_fiscais(i_request):
     
     # Query SEMPRE filtrada por cliente (multi-tenant)
     lsl_notas = NFe.objects.filter(
-        empresa__cliente__cod_cliente=sv_cod_cliente
+        empresa__gdfcliente__cod_cliente=sv_cod_cliente
     )
     
     return render(i_request, 'nfe/Index_NFe.html', {'t_notas': lsl_notas})
@@ -806,9 +839,9 @@ def fn_view_atualizar_empresa(i_request, i_v_cod_empresa: str):
     
     # ✅ IDOR Protection - Verifica propriedade do recurso
     lol_empresa = get_object_or_404(
-        Empresas,
+        Empresa,
         cod_empresa=i_v_cod_empresa,
-        cliente__cod_cliente=sv_cod_cliente  # CRÍTICO: filtro multi-tenant
+        gdfcliente__cod_cliente=sv_cod_cliente  # CRÍTICO: filtro multi-tenant
     )
     
     if i_request.method == 'POST':
@@ -841,7 +874,7 @@ def fn_get_usuarios_otimizado(i_v_cod_cliente: str):
     """
     
     r_lsl_usuarios = User.objects.filter(
-        userempresas__empresa__cliente__cod_cliente=i_v_cod_cliente
+        usuarioempresa_set__empresa__gdfcliente__cod_cliente=i_v_cod_cliente
     ).select_related(
         # 1-to-1 ou ForeignKey direto
         'profile',
@@ -890,9 +923,9 @@ def fn_view_listar_empresas(i_request):
     lv_busca = i_request.GET.get('Buscar', '').strip()
     
     # Query base
-    lsl_empresas = Empresas.objects.filter(
-        cliente__cod_cliente=sv_cod_cliente
-    ).select_related('cliente', 'grp_empresa')
+    lsl_empresas = Empresa.objects.filter(
+        gdfcliente__cod_cliente=sv_cod_cliente
+    ).select_related('gdfcliente', 'grp_empresa')
     
     # Filtro de busca
     if lv_busca:
@@ -935,7 +968,7 @@ tests/
 class TestUsuariosViews(TestCase):
     def setUp(self):
         """Setup: cria dados de teste"""
-        self.lol_cliente = Clientes.objects.create(
+        self.lol_cliente = ClienteGdf.objects.create(
             cod_cliente='CLI001',
             razao='Cliente Teste',
             cnpj='12345678000190',
@@ -1015,8 +1048,8 @@ def fn_get_estatisticas_nfe_por_empresa(i_v_cod_cliente: str):
     Performance: 1 query com GROUP BY
     """
     
-    r_lsl_stats = Empresas.objects.filter(
-        cliente__cod_cliente=i_v_cod_cliente
+    r_lsl_stats = Empresa.objects.filter(
+        gdfcliente__cod_cliente=i_v_cod_cliente
     ).annotate(
         # Contadores
         total_nfe=Count('nfe', distinct=True),
@@ -1074,7 +1107,7 @@ def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
 
 def __repr__(self):
-    return f"<ClGdf(cliente={self.Cliente})>"
+    return f"<ClGdf(ClienteGdf={self.ClienteGdf})>"
 ```
 
 ### **Constants (uppercase snake_case)**
@@ -1139,8 +1172,8 @@ Antes de commitar código, validar:
 - [ ] Métodos privados têm prefixo `_fn_`?
 
 ### **3. Classes**
-- [ ] Classes de negócio têm prefixo `Cl`?
-- [ ] Models Django seguem convenção PascalCase?
+- [ ] Classes de negócio: `ClGdf` (prefixo `Cl`), `CargaXml`, `CargaSped`, `SapRfc` (PascalCase, sem prefixo)?
+- [ ] Models Django seguem convenção PascalCase e nomes oficiais (ClienteGdf, Empresa, etc.)?
 - [ ] Classes têm docstrings descritivas?
 
 ### **4. Segurança**
@@ -1180,9 +1213,9 @@ def fn_view_listar_empresas(i_request):
     lv_busca = i_request.GET.get('Buscar', '').strip()
     
     # Query otimizada
-    lsl_empresas = Empresas.objects.filter(
-        cliente__cod_cliente=sv_cod_cliente
-    ).select_related('cliente', 'grp_empresa', 'cert')
+    lsl_empresas = Empresa.objects.filter(
+        gdfcliente__cod_cliente=sv_cod_cliente
+    ).select_related('gdfcliente', 'grp_empresa', 'cert')
     
     if lv_busca:
         lsl_empresas = lsl_empresas.filter(
@@ -1228,25 +1261,25 @@ def fn_view_inserir_empresa(i_request):
             return JsonResponse({'error': 'CNPJ inválido'}, status=400)
         
         # Verifica duplicidade
-        if Empresas.objects.filter(cnpj=lv_cnpj).exists():
+        if Empresa.objects.filter(cnpj=lv_cnpj).exists():
             return JsonResponse({'error': 'CNPJ já cadastrado'}, status=400)
         
         # Geração de código único
         lv_cod_empresa = fn_gerar_codigo_empresa(i_v_cod_cliente=sv_cod_cliente)
         
         # Busca cliente
-        lol_cliente = get_object_or_404(Clientes, cod_cliente=sv_cod_cliente)
+        lol_cliente = get_object_or_404(ClienteGdf, cod_cliente=sv_cod_cliente)
         
         # Criação com transaction
         with transaction.atomic():
-            lol_empresa = Empresas.objects.create(
+            lol_empresa = Empresa.objects.create(
                 cod_empresa=lv_cod_empresa,
                 razao=lv_razao,
                 fantasia=lv_fantasia,
                 cnpj=lv_cnpj,
                 ie=lv_ie,
                 tipo=lv_tipo,
-                cliente=lol_cliente
+                gdfcliente=lol_cliente
             )
         
         return JsonResponse({
@@ -1272,9 +1305,9 @@ def fn_view_atualizar_empresa(i_request, i_v_cod_empresa: str):
     
     # IDOR Protection
     lol_empresa = get_object_or_404(
-        Empresas,
+        Empresa,
         cod_empresa=i_v_cod_empresa,
-        cliente__cod_cliente=sv_cod_cliente
+        gdfcliente__cod_cliente=sv_cod_cliente
     )
     
     if i_request.method == 'GET':
@@ -1329,11 +1362,11 @@ class ClGdf:
     """
     
     def __init__(self):
-        self.Cliente: Optional[Clientes] = None
-        self.Empresas: List[Empresas] = []
-        self.Groups: List[Group] = []
-        self.solucoes_acesso: List[SolucoesAcesso] = []
-        self.subsolucoes_acesso: List[SubsolucoesAcesso] = []
+        self.ClienteGdf = None
+        self.empresas = []
+        self.groups = []
+        self.solucoes_acesso = []
+        self.subsolucoes_acesso = []
     
     def get_dados(self, i_ol_user: User) -> bool:
         """
@@ -1346,31 +1379,31 @@ class ClGdf:
             r_v_sucesso: True se dados carregados, False se erro
         """
         try:
-            # Empresas do usuário (via UserEmpresas)
-            self.Empresas = Empresas.objects.filter(
-                userempresas__user=i_ol_user
-            ).select_related('cliente', 'grp_empresa').distinct()
+            # Empresas do usuário (via UsuarioEmpresa)
+            self.empresas = Empresa.objects.filter(
+                usuarioempresa_set__user=i_ol_user
+            ).select_related('gdfcliente', 'grp_empresa').distinct()
             
             # Grupos de permissão
-            self.Groups = Group.objects.filter(user=i_ol_user)
+            self.groups = Group.objects.filter(user=i_ol_user)
             
             # Cliente (assumindo 1 cliente por usuário)
-            self.Cliente = Clientes.objects.filter(
-                empresas__in=self.Empresas
+            self.ClienteGdf = ClienteGdf.objects.filter(
+                empresa_set__in=self.empresas
             ).distinct().first()
             
-            if not self.Cliente:
+            if not self.ClienteGdf:
                 return False
             
             # Soluções autorizadas para o cliente
-            self.solucoes_acesso = SolucoesAcesso.objects.filter(
-                cliente=self.Cliente,
+            self.solucoes_acesso = AcessoSolucaoCliente.objects.filter(
+                gdfcliente=self.ClienteGdf,
                 is_active=True
             ).select_related('solucao')
             
             # Subsoluções autorizadas via grupo do usuário
-            self.subsolucoes_acesso = SubsolucoesAcesso.objects.filter(
-                group__in=self.Groups
+            self.subsolucoes_acesso = AcessoSubsolucaoGrupo.objects.filter(
+                group__in=self.groups
             ).select_related('subsolucao', 'subsolucao__solucao')
             
             return True
@@ -1391,7 +1424,7 @@ class ClGdf:
         
         r_lsl_solucoes = []
         
-        # Itera soluções autorizadas
+        # Itera soluções autorizadas (AcessoSolucaoCliente)
         for lol_solucao_acesso in self.solucoes_acesso:
             lol_solucao = lol_solucao_acesso.solucao
             
@@ -1464,12 +1497,12 @@ class ClGdf:
         """
         # Query otimizada
         lsl_users = User.objects.filter(
-            userempresas__empresa__cliente__cod_cliente=i_v_cod_cliente
+            usuarioempresa_set__empresa__gdfcliente__cod_cliente=i_v_cod_cliente
         ).select_related(
-            'userempresas__empresa'
+            'usuarioempresa_set__empresa'
         ).prefetch_related(
             'groups',
-            'userempresas_set__empresa__cliente'
+            'usuarioempresa_set__empresa__gdfcliente'
         ).distinct()
         
         # Serialização manual
@@ -1477,7 +1510,7 @@ class ClGdf:
         for lol_user in lsl_users:
             lsl_empresas_vinculadas = [
                 emp.empresa.fantasia or emp.empresa.razao
-                for emp in lol_user.userempresas_set.all()
+                for emp in lol_user.usuarioempresa_set.all()
             ]
             
             lsl_grupos = [grp.name for grp in lol_user.groups.all()]
@@ -1518,6 +1551,13 @@ python manage.py validate_nomenclature --fix
 
 ---
 
-**Última Atualização**: 30/01/2026  
-**Versão**: 1.0  
+### **Alinhamento com o código atual**
+- **Models Public:** usar sempre `ClienteGdf`, `Empresa`, `UsuarioEmpresa`, `AcessoSolucaoCliente`, `AcessoSubsolucaoGrupo`, `PermissaoGrupoCliente`, `GrupoEmpresa`, `CertificadoDigital`, `ConexaoSap` (ver tabela no início do workbook).
+- **Classes de negócio:** `app.classes` — `ClGdf`, `CargaXml`, `CargaSped`, `SapRfc`; atributo de sessão em `ClGdf`: `self.ClienteGdf` (instância do modelo ClienteGdf).
+- **Filtros multi-tenant:** `gdfcliente__cod_cliente` (FK para ClienteGdf); reverse de Empresa em ClienteGdf: `empresa_set`; vínculo usuário–empresa: `usuarioempresa_set`.
+
+---
+
+**Última Atualização**: Março 2026  
+**Versão**: 1.1  
 **Responsável**: Arquitetura de Software GDF_V2

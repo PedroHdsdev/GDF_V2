@@ -51,7 +51,7 @@ class DataProcessor:
         Processa os dados conforme filtros e retorna DashboardData.
         Retorna None se não houver dados.
         """
-        from app.db_GDF.Public.models import Empresas
+        from app.db_GDF.Public.models import Empresa
         from app.db_GDF.NFe.models import (
             NFe_Identificacao, NFe_Total, NFe_Produto, NFe_Destinatario, NFe,
             NFe_Cobranca, NFe_Parcela, NFe_Pagamento,

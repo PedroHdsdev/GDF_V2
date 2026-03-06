@@ -1,6 +1,6 @@
 from django.db import models
 from django.utils import timezone
-from app.db_GDF.Public.models import Empresas, Clientes
+from app.db_GDF.Public.models import Empresa, ClienteGdf
 
 
 class CTe_Endereco(models.Model):
@@ -118,9 +118,9 @@ class CTe(models.Model):
     identificacao = models.OneToOneField(CTe_Identificacao, on_delete=models.CASCADE, related_name='cte')
     emitente = models.ForeignKey(CTe_Emitente, on_delete=models.SET_NULL, null=True, blank=True)
     destinatario = models.ForeignKey(CTe_Destinatario, on_delete=models.SET_NULL, null=True, blank=True)
-    empresa = models.ForeignKey(Empresas, on_delete=models.CASCADE, null=True, blank=True)
-    cliente = models.ForeignKey(
-        Clientes,
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, null=True, blank=True)
+    gdfcliente = models.ForeignKey(
+        ClienteGdf,
         on_delete=models.CASCADE,
         related_name='cte_docs',
         null=True,

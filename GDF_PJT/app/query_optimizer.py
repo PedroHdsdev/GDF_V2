@@ -14,19 +14,19 @@ class QueryOptimizer:
     def optimize_usuarios(queryset=None):
         """Otimiza query de usuários - evita N+1"""
         from django.contrib.auth.models import User
-        from app.db_GDF.Public.models import UserEmpresas
+        from app.db_GDF.Public.models import UsuarioEmpresa
         
         if queryset is None:
             queryset = User.objects.all()
         
         return queryset.select_related(
             'empresa',
-            'empresa__cliente',
-            'empresa__grupo_empresa',
+            'empresa__gdfcliente',
+            'empresa__grp_empresa',
         ).prefetch_related(
             'groups',
             'user_permissions',
-            Prefetch('userempresas_set', queryset=UserEmpresas.objects.select_related('empresa'))
+            Prefetch('usuarioempresa_set', queryset=UsuarioEmpresa.objects.select_related('empresa'))
         ).only(
             'id', 'username', 'email', 'first_name', 'last_name',
             'is_active', 'is_staff', 'date_joined'
@@ -35,47 +35,47 @@ class QueryOptimizer:
     @staticmethod
     def optimize_empresas(queryset=None):
         """Otimiza query de empresas"""
-        from app.db_GDF.Public.models import Empresas
+        from app.db_GDF.Public.models import Empresa
         
         if queryset is None:
-            queryset = Empresas.objects.all()
+            queryset = Empresa.objects.all()
         
         return queryset.select_related(
-            'cliente',
-            'grupo_empresa',
+            'gdfcliente',
+            'grp_empresa',
         ).only(
-            'id', 'cod_empresa', 'razao_social', 'fantasia',
-            'cnpj', 'cliente_id', 'grupo_empresa_id', 'is_active'
+            'cod_empresa', 'razao', 'fantasia',
+            'cnpj', 'gdfcliente_id', 'grp_empresa_id'
         )
     
     @staticmethod
     def optimize_clientes(queryset=None):
         """Otimiza query de clientes"""
-        from app.db_GDF.Public.models import Clientes
+        from app.db_GDF.Public.models import ClienteGdf
         
         if queryset is None:
-            queryset = Clientes.objects.all()
+            queryset = ClienteGdf.objects.all()
         
         return queryset.prefetch_related(
-            'empresas_set',
-            'solucoes_acesso_set',
+            'empresa_set',
+            'acessosolucaocliente_set',
         ).only(
-            'id', 'cod_cliente', 'razao_social', 'cnpj', 'is_active'
+            'cod_cliente', 'razao', 'cnpj', 'is_active'
         )
     
     @staticmethod
     def optimize_solucoes(queryset=None):
         """Otimiza query de soluções"""
-        from app.db_GDF.Public.models import Solucoes
+        from app.db_GDF.Public.models import Solucao
         
         if queryset is None:
-            queryset = Solucoes.objects.all()
+            queryset = Solucao.objects.all()
         
         return queryset.prefetch_related(
-            'subsolucoes_set',
-            'solucoesacesso_set',
+            'subsolucao_set',
+            'acessosolucaocliente_set',
         ).only(
-            'id', 'cod_solucao', 'descricao'
+            'cod_solucao', 'descricao'
         )
     
     @staticmethod
@@ -85,11 +85,11 @@ class QueryOptimizer:
         Útil quando você tem lista de items e precisa popular relações
         
         Exemplo:
-            empresas = list(Empresas.objects.all())
+            empresas = list(Empresa.objects.all())
             QueryOptimizer.bulk_optimize_queries(
-                empresas, 'cliente_id', Clientes
+                empresas, 'gdfcliente_id', ClienteGdf
             )
-            # Agora company.cliente está carregado sem queries adicionais
+            # Agora company.gdfcliente está carregado sem queries adicionais
         """
         ids = [getattr(item, relation_field) for item in items_list if hasattr(item, relation_field)]
         ids = list(set(filter(None, ids)))  # Remover duplicatas e None
@@ -98,7 +98,8 @@ class QueryOptimizer:
             return {}
         
         related_objects = {
-            obj.id: obj for obj in related_model.objects.filter(id__in=ids)
+            getattr(obj, obj._meta.pk.attname): obj
+            for obj in related_model.objects.filter(pk__in=ids)
         }
         
         return related_objects
@@ -143,7 +144,7 @@ class CachedQueryManager:
     @staticmethod
     def get_solucoes_for_cliente(cliente_id, cache_timeout=3600):
         """Cache de soluções por cliente"""
-        from app.db_GDF.Public.models import Solucoes, SolucoesAcesso
+        from app.db_GDF.Public.models import Solucao, AcessoSolucaoCliente
         
         cache_key = f'solucoes_cliente_{cliente_id}'
         
@@ -151,12 +152,12 @@ class CachedQueryManager:
         if cached:
             return cached
         
-        solucoes = Solucoes.objects.filter(
-            solucoesacesso__cliente_id=cliente_id
+        solucoes = Solucao.objects.filter(
+            acessosolucaocliente__gdfcliente_id=cliente_id
         ).prefetch_related(
-            'subsolucoes_set',
-            Prefetch('solucoesacesso_set',
-                    queryset=SolucoesAcesso.objects.filter(cliente_id=cliente_id))
+            'subsolucao_set',
+            Prefetch('acessosolucaocliente_set',
+                    queryset=AcessoSolucaoCliente.objects.filter(gdfcliente_id=cliente_id))
         ).distinct()
         
         data = list(solucoes)
@@ -166,7 +167,7 @@ class CachedQueryManager:
     @staticmethod
     def get_empresas_for_cliente(cliente_id, cache_timeout=3600):
         """Cache de empresas por cliente"""
-        from app.db_GDF.Public.models import Empresas
+        from app.db_GDF.Public.models import Empresa
         
         cache_key = f'empresas_cliente_{cliente_id}'
         
@@ -175,7 +176,7 @@ class CachedQueryManager:
             return cached
         
         empresas = QueryOptimizer.optimize_empresas(
-            Empresas.objects.filter(cliente_id=cliente_id)
+            Empresa.objects.filter(gdfcliente_id=cliente_id)
         )
         
         data = list(empresas)

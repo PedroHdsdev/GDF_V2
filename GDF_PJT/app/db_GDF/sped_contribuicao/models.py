@@ -4,14 +4,14 @@ cod_ver 006 a 016
 """
 from django.db import models
 from django.utils import timezone
-from app.db_GDF.Public.models import Empresas, Clientes
+from app.db_GDF.Public.models import Empresa, ClienteGdf
 
 
 class SpedContribuicaoArquivo(models.Model):
     """Cabeçalho do arquivo SPED Contribuição (EFD Contribuições)."""
     id_arquivo = models.AutoField(primary_key=True)
-    cliente = models.ForeignKey(
-        Clientes,
+    gdfcliente = models.ForeignKey(
+        ClienteGdf,
         on_delete=models.CASCADE,
         related_name='sped_contribuicao_arquivos',
         null=True,
@@ -20,7 +20,7 @@ class SpedContribuicaoArquivo(models.Model):
         to_field='cod_cliente',
     )
     empresa = models.ForeignKey(
-        Empresas,
+        Empresa,
         on_delete=models.CASCADE,
         related_name='sped_contribuicao_arquivos',
         null=True,
@@ -37,7 +37,7 @@ class SpedContribuicaoArquivo(models.Model):
         managed = True
         db_table = '"sped_contribuicao"."sped_arquivo"'
         indexes = [
-            models.Index(fields=['cliente', 'competencia'], name='sc_arquivo_cli_comp'),
+            models.Index(fields=['gdfcliente', 'competencia'], name='sc_arquivo_cli_comp'),
             models.Index(fields=['empresa', 'competencia'], name='sc_arquivo_emp_comp'),
             models.Index(fields=['data_carga'], name='sc_arquivo_data_carga'),
             models.Index(fields=['hash_conteudo'], name='sc_arquivo_hash'),

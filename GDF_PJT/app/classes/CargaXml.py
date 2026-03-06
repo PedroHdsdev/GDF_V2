@@ -2,7 +2,7 @@
 from django.db.models               import Prefetch
 from psycopg2                       import IntegrityError
 from django.contrib.auth.models     import User, Group
-from app.db_GDF.Public.models       import Clientes, Empresas
+from app.db_GDF.Public.models       import ClienteGdf, Empresa
 from app.db_GDF.NFe.models          import (
     NFe, NFe_Total, NFe_Produto, NFe_Identificacao, NFe_Emitente, NFe_Destinatario,
     NFe_Endereco, NFe_ICMS, NFe_IPI, NFe_PIS, NFe_COFINS, NFe_Transporte,
@@ -40,7 +40,8 @@ def _find_first_child(parent, tag_names, ns):
     return None
 
 
-class Carga_xml():
+class CargaXml:
+    """Processamento e persistência de XMLs de NF-e, CT-e e NFSe (parse, validação, gravação)."""
     def __init__(self):
         self.ns = {
             'nfe': 'http://www.portalfiscal.inf.br/nfe',
@@ -700,21 +701,21 @@ class Carga_xml():
             if cnpj_para_busca:
                 try:
                     empresa = Empresas.objects.get(cnpj=cnpj_para_busca)
-                    if cod_cliente and empresa.cliente and empresa.cliente.cod_cliente != cod_cliente:
+                    if cod_cliente and empresa.gdfcliente and empresa.gdfcliente.cod_cliente != cod_cliente:
                         empresa = None
                 except Empresas.DoesNotExist:
                     empresa = None
             else:
                 raise ValueError(f"Não foi possível identificar CNPJ da empresa (tipo: {tipo_nfe})")
             
-            # Cliente: nunca vazio. Preferir empresa.cliente; se não encontrar, usar cod_cliente (cliente do usuário/parâmetro)
+            # Cliente: nunca vazio. Preferir empresa.gdfcliente; se não encontrar, usar cod_cliente (cliente do usuário/parâmetro)
             cliente_eff = None
-            if empresa and empresa.cliente:
-                cliente_eff = empresa.cliente
+            if empresa and empresa.gdfcliente:
+                cliente_eff = empresa.gdfcliente
             if not cliente_eff and cod_cliente:
                 try:
-                    cliente_eff = Clientes.objects.get(cod_cliente=cod_cliente)
-                except Clientes.DoesNotExist:
+                    cliente_eff = GdfClientes.objects.get(cod_cliente=cod_cliente)
+                except GdfClientes.DoesNotExist:
                     pass
             
             # ========== CRIAR IDENTIFICAÇÃO COMPLETA ==========
@@ -778,7 +779,7 @@ class Carga_xml():
             self._processar_informacoes_adicionais(infNFe, identificacao)
 
             # ========== SALVAR CONDIÇÃO DE PAGAMENTO EM CondicaoParam (se ainda não existir) ==========
-            _cod_cliente = cod_cliente or (empresa.cliente_id if empresa and getattr(empresa, 'cliente_id', None) else None)
+            _cod_cliente = cod_cliente or (empresa.gdfcliente_id if empresa and getattr(empresa, 'gdfcliente_id', None) else None)
             self._salvar_condicao_param_se_nao_existir(identificacao, cod_cliente=_cod_cliente)
 
             return []
@@ -849,19 +850,19 @@ class Carga_xml():
             if cnpj_para_busca:
                 try:
                     empresa = Empresas.objects.get(cnpj=cnpj_para_busca)
-                    if cod_cliente and empresa.cliente and empresa.cliente.cod_cliente != cod_cliente:
+                    if cod_cliente and empresa.gdfcliente and empresa.gdfcliente.cod_cliente != cod_cliente:
                         empresa = None
                 except Empresas.DoesNotExist:
                     empresa = None
 
-            # Cliente: nunca vazio. Preferir empresa.cliente; se não encontrar, usar cod_cliente (cliente do usuário/parâmetro)
+            # Cliente: nunca vazio. Preferir empresa.gdfcliente; se não encontrar, usar cod_cliente (cliente do usuário/parâmetro)
             cliente_eff = None
-            if empresa and empresa.cliente:
-                cliente_eff = empresa.cliente
+            if empresa and empresa.gdfcliente:
+                cliente_eff = empresa.gdfcliente
             if not cliente_eff and cod_cliente:
                 try:
-                    cliente_eff = Clientes.objects.get(cod_cliente=cod_cliente)
-                except Clientes.DoesNotExist:
+                    cliente_eff = GdfClientes.objects.get(cod_cliente=cod_cliente)
+                except GdfClientes.DoesNotExist:
                     pass
 
             # Criar/atualizar identificação
@@ -1115,19 +1116,19 @@ class Carga_xml():
             if cnpj_para_busca:
                 try:
                     empresa = Empresas.objects.get(cnpj=cnpj_para_busca)
-                    if cod_cliente and empresa.cliente and empresa.cliente.cod_cliente != cod_cliente:
+                    if cod_cliente and empresa.gdfcliente and empresa.gdfcliente.cod_cliente != cod_cliente:
                         empresa = None
                 except Empresas.DoesNotExist:
                     empresa = None
 
-            # Cliente: nunca vazio. Preferir empresa.cliente; se não encontrar, usar cod_cliente (cliente do usuário/parâmetro)
+            # Cliente: nunca vazio. Preferir empresa.gdfcliente; se não encontrar, usar cod_cliente (cliente do usuário/parâmetro)
             cliente_eff = None
-            if empresa and empresa.cliente:
-                cliente_eff = empresa.cliente
+            if empresa and empresa.gdfcliente:
+                cliente_eff = empresa.gdfcliente
             if not cliente_eff and cod_cliente:
                 try:
-                    cliente_eff = Clientes.objects.get(cod_cliente=cod_cliente)
-                except Clientes.DoesNotExist:
+                    cliente_eff = GdfClientes.objects.get(cod_cliente=cod_cliente)
+                except GdfClientes.DoesNotExist:
                     pass
 
             # Identificacao

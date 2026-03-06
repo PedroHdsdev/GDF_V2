@@ -49,16 +49,16 @@ class BaseDashboard(ABC):
     def _load_empresas(self) -> bool:
         """Carrega empresas do usuário. Retorna False se sem acesso."""
         from django.contrib.auth.models import User
-        from app.db_GDF.Public.models import Empresas
+        from app.db_GDF.Public.models import Empresa
 
         try:
             user = User.objects.get(username=self.auth.username)
             if self.auth.acesso_total and self.auth.cod_cliente:
-                self.empresas_qs = Empresas.objects.filter(
+                self.empresas_qs = Empresa.objects.filter(
                     cliente__cod_cliente=self.auth.cod_cliente
                 ).distinct()
             else:
-                self.empresas_qs = Empresas.objects.filter(
+                self.empresas_qs = Empresa.objects.filter(
                     userempresas__user=user
                 ).distinct()
                 if self.auth.cod_cliente:

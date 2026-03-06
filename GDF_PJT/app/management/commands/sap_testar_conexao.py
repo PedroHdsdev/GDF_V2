@@ -48,7 +48,7 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR('Informe --cliente COD ou --todos'))
 
     def _testar_uma(self, conn):
-        cliente_id = getattr(conn.cliente, 'cod_cliente', None) if conn.cliente else '?'
+        cliente_id = getattr(conn.gdfcliente, 'cod_cliente', None) if conn.gdfcliente else '?'
         self.stdout.write(f'Cliente: {cliente_id} | Host: {conn.ashost} | Client: {conn.client} ... ', ending='')
         success, result = SapRfc.call(conn, 'RFC_PING')
         if success:

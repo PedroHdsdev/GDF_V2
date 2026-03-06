@@ -31,16 +31,16 @@ def _descricao_tipo_pagamento(codigo):
         return 'Não informado'
     return TIPO_PAGAMENTO_DESC.get(str(codigo).strip(), None)  # None = usar display do model depois
 from app.classes.gdf                import ClGdf
-from app.classes.CargaXml           import Carga_xml
+from app.classes.CargaXml           import CargaXml
 from django.core.paginator          import Paginator
 from django.db.models               import Q, Count
 from app.db_GDF.Public.models       import (
-    UserEmpresas, Empresas, Clientes, GrpEmpresas,
-    CargaXmlParam, CargaXmlJob,
-    CargaSpedParam, CargaSpedJob,
-    SapConnection, SubsolucoesAcesso,
+    UsuarioEmpresa, Empresa, ClienteGdf, GrupoEmpresa,
+    ParametroCargaXml, JobCargaXml,
+    ParametroCargaSped, JobCargaSped,
+    ConexaoSap, AcessoSubsolucaoGrupo,
 )
-from app.classes.CargaSped          import Carga_sped
+from app.classes.CargaSped          import CargaSped
 from app.db_GDF.NFe.models          import (
     NFe, NFe_Identificacao, NFe_Emitente, NFe_Destinatario, NFe_Endereco,
     NFe_Produto, NFe_Total, NFe_Cobranca, NFe_Parcela, NFe_Pagamento,
@@ -69,9 +69,9 @@ def _usuario_vinculado_cliente_1000(user):
     """Retorna True se o usuário tem empresas vinculadas ao cliente 1000 (dona do projeto)."""
     if not user or not user.is_authenticated:
         return False
-    return Empresas.objects.filter(
+    return Empresa.objects.filter(
         userempresas__user=user,
-        cliente__cod_cliente=COD_CLIENTE_PROJETO,
+        gdfcliente__cod_cliente=COD_CLIENTE_PROJETO,
     ).exists()
 
 
@@ -102,7 +102,7 @@ def _get_subsolucoes_usuario(user):
     group_ids = list(user.groups.values_list('id', flat=True))
     if not group_ids:
         return set()
-    codigos = SubsolucoesAcesso.objects.filter(
+    codigos = AcessoSubsolucaoGrupo.objects.filter(
         group_id__in=group_ids,
         subsolucao__isnull=False,
     ).values_list('subsolucao__cod_subsolucao', flat=True).distinct()
@@ -142,8 +142,8 @@ def fn_view_login(request):
             if not cl_gdf_instance.Retorn:
                 solucoes = cl_gdf_instance.get_solucoes()
                 cod_cliente = (
-                    cl_gdf_instance.Cliente.cod_cliente
-                    if getattr(cl_gdf_instance, 'Cliente', None) else None
+                    cl_gdf_instance.ClienteGdf.cod_cliente
+                    if getattr(cl_gdf_instance, 'ClienteGdf', None) else None
                 )
                 if solucoes or getattr(user, 'is_superuser', False):
                     request.session['t_solucoes'] = solucoes or []
@@ -216,8 +216,8 @@ def fn_view_home(request):
 
         # 1. Certificados expirando (requer Dm_Empresas)
         if _tem_acesso('Dm_Empresas'):
-            cert_expirando = Empresas.objects.filter(
-                cliente__cod_cliente=cod_cliente,
+            cert_expirando = Empresa.objects.filter(
+                gdfcliente__cod_cliente=cod_cliente,
                 cert__isnull=False,
                 cert__fim_validade__isnull=False,
             ).filter(cert__fim_validade__date__lte=limite_cert).count()
@@ -233,8 +233,8 @@ def fn_view_home(request):
 
         # 2. Carga XML com erros (requer Pro_CargaXml)
         if _tem_acesso('Pro_CargaXml'):
-            xml_erros = CargaXmlJob.objects.filter(
-                cliente__cod_cliente=cod_cliente,
+            xml_erros = JobCargaXml.objects.filter(
+                gdfcliente__cod_cliente=cod_cliente,
                 status='ERROR',
                 finished_at__gte=desde_24h,
             ).count()
@@ -249,8 +249,8 @@ def fn_view_home(request):
 
         # 3. Carga SPED com erros (requer Pro_CargaSped)
         if _tem_acesso('Pro_CargaSped'):
-            sped_erros = CargaSpedJob.objects.filter(
-                cliente__cod_cliente=cod_cliente,
+            sped_erros = JobCargaSped.objects.filter(
+                gdfcliente__cod_cliente=cod_cliente,
                 status='ERROR',
                 finished_at__gte=desde_24h,
             ).count()
@@ -265,8 +265,8 @@ def fn_view_home(request):
 
         # 4. Divergências abertas no reprocessamento (requer Reproc_Painel)
         if _tem_acesso('Reproc_Painel'):
-            empresas_cod = list(Empresas.objects.filter(
-                cliente__cod_cliente=cod_cliente
+            empresas_cod = list(Empresa.objects.filter(
+                gdfcliente__cod_cliente=cod_cliente
             ).values_list('cod_empresa', flat=True))
             if empresas_cod:
                 divergencias = Divergencia.objects.filter(
@@ -310,22 +310,22 @@ def fn_view_home(request):
 
         # Métricas (apenas para quem tem acesso às cargas)
         if _tem_acesso('Pro_CargaXml') or _tem_acesso('Pro_CargaSped'):
-            xml_concluidos = CargaXmlJob.objects.filter(
-                cliente__cod_cliente=cod_cliente,
+            xml_concluidos = JobCargaXml.objects.filter(
+                gdfcliente__cod_cliente=cod_cliente,
                 status='SUCCESS',
                 finished_at__gte=desde_24h,
             ).count() if _tem_acesso('Pro_CargaXml') else 0
-            sped_concluidos = CargaSpedJob.objects.filter(
-                cliente__cod_cliente=cod_cliente,
+            sped_concluidos = JobCargaSped.objects.filter(
+                gdfcliente__cod_cliente=cod_cliente,
                 status='SUCCESS',
                 finished_at__gte=desde_24h,
             ).count() if _tem_acesso('Pro_CargaSped') else 0
-            xml_em_andamento = CargaXmlJob.objects.filter(
-                cliente__cod_cliente=cod_cliente,
+            xml_em_andamento = JobCargaXml.objects.filter(
+                gdfcliente__cod_cliente=cod_cliente,
                 status__in=('RUNNING', 'PENDING'),
             ).count() if _tem_acesso('Pro_CargaXml') else 0
-            sped_em_andamento = CargaSpedJob.objects.filter(
-                cliente__cod_cliente=cod_cliente,
+            sped_em_andamento = JobCargaSped.objects.filter(
+                gdfcliente__cod_cliente=cod_cliente,
                 status__in=('RUNNING', 'PENDING'),
             ).count() if _tem_acesso('Pro_CargaSped') else 0
             context['metricas'].update({
@@ -371,26 +371,26 @@ def fn_view_home(request):
     context['qtd_empresas'] = 0
 
     if cod_cliente:
-        cliente_obj = Clientes.objects.filter(cod_cliente=cod_cliente).first()
+        cliente_obj = ClienteGdf.objects.filter(cod_cliente=cod_cliente).first()
         if cliente_obj:
             context['cliente_nome'] = cliente_obj.razao or cod_cliente
-        context['qtd_empresas'] = Empresas.objects.filter(cliente__cod_cliente=cod_cliente).count()
+        context['qtd_empresas'] = Empresa.objects.filter(gdfcliente__cod_cliente=cod_cliente).count()
 
         # Documentos no mês atual (para quem tem Pro_Relatorio ou Reproc_Painel)
         if _tem_acesso('Pro_Relatorio') or _tem_acesso('Reproc_Painel'):
             hoje = timezone.now()
             nfe_mes = NFe.objects.filter(
-                cliente__cod_cliente=cod_cliente,
+                gdfcliente__cod_cliente=cod_cliente,
                 identificacao__emissao__year=hoje.year,
                 identificacao__emissao__month=hoje.month,
             ).count()
             cte_mes = CTe.objects.filter(
-                cliente__cod_cliente=cod_cliente,
+                gdfcliente__cod_cliente=cod_cliente,
                 identificacao__emissao__year=hoje.year,
                 identificacao__emissao__month=hoje.month,
             ).count()
             nfse_mes = NFSe.objects.filter(
-                cliente__cod_cliente=cod_cliente,
+                gdfcliente__cod_cliente=cod_cliente,
                 identificacao__emissao__year=hoje.year,
                 identificacao__emissao__month=hoje.month,
             ).count()
@@ -400,7 +400,7 @@ def fn_view_home(request):
         if _tem_acesso('Pro_CargaXml') or _tem_acesso('Pro_CargaSped'):
             atividades = []
             if _tem_acesso('Pro_CargaXml'):
-                for j in CargaXmlJob.objects.filter(cliente__cod_cliente=cod_cliente).order_by('-started_at')[:3]:
+                for j in JobCargaXml.objects.filter(gdfcliente__cod_cliente=cod_cliente).order_by('-started_at')[:3]:
                     dt = j.finished_at or j.started_at
                     atividades.append({
                         'tipo': 'XML',
@@ -412,7 +412,7 @@ def fn_view_home(request):
                         'url': 'Pro_CargaXml',
                     })
             if _tem_acesso('Pro_CargaSped'):
-                for j in CargaSpedJob.objects.filter(cliente__cod_cliente=cod_cliente).order_by('-started_at')[:3]:
+                for j in JobCargaSped.objects.filter(gdfcliente__cod_cliente=cod_cliente).order_by('-started_at')[:3]:
                     dt = j.finished_at or j.started_at
                     atividades.append({
                         'tipo': 'SPED',
@@ -574,9 +574,9 @@ def fn_view_atualizar_usuario(request, user_id):
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
     # ✅ VALIDAR IDOR: User só pode editar usuários de suas empresas
-    user_belongs_to_client = UserEmpresas.objects.filter(
+    user_belongs_to_client = UserEmpresa.objects.filter(
         user_id=user_id,
-        empresa__cliente__cod_cliente=cod_cliente
+        empresa__gdfcliente__cod_cliente=cod_cliente
     ).exists()
     
     if not user_belongs_to_client:
@@ -851,15 +851,15 @@ def fn_view_inserir_grp_empresa(request):
         return redirect('Dm_Empresas')
 
     try:
-        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
-    except Clientes.DoesNotExist:
+        cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
+    except ClienteGdf.DoesNotExist:
         return JsonResponse({"erro": "Cliente não encontrado"}, status=403)
 
-    if GrpEmpresas.objects.filter(grp_empresa=grp_empresa).exists():
+    if GrupoEmpresa.objects.filter(grp_empresa=grp_empresa).exists():
         messages.error(request, f"Já existe um grupo com o código '{grp_empresa}'.", extra_tags="MODAL_GRP_INS")
         return redirect('Dm_Empresas')
 
-    GrpEmpresas.objects.create(grp_empresa=grp_empresa, descricao=descricao or None, cliente=cliente)
+    GrupoEmpresa.objects.create(grp_empresa=grp_empresa, descricao=descricao or None, gdfcliente=cliente)
     messages.success(request, f"Grupo '{grp_empresa}' criado com sucesso.", extra_tags="MODAL_GRP_INS")
     return redirect('Dm_Empresas')
 
@@ -1170,11 +1170,11 @@ def fn_view_cliente_sap(request, cod_cliente):
         return JsonResponse({"erro": "Acesso negado."}, status=403)
 
     try:
-        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
-    except Clientes.DoesNotExist:
+        cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
+    except ClienteGdf.DoesNotExist:
         return JsonResponse({"erro": "Cliente não encontrado"}, status=404)
 
-    sap = SapConnection.objects.filter(cliente=cliente).first()
+    sap = ConexaoSap.objects.filter(gdfcliente=cliente).first()
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
     if request.method == "POST":
@@ -1187,8 +1187,8 @@ def fn_view_cliente_sap(request, cod_cliente):
         active = request.POST.get("sap_active") == "on"
 
         if not sap:
-            sap = SapConnection.objects.create(
-                cliente=cliente,
+            sap = ConexaoSap.objects.create(
+                gdfcliente=cliente,
                 ashost=ashost,
                 sysnr=sysnr,
                 client=client,
@@ -1242,15 +1242,15 @@ def fn_view_CargaXml(request):
     
     # Buscar jobs do cliente (todos os registros)
     try:
-        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
-        jobs = CargaXmlJob.objects.filter(cliente=cliente).order_by('-started_at')
-        parametros = CargaXmlParam.objects.filter(cliente=cliente).order_by('-data_criacao')
+        cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
+        jobs = JobCargaXml.objects.filter(gdfcliente=cliente).order_by('-started_at')
+        parametros = ParametroCargaXml.objects.filter(gdfcliente=cliente).order_by('-data_criacao')
         # Empresas disponíveis para o usuário dentro deste cliente
-        empresas_usuario = Empresas.objects.filter(
-            cliente=cliente,
+        empresas_usuario = Empresa.objects.filter(
+            gdfcliente=cliente,
             userempresas__user=request.user
         ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
-    except Clientes.DoesNotExist:
+    except ClienteGdf.DoesNotExist:
         jobs = []
         parametros = []
         empresas_usuario = []
@@ -1266,12 +1266,12 @@ def fn_view_CargaXml(request):
 def _processar_job_xml_background(job_id, temp_dir, type_xml, origem_dados, user_id, cod_cliente, empresa_id):
     """Executa em thread: processa XMLs da pasta temp e atualiza o job."""
     from django.db import connection
-    from app.db_GDF.Public.models import CargaXmlJob
-    from app.classes.CargaXml import Carga_xml
+    from app.db_GDF.Public.models import JobCargaXml
+    from app.classes.CargaXml import CargaXml
 
     try:
         from django.contrib.auth.models import User as AuthUser
-        job = CargaXmlJob.objects.get(id=job_id)
+        job = JobCargaXml.objects.get(id=job_id)
         user = AuthUser.objects.filter(id=user_id).first()
         username = user.username if user else 'SYSTEM'
 
@@ -1294,7 +1294,7 @@ def _processar_job_xml_background(job_id, temp_dir, type_xml, origem_dados, user
             job.save(update_fields=['status', 'mensagem', 'finished_at'])
             return
 
-        cl_xml = Carga_xml()
+        cl_xml = CargaXml()
         upload_result = cl_xml.set_upload_xml(
             xml_files,
             type_xml,
@@ -1316,13 +1316,13 @@ def _processar_job_xml_background(job_id, temp_dir, type_xml, origem_dados, user
         empresa_prefixo = ''
         if empresa_id:
             try:
-                empresa = Empresas.objects.get(
+                empresa = Empresa.objects.get(
                     cod_empresa=empresa_id,
-                    cliente__cod_cliente=cod_cliente,
+                    gdfcliente__cod_cliente=cod_cliente,
                 )
                 nome_emp = empresa.fantasia or empresa.razao or empresa.cod_empresa
                 empresa_prefixo = f"EMPRESA: {empresa.cod_empresa} - {nome_emp}\n"
-            except Empresas.DoesNotExist:
+            except Empresa.DoesNotExist:
                 empresa_prefixo = f"EMPRESA: {empresa_id} (não encontrada)\n"
 
         total_arquivos = len(upload_result['success']) + len(upload_result['errors']) + len(upload_result.get('pendentes', []))
@@ -1335,7 +1335,7 @@ def _processar_job_xml_background(job_id, temp_dir, type_xml, origem_dados, user
         job.save(update_fields=['total_arquivos', 'total_sucesso', 'total_erro', 'status', 'mensagem', 'finished_at'])
     except Exception as e:
         try:
-            job = CargaXmlJob.objects.get(id=job_id)
+            job = JobCargaXml.objects.get(id=job_id)
             job.status = 'ERROR'
             job.mensagem = str(e)[:5000]
             job.finished_at = timezone.localtime()
@@ -1362,7 +1362,7 @@ def fn_api_processar_xml(request):
     
     try:
         # Processar upload de XML aqui
-        cl_xml = Carga_xml()
+        cl_xml = CargaXml()
 
         lsl_Xml          = request.FILES.getlist('arquivo')
         l_v_type_xml     = request.POST.get('type_xml', 'NFe')
@@ -1420,9 +1420,9 @@ def fn_api_processar_xml(request):
                 pass
             return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao salvar arquivos: {e}'}, status=500)
 
-        cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
-        job = CargaXmlJob.objects.create(
-            cliente=cliente,
+        cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
+        job = JobCargaXml.objects.create(
+            gdfcliente=cliente,
             parametro=None,
             status='RUNNING',
             total_arquivos=len(expanded),
@@ -1457,11 +1457,11 @@ def fn_api_cargaxml_parametros(request):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
 
-    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
+    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
 
     if request.method == "GET":
         apenas_ativos = request.GET.get('ativo')
-        parametros = CargaXmlParam.objects.filter(cliente=cliente)
+        parametros = ParametroCargaXml.objects.filter(gdfcliente=cliente)
 
         if apenas_ativos in ['1', 'true', 'True', 'yes', 'sim']:
             parametros = parametros.filter(ativo=True)
@@ -1512,12 +1512,12 @@ def fn_api_cargaxml_parametros(request):
         empresa = None
         if empresa_id:
             try:
-                empresa = Empresas.objects.get(cod_empresa=empresa_id, cliente=cliente)
-            except Empresas.DoesNotExist:
+                empresa = Empresa.objects.get(cod_empresa=empresa_id, gdfcliente=cliente)
+            except Empresa.DoesNotExist:
                 return JsonResponse({'sucesso': False, 'mensagem': 'Empresa nao encontrada'}, status=404)
 
-        param = CargaXmlParam.objects.create(
-            cliente=cliente,
+        param = ParametroCargaXml.objects.create(
+            gdfcliente=cliente,
             empresa=empresa,
             ativo=ativo,
             horario=horario,
@@ -1551,8 +1551,8 @@ def fn_api_cargaxml_parametro_detail(request, param_id):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
 
-    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
-    param = get_object_or_404(CargaXmlParam, id=param_id, cliente=cliente)
+    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
+    param = get_object_or_404(ParametroCargaXml, id=param_id, gdfcliente=cliente)
 
     if request.method == 'GET':
         param_data = {
@@ -1599,8 +1599,8 @@ def fn_api_cargaxml_parametro_detail(request, param_id):
 
     if empresa_id:
         try:
-            param.empresa = Empresas.objects.get(cod_empresa=empresa_id, cliente=cliente)
-        except Empresas.DoesNotExist:
+            param.empresa = Empresa.objects.get(cod_empresa=empresa_id, gdfcliente=cliente)
+        except Empresa.DoesNotExist:
             return JsonResponse({'sucesso': False, 'mensagem': 'Empresa nao encontrada'}, status=404)
     else:
         param.empresa = None
@@ -1624,8 +1624,8 @@ def fn_api_cargaxml_upload_zip(request, param_id):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
 
-    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
-    param = get_object_or_404(CargaXmlParam, id=param_id, cliente=cliente)
+    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
+    param = get_object_or_404(ParametroCargaXml, id=param_id, gdfcliente=cliente)
 
     arquivo_zip = request.FILES.get('arquivo_zip')
     if not arquivo_zip:
@@ -1685,14 +1685,14 @@ def fn_api_cargaxml_relatorio(request):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
 
-    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
-    parametros = CargaXmlParam.objects.filter(cliente=cliente)
+    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
+    parametros = ParametroCargaXml.objects.filter(gdfcliente=cliente)
     items = []
 
     import os
     for param in parametros.order_by('horario'):
         dir_exists = os.path.isdir(param.diretorio)
-        last_job = CargaXmlJob.objects.filter(parametro=param).order_by('-started_at').first()
+        last_job = JobCargaXml.objects.filter(parametro=param).order_by('-started_at').first()
         items.append({
             'id': param.id,
             'ativo': param.ativo,
@@ -1723,8 +1723,8 @@ def fn_api_cargaxml_param_toggle(request, param_id):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
 
-    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
-    param = get_object_or_404(CargaXmlParam, id=param_id, cliente=cliente)
+    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
+    param = get_object_or_404(ParametroCargaXml, id=param_id, gdfcliente=cliente)
 
     ativo_raw = None
     if request.content_type and 'application/json' in request.content_type:
@@ -1766,7 +1766,7 @@ def fn_api_sessao_cliente(request):
             cod_cliente = (request.POST.get('cod_cliente') or '').strip()
         if not cod_cliente:
             return JsonResponse({'sucesso': False, 'erro': 'cod_cliente obrigatório'}, status=400)
-        if not Clientes.objects.filter(cod_cliente=cod_cliente, is_active=True).exists():
+        if not ClienteGdf.objects.filter(cod_cliente=cod_cliente, is_active=True).exists():
             return JsonResponse({'sucesso': False, 'erro': 'Cliente não encontrado ou inativo'}, status=400)
         request.session['cod_cliente'] = cod_cliente
         return JsonResponse({'sucesso': True, 'cod_cliente': cod_cliente}, status=200)
@@ -1793,8 +1793,8 @@ def fn_api_cargaxml_avisos(request):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
-    jobs = CargaXmlJob.objects.filter(
-        cliente__cod_cliente=cod_cliente,
+    jobs = JobCargaXml.objects.filter(
+        gdfcliente__cod_cliente=cod_cliente,
         status='ERROR'
     ).order_by('-started_at')[:100]
     items = []
@@ -1836,7 +1836,7 @@ def fn_api_cargaxml_jobs(request):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
 
-    jobs = CargaXmlJob.objects.filter(cliente__cod_cliente=cod_cliente).order_by('-started_at')
+    jobs = JobCargaXml.objects.filter(gdfcliente__cod_cliente=cod_cliente).order_by('-started_at')
     print(f"DEBUG: Found {jobs.count()} jobs", file=sys.stderr)
     items = []
     for job in jobs:
@@ -1860,7 +1860,7 @@ def fn_api_cargaxml_resumo(request):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    qs = CargaXmlJob.objects.filter(cliente__cod_cliente=cod_cliente)
+    qs = JobCargaXml.objects.filter(gdfcliente__cod_cliente=cod_cliente)
     total = qs.count()
     concluidos = qs.filter(status='SUCCESS').count()
     com_erros = qs.filter(status='ERROR').count()
@@ -1882,7 +1882,7 @@ def fn_api_cargaxml_job_details(request, job_id):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
 
-    job = get_object_or_404(CargaXmlJob, id=job_id, cliente__cod_cliente=cod_cliente)
+    job = get_object_or_404(JobCargaXml, id=job_id, gdfcliente__cod_cliente=cod_cliente)
     log_lines = [line.strip() for line in (job.mensagem or '').splitlines() if line.strip()]
 
     def _prioridade_log(line):
@@ -1930,13 +1930,13 @@ def fn_api_cargaxml_job_details(request, job_id):
 def _processar_job_sped_background(job_id, temp_dir, cod_cliente, user_id):
     """Executa em thread: processa arquivos na pasta temp e atualiza o job."""
     from django.db import connection
-    from app.db_GDF.Public.models import CargaSpedJob, Clientes
-    from app.classes.CargaSped import Carga_sped
+    from app.db_GDF.Public.models import JobCargaSped, ClienteGdf
+    from app.classes.CargaSped import CargaSped
 
     try:
-        job = CargaSpedJob.objects.get(id=job_id)
-        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
-        cl_sped = Carga_sped()
+        job = JobCargaSped.objects.get(id=job_id)
+        cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
+        cl_sped = CargaSped()
         result = cl_sped.processar_pasta_temp(temp_dir, cod_cliente, empresa=None)
         total = len(result['success']) + len(result['errors'])
         job.total_arquivos = total
@@ -1951,7 +1951,7 @@ def _processar_job_sped_background(job_id, temp_dir, cod_cliente, user_id):
         job.save(update_fields=['status', 'total_arquivos', 'total_sucesso', 'total_erro', 'mensagem', 'finished_at'])
     except Exception as e:
         try:
-            job = CargaSpedJob.objects.get(id=job_id)
+            job = JobCargaSped.objects.get(id=job_id)
             job.status = 'ERROR'
             job.mensagem = str(e)[:5000]
             job.finished_at = timezone.localtime()
@@ -1981,7 +1981,7 @@ def fn_api_processar_sped(request):
     if not arquivos:
         return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo selecionado. Selecione arquivos .txt ou uma pasta.'}, status=400)
 
-    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
+    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
     temp_dir = tempfile.mkdtemp(prefix='cargasped_')
     try:
         for i, f in enumerate(arquivos):
@@ -2000,8 +2000,8 @@ def fn_api_processar_sped(request):
             pass
         return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao salvar arquivos: {e}'}, status=500)
 
-    job = CargaSpedJob.objects.create(
-        cliente=cliente,
+    job = JobCargaSped.objects.create(
+        gdfcliente=cliente,
         parametro=None,
         status='RUNNING',
         total_arquivos=0,
@@ -2031,10 +2031,10 @@ def fn_api_cargasped_parametros(request):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
+    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
 
     if request.method == "GET":
-        parametros = CargaSpedParam.objects.filter(cliente=cliente)
+        parametros = ParametroCargaSped.objects.filter(gdfcliente=cliente)
         items = []
         for param in parametros.order_by('-data_criacao'):
             items.append({
@@ -2070,11 +2070,11 @@ def fn_api_cargasped_parametros(request):
         empresa = None
         if empresa_id:
             try:
-                empresa = Empresas.objects.get(cod_empresa=empresa_id, cliente=cliente)
-            except Empresas.DoesNotExist:
+                empresa = Empresa.objects.get(cod_empresa=empresa_id, gdfcliente=cliente)
+            except Empresa.DoesNotExist:
                 return JsonResponse({'sucesso': False, 'mensagem': 'Empresa não encontrada'}, status=404)
-        param = CargaSpedParam.objects.create(
-            cliente=cliente,
+        param = ParametroCargaSped.objects.create(
+            gdfcliente=cliente,
             empresa=empresa,
             ativo=ativo,
             horario=horario,
@@ -2103,7 +2103,7 @@ def fn_api_cargasped_parametro_detail(request, param_id):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    param = get_object_or_404(CargaSpedParam, id=param_id, cliente__cod_cliente=cod_cliente)
+    param = get_object_or_404(ParametroCargaSped, id=param_id, gdfcliente__cod_cliente=cod_cliente)
 
     if request.method == "GET":
         return JsonResponse({
@@ -2134,8 +2134,8 @@ def fn_api_cargasped_parametro_detail(request, param_id):
         if 'empresa_id' in payload:
             if payload.get('empresa_id'):
                 try:
-                    param.empresa = Empresas.objects.get(cod_empresa=payload['empresa_id'], cliente__cod_cliente=cod_cliente)
-                except Empresas.DoesNotExist:
+                    param.empresa = Empresa.objects.get(cod_empresa=payload['empresa_id'], gdfcliente__cod_cliente=cod_cliente)
+                except Empresa.DoesNotExist:
                     pass
             else:
                 param.empresa = None
@@ -2151,8 +2151,8 @@ def fn_api_cargasped_upload_zip(request, param_id):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    cliente = get_object_or_404(Clientes, cod_cliente=cod_cliente)
-    param = get_object_or_404(CargaSpedParam, id=param_id, cliente=cliente)
+    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
+    param = get_object_or_404(ParametroCargaSped, id=param_id, gdfcliente=cliente)
     arquivo_zip = request.FILES.get('arquivo_zip')
     if not arquivo_zip or not (arquivo_zip.name or '').lower().endswith('.zip'):
         return JsonResponse({'sucesso': False, 'mensagem': 'Envie um arquivo .zip'}, status=400)
@@ -2199,7 +2199,7 @@ def fn_api_cargasped_param_toggle(request, param_id):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    param = get_object_or_404(CargaSpedParam, id=param_id, cliente__cod_cliente=cod_cliente)
+    param = get_object_or_404(ParametroCargaSped, id=param_id, gdfcliente__cod_cliente=cod_cliente)
     body = json.loads(request.body.decode('utf-8')) if request.content_type and 'application/json' in request.content_type else {}
     ativo_raw = body.get('ativo', request.POST.get('ativo'))
     if ativo_raw is None:
@@ -2217,7 +2217,7 @@ def fn_api_cargasped_resumo(request):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    qs = CargaSpedJob.objects.filter(cliente__cod_cliente=cod_cliente)
+    qs = JobCargaSped.objects.filter(gdfcliente__cod_cliente=cod_cliente)
     total = qs.count()
     concluidos = qs.filter(status='SUCCESS').count()
     com_erros = qs.filter(status='ERROR').count()
@@ -2238,8 +2238,8 @@ def fn_api_cargasped_avisos(request):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    jobs = CargaSpedJob.objects.filter(
-        cliente__cod_cliente=cod_cliente,
+    jobs = JobCargaSped.objects.filter(
+        gdfcliente__cod_cliente=cod_cliente,
         status='ERROR'
     ).order_by('-started_at')[:100]
     items = []
@@ -2267,7 +2267,7 @@ def fn_api_cargasped_jobs(request):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    jobs = CargaSpedJob.objects.filter(cliente__cod_cliente=cod_cliente).order_by('-started_at')
+    jobs = JobCargaSped.objects.filter(gdfcliente__cod_cliente=cod_cliente).order_by('-started_at')
     items = [{
         'id': j.id,
         'status': j.status,
@@ -2287,7 +2287,7 @@ def fn_api_cargasped_job_details(request, job_id):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    job = get_object_or_404(CargaSpedJob, id=job_id, cliente__cod_cliente=cod_cliente)
+    job = get_object_or_404(JobCargaSped, id=job_id, gdfcliente__cod_cliente=cod_cliente)
     log_lines = [line.strip() for line in (job.mensagem or '').splitlines() if line.strip()]
     param_data = None
     if job.parametro:
@@ -2324,14 +2324,14 @@ def fn_view_CargaSped(request):
     if not cod_cliente:
         return render(request, 'Index_Login.html', {'error_message': 'Cliente não identificado'})
     try:
-        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
-        jobs = CargaSpedJob.objects.filter(cliente=cliente).order_by('-started_at')
-        parametros = CargaSpedParam.objects.filter(cliente=cliente).order_by('-data_criacao')
-        empresas_usuario = Empresas.objects.filter(
-            cliente=cliente,
+        cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
+        jobs = JobCargaSped.objects.filter(gdfcliente=cliente).order_by('-started_at')
+        parametros = ParametroCargaSped.objects.filter(gdfcliente=cliente).order_by('-data_criacao')
+        empresas_usuario = Empresa.objects.filter(
+            gdfcliente=cliente,
             userempresas__user=request.user
         ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
-    except Clientes.DoesNotExist:
+    except ClienteGdf.DoesNotExist:
         jobs = []
         parametros = []
         empresas_usuario = []
@@ -2352,11 +2352,11 @@ def _relatorio_empresas_queryset(request):
     Demais usuários: apenas empresas vinculadas via userempresas."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
-        return Empresas.objects.none()
+        return Empresa.objects.none()
     if _usuario_acesso_total_painel(request):
-        return Empresas.objects.filter(cliente__cod_cliente=cod_cliente).distinct()
-    return Empresas.objects.filter(
-        cliente__cod_cliente=cod_cliente,
+        return Empresa.objects.filter(gdfcliente__cod_cliente=cod_cliente).distinct()
+    return Empresa.objects.filter(
+        gdfcliente__cod_cliente=cod_cliente,
         userempresas__user=request.user
     ).distinct()
 
@@ -2388,7 +2388,7 @@ def fn_api_relatorio_nfe(request):
     else:
         qs = NFe.objects.filter(
             Q(empresa__cod_empresa__in=cod_empresas) |
-            Q(empresa__isnull=True, cliente__cod_cliente=cod_cliente)
+            Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
         ).select_related('identificacao', 'empresa')
     if tipo_operacao in ('0', '1'):
         qs = qs.filter(identificacao__tipo_operacao=tipo_operacao)
@@ -2467,7 +2467,7 @@ def fn_api_relatorio_cte(request):
     else:
         qs = CTe.objects.filter(
             Q(empresa__cod_empresa__in=cod_empresas) |
-            Q(empresa__isnull=True, cliente__cod_cliente=cod_cliente)
+            Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
         ).select_related('identificacao', 'empresa')
     if busca:
         qs = qs.filter(
@@ -2530,7 +2530,7 @@ def fn_api_relatorio_nfse(request):
     else:
         qs = NFSe.objects.filter(
             Q(empresa__cod_empresa__in=cod_empresas) |
-            Q(empresa__isnull=True, cliente__cod_cliente=cod_cliente)
+            Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
         ).select_related('identificacao', 'empresa')
     if busca:
         qs = qs.filter(
@@ -2696,7 +2696,7 @@ def fn_api_relatorio_nfe_detalhe(request, id_nfe):
     cod_cliente = request.session.get('cod_cliente', None)
     qs_acesso = NFe.objects.filter(
         Q(empresa__cod_empresa__in=cod_empresas) |
-        Q(empresa__isnull=True, cliente__cod_cliente=cod_cliente)
+        Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
     )
     nfe = get_object_or_404(
         qs_acesso.select_related(
@@ -2784,7 +2784,7 @@ def fn_api_relatorio_cte_detalhe(request, id_cte):
     cod_cliente = request.session.get('cod_cliente', None)
     qs_acesso = CTe.objects.filter(
         Q(empresa__cod_empresa__in=cod_empresas) |
-        Q(empresa__isnull=True, cliente__cod_cliente=cod_cliente)
+        Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
     )
     cte = get_object_or_404(
         qs_acesso.select_related(
@@ -2836,7 +2836,7 @@ def fn_api_relatorio_nfse_detalhe(request, id_nfse):
     cod_cliente = request.session.get('cod_cliente', None)
     qs_acesso = NFSe.objects.filter(
         Q(empresa__cod_empresa__in=cod_empresas) |
-        Q(empresa__isnull=True, cliente__cod_cliente=cod_cliente)
+        Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
     )
     nfse = get_object_or_404(
         qs_acesso.select_related(
@@ -2986,20 +2986,20 @@ def fn_view_Relatorio_Fiscal(request):
     if not cod_cliente:
         return render(request, 'Index_Login.html', {'error_message': 'Cliente não identificado'})
     try:
-        cliente = Clientes.objects.get(cod_cliente=cod_cliente)
+        cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
         if _usuario_acesso_total_painel(request):
-            empresas_usuario = Empresas.objects.filter(cliente=cliente).order_by('fantasia', 'razao', 'cod_empresa').distinct()
+            empresas_usuario = Empresa.objects.filter(gdfcliente=cliente).order_by('fantasia', 'razao', 'cod_empresa').distinct()
         else:
-            empresas_usuario = Empresas.objects.filter(
-                cliente=cliente,
+            empresas_usuario = Empresa.objects.filter(
+                gdfcliente=cliente,
                 userempresas__user=request.user
             ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
-    except Clientes.DoesNotExist:
+    except ClienteGdf.DoesNotExist:
         empresas_usuario = []
         grupos_empresa = []
     else:
         grupos_empresa = list(
-            GrpEmpresas.objects.filter(cliente__cod_cliente=cod_cliente)
+            GrupoEmpresa.objects.filter(gdfcliente__cod_cliente=cod_cliente)
             .order_by('grp_empresa')
             .values('grp_empresa', 'descricao')
         )
@@ -3037,7 +3037,7 @@ def fn_view_Reprocessamento_Painel(request):
         context = {'cod_cliente': None, 'empresas': [], 'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC}
         return render(request, 'Reprocessamento/index_Painel.html', context)
     empresas = list(
-        Empresas.objects.filter(cliente_id=cod_cliente).values('cod_empresa', 'razao', 'fantasia').order_by('razao')
+        Empresa.objects.filter(gdfcliente_id=cod_cliente).values('cod_empresa', 'razao', 'fantasia').order_by('razao')
     )
     context = {
         'cod_cliente': cod_cliente,
@@ -3051,7 +3051,7 @@ def _reprocessamento_empresas_cliente(cod_cliente):
     """Retorna lista de cod_empresa permitidos para o cliente (para filtrar lotes/divergências)."""
     if not cod_cliente:
         return []
-    return list(Empresas.objects.filter(cliente_id=cod_cliente).values_list('cod_empresa', flat=True))
+    return list(Empresa.objects.filter(gdfcliente_id=cod_cliente).values_list('cod_empresa', flat=True))
 
 
 @login_required(login_url='Login')
@@ -3604,7 +3604,7 @@ def fn_api_reprocessamento_condicao_param_listar(request):
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    qs = CondicaoParam.objects.filter(cliente_id=cod_cliente).order_by('condicao_pagamento_nfe', 'tipo_pagamento')
+    qs = CondicaoParam.objects.filter(gdfcliente_id=cod_cliente).order_by('condicao_pagamento_nfe', 'tipo_pagamento')
     lista = [
         {
             'id': c.id,
@@ -3637,7 +3637,7 @@ def fn_api_reprocessamento_condicao_param_atualizar(request):
         if pk is None:
             continue
         cond_sap = (item.get('condicao_pagamento_sap') or '').strip()[:60]
-        n = CondicaoParam.objects.filter(pk=pk, cliente_id=cod_cliente).update(condicao_pagamento_sap=cond_sap)
+        n = CondicaoParam.objects.filter(pk=pk, gdfcliente_id=cod_cliente).update(condicao_pagamento_sap=cond_sap)
         atualizados += n
     return JsonResponse({'sucesso': True, 'atualizados': atualizados, 'mensagem': f'{atualizados} registro(s) atualizado(s).'})
 

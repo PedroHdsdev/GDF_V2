@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Simple job scheduler for CargaXmlParam - doesn't require Redis/Celery
+Simple job scheduler for ParametroCargaXml - doesn't require Redis/Celery
 Monitors database for scheduled loads and executes them when time arrives
 """
 import os
@@ -15,7 +15,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'GDF_PJT.settings')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 django.setup()
 
-from app.db_GDF.Public.models import CargaXmlParam
+from app.db_GDF.Public.models import ParametroCargaXml
 from app.tasks import process_cargaxml_param
 from django.utils import timezone
 
@@ -32,7 +32,7 @@ def run_scheduler():
             current_time = now.time()
             
             # Buscar todos os parâmetros agendados
-            params = CargaXmlParam.objects.filter(ativo=True)
+            params = ParametroCargaXml.objects.filter(ativo=True)
             
             for param in params:
                 if param.id in executed_ids:

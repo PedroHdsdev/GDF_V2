@@ -1,6 +1,6 @@
 from django.db import models
 from django.utils import timezone
-from app.db_GDF.Public.models import Empresas, Clientes
+from app.db_GDF.Public.models import Empresa, ClienteGdf
 
 
 class NFSe_Endereco(models.Model):
@@ -308,9 +308,9 @@ class NFSe(models.Model):
     identificacao = models.OneToOneField(NFSe_Identificacao, on_delete=models.CASCADE, related_name='nfse')
     prestador = models.ForeignKey(NFSe_Prestador, on_delete=models.SET_NULL, null=True, blank=True)
     tomador = models.ForeignKey(NFSe_Tomador, on_delete=models.SET_NULL, null=True, blank=True)
-    empresa = models.ForeignKey(Empresas, on_delete=models.CASCADE, null=True, blank=True)
-    cliente = models.ForeignKey(
-        Clientes,
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, null=True, blank=True)
+    gdfcliente = models.ForeignKey(
+        ClienteGdf,
         on_delete=models.CASCADE,
         related_name='nfse_docs',
         null=True,

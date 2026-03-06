@@ -3,7 +3,7 @@
 Comando: python manage.py limpar_cargas_fiscais
 
 Remove todas as cargas de NFe, SPED, CTe, NFSe e as tabelas de log/job
-(CargaXmlJob, CargaSpedJob, CargaXmlParam, CargaSpedParam).
+(JobCargaXml, JobCargaSped, ParametroCargaXml, ParametroCargaSped).
 Ordem de exclusão respeitando FKs.
 """
 from django.core.management.base import BaseCommand
@@ -21,7 +21,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        from app.db_GDF.Public.models import CargaXmlJob, CargaSpedJob, CargaXmlParam, CargaSpedParam
+        from app.db_GDF.Public.models import JobCargaXml, JobCargaSped, ParametroCargaXml, ParametroCargaSped
         from app.db_GDF.NFe.models import (
             NFe_DocumentoItem, NFe_Documento, NFe,
             NFe_Identificacao, NFe_Emitente, NFe_Destinatario, NFe_Endereco,
@@ -57,18 +57,18 @@ class Command(BaseCommand):
         with transaction.atomic():
             # 1) Jobs e parâmetros de carga (log/job)
             self.stdout.write('Removendo jobs e parâmetros de carga XML e SPED...')
-            n = CargaXmlJob.objects.count()
-            CargaXmlJob.objects.all().delete()
-            self.stdout.write(f'  CargaXmlJob: {n} registro(s) removido(s).')
-            n = CargaSpedJob.objects.count()
-            CargaSpedJob.objects.all().delete()
-            self.stdout.write(f'  CargaSpedJob: {n} registro(s) removido(s).')
-            n = CargaXmlParam.objects.count()
-            CargaXmlParam.objects.all().delete()
-            self.stdout.write(f'  CargaXmlParam: {n} registro(s) removido(s).')
-            n = CargaSpedParam.objects.count()
-            CargaSpedParam.objects.all().delete()
-            self.stdout.write(f'  CargaSpedParam: {n} registro(s) removido(s).')
+            n = JobCargaXml.objects.count()
+            JobCargaXml.objects.all().delete()
+            self.stdout.write(f'  JobCargaXml: {n} registro(s) removido(s).')
+            n = JobCargaSped.objects.count()
+            JobCargaSped.objects.all().delete()
+            self.stdout.write(f'  JobCargaSped: {n} registro(s) removido(s).')
+            n = ParametroCargaXml.objects.count()
+            ParametroCargaXml.objects.all().delete()
+            self.stdout.write(f'  ParametroCargaXml: {n} registro(s) removido(s).')
+            n = ParametroCargaSped.objects.count()
+            ParametroCargaSped.objects.all().delete()
+            self.stdout.write(f'  ParametroCargaSped: {n} registro(s) removido(s).')
 
             # 2) NFe (ordem: itens doc -> documento -> NFe -> identificação [cascade produtos/total/transporte/etc] -> emitente/dest/endereco)
             self.stdout.write('Removendo NFe...')

@@ -3,10 +3,10 @@ from django.utils.timezone          import now
 from psycopg2                       import IntegrityError
 from django.conf                    import settings
 from django.contrib.auth.models     import User, Group
-from app.db_GDF.Public.models       import Empresas, Clientes, Cert, UserEmpresas
-from app.db_GDF.Public.models       import GrupoCliente, GrpEmpresas 
-from app.db_GDF.Public.models       import Solucoes, Subsolucoes, SolucoesAcesso, SubsolucoesAcesso
-from app.db_GDF.Public.models       import SapConnection
+from app.db_GDF.Public.models       import Empresa, ClienteGdf, CertificadoDigital, UsuarioEmpresa
+from app.db_GDF.Public.models       import PermissaoGrupoCliente, GrupoEmpresa
+from app.db_GDF.Public.models       import Solucao, Subsolucao, AcessoSolucaoCliente, AcessoSubsolucaoGrupo
+from app.db_GDF.Public.models       import ConexaoSap
 from datetime                       import datetime
 from django.db.utils                import OperationalError
 from django.contrib.auth.hashers    import make_password
@@ -40,13 +40,17 @@ def _mensagem_amigavel_empresa_duplicada(erro_texto, cod_empresa=None):
     return None
 
 
-class ClGdf():
+class ClGdf:
+    """
+    Serviço de lógica de negócio para Cliente GDF: sessão, empresas, grupos,
+    soluções, certificados, JWT e operações de cadastro (CRUD cliente/empresa/usuário).
+    """
     def __init__(self):
-        self.Cliente: int = None
-        self.Empresas: List[Dict] = []
-        self.Groups: List[str] = []
-        self.solucoes_acesso: List[Dict] = []
-        self.subsolucoes_acesso: List[Dict] = []
+        self.ClienteGdf = None
+        self.empresas = []
+        self.groups = []
+        self.solucoes_acesso = []
+        self.subsolucoes_acesso = []
 
 #********************************************************************************
 #--------------------------------------------------------------------------------
@@ -127,31 +131,31 @@ class ClGdf():
             self._is_staff = getattr(l_v_query_user, 'is_staff', False)
 
             # Empresas do usuário
-            self.Empresas = Empresas.objects.filter(
-                userempresas__user=l_v_query_user
+            self.empresas = Empresa.objects.filter(
+                usuarioempresa__user=l_v_query_user
             ).distinct()
 
             # Grupos do usuário
-            self.Groups = Group.objects.filter(
+            self.groups = Group.objects.filter(
                 user=l_v_query_user
             )
 
             # Cliente associado às empresas do usuário (ou primeiro cliente se superuser sem empresas)
-            self.Cliente = Clientes.objects.filter(
-                empresas__in=self.Empresas
+            self.ClienteGdf = ClienteGdf.objects.filter(
+                empresa_set__in=self.empresas
             ).distinct().first()
-            if self.Cliente is None and self._is_superuser:
-                self.Cliente = Clientes.objects.filter(is_active=True).first()
+            if self.ClienteGdf is None and self._is_superuser:
+                self.ClienteGdf = ClienteGdf.objects.filter(is_active=True).first()
 
             # Soluções liberadas para o cliente (superuser: todas ativas do cliente padrão ou todas)
-            self.solucoes_acesso = SolucoesAcesso.objects.filter(
-                cliente=self.Cliente,
+            self.solucoes_acesso = AcessoSolucaoCliente.objects.filter(
+                gdfcliente=self.ClienteGdf,
                 is_active=True
-            ).select_related('solucao') if self.Cliente else []
+            ).select_related('solucao') if self.ClienteGdf else []
 
             # Subsoluções liberadas via grupo (superuser sem grupos: tratado em get_solucoes)
-            self.subsolucoes_acesso = SubsolucoesAcesso.objects.filter(
-                group__in=self.Groups
+            self.subsolucoes_acesso = AcessoSubsolucaoGrupo.objects.filter(
+                group__in=self.groups
             ).select_related('subsolucao')
         
         except OperationalError as e:
@@ -170,7 +174,7 @@ class ClGdf():
             if getattr(self, '_is_superuser', False):
                 return self._get_solucoes_superuser()
             # Usuário com empresas no cliente 1000 (dona do projeto): acesso total
-            if self.Empresas.filter(cliente__cod_cliente='1000').exists():
+            if self.empresas.filter(gdfcliente__cod_cliente='1000').exists():
                 return self._get_solucoes_superuser()
 
             if not hasattr(self, 'subsolucoes_acesso') or not hasattr(self, 'solucoes_acesso'):
@@ -189,12 +193,12 @@ class ClGdf():
                 return []
 
             # 🔹 Soluções liberadas para o cliente
-            l_v_queryset_solucoes = Solucoes.objects.filter(
-                solucoesacesso__in=self.solucoes_acesso
+            l_v_queryset_solucoes = Solucao.objects.filter(
+                acessosolucaocliente__in=self.solucoes_acesso
             ).distinct()
 
             for l_v_solucao in l_v_queryset_solucoes:
-                l_v_queryset_subsolucoes = Subsolucoes.objects.filter(
+                l_v_queryset_subsolucoes = Subsolucao.objects.filter(
                     solucao=l_v_solucao,
                     cod_subsolucao__in=lsl_ids_subsolucoes
                 ).values(
@@ -235,10 +239,10 @@ class ClGdf():
     def _get_solucoes_superuser(self):
         """Retorna todas as soluções e subsoluções para usuário superuser (controle total)."""
         try:
-            l_v_queryset_solucoes = Solucoes.objects.all().order_by('cod_solucao')
+            l_v_queryset_solucoes = Solucao.objects.all().order_by('cod_solucao')
             lsl_dados_solucoes = []
             for l_v_solucao in l_v_queryset_solucoes:
-                l_v_queryset_subsolucoes = Subsolucoes.objects.filter(
+                l_v_queryset_subsolucoes = Subsolucao.objects.filter(
                     solucao=l_v_solucao
                 ).values('cod_subsolucao', 'descricao').order_by('cod_subsolucao')
                 lsl_dados_solucoes.append({
@@ -268,7 +272,7 @@ class ClGdf():
             lsl_dados_clientes = []
 
             # Buscar todos os clientes
-            l_v_query_clientes = Clientes.objects.all()
+            l_v_query_clientes = ClienteGdf.objects.all()
 
             for l_v_cliente in l_v_query_clientes:
                 lsl_dados_clientes.append({
@@ -279,10 +283,10 @@ class ClGdf():
                     "date_joined": l_v_cliente.date_joined, 
                 })
 
-        except Clientes.DoesNotExist as e:
+        except ClienteGdf.DoesNotExist as e:
             print(f"[ERROR] Clientes não encontrados: {str(e)}")
             return []
-        except SolucoesAcesso.DoesNotExist as e:
+        except AcessoSolucaoCliente.DoesNotExist as e:
             print(f"[ERROR] SolucoesAcesso não encontradas: {str(e)}")
             return []
         except IntegrityError as e:
@@ -299,15 +303,15 @@ class ClGdf():
     def get_cliente_upd(self, i_v_cliente_id):
         self.Retorn = {}
         try:
-            l_v_cliente = Clientes.objects.get(cod_cliente=i_v_cliente_id)
+            l_v_cliente = ClienteGdf.objects.get(cod_cliente=i_v_cliente_id)
 
             # Soluções já atribuídas ao cliente
-            l_v_query_solucoes_acesso = SolucoesAcesso.objects.filter(
+            l_v_query_solucoes_acesso = AcessoSolucaoCliente.objects.filter(
                     cliente=l_v_cliente
             ).select_related('solucao')
             
             # Todas as soluções cadastradas
-            l_v_queryset_todas_solucoes = Solucoes.objects.all()
+            l_v_queryset_todas_solucoes = Solucao.objects.all()
             
             # Soluções disponíveis (não atribuídas)
             l_v_queryset_solucoes_disponiveis = l_v_queryset_todas_solucoes.exclude(
@@ -315,7 +319,7 @@ class ClGdf():
             )
             
             # Conexão SAP do cliente (no máximo uma por cliente)
-            sap_conn = SapConnection.objects.filter(cliente=l_v_cliente).first()
+            sap_conn = ConexaoSap.objects.filter(gdfcliente=l_v_cliente).first()
             sap_connection_data = None
             if sap_conn:
                 sap_connection_data = {
@@ -331,7 +335,7 @@ class ClGdf():
 
             # Grupos de usuários vinculados ao cliente (GrupoCliente)
             grupos_vinculados = list(
-                GrupoCliente.objects.filter(cliente=l_v_cliente)
+                PermissaoGrupoCliente.objects.filter(gdfcliente=l_v_cliente)
                 .select_related('group')
                 .values('group__id', 'group__name')
             )
@@ -360,7 +364,7 @@ class ClGdf():
                 "sap_connection": sap_connection_data,
             }
 
-        except Clientes.DoesNotExist as e:
+        except ClienteGdf.DoesNotExist as e:
             print(f"[ERROR] Cliente {i_v_cliente_id} não encontrado: {str(e)}")
             return {"erro": "Cliente não encontrado"}
         except Exception as e:
@@ -373,7 +377,7 @@ class ClGdf():
     def set_cliente(self, i_cliente, i_razao, i_cnpj):
         try:
             with transaction.atomic():
-                l_v_cliente_instance, l_v_created = Clientes.objects.get_or_create(
+                l_v_cliente_instance, l_v_created = ClienteGdf.objects.get_or_create(
                     cod_cliente=i_cliente,
                     defaults={
                         'razao': i_razao,
@@ -387,24 +391,24 @@ class ClGdf():
                     return {"success": False, "message": f"Já existe um cliente com o código '{i_cliente}'. Escolha outro código."}
 
                 # Criar vínculos de soluções (todas inativas inicialmente)
-                l_v_queryset_solucoes = Solucoes.objects.all()
-                SolucoesAcesso.objects.bulk_create([
-                    SolucoesAcesso(cliente=l_v_cliente_instance, solucao=sol, is_active=False)
+                l_v_queryset_solucoes = Solucao.objects.all()
+                AcessoSolucaoCliente.objects.bulk_create([
+                    AcessoSolucaoCliente(gdfcliente=l_v_cliente_instance, solucao=sol, is_active=False)
                     for sol in l_v_queryset_solucoes
                 ])
 
             return {"success": True, "message": "Cliente cadastrado com sucesso"}
 
-        except Solucoes.DoesNotExist:
+        except Solucao.DoesNotExist:
             return {"success": False, "message": "Soluções não encontradas"}
         except IntegrityError as e:
             msg = str(e).lower()
-            if "clientes" in msg or "cod_cliente" in msg or "duplicate key" in msg:
+            if "gdf_clientes" in msg or "cod_cliente" in msg or "duplicate key" in msg:
                 return {"success": False, "message": f"Já existe um cliente com o código '{i_cliente}'. Escolha outro código."}
             return {"success": False, "message": "Cliente já existe ou registro duplicado."}
         except Exception as e:
             err = str(e).lower()
-            if "duplicate key" in err or "clientes_pkey" in err or "unique constraint" in err or ("cod_cliente" in err and "already exists" in err):
+            if "duplicate key" in err or "gdf_clientes_pkey" in err or "unique constraint" in err or ("cod_cliente" in err and "already exists" in err):
                 return {"success": False, "message": f"Já existe um cliente com o código '{i_cliente}'. Escolha outro código."}
             return {"success": False, "message": "Erro ao criar cliente. Tente novamente ou verifique os dados."}
 
@@ -419,7 +423,7 @@ class ClGdf():
             # ✅ Transação atômica: tudo ou nada
             with transaction.atomic():
                 # Atualizar dados básicos do cliente
-                cliente = Clientes.objects.select_for_update().get(cod_cliente=i_cliente)
+                cliente = ClienteGdf.objects.select_for_update().get(cod_cliente=i_cliente)
                 cliente.razao = i_razao
                 cliente.cnpj = i_cnpj
                 cliente.is_active = i_is_active
@@ -429,7 +433,7 @@ class ClGdf():
             print(f"[OK] Cliente {i_cliente} atualizado com sucesso")
             return {"success": True, "message": "Cliente atualizado com sucesso"}
         
-        except Clientes.DoesNotExist:
+        except ClienteGdf.DoesNotExist:
             return {"success": False, "message": "Cliente não encontrado"}
         except ValueError as e:
             return {"success": False, "message": str(e)}
@@ -446,7 +450,7 @@ class ClGdf():
         """Atualiza vínculos de soluções de um cliente a partir de string "COD:STATUS""" 
         try:
             # ✅ Buscar instância do cliente
-            cliente = Clientes.objects.get(cod_cliente=i_v_cod_cliente)
+            cliente = ClienteGdf.objects.get(cod_cliente=i_v_cod_cliente)
             # ✅ Se nada foi enviado, considerar sem alterações
             if not ls_solucoes:
                 return {"success": True, "message": "Nenhuma alteração de soluções"}
@@ -462,15 +466,15 @@ class ClGdf():
             with transaction.atomic():
                 # Atualizar/criar vínculos
                 for cod_sol, is_active_sol in solucoes_dict.items():
-                    solucao = Solucoes.objects.get(cod_solucao=cod_sol)
-                    SolucoesAcesso.objects.update_or_create(
+                    solucao = Solucao.objects.get(cod_solucao=cod_sol)
+                    AcessoSolucaoCliente.objects.update_or_create(
                         cliente=cliente,
                         solucao=solucao,
                         defaults={'is_active': is_active_sol}
                     )
 
                 # Remover vínculos não listados
-                SolucoesAcesso.objects.filter(
+                AcessoSolucaoCliente.objects.filter(
                     cliente=cliente
                 ).exclude(
                     solucao__cod_solucao__in=solucoes_dict.keys()
@@ -478,9 +482,9 @@ class ClGdf():
 
             return {"success": True, "message": "Soluções atualizadas com sucesso"}
 
-        except Clientes.DoesNotExist:
+        except ClienteGdf.DoesNotExist:
             return {"success": False, "message": "Cliente não encontrado"}
-        except Solucoes.DoesNotExist:
+        except Solucao.DoesNotExist:
             return {"success": False, "message": "Solução inválida"}
         except Exception as e:
             return {"success": False, "message": f"Erro ao atualizar soluções: {str(e)}"}
@@ -488,20 +492,20 @@ class ClGdf():
     def set_cliente_grupos(self, i_v_cod_cliente, ls_grupos_ids):
         """Atualiza vínculos de grupos de usuários ao cliente. ls_grupos_ids: string de IDs separados por vírgula."""
         try:
-            cliente = Clientes.objects.get(cod_cliente=i_v_cod_cliente)
+            cliente = ClienteGdf.objects.get(cod_cliente=i_v_cod_cliente)
             if isinstance(ls_grupos_ids, str):
                 grupo_ids = [int(g.strip()) for g in ls_grupos_ids.split(",") if g.strip()]
             else:
                 grupo_ids = list(ls_grupos_ids) if ls_grupos_ids else []
 
             with transaction.atomic():
-                GrupoCliente.objects.filter(cliente=cliente).delete()
+                PermissaoGrupoCliente.objects.filter(gdfcliente=cliente).delete()
                 for gid in grupo_ids:
                     group = Group.objects.get(id=gid)
-                    GrupoCliente.objects.create(cliente=cliente, group=group)
+                    PermissaoGrupoCliente.objects.create(gdfcliente=cliente, group=group)
 
             return {"success": True, "message": "Grupos atualizados com sucesso"}
-        except Clientes.DoesNotExist:
+        except ClienteGdf.DoesNotExist:
             return {"success": False, "message": "Cliente não encontrado"}
         except Group.DoesNotExist:
             return {"success": False, "message": "Grupo inválido"}
@@ -521,8 +525,8 @@ class ClGdf():
             # Empresas do cliente COM OTIMIZAÇÃO
             # -------------------------------------------------
             # ✅ OTIMIZAÇÃO: select_related evita N+1 queries (FK direto)
-            l_v_queryset_empresas = Empresas.objects.filter(
-                cliente_id=i_v_cod_cliente
+            l_v_queryset_empresas = Empresa.objects.filter(
+                gdfcliente_id=i_v_cod_cliente
             ).select_related('cert').distinct()
             
             l_v_data_atual = datetime.today().date()
@@ -558,17 +562,17 @@ class ClGdf():
                     "iest": l_v_empresa.iest,
                     "suframa": l_v_empresa.suframa,
                     "chave_acesso": l_v_empresa.chave_acesso,
-                    "cliente": l_v_empresa.cliente_id,
+                    "cliente": l_v_empresa.gdfcliente_id,
                     "cert_emp": l_v_cert_data
                 })
             
             print(f"[Get_Empresas] Carregadas {len(lsl_dados_empresas)} empresas com certificados otimizados")
          
-        except Empresas.DoesNotExist as e:
+        except Empresa.DoesNotExist as e:
             print(f"[ERROR] Empresas nao encontradas: {str(e)}")
-        except Cert.DoesNotExist as e:
+        except CertificadoDigital.DoesNotExist as e:
             print(f"[ERROR] Certificados nao encontrados: {str(e)}")
-        except GrpEmpresas.DoesNotExist as e:
+        except GrupoEmpresa.DoesNotExist as e:
             print(f"[ERROR] Grupos de empresas nao encontrados: {str(e)}")
         except IntegrityError as e:
             print(f"[ERROR] Erro de integridade: {str(e)}")
@@ -588,8 +592,8 @@ class ClGdf():
             print(f"[DEBUG] Get_Empresas_ins - cod_cliente: {i_v_cod_cliente}")
 
             # ✅ Todos os grupos do cliente
-            l_v_queryset_todos_grupos = GrpEmpresas.objects.filter(
-                cliente__cod_cliente=i_v_cod_cliente
+            l_v_queryset_todos_grupos = GrupoEmpresa.objects.filter(
+                gdfcliente__cod_cliente=i_v_cod_cliente
             ).values('grp_empresa', 'descricao').distinct()
             
             print(f"[DEBUG] Grupos encontrados: {l_v_queryset_todos_grupos.count()}")
@@ -623,11 +627,11 @@ class ClGdf():
                 raise ValueError("Empresa não informada")
             
             # ✅ IDOR: Empresa deve pertencer ao cliente
-            l_v_empresa = Empresas.objects.select_related(
-                'cert', 'grp_empresa', 'cliente'
+            l_v_empresa = Empresa.objects.select_related(
+                'cert', 'grp_empresa', 'gdfcliente'
             ).get(
                 cod_empresa=i_v_cod_empresa,
-                cliente__cod_cliente=i_v_cod_cliente
+                gdfcliente__cod_cliente=i_v_cod_cliente
             )
             
             # ✅ Retornar dados completos da empresa
@@ -655,7 +659,7 @@ class ClGdf():
                 } if l_v_empresa.cert else None
             }
             
-        except Empresas.DoesNotExist:
+        except Empresa.DoesNotExist:
             return {"erro": "Empresa não encontrada"}
         except ValueError as e:
             return {"erro": str(e)}
@@ -693,14 +697,14 @@ class ClGdf():
             
             # ✅ Verificar se grupo de empresa existe
             try:
-                q_grpempresa = GrpEmpresas.objects.get(grp_empresa=i_v_grp_empresa)
-            except GrpEmpresas.DoesNotExist:
+                q_grpempresa = GrupoEmpresa.objects.get(grp_empresa=i_v_grp_empresa)
+            except GrupoEmpresa.DoesNotExist:
                 raise ValueError(f"Grupo de empresa '{i_v_grp_empresa}' não encontrado")
             
             # ✅ Transação atômica: certificado + empresa
             with transaction.atomic():
                 # Buscar ou criar certificado (baseado nos 8 primeiros dígitos do CNPJ)
-                cert_obj, created = Cert.objects.get_or_create(
+                cert_obj, created = CertificadoDigital.objects.get_or_create(
                     raiz_cnpj=i_v_cnpj[:8],
                     defaults={
                         'cpf_cnpj': i_v_cnpj,
@@ -709,12 +713,12 @@ class ClGdf():
                 
                 # Buscar cliente
                 try:
-                    cliente = Clientes.objects.get(cod_cliente=i_v_cod_cliente)
-                except Clientes.DoesNotExist:
+                    cliente = ClienteGdf.objects.get(cod_cliente=i_v_cod_cliente)
+                except ClienteGdf.DoesNotExist:
                     raise ValueError("Cliente não encontrado")
                 
                 # Criar nova empresa
-                empresa = Empresas.objects.create(
+                empresa = Empresa.objects.create(
                     cod_empresa=i_v_cod_empresa,
                     razao=i_v_razao,
                     cnpj=i_v_cnpj,
@@ -776,17 +780,17 @@ class ClGdf():
                 raise ValueError("Cliente não identificado")
             
             # ✅ Validar IDOR: Empresa deve pertencer ao cliente
-            empresa = Empresas.objects.get(
+            empresa = Empresa.objects.get(
                 cod_empresa=i_v_cod_empresa,
-                cliente__cod_cliente=i_v_cod_cliente
+                gdfcliente__cod_cliente=i_v_cod_cliente
             )
             
             # ✅ Se grupo foi informado, validar
             if i_v_grp_empresa:
                 try:
-                    q_grpempresa = GrpEmpresas.objects.get(grp_empresa=i_v_grp_empresa)
+                    q_grpempresa = GrupoEmpresa.objects.get(grp_empresa=i_v_grp_empresa)
                     empresa.grp_empresa = q_grpempresa
-                except GrpEmpresas.DoesNotExist:
+                except GrupoEmpresa.DoesNotExist:
                     raise ValueError(f"Grupo de empresa '{i_v_grp_empresa}' não encontrado")
             
             # ✅ Atualizar campos
@@ -809,7 +813,7 @@ class ClGdf():
             print(f"[OK] Empresa {i_v_cod_empresa} atualizada com sucesso")
             return {"success": True, "message": "Empresa atualizada com sucesso"}
         
-        except Empresas.DoesNotExist:
+        except Empresa.DoesNotExist:
             print(f"[ERROR] Empresa {i_v_cod_empresa} não encontrada para cliente {i_v_cod_cliente}")
             return {"success": False, "message": "Empresa não encontrada"}
         except ValueError as e:
@@ -833,7 +837,7 @@ class ClGdf():
             if not i_v_cod_empresa:
                 raise ValueError("Empresa não identificada")
 
-            empresa = Empresas.objects.get(
+            empresa = Empresa.objects.get(
                 cod_empresa=i_v_cod_empresa,
             )
             
@@ -901,7 +905,7 @@ class ClGdf():
         except ValueError as e:
             print(f"[ERROR] Cert_upd - Validação: {str(e)}")
             return {"success": False, "message": str(e)}
-        except Empresas.DoesNotExist:
+        except Empresa.DoesNotExist:
             print("[ERROR] Cert_upd - Empresa não encontrada")
             return {"success": False, "message": "Empresa não encontrada"}
         except Exception as e:
@@ -922,14 +926,14 @@ class ClGdf():
             # -------------------------------------------------
             # Empresas do cliente (para tabela e modal)
             # -------------------------------------------------
-            l_v_queryset_empresas = Empresas.objects.filter(
-                cliente_id=i_v_cod_cliente
+            l_v_queryset_empresas = Empresa.objects.filter(
+                gdfcliente_id=i_v_cod_cliente
             ).distinct()
 
             # -------------------------------------------------
             # Usuários vinculados às empresas do cliente
             # -------------------------------------------------
-            lsl_ids_usuarios = UserEmpresas.objects.filter(
+            lsl_ids_usuarios = UsuarioEmpresa.objects.filter(
                 empresa__in=l_v_queryset_empresas
             ).values_list('user_id', flat=True)
 
@@ -966,13 +970,13 @@ class ClGdf():
         self.Retorn = {}
         try:
             # ✅ Empresas do cliente
-            l_v_queryset_todas_empresas = Empresas.objects.filter(
-                cliente__cod_cliente=i_v_cod_cliente
+            l_v_queryset_todas_empresas = Empresa.objects.filter(
+                gdfcliente__cod_cliente=i_v_cod_cliente
             ).distinct()
 
             # ✅ Todos os grupos do cliente (via relacionamento Group)
-            l_v_queryset_todos_grupos = GrupoCliente.objects.filter(
-                cliente__cod_cliente=i_v_cod_cliente
+            l_v_queryset_todos_grupos = PermissaoGrupoCliente.objects.filter(
+                gdfcliente__cod_cliente=i_v_cod_cliente
             ).values('group__id', 'group__name').distinct()
 
             # ✅ Formatando grupos para retorno
@@ -1002,22 +1006,22 @@ class ClGdf():
                 raise ValueError(f"ID de usuário inválido: {i_v_user_id}")
 
             # ✅ Empresas do cliente
-            l_v_queryset_todas_empresas = Empresas.objects.filter(
-                cliente__cod_cliente=i_v_cod_cliente
+            l_v_queryset_todas_empresas = Empresa.objects.filter(
+                gdfcliente__cod_cliente=i_v_cod_cliente
             ).distinct()
 
             # ✅ Todos os grupos do cliente (via relacionamento Group)
-            todos_grupos = GrupoCliente.objects.filter(
-                cliente__cod_cliente=i_v_cod_cliente
+            todos_grupos = PermissaoGrupoCliente.objects.filter(
+                gdfcliente__cod_cliente=i_v_cod_cliente
             ).distinct()
 
             q_user = User.objects.get(id=i_v_user_id)
             q_groups = q_user.groups.all()
             
             # ✅ Buscar APENAS as empresas do usuário
-            q_empresas = Empresas.objects.filter(
-                userempresas__user_id=q_user.id,
-                cliente_id=i_v_cod_cliente
+            q_empresas = Empresa.objects.filter(
+                usuarioempresa__user_id=q_user.id,
+                gdfcliente_id=i_v_cod_cliente
             ).distinct()
 
             # ✅ Empresas DISPONÍVEIS (não atribuídas)
@@ -1092,18 +1096,18 @@ class ClGdf():
                 raise ValueError("Nenhuma empresa ou grupo selecionado")
             
             # ✅ Validar que todas as empresas pertencem ao cliente
-            l_v_empresas_validas = Empresas.objects.filter(
+            l_v_empresas_validas = Empresa.objects.filter(
                 cod_empresa__in=i_lsl_empresas_ids,
-                cliente__cod_cliente=i_v_cod_cliente
+                gdfcliente__cod_cliente=i_v_cod_cliente
             ).count()
             
             if l_v_empresas_validas != len(i_lsl_empresas_ids):
                 raise ValueError("Uma ou mais empresas selecionadas não pertencem ao cliente")
             
             # ✅ Validar que todos os grupos pertencem ao cliente
-            l_v_grupos_validos = GrupoCliente.objects.filter(
+            l_v_grupos_validos = PermissaoGrupoCliente.objects.filter(
                 group_id__in=i_lsl_grupos_ids,
-                cliente__cod_cliente=i_v_cod_cliente
+                gdfcliente__cod_cliente=i_v_cod_cliente
             ).count()
             
             if l_v_grupos_validos != len(i_lsl_grupos_ids):
@@ -1122,9 +1126,9 @@ class ClGdf():
             )
             
             # ✅ Vincular empresas
-            l_v_queryset_empresas = Empresas.objects.filter(cod_empresa__in=i_lsl_empresas_ids)
+            l_v_queryset_empresas = Empresa.objects.filter(cod_empresa__in=i_lsl_empresas_ids)
             for l_v_empresa in l_v_queryset_empresas:
-                UserEmpresas.objects.create(
+                UserEmpresa.objects.create(
                     user=l_v_user_instance,
                     empresa=l_v_empresa
                 )
@@ -1176,18 +1180,18 @@ class ClGdf():
                 raise ValueError("Pelo menos 1 grupo é obrigatório")
             
             # ✅ Validar que empresas pertencem ao cliente
-            l_v_queryset_empresas_validas = Empresas.objects.filter(
+            l_v_queryset_empresas_validas = Empresa.objects.filter(
                 cod_empresa__in=i_lsl_empresa_ids,
-                cliente__cod_cliente=i_v_cod_cliente
+                gdfcliente__cod_cliente=i_v_cod_cliente
             )
             
             if l_v_queryset_empresas_validas.count() != len(i_lsl_empresa_ids):
                 raise ValueError("Uma ou mais empresas não pertencem ao cliente")
             
             # ✅ Validar que grupos pertencem ao cliente
-            l_v_queryset_grupos_validos = GrupoCliente.objects.filter(
+            l_v_queryset_grupos_validos = PermissaoGrupoCliente.objects.filter(
                 group_id__in=i_lsl_grupo_ids,
-                cliente__cod_cliente=i_v_cod_cliente
+                gdfcliente__cod_cliente=i_v_cod_cliente
             )
             
             if l_v_queryset_grupos_validos.count() != len(i_lsl_grupo_ids):
@@ -1206,9 +1210,9 @@ class ClGdf():
                 l_v_user.save(update_fields=['first_name', 'last_name', 'email', 'is_active'])
                 
                 # Atualizar empresas (substituir todas)
-                UserEmpresas.objects.filter(user=l_v_user).delete()
-                UserEmpresas.objects.bulk_create([
-                    UserEmpresas(user=l_v_user, empresa=emp)
+                UsuarioEmpresa.objects.filter(user=l_v_user).delete()
+                UsuarioEmpresa.objects.bulk_create([
+                    UsuarioEmpresa(user=l_v_user, empresa=emp)
                     for emp in l_v_queryset_empresas_validas
                 ])
                 

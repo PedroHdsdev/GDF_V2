@@ -1,6 +1,6 @@
 from django.db import models
 from django.utils import timezone
-from app.db_GDF.Public.models import Empresas, Clientes
+from app.db_GDF.Public.models import Empresa, ClienteGdf
 
 
 class NFe_Endereco(models.Model):
@@ -578,9 +578,9 @@ class NFe(models.Model):
     """Tabela principal de NF-e - Documento fiscal"""
     id_nfe = models.AutoField(primary_key=True)
     identificacao = models.OneToOneField(NFe_Identificacao, on_delete=models.CASCADE, related_name='nfe')
-    empresa = models.ForeignKey(Empresas, on_delete=models.CASCADE, related_name='nfe_docs', null=True, blank=True)  # Ao apagar empresa (ex.: ao apagar cliente), apaga NFe vinculadas
-    cliente = models.ForeignKey(
-        Clientes,
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='nfe_docs', null=True, blank=True)  # Ao apagar empresa (ex.: ao apagar cliente), apaga NFe vinculadas
+    gdfcliente = models.ForeignKey(
+        ClienteGdf,
         on_delete=models.CASCADE,
         related_name='nfe_docs',
         null=True,
@@ -630,7 +630,7 @@ class NFe(models.Model):
             models.Index(fields=['identificacao']),
             models.Index(fields=['emitente', 'destinatario']),
             models.Index(fields=['empresa']),
-            models.Index(fields=['cliente']),
+            models.Index(fields=['gdfcliente']),
         ]
         ordering = ['-data_criacao']
 

@@ -90,8 +90,8 @@ def _get_models_sped(tipo: str):
         }
 
 
-class Carga_sped:
-    """Processador de carga de arquivos SPED. Estrutura alinhada à Carga XML."""
+class CargaSped:
+    """Processador de carga de arquivos SPED (EFD ICMS/IPI, EFD Contribuições). Estrutura alinhada à CargaXml."""
 
     EXTENSOES_SPED = ('.txt',)
 
@@ -285,8 +285,8 @@ class Carga_sped:
                 cliente_eff = None
                 if cod_cliente:
                     try:
-                        from app.db_GDF.Public.models import Clientes
-                        cliente_eff = Clientes.objects.get(cod_cliente=cod_cliente)
+                        from app.db_GDF.Public.models import ClienteGdf
+                        cliente_eff = GdfClientes.objects.get(cod_cliente=cod_cliente)
                     except Exception:
                         pass
                 arq = M['Arquivo'].objects.create(
@@ -359,8 +359,8 @@ class Carga_sped:
         if len(cnpj_14) < 14:
             return None
         try:
-            from app.db_GDF.Public.models import Empresas
-            return Empresas.objects.filter(cliente__cod_cliente=cod_cliente, cnpj=cnpj_14).first()
+            from app.db_GDF.Public.models import Empresa
+            return Empresas.objects.filter(gdfcliente__cod_cliente=cod_cliente, cnpj=cnpj_14).first()
         except Exception:
             return None
 
@@ -450,8 +450,8 @@ class Carga_sped:
                 cliente_eff = None
                 if cod_cliente:
                     try:
-                        from app.db_GDF.Public.models import Clientes
-                        cliente_eff = Clientes.objects.get(cod_cliente=cod_cliente)
+                        from app.db_GDF.Public.models import ClienteGdf
+                        cliente_eff = GdfClientes.objects.get(cod_cliente=cod_cliente)
                     except Exception:
                         pass
                 arq = M['Arquivo'].objects.create(

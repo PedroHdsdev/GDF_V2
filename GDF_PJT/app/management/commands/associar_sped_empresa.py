@@ -20,7 +20,7 @@ class Command(BaseCommand):
         )
 
     def _processar_arquivos(self, Arquivo, Reg_0000, dry_run):
-        from app.db_GDF.Public.models import Empresas
+        from app.db_GDF.Public.models import Empresa
 
         arquivos_sem_empresa = Arquivo.objects.filter(empresa__isnull=True)
         atualizados = 0
