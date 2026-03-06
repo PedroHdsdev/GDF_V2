@@ -356,7 +356,7 @@ class CargaXml:
         if not cod_cliente:
             return
         from app.classes.Reprocessamento import condicao_pagamento_da_nfe, tipo_pagamento_da_nfe
-        from app.db_Reprocessamento.models import CondicaoParam
+        from app.db_GDF.reprocessamento.models import CondicaoParam
 
         cond_nfe = condicao_pagamento_da_nfe(identificacao)
         if not (cond_nfe or '').strip():

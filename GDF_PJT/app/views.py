@@ -1,116 +1,105 @@
+"""
+Views do app GDF – ponto único: telas e APIs.
+- Telas (fn_view_*): login, home, CRUD usuários/empresas/clientes, CargaXml, CargaSped, Relatório, Reprocessamento.
+- APIs (fn_api_*): CargaXml, CargaSped, Relatórios, Reprocessamento, SAP, Sessão.
+- Usa app.classes (ClGdf, CargaXml, CargaSped) e app.utils.view_helpers. Jobs em app.api.jobs.
+"""
 import json
 import os
+import re
 import shutil
 import tempfile
 import threading
-from django.http import HttpResponseForbidden, JsonResponse
-from django.shortcuts               import get_object_or_404, render
-from django.shortcuts               import render, redirect
-from django.contrib.auth            import authenticate, login, logout
+import zipfile
+from datetime import datetime, timedelta, timezone as _py_tz
+from pathlib import Path
+
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from app.decorators                 import validate_idor_empresa, validate_idor_usuario, validate_session_required
-from django.views.decorators.http   import require_http_methods
-from django.conf                    import settings
-from django.contrib                 import messages
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.paginator import Paginator
+from django.db.models import Q, Count
+from django.http import HttpResponseForbidden, JsonResponse
+from django.shortcuts import get_object_or_404, render, redirect
+from django.utils import timezone
+from django.views.decorators.http import require_http_methods
 
-# Dicionário tipo de pagamento (código XML → descrição) para relatório fiscal e exibição
-_path_tipo_pagamento = getattr(settings, 'BASE_DIR', None)
-if _path_tipo_pagamento is not None:
-    _path_tipo_pagamento = os.path.join(str(_path_tipo_pagamento), 'json', 'Tipo_pagamento.json')
-    try:
-        with open(_path_tipo_pagamento, 'r', encoding='utf-8') as _f:
-            TIPO_PAGAMENTO_DESC = json.load(_f)
-    except Exception:
-        TIPO_PAGAMENTO_DESC = {}
-else:
-    TIPO_PAGAMENTO_DESC = {}
-
-def _descricao_tipo_pagamento(codigo):
-    """Retorna a descrição do tipo de pagamento pelo código (XML). Usado no relatório fiscal."""
-    if codigo is None or codigo == '':
-        return 'Não informado'
-    return TIPO_PAGAMENTO_DESC.get(str(codigo).strip(), None)  # None = usar display do model depois
-from app.classes.gdf                import ClGdf
-from app.classes.CargaXml           import CargaXml
-from django.core.paginator          import Paginator
-from django.db.models               import Q, Count
-from app.db_GDF.Public.models       import (
-    UsuarioEmpresa, Empresa, ClienteGdf, GrupoEmpresa,
-    ParametroCargaXml, JobCargaXml,
-    ParametroCargaSped, JobCargaSped,
-    ConexaoSap, AcessoSubsolucaoGrupo,
+from app.classes.CargaSped import CargaSped
+from app.classes.CargaXml import CargaXml
+from app.classes.gdf import ClGdf
+from app.db_GDF.Public.models import (
+    AcessoSubsolucaoGrupo,
+    ClienteGdf,
+    ConexaoSap,
+    Empresa,
+    GrupoEmpresa,
+    JobCargaSped,
+    JobCargaXml,
+    ParametroCargaSped,
+    ParametroCargaXml,
+    UsuarioEmpresa,
 )
-from app.classes.CargaSped          import CargaSped
-from app.db_GDF.NFe.models          import (
-    NFe, NFe_Identificacao, NFe_Emitente, NFe_Destinatario, NFe_Endereco,
-    NFe_Produto, NFe_Total, NFe_Cobranca, NFe_Parcela, NFe_Pagamento,
-    NFe_Transporte, NFe_Informacoes_Adicionais,
+from app.db_GDF.CTe.models import (
+    CTe,
+    CTe_Carga,
+    CTe_Destinatario,
+    CTe_Emitente,
+    CTe_Fiscal,
+    CTe_Identificacao,
+    CTe_Motorista,
+    CTe_Percurso,
+    CTe_Servico,
+    CTe_Transporte,
+    CTe_Valor,
+    CTe_Veiculo,
 )
-from app.db_GDF.CTe.models         import (
-    CTe, CTe_Identificacao, CTe_Emitente, CTe_Destinatario, CTe_Valor,
-    CTe_Transporte, CTe_Carga, CTe_Servico, CTe_Veiculo, CTe_Motorista,
-    CTe_Percurso, CTe_Fiscal,
+from app.db_GDF.NFe.models import (
+    NFe,
+    NFe_Cobranca,
+    NFe_Destinatario,
+    NFe_Emitente,
+    NFe_Endereco,
+    NFe_Identificacao,
+    NFe_Informacoes_Adicionais,
+    NFe_Pagamento,
+    NFe_Parcela,
+    NFe_Produto,
+    NFe_Total,
+    NFe_Transporte,
 )
-from app.db_GDF.NFSe.models        import (
-    NFSe, NFSe_Identificacao, NFSe_Prestador, NFSe_Tomador, NFSe_Endereco,
-    NFSe_RPS, NFSe_Retencao, NFSe_Pagamento, NFSe_Servico,
+from app.db_GDF.NFSe.models import (
+    NFSe,
+    NFSe_Endereco,
+    NFSe_Identificacao,
+    NFSe_Pagamento,
+    NFSe_Prestador,
+    NFSe_Retencao,
+    NFSe_RPS,
+    NFSe_Servico,
+    NFSe_Tomador,
 )
 from app.db_GDF.sped_fiscal.models import SpedFiscalArquivo, SpedFiscalReg_C100, SpedFiscalReg_C170
-from app.db_Reprocessamento.models import ReprocessamentoLote, Divergencia, ReprocessamentoJob, CondicaoPagamentoLote, CondicaoParam
-from django.utils import timezone
-from django.core.files.uploadedfile import SimpleUploadedFile
-import re
-
-# Cliente 1000 = empresa dona do projeto (IT Process). Superusers e usuários vinculados a este cliente têm acesso total.
-COD_CLIENTE_PROJETO = '1000'
-
-
-def _usuario_vinculado_cliente_1000(user):
-    """Retorna True se o usuário tem empresas vinculadas ao cliente 1000 (dona do projeto)."""
-    if not user or not user.is_authenticated:
-        return False
-    return Empresa.objects.filter(
-        userempresas__user=user,
-        gdfcliente__cod_cliente=COD_CLIENTE_PROJETO,
-    ).exists()
-
-
-def _usuario_acesso_total_painel(request):
-    """Retorna True se o usuário pode fazer tudo em todos os clientes.
-    - Superuser: acesso total.
-    - Usuário vinculado ao cliente 1000 (empresa dona do projeto): acesso total.
-    Mantém regras de soluções/subsoluções para demais usuários."""
-    if not request.user.is_authenticated:
-        return False
-    if getattr(request.user, 'is_superuser', False):
-        return True
-    return request.session.get('usuario_cliente_1000', False)
-
-
-def _superuser_acesso_total_painel(request):
-    """Compatibilidade: retorna True se superuser OU usuário cliente 1000 tem acesso total."""
-    return _usuario_acesso_total_painel(request)
-
-
-def _get_subsolucoes_usuario(user):
-    """Retorna set de cod_subsolucao que o usuário tem acesso via seus grupos.
-    Superuser ou usuário vinculado ao cliente 1000: retorna None (acesso total). Usuário normal: set de códigos."""
-    if getattr(user, 'is_superuser', False):
-        return None  # None = acesso total
-    if _usuario_vinculado_cliente_1000(user):
-        return None  # Cliente 1000 (dona do projeto) = acesso total
-    group_ids = list(user.groups.values_list('id', flat=True))
-    if not group_ids:
-        return set()
-    codigos = AcessoSubsolucaoGrupo.objects.filter(
-        group_id__in=group_ids,
-        subsolucao__isnull=False,
-    ).values_list('subsolucao__cod_subsolucao', flat=True).distinct()
-    return set(c for c in codigos if c)
-import json
-import zipfile
-from pathlib import Path
-from datetime import datetime, timedelta, timezone as _py_tz
+from app.db_GDF.reprocessamento.models import (
+    CondicaoPagamentoLote,
+    CondicaoParam,
+    Divergencia,
+    ReprocessamentoJob,
+    ReprocessamentoLote,
+)
+from app.security.decorators import validate_idor_empresa, validate_idor_usuario, validate_session_required
+from app.utils.view_helpers import (
+    COD_CLIENTE_PROJETO,
+    TIPO_PAGAMENTO_DESC,
+    descricao_tipo_pagamento,
+    get_subsolucoes_usuario,
+    relatorio_empresas_queryset,
+    reprocessamento_empresas_cliente,
+    superuser_acesso_total_painel,
+    usuario_acesso_total_painel,
+    usuario_vinculado_cliente_1000,
+)
 
 def fn_view_login(request):
     if request.method == "POST":
@@ -136,7 +125,7 @@ def fn_view_login(request):
             )
             # Usuário (não superuser) vinculado ao cliente 1000: acesso total como empresa dona do projeto
             request.session['usuario_cliente_1000'] = (
-                not getattr(user, 'is_superuser', False) and _usuario_vinculado_cliente_1000(user)
+                not getattr(user, 'is_superuser', False) and usuario_vinculado_cliente_1000(user)
             )
 
             if not cl_gdf_instance.Retorn:
@@ -181,7 +170,7 @@ def fn_view_home(request):
         codigo = request.POST.get('codigo')
         novo_cliente = request.POST.get('cod_cliente', '').strip()
         next_name = (request.POST.get('next') or '').strip()
-        if _usuario_acesso_total_painel(request) and novo_cliente:
+        if usuario_acesso_total_painel(request) and novo_cliente:
             request.session['cod_cliente'] = novo_cliente
             if next_name in _REDIRECT_NAMES:
                 return redirect(next_name)
@@ -191,13 +180,13 @@ def fn_view_home(request):
         if codigo:
             return redirect(codigo)
     context = {'cod_cliente': cod_cliente}
-    if _usuario_acesso_total_painel(request):
+    if usuario_acesso_total_painel(request):
         context['is_superuser'] = request.session.get('is_superuser', False)
         cl_gdf = ClGdf()
         context['lista_clientes'] = cl_gdf.get_clientes()
 
     # Subsoluções que o usuário tem acesso (None = superuser = acesso total)
-    subsolucoes = _get_subsolucoes_usuario(request.user)
+    subsolucoes = get_subsolucoes_usuario(request.user)
 
     def _tem_acesso(cod):
         """Verifica se usuário tem acesso à subsolução."""
@@ -457,7 +446,7 @@ def fn_view_listar_usuarios(request):
         'cod_cliente': cod_cliente,
         'is_superuser': is_superuser,
     }
-    if is_superuser and _superuser_acesso_total_painel(request):
+    if is_superuser and superuser_acesso_total_painel(request):
         context['lista_clientes'] = cl_gdf.get_clientes()
     return render(request, 'Usuarios/index_Usuarios.html', context)
 
@@ -479,7 +468,7 @@ def fn_view_listar_empresas(request):
         'cod_cliente': cod_cliente,
         'is_superuser': is_superuser,
     }
-    if is_superuser and _superuser_acesso_total_painel(request):
+    if is_superuser and superuser_acesso_total_painel(request):
         context['lista_clientes'] = cl_gdf.get_clientes()
     return render(request, 'Empresas/index_Empresas.html', context)
 
@@ -487,12 +476,12 @@ def fn_view_listar_empresas(request):
 @login_required(login_url='Login')
 def fn_view_listar_clientes(request):
     cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente and not _usuario_acesso_total_painel(request):
+    if not cod_cliente and not usuario_acesso_total_painel(request):
         return redirect('Login')
     cl_gdf = ClGdf()
     t_clientes = cl_gdf.get_clientes()
     context = {'t_clientes': t_clientes, 'cod_cliente': cod_cliente}
-    if _usuario_acesso_total_painel(request):
+    if usuario_acesso_total_painel(request):
         context['is_superuser'] = request.session.get('is_superuser', False)
     return render(request, 'ClienteGdf/index_ClienteGdf.html', context)
 
@@ -544,7 +533,7 @@ def fn_view_inserir_usuario(request):
         if errors:
             t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
             ctx = {'t_user': t_user, 'error_message': ' | '.join(errors), 'cod_cliente': cod_cliente, 'is_superuser': is_superuser}
-            if is_superuser and _superuser_acesso_total_painel(request):
+            if is_superuser and superuser_acesso_total_painel(request):
                 ctx['lista_clientes'] = cl_gdf.get_clientes()
             return render(request, 'Usuarios/index_Usuarios.html', ctx)
 
@@ -561,7 +550,7 @@ def fn_view_inserir_usuario(request):
         if not resultado.get("success"):
             t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
             ctx = {'t_user': t_user, 'error_message': resultado.get("message", "Erro ao criar usuário"), 'cod_cliente': cod_cliente, 'is_superuser': is_superuser}
-            if is_superuser and _superuser_acesso_total_painel(request):
+            if is_superuser and superuser_acesso_total_painel(request):
                 ctx['lista_clientes'] = cl_gdf.get_clientes()
             return render(request, 'Usuarios/index_Usuarios.html', ctx)
         return redirect('Dm_Usuarios')
@@ -1031,10 +1020,10 @@ def fn_view_inserir_cliente(request):
 def fn_view_atualizar_cliente(request, cod_cliente):
     """Atualizar cliente existente - seguindo padrão Usuario_upd"""
     cod_cliente_sessao = request.session.get('cod_cliente', None)
-    if not cod_cliente_sessao and not _usuario_acesso_total_painel(request):
+    if not cod_cliente_sessao and not usuario_acesso_total_painel(request):
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     # Usuário normal: só pode editar o cliente da sessão. Acesso total: qualquer cliente.
-    if not _usuario_acesso_total_painel(request) and str(cod_cliente) != str(cod_cliente_sessao):
+    if not usuario_acesso_total_painel(request) and str(cod_cliente) != str(cod_cliente_sessao):
         return JsonResponse({"erro": "Acesso negado: você não pode editar outro cliente"}, status=403)
     
     cl_gdf = ClGdf()
@@ -1092,7 +1081,7 @@ def fn_view_atualizar_cliente(request, cod_cliente):
 def fn_view_atualizar_acesso_cliente(request):
     """Atualizar acessos do cliente existente"""
     cod_cliente_sessao = request.session.get('cod_cliente', None)
-    if not cod_cliente_sessao and not _usuario_acesso_total_painel(request):
+    if not cod_cliente_sessao and not usuario_acesso_total_painel(request):
         return JsonResponse({"erro": "Cliente não identificado na sessão"}, status=403)
     
     # ✅ Obter o cod_cliente do formulário (cliente sendo editado)
@@ -1139,7 +1128,7 @@ def fn_view_atualizar_acesso_cliente(request):
 def fn_view_atualizar_grupos_cliente(request):
     """Atualiza grupos de usuários vinculados ao cliente."""
     cod_cliente_sessao = request.session.get('cod_cliente', None)
-    if not cod_cliente_sessao and not _usuario_acesso_total_painel(request):
+    if not cod_cliente_sessao and not usuario_acesso_total_painel(request):
         return JsonResponse({"erro": "Cliente não identificado na sessão"}, status=403)
 
     cod_cliente = request.POST.get("Grupos_cliente_id", "").strip()
@@ -1164,9 +1153,9 @@ def fn_view_atualizar_grupos_cliente(request):
 def fn_view_cliente_sap(request, cod_cliente):
     """Cria ou atualiza a conexão SAP do cliente (uma por cliente)."""
     cod_cliente_sessao = request.session.get('cod_cliente', None)
-    if not cod_cliente_sessao and not _usuario_acesso_total_painel(request):
+    if not cod_cliente_sessao and not usuario_acesso_total_painel(request):
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
-    if not _usuario_acesso_total_painel(request) and str(cod_cliente) != str(cod_cliente_sessao):
+    if not usuario_acesso_total_painel(request) and str(cod_cliente) != str(cod_cliente_sessao):
         return JsonResponse({"erro": "Acesso negado."}, status=403)
 
     try:
@@ -1243,112 +1232,35 @@ def fn_view_CargaXml(request):
     # Buscar jobs do cliente (todos os registros)
     try:
         cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
-        jobs = JobCargaXml.objects.filter(gdfcliente=cliente).order_by('-started_at')
-        parametros = ParametroCargaXml.objects.filter(gdfcliente=cliente).order_by('-data_criacao')
-        # Empresas disponíveis para o usuário dentro deste cliente
-        empresas_usuario = Empresa.objects.filter(
-            gdfcliente=cliente,
-            userempresas__user=request.user
-        ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
+        jobs = (
+            JobCargaXml.objects.filter(gdfcliente=cliente)
+            .select_related("gdfcliente")
+            .order_by("-started_at")
+        )
+        parametros = (
+            ParametroCargaXml.objects.filter(gdfcliente=cliente)
+            .select_related("empresa")
+            .order_by("-data_criacao")
+        )
+        empresas_usuario = (
+            Empresa.objects.filter(
+                gdfcliente=cliente,
+                userempresas__user=request.user,
+            )
+            .order_by("fantasia", "razao", "cod_empresa")
+            .distinct()
+        )
     except ClienteGdf.DoesNotExist:
         jobs = []
         parametros = []
         empresas_usuario = []
-    
     context = {
-        'cod_cliente': cod_cliente,
-        'jobs': jobs,
-        'parametros': parametros,
-        'empresas_usuario': empresas_usuario,
+        "cod_cliente": cod_cliente,
+        "jobs": jobs,
+        "parametros": parametros,
+        "empresas_usuario": empresas_usuario,
     }
-    return render(request, 'Processamento/index_CargaXml.html', context)
-
-def _processar_job_xml_background(job_id, temp_dir, type_xml, origem_dados, user_id, cod_cliente, empresa_id):
-    """Executa em thread: processa XMLs da pasta temp e atualiza o job."""
-    from django.db import connection
-    from app.db_GDF.Public.models import JobCargaXml
-    from app.classes.CargaXml import CargaXml
-
-    try:
-        from django.contrib.auth.models import User as AuthUser
-        job = JobCargaXml.objects.get(id=job_id)
-        user = AuthUser.objects.filter(id=user_id).first()
-        username = user.username if user else 'SYSTEM'
-
-        xml_files = []
-        for fname in sorted(os.listdir(temp_dir)):
-            if not fname.lower().endswith('.xml'):
-                continue
-            path = os.path.join(temp_dir, fname)
-            if not os.path.isfile(path):
-                continue
-            with open(path, 'rb') as f:
-                xml_bytes = f.read()
-            nome = fname.split('_', 1)[-1] if '_' in fname else fname
-            xml_files.append(SimpleUploadedFile(nome, xml_bytes))
-
-        if not xml_files:
-            job.status = 'ERROR'
-            job.mensagem = 'Nenhum arquivo XML encontrado na pasta temporária.'
-            job.finished_at = timezone.localtime()
-            job.save(update_fields=['status', 'mensagem', 'finished_at'])
-            return
-
-        cl_xml = CargaXml()
-        upload_result = cl_xml.set_upload_xml(
-            xml_files,
-            type_xml,
-            origem_dados,
-            username,
-            cod_cliente,
-        )
-
-        # Erros e pendentes primeiro para não serem cortados pelo truncamento (5000 chars)
-        mensagem_lines = []
-        for err in upload_result.get('errors', []):
-            mensagem_lines.append(f"ERRO: {err.get('file', '')} - {err.get('error', '')}")
-        for p in upload_result.get('pendentes', []):
-            mensagem_lines.append(f"PENDENTES (empresa não cadastrada): {p.get('file', '')} - {p.get('motivo', '')}")
-        for name in upload_result.get('success', []):
-            mensagem_lines.append(f"OK: {name}")
-        resumo = '\n'.join(mensagem_lines)[:5000]
-
-        empresa_prefixo = ''
-        if empresa_id:
-            try:
-                empresa = Empresa.objects.get(
-                    cod_empresa=empresa_id,
-                    gdfcliente__cod_cliente=cod_cliente,
-                )
-                nome_emp = empresa.fantasia or empresa.razao or empresa.cod_empresa
-                empresa_prefixo = f"EMPRESA: {empresa.cod_empresa} - {nome_emp}\n"
-            except Empresa.DoesNotExist:
-                empresa_prefixo = f"EMPRESA: {empresa_id} (não encontrada)\n"
-
-        total_arquivos = len(upload_result['success']) + len(upload_result['errors']) + len(upload_result.get('pendentes', []))
-        job.total_arquivos = total_arquivos
-        job.total_sucesso = len(upload_result['success'])
-        job.total_erro = len(upload_result['errors'])
-        job.status = 'ERROR' if upload_result['errors'] else 'SUCCESS'
-        job.mensagem = (empresa_prefixo + resumo)[:5000]
-        job.finished_at = timezone.localtime()
-        job.save(update_fields=['total_arquivos', 'total_sucesso', 'total_erro', 'status', 'mensagem', 'finished_at'])
-    except Exception as e:
-        try:
-            job = JobCargaXml.objects.get(id=job_id)
-            job.status = 'ERROR'
-            job.mensagem = str(e)[:5000]
-            job.finished_at = timezone.localtime()
-            job.save(update_fields=['status', 'mensagem', 'finished_at'])
-        except Exception:
-            pass
-    finally:
-        try:
-            if temp_dir and os.path.isdir(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
-        except Exception:
-            pass
-        connection.close()
+    return render(request, "Processamento/index_CargaXml.html", context)
 
 
 @login_required(login_url='Login')
@@ -1433,8 +1345,9 @@ def fn_api_processar_xml(request):
             finished_at=None,
             usuario_execucao=request.user,
         )
+        from app.api.jobs import processar_job_xml_background
         t = threading.Thread(
-            target=_processar_job_xml_background,
+            target=processar_job_xml_background,
             args=(job.id, temp_dir, l_v_type_xml, l_v_origem_dados, request.user.id, cod_cliente, l_v_empresa_id),
             daemon=True,
         )
@@ -1754,7 +1667,7 @@ def fn_api_cargaxml_param_toggle(request, param_id):
 @require_http_methods(["POST"])
 def fn_api_sessao_cliente(request):
     """Define o cliente ativo na sessão. Superuser ou cliente 1000 (dona do projeto)."""
-    if not _usuario_acesso_total_painel(request):
+    if not usuario_acesso_total_painel(request):
         return JsonResponse({'sucesso': False, 'erro': 'Acesso negado'}, status=403)
     try:
         # Aceita FormData (request.POST) ou JSON (request.body) - ler apenas um para evitar RawPostDataException
@@ -1927,46 +1840,6 @@ def fn_api_cargaxml_job_details(request, job_id):
 
 # ========== APIs Carga SPED (mesma linha de raciocínio da Carga XML) ==========
 
-def _processar_job_sped_background(job_id, temp_dir, cod_cliente, user_id):
-    """Executa em thread: processa arquivos na pasta temp e atualiza o job."""
-    from django.db import connection
-    from app.db_GDF.Public.models import JobCargaSped, ClienteGdf
-    from app.classes.CargaSped import CargaSped
-
-    try:
-        job = JobCargaSped.objects.get(id=job_id)
-        cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
-        cl_sped = CargaSped()
-        result = cl_sped.processar_pasta_temp(temp_dir, cod_cliente, empresa=None)
-        total = len(result['success']) + len(result['errors'])
-        job.total_arquivos = total
-        job.total_sucesso = len(result['success'])
-        job.total_erro = len(result['errors'])
-        job.status = 'ERROR' if result['errors'] else 'SUCCESS'
-        # Erros primeiro para não serem cortados pelo truncamento (5000 chars)
-        log_lines = [f"ERRO: {e.get('file', '')} - {e.get('error', '')}" for e in result['errors']] + [f"OK: {n}" for n in result['success']]
-        job.mensagem = '\n'.join(log_lines) if log_lines else f"Processado: {total} arquivo(s). Sucesso: {len(result['success'])}, Erro: {len(result['errors'])}."
-        job.mensagem = job.mensagem[:5000]
-        job.finished_at = timezone.localtime()
-        job.save(update_fields=['status', 'total_arquivos', 'total_sucesso', 'total_erro', 'mensagem', 'finished_at'])
-    except Exception as e:
-        try:
-            job = JobCargaSped.objects.get(id=job_id)
-            job.status = 'ERROR'
-            job.mensagem = str(e)[:5000]
-            job.finished_at = timezone.localtime()
-            job.save(update_fields=['status', 'mensagem', 'finished_at'])
-        except Exception:
-            pass
-    finally:
-        try:
-            import shutil
-            if temp_dir and os.path.isdir(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
-        except Exception:
-            pass
-        connection.close()
-
 
 @login_required(login_url='Login')
 @require_http_methods(["POST"])
@@ -2012,8 +1885,9 @@ def fn_api_processar_sped(request):
         finished_at=None,
         usuario_execucao=request.user,
     )
+    from app.api.jobs import processar_job_sped_background
     t = threading.Thread(
-        target=_processar_job_sped_background,
+        target=processar_job_sped_background,
         args=(job.id, temp_dir, cod_cliente, request.user.id),
         daemon=True,
     )
@@ -2325,47 +2199,44 @@ def fn_view_CargaSped(request):
         return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
     try:
         cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
-        jobs = JobCargaSped.objects.filter(gdfcliente=cliente).order_by('-started_at')
-        parametros = ParametroCargaSped.objects.filter(gdfcliente=cliente).order_by('-data_criacao')
-        empresas_usuario = Empresa.objects.filter(
-            gdfcliente=cliente,
-            userempresas__user=request.user
-        ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
+        jobs = (
+            JobCargaSped.objects.filter(gdfcliente=cliente)
+            .select_related("gdfcliente")
+            .order_by("-started_at")
+        )
+        parametros = (
+            ParametroCargaSped.objects.filter(gdfcliente=cliente)
+            .select_related("empresa")
+            .order_by("-data_criacao")
+        )
+        empresas_usuario = (
+            Empresa.objects.filter(
+                gdfcliente=cliente,
+                userempresas__user=request.user,
+            )
+            .order_by("fantasia", "razao", "cod_empresa")
+            .distinct()
+        )
     except ClienteGdf.DoesNotExist:
         jobs = []
         parametros = []
         empresas_usuario = []
     context = {
-        'cod_cliente': cod_cliente,
-        'jobs': jobs,
-        'parametros': parametros,
-        'empresas_usuario': empresas_usuario,
+        "cod_cliente": cod_cliente,
+        "jobs": jobs,
+        "parametros": parametros,
+        "empresas_usuario": empresas_usuario,
     }
-    return render(request, 'Processamento/index_CargaSped.html', context)
+    return render(request, "Processamento/index_CargaSped.html", context)
 
 
 # ========== APIs Relatório Fiscal (NFe, CTe, NFS, SPED nível cabeçalho) ==========
-
-def _relatorio_empresas_queryset(request):
-    """Retorna queryset de empresas do cliente que o usuário pode acessar.
-    Superuser ou usuário cliente 1000: todas as empresas do cliente selecionado (igual Painel Reprocessamento).
-    Demais usuários: apenas empresas vinculadas via userempresas."""
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
-        return Empresa.objects.none()
-    if _usuario_acesso_total_painel(request):
-        return Empresa.objects.filter(gdfcliente__cod_cliente=cod_cliente).distinct()
-    return Empresa.objects.filter(
-        gdfcliente__cod_cliente=cod_cliente,
-        userempresas__user=request.user
-    ).distinct()
-
 
 @login_required(login_url='Login')
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfe(request):
     """Lista NFe nível cabeçalho com filtros empresa, grupo de empresa e período."""
-    empresas = _relatorio_empresas_queryset(request)
+    empresas = relatorio_empresas_queryset(request)
     grp_empresa = request.GET.get('grp_empresa', '').strip()
     if grp_empresa:
         empresas = empresas.filter(grp_empresa_id=grp_empresa)
@@ -2447,7 +2318,7 @@ def fn_api_relatorio_nfe(request):
 @require_http_methods(["GET"])
 def fn_api_relatorio_cte(request):
     """Lista CTe nível cabeçalho com filtros empresa, grupo de empresa e período."""
-    empresas = _relatorio_empresas_queryset(request)
+    empresas = relatorio_empresas_queryset(request)
     grp_empresa = request.GET.get('grp_empresa', '').strip()
     if grp_empresa:
         empresas = empresas.filter(grp_empresa_id=grp_empresa)
@@ -2510,7 +2381,7 @@ def fn_api_relatorio_cte(request):
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfse(request):
     """Lista NFSe nível cabeçalho com filtros empresa, grupo de empresa e período."""
-    empresas = _relatorio_empresas_queryset(request)
+    empresas = relatorio_empresas_queryset(request)
     grp_empresa = request.GET.get('grp_empresa', '').strip()
     if grp_empresa:
         empresas = empresas.filter(grp_empresa_id=grp_empresa)
@@ -2573,7 +2444,7 @@ def fn_api_relatorio_sped(request):
     """Lista SPED nível cabeçalho. tipo_sped: C=Contribuição, F=Fiscal. Busca em sped_fiscal e sped_contribuicao."""
     from app.db_GDF.sped_contribuicao.models import SpedContribuicaoArquivo
 
-    empresas = _relatorio_empresas_queryset(request)
+    empresas = relatorio_empresas_queryset(request)
     grp_empresa = request.GET.get('grp_empresa', '').strip()
     if grp_empresa:
         empresas = empresas.filter(grp_empresa_id=grp_empresa)
@@ -2691,7 +2562,7 @@ def _serialize_model(inst, exclude=None):
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfe_detalhe(request, id_nfe):
     """Detalhe completo da NFe para modal: cabeçalho, itens, total, cobrança/parcelas, pagamento, transporte, info adicionais."""
-    empresas = _relatorio_empresas_queryset(request)
+    empresas = relatorio_empresas_queryset(request)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
     cod_cliente = request.session.get('cod_cliente', None)
     qs_acesso = NFe.objects.filter(
@@ -2751,7 +2622,7 @@ def fn_api_relatorio_nfe_detalhe(request, id_nfe):
             pagamento = _serialize_model(ide.pagamento, exclude=['nfe_identificacao'])
             # Descrição do tipo de pagamento: json/Tipo_pagamento.json, senão display do model
             pagamento['tipo_pagamento'] = (
-                _descricao_tipo_pagamento(ide.pagamento.meio_pagamento)
+                descricao_tipo_pagamento(ide.pagamento.meio_pagamento)
                 or ide.pagamento.get_meio_pagamento_display()
             )
             if ide.pagamento.cartao_bandeira:
@@ -2779,7 +2650,7 @@ def fn_api_relatorio_nfe_detalhe(request, id_nfe):
 @require_http_methods(["GET"])
 def fn_api_relatorio_cte_detalhe(request, id_cte):
     """Detalhe completo do CTe para modal: cabeçalho, valor, transporte, carga, serviço, veículo, motorista, percurso, fiscal."""
-    empresas = _relatorio_empresas_queryset(request)
+    empresas = relatorio_empresas_queryset(request)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
     cod_cliente = request.session.get('cod_cliente', None)
     qs_acesso = CTe.objects.filter(
@@ -2831,7 +2702,7 @@ def fn_api_relatorio_cte_detalhe(request, id_cte):
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfse_detalhe(request, id_nfse):
     """Detalhe completo da NFSe para modal: cabeçalho, prestador, tomador, serviços, RPS, retenção, pagamento."""
-    empresas = _relatorio_empresas_queryset(request)
+    empresas = relatorio_empresas_queryset(request)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
     cod_cliente = request.session.get('cod_cliente', None)
     qs_acesso = NFSe.objects.filter(
@@ -2897,7 +2768,7 @@ def fn_api_relatorio_sped_detalhe(request, tipo, id_arquivo):
         return JsonResponse({'sucesso': False, 'mensagem': 'Tipo SPED inválido'}, status=400)
     Arquivo = SpedFiscalArquivo if tipo == 'F' else SpedContribuicaoArquivo
 
-    empresas = _relatorio_empresas_queryset(request)
+    empresas = relatorio_empresas_queryset(request)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
     arq = get_object_or_404(
         Arquivo.objects.prefetch_related(
@@ -2987,7 +2858,7 @@ def fn_view_Relatorio_Fiscal(request):
         return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
     try:
         cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
-        if _usuario_acesso_total_painel(request):
+        if usuario_acesso_total_painel(request):
             empresas_usuario = Empresa.objects.filter(gdfcliente=cliente).order_by('fantasia', 'razao', 'cod_empresa').distinct()
         else:
             empresas_usuario = Empresa.objects.filter(
@@ -3047,13 +2918,6 @@ def fn_view_Reprocessamento_Painel(request):
     return render(request, 'Reprocessamento/index_Painel.html', context)
 
 
-def _reprocessamento_empresas_cliente(cod_cliente):
-    """Retorna lista de cod_empresa permitidos para o cliente (para filtrar lotes/divergências)."""
-    if not cod_cliente:
-        return []
-    return list(Empresa.objects.filter(gdfcliente_id=cod_cliente).values_list('cod_empresa', flat=True))
-
-
 @login_required(login_url='Login')
 @require_http_methods(["GET"])
 def fn_api_reprocessamento_lotes(request):
@@ -3061,7 +2925,7 @@ def fn_api_reprocessamento_lotes(request):
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
     if not cod_empresas:
         return JsonResponse({'sucesso': True, 'lotes': [], 'total': 0})
 
@@ -3134,7 +2998,7 @@ def fn_api_reprocessamento_divergencias(request, id_lote):
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
     lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
     total_divs = Divergencia.objects.filter(lote=lote).count()
     divs = Divergencia.objects.filter(lote=lote).order_by('tipo', 'chave_nfe', '-data_criacao')[:5000]
@@ -3175,7 +3039,7 @@ def fn_api_reprocessamento_confronto(request):
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    empresas_permitidas = _reprocessamento_empresas_cliente(cod_cliente)
+    empresas_permitidas = reprocessamento_empresas_cliente(cod_cliente)
     if not empresas_permitidas:
         return JsonResponse({'sucesso': False, 'mensagem': 'Nenhuma empresa vinculada ao cliente.'}, status=400)
 
@@ -3269,7 +3133,7 @@ def fn_api_reprocessamento_divergencia_detalhe(request, id_divergencia):
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
     div = get_object_or_404(Divergencia, id_divergencia=id_divergencia)
     if div.lote.cod_empresa not in cod_empresas:
         return JsonResponse({'sucesso': False, 'mensagem': 'Divergência não pertence ao cliente'}, status=403)
@@ -3457,7 +3321,7 @@ def fn_api_reprocessamento_reprocessar_divergencia(request, id_divergencia):
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
     div = get_object_or_404(Divergencia, id_divergencia=id_divergencia)
     if div.lote.cod_empresa not in cod_empresas:
         return JsonResponse({'sucesso': False, 'mensagem': 'Divergência não pertence ao cliente'}, status=403)
@@ -3476,7 +3340,7 @@ def fn_api_reprocessamento_condicoes_gerar(request, id_lote):
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
     lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
     try:
         from app.classes.Reprocessamento import gerar_condicoes_pagamento_lote
@@ -3498,7 +3362,7 @@ def fn_api_reprocessamento_condicoes_listar(request, id_lote):
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
     lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
     qs = CondicaoPagamentoLote.objects.filter(lote=lote).order_by('chave_nfe')
     lista = [
@@ -3529,7 +3393,7 @@ def fn_api_reprocessamento_condicoes_atualizar_retorno(request, id_lote):
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
     lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
     data = json.loads(request.body) if request.body else {}
     itens = data.get('itens') or data.get('retornos') or []
@@ -3562,7 +3426,7 @@ def fn_api_reprocessamento_condicoes_enviar_sap(request, id_lote):
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    cod_empresas = _reprocessamento_empresas_cliente(cod_cliente)
+    cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
     lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
     condicoes = list(
         CondicaoPagamentoLote.objects.filter(lote=lote).order_by('chave_nfe').values(
@@ -3651,14 +3515,14 @@ def fn_api_sap_testar_conexao(request):
     Usuário com acesso total pode testar qualquer cliente.
     """
     cod_cliente_sessao = request.session.get('cod_cliente')
-    if not cod_cliente_sessao and not _usuario_acesso_total_painel(request):
+    if not cod_cliente_sessao and not usuario_acesso_total_painel(request):
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
 
     data = json.loads(request.body) if request.body else {}
     cod_cliente = (data.get('cod_cliente') or '').strip() or cod_cliente_sessao
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Informe cod_cliente ou selecione um cliente na sessão.'}, status=400)
-    if not _usuario_acesso_total_painel(request) and str(cod_cliente) != str(cod_cliente_sessao):
+    if not usuario_acesso_total_painel(request) and str(cod_cliente) != str(cod_cliente_sessao):
         return JsonResponse({'sucesso': False, 'mensagem': 'Acesso negado.'}, status=403)
 
     try:

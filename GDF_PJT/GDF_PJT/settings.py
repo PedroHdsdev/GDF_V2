@@ -92,9 +92,9 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'csp.middleware.CSPMiddleware',  # Content-Security-Policy
-    'app.middlewares.rate_limit.RateLimitMiddleware',  # Rate limiting
-    'app.middlewares.session_fixation.SessionFixationMiddleware',  # Session security
-    'app.middlewares.security_headers.SecurityHeadersMiddleware',  # XSS & Security headers
+    'app.security.middlewares.rate_limit.RateLimitMiddleware',  # Rate limiting
+    'app.security.middlewares.session_fixation.SessionFixationMiddleware',  # Session security
+    'app.security.middlewares.security_headers.SecurityHeadersMiddleware',  # XSS & Security headers
 ]
 
 ROOT_URLCONF = 'GDF_PJT.urls'
@@ -280,7 +280,7 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_BEAT_SCHEDULE = {
     'cargaxml-scan-params-every-minute': {
-        'task': 'app.tasks.scan_cargaxml_params',
+        'task': 'app.api.tasks.scan_cargaxml_params',
         'schedule': 60.0,
     },
 }

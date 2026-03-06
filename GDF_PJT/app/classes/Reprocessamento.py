@@ -159,7 +159,7 @@ def _condicao_sap_da_param(condicao_nfe, tipo_pagamento=None, cod_cliente=None):
     Primeiro tenta com tipo_pagamento específico; se não achar, tenta com tipo vazio (fallback).
     Retorna string ou '' se não houver correspondência.
     """
-    from app.db_Reprocessamento.models import CondicaoParam
+    from app.db_GDF.reprocessamento.models import CondicaoParam
 
     if not (condicao_nfe or '').strip():
         return ''
@@ -197,7 +197,7 @@ def gerar_condicoes_pagamento_lote(id_lote):
     se não houver correspondência, fica vazio.
     Retorna (criados, atualizados).
     """
-    from app.db_Reprocessamento.models import ReprocessamentoLote, CondicaoPagamentoLote
+    from app.db_GDF.reprocessamento.models import ReprocessamentoLote, CondicaoPagamentoLote
     from app.db_GDF.NFe.models import NFe
     from app.db_GDF.Public.models import Empresa
 
@@ -253,7 +253,7 @@ def confrontar_sped_nfe(id_lote, cod_empresa, competencia):
     - Se não houver NF-e: lista todas as chaves do SPED e registra cada uma como "Registro SPED sem NF-e".
     - Se houver ambos: cruza por chave e gera divergência para os que não batem.
     """
-    from app.db_Reprocessamento.models import ReprocessamentoLote, Divergencia, ReprocessamentoJob
+    from app.db_GDF.reprocessamento.models import ReprocessamentoLote, Divergencia, ReprocessamentoJob
 
     lote = ReprocessamentoLote.objects.get(id_lote=id_lote)
     job = ReprocessamentoJob.objects.filter(id_lote=id_lote, tipo='CONFRONTO').order_by('-data_criacao').first()

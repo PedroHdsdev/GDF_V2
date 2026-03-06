@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 django.setup()
 
 from app.db_GDF.Public.models import ParametroCargaXml
-from app.tasks import process_cargaxml_param
+from app.api.tasks import process_cargaxml_param
 from django.utils import timezone
 
 def run_scheduler():

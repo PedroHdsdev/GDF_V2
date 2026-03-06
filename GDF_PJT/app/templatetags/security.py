@@ -6,7 +6,7 @@ from django import template
 from django.middleware.csrf import get_token
 from django.utils.html import escape
 from django.utils.safestring import mark_safe
-from app.middlewares.security_headers import XSSProtectionUtility
+from app.security.middlewares.security_headers import XSSProtectionUtility
 
 register = template.Library()
 
