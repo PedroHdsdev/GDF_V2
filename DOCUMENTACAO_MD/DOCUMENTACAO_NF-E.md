@@ -24,7 +24,7 @@ A estrutura NF-e (Nota Fiscal Eletrônica) foi implementada com 16 tabelas relac
         ├── OneToOne ──► NFe_Identificacao
         ├── ForeignKey ──► NFe_Emitente
         ├── ForeignKey ──► NFe_Destinatario
-        └── ForeignKey ──► Empresas (public schema) ⭐ NOVO
+        └── ForeignKey ──► Empresa (public schema) ⭐
 
 ┌──────────────────────────────────────────────┐
 │      NFe_Identificacao (Chave Documento)     │
@@ -467,7 +467,7 @@ Aggregação de toda a NF-e. **Centro do relacionamento**.
 |-------|------|-----------|
 | `id_nfe` | AutoField (PK) | Identificador único |
 | `identificacao` | OneToOneField → NFe_Identificacao | Chave do documento |
-| `empresa` | ForeignKey → Empresas (public) | Empresa emissora (vínculo multi-schema) ⭐ |
+| `empresa` | ForeignKey → Empresa (public) | Empresa emissora (vínculo multi-schema) ⭐ |
 | `emitente` | ForeignKey → NFe_Emitente | Quem emitiu |
 | `destinatario` | ForeignKey → NFe_Destinatario | Para quem |
 | `status` | CharField(20) | Estado da NF-e |
@@ -587,7 +587,7 @@ AND nfe.data_autorizacao >= NOW() - INTERVAL '30 days';
 | Relacionamento | Tipo | Ação Delete |
 |---|---|---|
 | NFe.identificacao → NFe_Identificacao | OneToOne | CASCADE |
-| NFe.empresa → Empresas (public) | ForeignKey | PROTECT |
+| NFe.empresa → Empresa (public) | ForeignKey | PROTECT |
 | NFe.emitente → NFe_Emitente | ForeignKey | PROTECT |
 | NFe.destinatario → NFe_Destinatario | ForeignKey | SET_NULL |
 | NFe_Produto.nfe_serie → NFe_Identificacao | ForeignKey | CASCADE |
@@ -616,15 +616,15 @@ AND nfe.data_autorizacao >= NOW() - INTERVAL '30 days';
 
 ## 🔗 Relacionamento Multi-Schema
 
-### Vínculo NFe ↔ Empresas (public)
+### Vínculo NFe ↔ Empresa (public)
 
-A tabela `NFe` (schema `nfe`) está vinculada à tabela `Empresas` (schema `public`) através de uma Foreign Key:
+A tabela `NFe` (schema `nfe`) está vinculada à tabela `Empresa` (schema `public`, tabela `empresa`) através de uma Foreign Key:
 
 ```sql
 ALTER TABLE nfe.nfe
 ADD COLUMN empresa_id character varying(10)
 ADD CONSTRAINT nfe_empresa_fk 
-FOREIGN KEY (empresa_id) REFERENCES public.empresas(cod_empresa);
+FOREIGN KEY (empresa_id) REFERENCES public.empresa(cod_empresa);
 
 CREATE INDEX nfe_empresa_idx ON nfe.nfe(empresa_id);
 ```

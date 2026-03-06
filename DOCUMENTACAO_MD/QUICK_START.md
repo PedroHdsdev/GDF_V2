@@ -232,7 +232,7 @@ def fn_view_atualizar_empresa(request, cod_empresa):
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
     # ✅ VALIDAÇÃO IDOR
-    empresa_pertence_cliente = Empresas.objects.filter(
+    empresa_pertence_cliente = Empresa.objects.filter(
         cod_empresa=cod_empresa,
         cliente__cod_cliente=cod_cliente
     ).exists()

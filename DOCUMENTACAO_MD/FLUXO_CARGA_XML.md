@@ -15,7 +15,7 @@ BACKEND (Django)
     ↓
 fn_api_processar_xml() → Validações
     ↓
-Carga_xml.set_upload_xml()
+CargaXml.set_upload_xml()
     ↓
 Loop em cada arquivo XML:
     ├─ set_nfe()   → Parse XML → Insere na tabela nfe
@@ -97,7 +97,7 @@ def fn_api_processar_xml(request):
     l_v_origem_dados = request.POST.get('origem_dados', 'LOCAL')
     
     # 3. Chamar classe de processamento
-    cl_xml = Carga_xml()
+    cl_xml = CargaXml()
     upload_result = cl_xml.set_upload_xml(
         lsl_Xml,
         l_v_type_xml,
@@ -114,7 +114,7 @@ def fn_api_processar_xml(request):
     })
 ```
 
-### 4️⃣ **BACKEND - Classe Carga_xml (CargaXml.py)**
+### 4️⃣ **BACKEND - Classe CargaXml (CargaXml.py)**
 ```python
 def set_upload_xml(self, I_LsXml, i_type, I_origem_dados, i_cod_cliente, i_usuario):
     """
@@ -153,7 +153,7 @@ def set_upload_xml(self, I_LsXml, i_type, I_origem_dados, i_cod_cliente, i_usuar
 
 **Novas APIs adicionadas:**
 
-- `GET /api/cargaxml/jobs/` → retorna todos os `CargaXmlJob` do cliente atual.
+- `GET /api/cargaxml/jobs/` → retorna todos os `JobCargaXml` do cliente atual.
 - `GET /api/cargaxml/jobs/<job_id>/` → detalhes de um job específico (status, totais, log, parâmetros).
 
 Cada job é exibido na interface principal como uma linha clicável. Ao clicar abre modal com duas abas:
@@ -260,7 +260,7 @@ path('api/processar-xml/', views.fn_api_processar_xml, name='API_ProcessarXml'),
 - [x] Criar API `fn_api_processar_xml()` (POST - processa upload)
 - [x] Criar rota `/api/processar-xml/`
 - [x] Adicionar campo `origem_dados` à tabela NFe
-- [x] Implementar `Carga_xml.set_upload_xml()` com loop
+- [x] Implementar `CargaXml.set_upload_xml()` com loop
 - [x] Implementar `set_nfe()` com parse de XML
 - [x] Frontend: Script_CargaXml.js com upload
 - [ ] Implementar `set_cte()` (TODO)

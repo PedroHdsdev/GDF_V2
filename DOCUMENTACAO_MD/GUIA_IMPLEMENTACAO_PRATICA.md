@@ -134,7 +134,7 @@ def fn_view_atualizar_empresa(request, cod_empresa):
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
     # ✅ VALIDAÇÃO IDOR: Empresa deve pertencer ao cliente
-    empresa_pertence_cliente = Empresas.objects.filter(
+    empresa_pertence_cliente = Empresa.objects.filter(
         cod_empresa=cod_empresa,
         cliente__cod_cliente=cod_cliente
     ).exists()
@@ -428,7 +428,7 @@ def get_empresas(self, i_v_cod_cliente=None, i_busca=None):
         lsl_dados_empresas = []
 
         # SELECT_RELATED para evitar N+1
-        l_v_queryset_empresas = Empresas.objects.filter(
+        l_v_queryset_empresas = Empresa.objects.filter(
             cliente__cod_cliente=i_v_cod_cliente,
             is_active=True
         ).select_related('cert', 'cliente').only(
@@ -476,8 +476,8 @@ def upd_empresa(self, i_v_cod_empresa, i_v_cod_cliente, **kwargs):
 
 **Arquivo: `app/db_GDF/Public/models.py` - ATUALIZAR**
 ```python
-class UserEmpresas(models.Model):
-    empresa = models.ForeignKey(Empresas, models.CASCADE)
+class UsuarioEmpresa(models.Model):
+    empresa = models.ForeignKey(Empresa, models.CASCADE)
     user = models.ForeignKey(User, models.CASCADE)
 
     class Meta:
@@ -490,12 +490,12 @@ class UserEmpresas(models.Model):
             models.Index(fields=['user', 'empresa']),
         ]
 
-class Empresas(models.Model):
+class Empresa(models.Model):
     cod_empresa = models.CharField(primary_key=True, max_length=10)
     cnpj = models.CharField(unique=True, max_length=14)
     razao = models.CharField(unique=True, max_length=120, blank=True, null=True)
     fantasia = models.CharField(max_length=60, blank=True, null=True)
-    cliente = models.ForeignKey(Clientes, models.CASCADE)
+    gdfcliente = models.ForeignKey(ClienteGdf, models.CASCADE, db_column='gdfcliente_id')
     is_active = models.BooleanField(db_index=True)  # ✅ Índice simples
 
     class Meta:
@@ -510,7 +510,7 @@ class Empresas(models.Model):
         ]
 
 class SolucoesAcesso(models.Model):
-    cliente = models.ForeignKey(Clientes, models.CASCADE)
+    gdfcliente = models.ForeignKey(ClienteGdf, models.CASCADE, db_column='gdfcliente_id')
     solucao = models.ForeignKey(Solucoes, models.CASCADE)
     is_active = models.BooleanField(blank=True, null=True)
 

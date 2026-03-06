@@ -6,14 +6,14 @@ Os campos `is_superuser`, `is_staff` e `is_active` pertencem ao modelo de usuár
 
 | Campo | Uso no projeto |
 |-------|-----------------|
-| **is_superuser** | Acesso total: pode fazer login sem estar vinculado a empresas; vê todas as soluções; pode **escolher o cliente ativo** na Home e gerenciar usuários, grupos (GrupoCliente, GrpEmpresas) e empresas para **qualquer cliente**. |
+| **is_superuser** | Acesso total: pode fazer login sem estar vinculado a empresas; vê todas as soluções; pode **escolher o cliente ativo** na Home e gerenciar usuários, grupos (PermissaoGrupoCliente, GrupoEmpresa) e empresas para **qualquer cliente**. |
 | **is_staff** | Acesso ao Django Admin (`/admin/`). Pode ser usado no futuro para perfis “staff” com permissões intermediárias. |
 | **is_active** | Usuário ativo pode fazer login; inativo não consegue autenticar. |
 
 ## Fluxo por tipo de usuário
 
 ### Usuário normal (não superuser)
-- Vinculado a **empresas** via `UserEmpresas` e a **grupos** (Django `Group`) via `GrupoCliente` (grupos por cliente).
+- Vinculado a **empresas** via `UsuarioEmpresa` e a **grupos** (Django `Group`) via `PermissaoGrupoCliente` (grupos por cliente).
 - No login, o **cliente** é definido a partir das empresas do usuário (primeiro cliente encontrado).
 - Só enxerga dados do cliente da sessão (`cod_cliente`).
 - Criação/edição de usuários só no contexto do cliente ao qual tem acesso.
@@ -23,17 +23,17 @@ Os campos `is_superuser`, `is_staff` e `is_active` pertencem ao modelo de usuár
 - Na **Home**, pode **trocar o cliente ativo** com o seletor “Cliente ativo (contexto)”.
 - Com um cliente selecionado, pode:
   - Criar e editar **usuários** vinculados a empresas e grupos daquele cliente
-  - Gerenciar **grupos de cliente** (`GrupoCliente`) e **grupos de empresa** (`GrpEmpresas`)
+  - Gerenciar **grupos de cliente** (`PermissaoGrupoCliente`) e **grupos de empresa** (`GrupoEmpresa`)
   - Gerenciar **empresas** e **clientes**
 - Acesso à lista de **clientes** mesmo sem cliente selecionado (para cadastrar o primeiro ou trocar contexto).
 
 ## Modelos relacionados
 
-- **Clientes** – Cliente (contratante).
-- **Empresas** – Empresas do cliente; podem pertencer a um **GrpEmpresas** (grupo de empresas).
-- **UserEmpresas** – Vínculo User ↔ Empresas (quais empresas o usuário acessa).
-- **GrupoCliente** – Vínculo Django `Group` ↔ Cliente (grupos de permissão por cliente).
-- **GrpEmpresas** – Agrupamento de empresas dentro de um cliente.
+- **ClienteGdf** – Cliente (contratante). Tabela: `cliente_gdf`.
+- **Empresa** – Empresas do cliente; podem pertencer a um **GrupoEmpresa** (grupo de empresas). Tabela: `empresa`.
+- **UsuarioEmpresa** – Vínculo User ↔ Empresa (quais empresas o usuário acessa). Tabela: `usuario_empresa`.
+- **PermissaoGrupoCliente** – Vínculo Django `Group` ↔ ClienteGdf (grupos de permissão por cliente). Tabela: `permissao_grupo_cliente`.
+- **GrupoEmpresa** – Agrupamento de empresas dentro de um cliente. Tabela: `grupo_empresa`.
 
 ## Sessão
 

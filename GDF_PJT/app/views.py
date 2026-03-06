@@ -121,7 +121,7 @@ def fn_view_login(request):
         
         if user is not None:
             if not getattr(user, 'is_active', True):
-                return render(request, 'Index_Login.html', {'error_message': 'Usuário inativo.'})
+                return render(request, 'index_Login.html', {'error_message': 'Usuário inativo.'})
             login(request, user)
             cl_gdf_instance = ClGdf()
             cl_gdf_instance.get_dados(request.user)
@@ -149,12 +149,12 @@ def fn_view_login(request):
                     request.session['t_solucoes'] = solucoes or []
                     request.session['cod_cliente'] = cod_cliente
                     return redirect('Home')
-                return render(request, 'Index_Login.html', {'error_message': 'Problema de Acesso.'})
+                return render(request, 'index_Login.html', {'error_message': 'Problema de Acesso.'})
             return redirect('Home')   
         else:
-            return render(request, 'Index_Login.html', {'error_message': 'Usuário ou senha inválidos.'})
+            return render(request, 'index_Login.html', {'error_message': 'Usuário ou senha inválidos.'})
 
-    return render(request, 'Index_Login.html')
+    return render(request, 'index_Login.html')
 
 def fn_view_obter_subsolucao(request, cod_sub): 
     if request.user.is_authenticated:
@@ -428,7 +428,7 @@ def fn_view_home(request):
             atividades.sort(key=lambda x: x['data'] or _epoch, reverse=True)
             context['ultima_atividade'] = atividades[:5]
 
-    return render(request, "Index_Home.html", context)
+    return render(request, "Home/index_Home.html", context)
 
 @login_required
 def fn_view_sair(request):   
@@ -447,7 +447,7 @@ def fn_view_listar_usuarios(request):
         if is_superuser:
             messages.info(request, 'Selecione um cliente na Home para gerenciar usuários.')
             return redirect('Home')
-        return render(request, 'Index_Login.html', {'error_message': 'Acesso negado: cliente não identificado'})
+        return render(request, 'index_Login.html', {'error_message': 'Acesso negado: cliente não identificado'})
     
     cl_gdf = ClGdf()
     t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
@@ -459,7 +459,7 @@ def fn_view_listar_usuarios(request):
     }
     if is_superuser and _superuser_acesso_total_painel(request):
         context['lista_clientes'] = cl_gdf.get_clientes()
-    return render(request, 'Usuarios/Index_Usuarios.html', context)
+    return render(request, 'Usuarios/index_Usuarios.html', context)
 
 # Empresas
 @login_required(login_url='Login')
@@ -481,7 +481,7 @@ def fn_view_listar_empresas(request):
     }
     if is_superuser and _superuser_acesso_total_painel(request):
         context['lista_clientes'] = cl_gdf.get_clientes()
-    return render(request, 'Empresas/Index_Empresas.html', context)
+    return render(request, 'Empresas/index_Empresas.html', context)
 
 # Clientes
 @login_required(login_url='Login')
@@ -494,7 +494,7 @@ def fn_view_listar_clientes(request):
     context = {'t_clientes': t_clientes, 'cod_cliente': cod_cliente}
     if _usuario_acesso_total_painel(request):
         context['is_superuser'] = request.session.get('is_superuser', False)
-    return render(request, 'Clientes/Index_Clientes.html', context)
+    return render(request, 'ClienteGdf/index_ClienteGdf.html', context)
 
 #--------------------------------------------------------------------
 #       Modais Views
@@ -546,7 +546,7 @@ def fn_view_inserir_usuario(request):
             ctx = {'t_user': t_user, 'error_message': ' | '.join(errors), 'cod_cliente': cod_cliente, 'is_superuser': is_superuser}
             if is_superuser and _superuser_acesso_total_painel(request):
                 ctx['lista_clientes'] = cl_gdf.get_clientes()
-            return render(request, 'Usuarios/Index_Usuarios.html', ctx)
+            return render(request, 'Usuarios/index_Usuarios.html', ctx)
 
         resultado = cl_gdf.set_usuario(
             i_v_username=username,
@@ -563,7 +563,7 @@ def fn_view_inserir_usuario(request):
             ctx = {'t_user': t_user, 'error_message': resultado.get("message", "Erro ao criar usuário"), 'cod_cliente': cod_cliente, 'is_superuser': is_superuser}
             if is_superuser and _superuser_acesso_total_painel(request):
                 ctx['lista_clientes'] = cl_gdf.get_clientes()
-            return render(request, 'Usuarios/Index_Usuarios.html', ctx)
+            return render(request, 'Usuarios/index_Usuarios.html', ctx)
         return redirect('Dm_Usuarios')
 
 @login_required(login_url='Login')
@@ -652,15 +652,15 @@ def fn_view_atualizar_usuario(request, user_id):
 def fn_view_dashboard_vendas(request):   
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Vendas')
     if not token:
-        return render(request, 'Index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
-    return render(request, "Dashboard/Index_Vendas.html", {"token": token })
+        return render(request, 'index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
+    return render(request, "Dashboard/index_Vendas.html", {"token": token })
 
 @login_required(login_url='Login')
 def fn_view_dashboard_compras(request):   
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Compras')
     if not token:
-        return render(request, 'Index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
-    return render(request, "Dashboard/Index_Compras.html", {"token": token })
+        return render(request, 'index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
+    return render(request, "Dashboard/index_Compras.html", {"token": token })
 
 #--------------------------------------------------------------------
 #       Sub-soluções Views (Manifesto)
@@ -749,7 +749,7 @@ def fn_view_manifesto_painel(request):
         ]
     }
 
-    return render(request, "Manifesto/Index_Manifesto.html", {"manifesto_data": manifesto_data})
+    return render(request, "Manifesto/index_Manifesto.html", {"manifesto_data": manifesto_data})
 
 #--------------------------------------------------------------------
 #       Empresas - Modais
@@ -1238,7 +1238,7 @@ def fn_view_CargaXml(request):
     cod_cliente = request.session.get('cod_cliente', None)
     
     if not cod_cliente:
-        return render(request, 'Index_Login.html', {'error_message': 'Cliente não identificado'})
+        return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
     
     # Buscar jobs do cliente (todos os registros)
     try:
@@ -2322,7 +2322,7 @@ def fn_view_CargaSped(request):
     """View para carregamento de arquivos SPED (mesma linha de raciocínio da Carga XML)."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
-        return render(request, 'Index_Login.html', {'error_message': 'Cliente não identificado'})
+        return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
     try:
         cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
         jobs = JobCargaSped.objects.filter(gdfcliente=cliente).order_by('-started_at')
@@ -2984,7 +2984,7 @@ def fn_view_Relatorio_Fiscal(request):
     Superuser ou cliente 1000: vê todas as empresas do cliente selecionado (igual Painel Reprocessamento)."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
-        return render(request, 'Index_Login.html', {'error_message': 'Cliente não identificado'})
+        return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
     try:
         cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
         if _usuario_acesso_total_painel(request):

@@ -112,7 +112,7 @@ formData.append('origem_dados', origemDados);    // ✅ Nome correto
 ### 5. Backend Processa
 - Valida cliente autenticado
 - Extrai arquivos, tipo e origem
-- Chama `Carga_xml().set_upload_xml()`
+- Chama `CargaXml().set_upload_xml()`
 - Retorna JSON com detalhes
 
 ### 6. Frontend Atualiza Status

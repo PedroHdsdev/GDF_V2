@@ -12,7 +12,7 @@ Este documento define o padrão único para exibir **erros**, **avisos** e **men
 
 ## 1. Alertas na página
 
-Mensagens aparecem **logo abaixo da barra de navegação**, em uma área única que não sobrepõe o conteúdo (fica no fluxo da página). Não é necessário incluir nenhum container no template: o `Index_Base.html` já possui a área `#notificacoes-global`.
+Mensagens aparecem **logo abaixo da barra de navegação**, em uma área única que não sobrepõe o conteúdo (fica no fluxo da página). Não é necessário incluir nenhum container no template: o `index_Base.html` já possui a área `#notificacoes-global`.
 
 - **Onde:** logo abaixo da navbar; quando há alertas, a área ganha fundo e borda; quando está vazia, não ocupa espaço.
 - **Visual:** cada alerta tem rótulo em destaque (Erro, Aviso, Sucesso, Informação), ícone, texto e botão fechar; animação de entrada e sombra.
@@ -110,7 +110,7 @@ Mantenha no backend: `{"erro": "..."}` ou `{"success": true, "message": "..."}` 
 
 ## 4. Mensagens do Django (servidor)
 
-As mensagens enviadas com `messages.success()`, `messages.error()`, etc. são exibidas automaticamente no topo do conteúdo (Index_Base) com a classe `alert-padrao`.  
+As mensagens enviadas com `messages.success()`, `messages.error()`, etc. são exibidas automaticamente no topo do conteúdo (index_Base) com a classe `alert-padrao`.  
 A tag `error` do Django é estilizada como “perigo” (vermelho) no CSS base.
 
 ---
@@ -142,4 +142,4 @@ Arquivos do padrão:
 
 - **JS:** `app/static/js/NotificacoesPadrao.js`
 - **CSS:** `app/static/css/Style_Base.css` (classes `.alert-padrao`, `#alertas-container`)
-- **Base:** `app/templates/Index_Base.html` (script e Font Awesome incluídos)
+- **Base:** `app/templates/index_Base.html` (script e Font Awesome incluídos)

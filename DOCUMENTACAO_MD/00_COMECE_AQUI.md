@@ -56,6 +56,13 @@ Backup:                Manual → Auto (3x/dia)
 
 ---
 
+## 📁 Documentação
+
+Toda a documentação fica em **DOCUMENTACAO_MD**. Visão por tema: [README.md](README.md).  
+Padrão de nomenclatura do projeto: [WORKBOOK_NOMENCLATURA.md](WORKBOOK_NOMENCLATURA.md).
+
+---
+
 ## 📚 Como Começar (Escolha Seu Caminho)
 
 ### 🚀 CAMINHO 1: COMEÇAR IMPLEMENTAÇÃO AGORA

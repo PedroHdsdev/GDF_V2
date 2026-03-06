@@ -1,4 +1,12 @@
-# 📚 Índice Completo - Auditoria GDF_V2
+# 📚 Índice Completo - Documentação GDF_V2
+
+## 📁 Estrutura da pasta
+
+A pasta **DOCUMENTACAO_MD** reúne toda a documentação do projeto. Visão por tema: [README.md](README.md).
+
+**Nomenclatura e padrões do código:** [WORKBOOK_NOMENCLATURA.md](WORKBOOK_NOMENCLATURA.md) — models Public (ClienteGdf, Empresa, etc.), módulo `app.classes` (ClGdf, CargaXml, CargaSped, SapRfc), prefixos e convenções.
+
+---
 
 ## 🎯 Acesso Rápido por Necessidade
 

@@ -668,8 +668,8 @@ SCRIPT HELPER:
 - ✅ Login
 - ✅ Home
 - ✅ Usuários
-- ✅ Empresas
-- ✅ Clientes
+- ✅ Empresa (model Public)
+- ✅ ClienteGdf (model Public)
 - ✅ Dashboard
 - ✅ Busca
 

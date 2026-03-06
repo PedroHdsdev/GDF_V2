@@ -257,10 +257,10 @@ Extrai nó `<total><ICMSTot>` e cria NFe_Total.
 ## Como Usar
 
 ```python
-from app.classes.CargaXml import Carga_xml
+from app.classes.CargaXml import CargaXml
 
 # Instanciar classe
-carga = Carga_xml()
+carga = CargaXml()
 
 # Processar XMLs
 result = carga.set_upload_xml(

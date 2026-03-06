@@ -29,7 +29,7 @@ NFe ENTRADA (tpNF=0)
 ### Antes (Incorreto):
 ```python
 # Sempre buscava pelo emitente, mesmo em notas de entrada
-empresa = Empresas.objects.get(cnpj=emitente_cnpj)  # ❌ Errado para entrada!
+empresa = Empresa.objects.get(cnpj=emitente_cnpj)  # ❌ Errado para entrada!
 ```
 
 ### Depois (Correto):
@@ -44,8 +44,8 @@ else:  # ENTRADA (0)
 
 # Buscar empresa com validação
 try:
-    empresa = Empresas.objects.get(cnpj=cnpj_para_busca)
-except Empresas.DoesNotExist:
+    empresa = Empresa.objects.get(cnpj=cnpj_para_busca)
+except Empresa.DoesNotExist:
     raise ValueError(
         f"Empresa não encontrada no registro. "
         f"NFe {tipo_nfe}: CNPJ {cnpj_para_busca} não existe na base de dados."
@@ -63,7 +63,7 @@ Destinatário: XYZ Ltda (CNPJ: 98.765.432/0001-11)
 
 tpNF = 1 (Saída)
     ↓
-Busca: Empresas.objects.get(cnpj='12345678000100')
+Busca: Empresa.objects.get(cnpj='12345678000100')
     ↓
 Se encontrar ✅ → Cria NFe com essa empresa
 Se não ❌ → Erro: "Empresa 12345678000100 não encontrada"
@@ -76,7 +76,7 @@ Destinatário: ABC Ltda (CNPJ: 12.345.678/0001-00)
 
 tpNF = 0 (Entrada)
     ↓
-Busca: Empresas.objects.get(cnpj='12345678000100')
+Busca: Empresa.objects.get(cnpj='12345678000100')
     ↓
 Se encontrar ✅ → Cria NFe com essa empresa
 Se não ❌ → Erro: "Empresa 12345678000100 não encontrada"
@@ -166,8 +166,8 @@ def set_nfe(xml_data, origem_dados, usuario):
         cnpj_para_busca = destinatario_cnpj
     
     try:
-        empresa = Empresas.objects.get(cnpj=cnpj_para_busca)
-    except Empresas.DoesNotExist:
+        empresa = Empresa.objects.get(cnpj=cnpj_para_busca)
+    except Empresa.DoesNotExist:
         raise ValueError(f"CNPJ {cnpj_para_busca} não encontrado!")
     
     # 10. Criar NFe
@@ -194,7 +194,7 @@ NFe
   ├─ identificacao → NFe_Identificacao (1:1)
   ├─ emitente → NFe_Emitente (FK)
   ├─ destinatario → NFe_Destinatario (FK, nullable)
-  └─ empresa → Empresas (FK)
+  └─ empresa → Empresa (FK)
        └─ Busca pela empresa correta baseado no tipo de NFe
 ```
 

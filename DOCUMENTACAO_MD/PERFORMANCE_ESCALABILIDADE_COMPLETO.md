@@ -145,7 +145,7 @@ FALTAM:
 **Antes:**
 ```python
 # ❌ ERRADO - Campo 'identificacao_id' não existe
-nfe_queryset = NFe.objects.filter(filter_Empresas).values(*ls.ls_g_nfe)
+nfe_queryset = NFe.objects.filter(filter_empresas).values(*ls.ls_g_nfe)
 heard_queryset = NFe_Identificacao.objects.filter(
     identificacao_id__in=nfe_queryset.values_list('identificacao_id', flat=True)
 )
@@ -188,7 +188,7 @@ class NFe_Produto(models.Model):
 if tipo_relatorio == "Vendas":
     # 1️⃣ Filtrar NFe por empresa e tipo operação (SAÍDA)
     nfe_queryset = NFe.objects.filter(
-        filter_Empresas,  # Por empresa do usuário
+        filter_empresas,  # Por empresa do usuário
         identificacao__tipo_operacao='1'  # Saída
     ).select_related('identificacao')
     

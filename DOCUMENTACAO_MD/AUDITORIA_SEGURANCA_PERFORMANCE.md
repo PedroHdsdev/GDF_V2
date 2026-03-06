@@ -223,7 +223,7 @@ fetch('/usuario/inserir/', {
 # ❌ Potencial IDOR:
 def fn_view_atualizar_usuario(request, user_id):
     # Apenas valida cod_cliente genérico, mas não valida se user_id é do cliente
-    user_belongs_to_client = UserEmpresas.objects.filter(
+    user_belongs_to_client = UsuarioEmpresa.objects.filter(
         user_id=user_id,
         empresa__cliente__cod_cliente=cod_cliente
     ).exists()
@@ -231,7 +231,7 @@ def fn_view_atualizar_usuario(request, user_id):
     # Isso está BOM! Mas em empresas pode estar faltando:
 ```
 
-**Problema em Empresas**:
+**Problema em Empresa**:
 ```python
 # ❌ Falta validação IDOR completa:
 def fn_view_atualizar_empresa(request, cod_empresa):
@@ -258,7 +258,7 @@ def fn_view_atualizar_empresa(request, cod_empresa):
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
     # ✅ VALIDAÇÃO IDOR: Empresa deve pertencer ao cliente
-    empresa_pertence_cliente = Empresas.objects.filter(
+    empresa_pertence_cliente = Empresa.objects.filter(
         cod_empresa=cod_empresa,
         cliente__cod_cliente=cod_cliente
     ).exists()
@@ -496,7 +496,7 @@ def fn_api_processar_xml(request):
                 'erros': erros
             }, status=400)
         
-        cl_xml = Carga_xml()
+        cl_xml = CargaXml()
         upload_result = cl_xml.set_upload_xml(
             validos,
             request.POST.get('type_xml', 'NFe'),
@@ -795,7 +795,7 @@ def fn_view_listar_usuarios(request):
 ```python
 # ❌ Sem cache - 100 usuários = 100 queries idênticas:
 def get_empresas(self, i_v_cod_cliente=None):
-    l_v_queryset_empresas = Empresas.objects.filter(
+    l_v_queryset_empresas = Empresa.objects.filter(
         cliente__cod_cliente=i_v_cod_cliente,
         is_active=True
     ).select_related('cert')  # Executada toda vez!
@@ -829,7 +829,7 @@ def get_empresas(self, i_v_cod_cliente=None):
     
     # ❌ Se não em cache, executar query
     lsl_dados_empresas = []
-    l_v_queryset_empresas = Empresas.objects.filter(
+    l_v_queryset_empresas = Empresa.objects.filter(
         cliente__cod_cliente=i_v_cod_cliente,
         is_active=True
     ).select_related('cert')
@@ -864,8 +864,8 @@ def fn_view_atualizar_empresa(request, cod_empresa):
 **Problema**:
 ```python
 # ❌ Modelos com buscas frequentes mas sem índices:
-class UserEmpresas(models.Model):
-    empresa = models.ForeignKey(Empresas, models.CASCADE)
+class UsuarioEmpresa(models.Model):
+    empresa = models.ForeignKey(Empresa, models.CASCADE)
     user = models.ForeignKey(User, models.CASCADE)
     # ❌ SEM índice composto - buscas lentas!
 ```
@@ -873,8 +873,8 @@ class UserEmpresas(models.Model):
 **Solução**:
 ```python
 # ✅ Adicionar índices:
-class UserEmpresas(models.Model):
-    empresa = models.ForeignKey(Empresas, models.CASCADE)
+class UsuarioEmpresa(models.Model):
+    empresa = models.ForeignKey(Empresa, models.CASCADE)
     user = models.ForeignKey(User, models.CASCADE)
     
     class Meta:
@@ -884,11 +884,11 @@ class UserEmpresas(models.Model):
             models.Index(fields=['user', 'empresa']),
         ]
 
-class Empresas(models.Model):
+class Empresa(models.Model):
     cod_empresa = models.CharField(primary_key=True, max_length=10)
     cnpj = models.CharField(unique=True, max_length=14)
     razao = models.CharField(unique=True, max_length=120, blank=True, null=True)
-    cliente = models.ForeignKey(Clientes, models.CASCADE)
+    gdfcliente = models.ForeignKey(ClienteGdf, models.CASCADE, db_column='gdfcliente_id')
     is_active = models.BooleanField(db_index=True)  # Índice simples
     
     class Meta:
@@ -1115,12 +1115,12 @@ CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutos
 
 # tasks.py
 from celery import shared_task
-from app.classes.CargaXml import Carga_xml
+from app.classes.CargaXml import CargaXml
 
 @shared_task
 def processar_xml_async(arquivo_ids, tipo_xml, origem_dados, username):
     """Processa XML em background"""
-    cl_xml = Carga_xml()
+    cl_xml = CargaXml()
     resultado = cl_xml.set_upload_xml(arquivo_ids, tipo_xml, origem_dados, username)
     return resultado
 
