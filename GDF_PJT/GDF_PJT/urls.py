@@ -16,6 +16,7 @@ urlpatterns = [
     #ADM
     path('usuarios/', views.fn_view_listar_usuarios, name='Dm_Usuarios'),
     path('empresas/', views.fn_view_listar_empresas, name='Dm_Empresas'),
+    path('filiais/', views.fn_view_listar_filiais, name='Dm_Filiais'),
     path('clientes/', views.fn_view_listar_clientes, name='Dm_Clientes'),
     
     # PROCESSAMENTO FISCAL (Carga XML, Carga SPED, Relatório)
@@ -90,9 +91,11 @@ urlpatterns = [
     
     # Empresas
     path('empresa/inserir/', views.fn_view_inserir_empresa, name='Empresa_ins'),
-    path('empresa/grupo/inserir/', views.fn_view_inserir_grp_empresa, name='Empresa_Grp_ins'),
     path('empresa/Cert/', views.fn_view_atualizar_certificado, name='Cert_upd'),
     path('empresa/<str:cod_empresa>/', views.fn_view_atualizar_empresa, name='Empresa_upd'),
+
+    # Filiais
+    path('filial/inserir/', views.fn_view_inserir_filial, name='Filial_ins'),
 
     # Clientes
     path('cliente/inserir/', views.fn_view_inserir_cliente, name='Cliente_ins'),

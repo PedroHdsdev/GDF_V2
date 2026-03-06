@@ -264,14 +264,14 @@ class SapRfc:
         )
 
 
-def enviar_condicoes_pagamento_sap(id_lote, cod_empresa, condicoes_lista):
+def enviar_condicoes_pagamento_sap(id_lote, cod_cliente, condicoes_lista):
     """
     Envia as condições de pagamento ao SAP via RFC e retorna o que o SAP aplicou por chave.
-    Usa a tabela SapConnection para obter conexões ativas (por cliente/empresa).
+    Usa cod_cliente (do lote/grupo) para obter a conexão SAP.
 
     Args:
         id_lote: ID do lote (reprocessamento).
-        cod_empresa: Código da empresa (para mapear sistema SAP).
+        cod_cliente: Código do cliente GDF (para mapear conexão SAP).
         condicoes_lista: Lista de dict com chave_nfe, numero_nfe, serie_nfe,
                          condicao_pagamento_nfe, condicao_pagamento_sap (opcional).
 
@@ -296,16 +296,6 @@ def enviar_condicoes_pagamento_sap(id_lote, cod_empresa, condicoes_lista):
             'retornos': retornos,
         }
 
-    from app.db_GDF.Public.models import Empresa
-
-    cod_cliente = None
-    try:
-        empresa = Empresa.objects.select_related('cliente').get(cod_empresa=cod_empresa)
-        if empresa.gdfcliente:
-            cod_cliente = empresa.gdfcliente.cod_cliente
-    except Empresa.DoesNotExist:
-        pass
-
     if not cod_cliente:
         retornos = [
             {'chave_nfe': (c.get('chave_nfe') or ''), 'condicao_sap': (c.get('condicao_pagamento_sap') or c.get('condicao_pagamento_nfe') or '-')}
@@ -313,7 +303,7 @@ def enviar_condicoes_pagamento_sap(id_lote, cod_empresa, condicoes_lista):
         ]
         return {
             'sucesso': False,
-            'mensagem': 'Empresa sem cliente vinculado ou empresa não encontrada. Não é possível obter conexão SAP.',
+            'mensagem': 'Cliente não informado. Não é possível obter conexão SAP.',
             'retornos': retornos,
         }
 

@@ -8,7 +8,6 @@ function relatorioTabAtivo() {
 function relatorioParams() {
     var params = {
         empresa_id: (document.getElementById('relatorio-empresa') && document.getElementById('relatorio-empresa').value.trim()) || '',
-        grp_empresa: (document.getElementById('relatorio-grp-empresa') && document.getElementById('relatorio-grp-empresa').value.trim()) || '',
         data_inicio: (document.getElementById('relatorio-data-inicio') && document.getElementById('relatorio-data-inicio').value.trim()) || '',
         data_fim: (document.getElementById('relatorio-data-fim') && document.getElementById('relatorio-data-fim').value.trim()) || '',
         busca: (document.getElementById('relatorio-busca') && document.getElementById('relatorio-busca').value.trim()) || ''
@@ -27,7 +26,6 @@ function relatorioParams() {
 function relatorioBuildUrl(base, params) {
     var q = new URLSearchParams();
     if (params.empresa_id) q.set('empresa_id', params.empresa_id);
-    if (params.grp_empresa) q.set('grp_empresa', params.grp_empresa);
     if (params.data_inicio) q.set('data_inicio', params.data_inicio);
     if (params.data_fim) q.set('data_fim', params.data_fim);
     if (params.busca) q.set('busca', params.busca);

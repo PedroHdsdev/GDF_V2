@@ -17,7 +17,6 @@ document.addEventListener("DOMContentLoaded", () => {
     
     fn_init_paginacao();
     fn_init_busca();
-    fn_init_grp_empresa_ins();
     fn_init_empresa_ins();
     fn_init_empresa_upd();
 });
@@ -245,44 +244,6 @@ function fn_init_paginacao() {
 /* ===============================
    INS – INSERT EMPRESA
 ================================ */ 
-/* ===============================
-   MODAL CRIAR GRUPO DE EMPRESAS (vinculado ao cliente do usuário logado)
-================================ */
-function fn_init_grp_empresa_ins() {
-    const modalEl = document.getElementById("modalGrpEmpresaIns");
-    if (!modalEl) {
-        console.warn("Script_Empresas: modal modalGrpEmpresaIns não encontrado.");
-        return;
-    }
-
-    // Delegação: capturar clique no botão (mesmo que carregado depois)
-    document.addEventListener("click", function(e) {
-        const btn = e.target.closest("#btnAbrirModalGrpEmpresaIns");
-        if (!btn) return;
-        e.preventDefault();
-        e.stopPropagation();
-
-        const el = document.getElementById("modalGrpEmpresaIns");
-        if (!el) return;
-
-        fn_fechar_modal_aberto();
-        og_estado_empresas.modalAberto = "modalGrpEmpresaIns";
-        const modal = new bootstrap.Modal(el, { backdrop: "static", keyboard: false });
-        modal.show();
-    });
-
-    modalEl.addEventListener("show.bs.modal", () => {
-        if (typeof Notificacoes !== 'undefined') Notificacoes.limparModal('modalGrpEmpresaInsAlerts');
-    });
-    modalEl.addEventListener("hidden.bs.modal", () => {
-        const form = modalEl.querySelector("form");
-        if (form) form.reset();
-        if (og_estado_empresas.modalAberto === "modalGrpEmpresaIns") {
-            og_estado_empresas.modalAberto = null;
-        }
-    });
-}
-
 function fn_init_empresa_ins() {
     const btnAbrirModal = document.getElementById("btnAbrirModalEmpresaIns");
     const modalEl = document.getElementById("modalEmpresaIns");
@@ -310,8 +271,6 @@ function fn_init_empresa_ins() {
             });
             if (resp.ok) {
                 const data = await resp.json();
-                const grupos = data.todos_grupos || [];
-                fn_preencher_select_grupos(grupos);
                 og_estado_empresas.modalAberto = "modalEmpresaIns";
                 const modal = new bootstrap.Modal(modalEl, { backdrop: "static", keyboard: false });
                 modal.show();
@@ -319,7 +278,7 @@ function fn_init_empresa_ins() {
                 Notificacoes.pagina('Erro ao carregar dados. Se for superusuário, selecione o cliente primeiro.', 'danger');
             }
         } catch (err) {
-            console.error('Erro ao buscar grupos:', err);
+            console.error('Erro ao carregar dados:', err);
             Notificacoes.pagina('Erro de conexão. Tente novamente.', 'danger');
         }
     });
@@ -334,73 +293,6 @@ function fn_init_empresa_ins() {
             og_estado_empresas.modalAberto = null;
         }
     });
-
-    // Superuser: ao trocar o cliente, recarregar grupos do select
-    const codClienteSelect = document.getElementById('ins_cod_cliente');
-    if (codClienteSelect) {
-        codClienteSelect.addEventListener("change", async () => {
-            const cod = codClienteSelect.value;
-            if (!cod) return;
-            try {
-                const resp = await fetch('/empresa/inserir/?cod_cliente=' + encodeURIComponent(cod), {
-                    method: 'GET',
-                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
-                });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    fn_preencher_select_grupos(data.todos_grupos || []);
-                }
-            } catch (err) {
-                console.error('Erro ao recarregar grupos por cliente:', err);
-            }
-        });
-    }
-}
-
-/* ===============================
-   PREENCHER SELECT DE GRUPOS
-================================ */
-function fn_preencher_select_grupos(grupos) {
-    console.log("🎯 fn_preencher_select_grupos chamado com:", grupos);
-    
-    const select = document.getElementById("ins_grpempresas");
-    if (!select) {
-        console.error("❌ Select ins_grpempresas não encontrado!");
-        return;
-    }
-    
-    console.log("✅ Select encontrado, options atuais:", select.options.length);
-    
-    // Limpar opções existentes (manter apenas a primeira "Selecione um grupo")
-    while (select.options.length > 1) {
-        select.removeChild(select.lastChild);
-    }
-    
-    console.log("🧹 Select limpo, options restantes:", select.options.length);
-    
-    // Se não há grupos, mostrar aviso
-    if (!grupos || grupos.length === 0) {
-        console.warn("⚠️  Nenhum grupo encontrado!");
-        return;
-    }
-    
-    // Adicionar grupos
-    grupos.forEach((grp, index) => {
-        console.log(`  Processando grupo ${index + 1}:`, grp);
-        const option = document.createElement('option');
-        
-        const grpValue = grp.grp_empresa || grp.id || '';
-        const grpDesc = grp.descricao || grp.nome || grp.grp_empresa || grp.id || '';
-        
-        option.value = grpValue;
-        option.textContent = `${grpValue} - ${grpDesc}`;
-        
-        select.appendChild(option);
-        console.log(`    ✅ Adicionado: value="${option.value}" text="${option.textContent}"`);
-    });
-    
-    console.log(`✅ Total final de options no select: ${select.options.length}`);
-    console.log(`✅ ${grupos.length} grupos adicionados ao select`);
 }
 
 /* ===============================
@@ -525,7 +417,6 @@ function fn_preencher_formulario(data) {
   document.getElementById('upd_cnae').value = data.cnae || '';
   document.getElementById('upd_iest').value = data.iest || '';
   document.getElementById('upd_suframa').value = data.suframa || '';
-  document.getElementById('upd_grpEmpresa_id').value = data.grp_empresa || '';
   document.getElementById('upd_chave_acesso').value = data.chave_acesso || '';
   document.getElementById('upd_cliente_id').value = data.cod_cliente || '';
     document.getElementById('upd_cert_codempresa').value = data.cod_empresa || '';
@@ -632,7 +523,6 @@ function saveOriginalFormData() {
     crt: document.getElementById('upd_crt').value,
     cnae: document.getElementById('upd_cnae').value,
     suframa: document.getElementById('upd_suframa').value,
-    grpEmpresa: document.getElementById('upd_grpEmpresa_id').value,
     chaveAcesso: document.getElementById('upd_chave_acesso').value,
     matriz: document.getElementById('upd_matriz').checked
   };
@@ -650,7 +540,6 @@ function restoreOriginalFormData() {
   document.getElementById('upd_crt').value = og_estado_empresas.originalFormData.crt || '';
   document.getElementById('upd_cnae').value = og_estado_empresas.originalFormData.cnae || '';
   document.getElementById('upd_suframa').value = og_estado_empresas.originalFormData.suframa || '';
-  document.getElementById('upd_grpEmpresa_id').value = og_estado_empresas.originalFormData.grpEmpresa || '';
   document.getElementById('upd_chave_acesso').value = og_estado_empresas.originalFormData.chaveAcesso || '';
   document.getElementById('upd_matriz').checked = og_estado_empresas.originalFormData.matriz || false;
 }
@@ -688,14 +577,12 @@ function fn_validar_formulario_ins(event) {
     const cnpj = document.getElementById('ins_cnpj').value.trim();
     const razao = document.getElementById('ins_razao').value.trim();
     const fantasia = document.getElementById('ins_fantasia').value.trim();
-    const grp_empresa = document.getElementById('ins_grpempresas').value;
     
     const errors = [];
     if (!cod_empresa) errors.push("Código da empresa é obrigatório");
     if (!cnpj) errors.push("CNPJ é obrigatório");
     if (!razao) errors.push("Razão Social é obrigatória");
     if (!fantasia) errors.push("Nome Fantasia é obrigatório");
-    if (!grp_empresa) errors.push("Selecione um Grupo de Empresas");
     
     if (errors.length > 0) {
         Notificacoes.modal("Erros:\n\n" + errors.join("\n"), 'danger', 'modalEmpresaInsAlerts');

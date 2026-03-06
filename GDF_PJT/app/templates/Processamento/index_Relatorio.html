@@ -69,15 +69,6 @@
                 <h6 class="fw-600 mb-3">Filtros</h6>
                 <div class="row g-3">
                     <div class="col-md-2">
-                        <label class="form-label">Grupo de empresa</label>
-                        <select id="relatorio-grp-empresa" class="form-select">
-                            <option value="">Todos</option>
-                            {% for grp in grupos_empresa %}
-                                <option value="{{ grp.grp_empresa }}">{{ grp.grp_empresa }}{% if grp.descricao %} – {{ grp.descricao }}{% endif %}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-2">
                         <label class="form-label">Empresa</label>
                         <select id="relatorio-empresa" class="form-select">
                             <option value="">Todas</option>

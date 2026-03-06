@@ -1,6 +1,6 @@
 from django.contrib             import admin
 from app.db_GDF.Public.models   import (
-    CertificadoDigital, ClienteGdf, Empresa, PermissaoGrupoCliente, GrupoEmpresa,
+    CertificadoDigital, ClienteGdf, Empresa, Filial, PermissaoGrupoCliente,
     Solucao, Subsolucao, AcessoSolucaoCliente, AcessoSubsolucaoGrupo, UsuarioEmpresa,
 )
 
@@ -114,16 +114,17 @@ class AcessoSubsolucaoGrupoAdmin(admin.ModelAdmin):
 
 
 # ============================================================================
-# GRUPOS DE EMPRESAS
+# FILIAIS
 # ============================================================================
-@admin.register(GrupoEmpresa)
-class GrupoEmpresaAdmin(admin.ModelAdmin):
-    list_display = ('grp_empresa', 'descricao', 'gdfcliente')
-    list_filter = ('gdfcliente',)
-    search_fields = ('grp_empresa', 'descricao', 'gdfcliente__razao')
+@admin.register(Filial)
+class FilialAdmin(admin.ModelAdmin):
+    list_display = ('cod_filial', 'nome', 'empresa', 'ativo')
+    list_filter = ('empresa', 'ativo')
+    search_fields = ('cod_filial', 'nome', 'empresa__razao')
+    raw_id_fields = ('empresa',)
     fieldsets = (
-        ('Informações do Grupo', {
-            'fields': ('grp_empresa', 'descricao', 'gdfcliente')
+        ('Informações da Filial', {
+            'fields': ('cod_filial', 'empresa', 'nome', 'cnpj', 'ativo')
         }),
     )
 
@@ -139,13 +140,13 @@ class UsuarioEmpresaInline(admin.TabularInline):
 
 @admin.register(Empresa)
 class EmpresaAdmin(admin.ModelAdmin):
-    list_display = ('cod_empresa', 'razao', 'fantasia', 'cnpj', 'gdfcliente', 'grp_empresa')
-    list_filter = ('gdfcliente', 'grp_empresa', 'tipo', 'matriz')
+    list_display = ('cod_empresa', 'razao', 'fantasia', 'cnpj', 'gdfcliente')
+    list_filter = ('gdfcliente', 'tipo', 'matriz')
     search_fields = ('cod_empresa', 'razao', 'fantasia', 'cnpj')
     inlines = [UsuarioEmpresaInline]
     fieldsets = (
         ('Informações Básicas', {
-            'fields': ('cod_empresa', 'razao', 'fantasia', 'cnpj', 'gdfcliente', 'grp_empresa')
+            'fields': ('cod_empresa', 'razao', 'fantasia', 'cnpj', 'gdfcliente')
         }),
         ('Fiscalização', {
             'fields': ('ie', 'im', 'cnae', 'iest', 'suframa', 'crt')

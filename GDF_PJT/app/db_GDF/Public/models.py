@@ -33,7 +33,13 @@ class CertificadoDigital(models.Model):
 # Cliente GDF e empresas
 # ---------------------------------------------------------------------------
 class ClienteGdf(models.Model):
-    """Cliente do sistema GDF (contratante; pode ter várias empresas)."""
+    """
+    Cliente do sistema GDF (contratante; pode ter várias empresas).
+    Tabela principal: ao apagar um cliente no PostgreSQL, todos os registros vinculados
+    são apagados em cascata via on_delete=models.CASCADE das FKs (Empresa → Filial,
+    NFe, CTe, NFSe, reprocessamento, parâmetros/jobs de carga, SPED, permissões, etc.).
+    Não expor exclusão de cliente ao usuário; uso apenas admin/backoffice.
+    """
     cod_cliente = models.CharField(primary_key=True, max_length=10)
     razao = models.CharField(unique=True, max_length=120, blank=True, null=True)
     cnpj = models.CharField(unique=True, max_length=14)
@@ -51,21 +57,6 @@ class ClienteGdf(models.Model):
         return f"{self.cod_cliente} - {self.razao}"
 
 
-class GrupoEmpresa(models.Model):
-    """Grupo de empresas (agrupamento lógico por cliente)."""
-    grp_empresa = models.CharField(primary_key=True, max_length=5)
-    descricao = models.CharField(max_length=80, blank=True, null=True)
-    gdfcliente = models.ForeignKey(
-        ClienteGdf, models.CASCADE, blank=True, null=True, db_column='gdfcliente_id'
-    )
-
-    class Meta:
-        managed = True
-        db_table = 'grupo_empresa'
-        verbose_name = 'Grupo de empresas'
-        verbose_name_plural = 'Grupos de empresas'
-
-
 class Empresa(models.Model):
     """Empresa (estabelecimento) vinculada a um cliente GDF."""
     cod_empresa = models.CharField(primary_key=True, max_length=10)
@@ -80,9 +71,6 @@ class Empresa(models.Model):
     cnae = models.CharField(max_length=7, blank=True, null=True)
     iest = models.CharField(max_length=18, blank=True, null=True)
     suframa = models.CharField(max_length=10, blank=True, null=True)
-    grp_empresa = models.ForeignKey(
-        GrupoEmpresa, models.SET_NULL, blank=True, null=True
-    )
     chave_acesso = models.CharField(max_length=40, blank=True, null=True)
     cert = models.ForeignKey(
         CertificadoDigital, models.DO_NOTHING, blank=True, null=True
@@ -100,6 +88,29 @@ class Empresa(models.Model):
 
     def __str__(self):
         return f"{self.cod_empresa} - {self.fantasia or self.razao}"
+
+
+class Filial(models.Model):
+    """Filial vinculada a uma empresa (ClienteGdf → Empresa → Filial)."""
+    id = models.BigAutoField(primary_key=True)
+    cod_filial = models.CharField(max_length=10, db_index=True)
+    empresa = models.ForeignKey(
+        Empresa, models.CASCADE, related_name='filiais', db_index=True
+    )
+    nome = models.CharField(max_length=120, blank=True, null=True)
+    cnpj = models.CharField(max_length=14, blank=True, null=True)
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        managed = True
+        db_table = 'filial'
+        verbose_name = 'Filial'
+        verbose_name_plural = 'Filiais'
+        unique_together = (('empresa', 'cod_filial'),)
+        indexes = [models.Index(fields=['empresa', 'cod_filial'])]
+
+    def __str__(self):
+        return f"{self.cod_filial} - {self.nome or self.empresa_id}"
 
 
 # ---------------------------------------------------------------------------

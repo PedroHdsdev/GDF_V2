@@ -34,7 +34,7 @@ from app.db_GDF.Public.models import (
     ClienteGdf,
     ConexaoSap,
     Empresa,
-    GrupoEmpresa,
+    Filial,
     JobCargaSped,
     JobCargaXml,
     ParametroCargaSped,
@@ -117,13 +117,13 @@ def fn_view_login(request):
 
             request.session['is_superuser'] = getattr(user, 'is_superuser', False)
             request.session['is_staff'] = getattr(user, 'is_staff', False)
-            # Superuser vinculado ao cliente 1000: acesso total (compatibilidade)
+            # Superuser vinculado ao cliente dono do projeto (PRCIT): acesso total (compatibilidade)
             _cliente = getattr(cl_gdf_instance, 'Cliente', None)
             _cod = getattr(_cliente, 'cod_cliente', None) if _cliente else None
             request.session['superuser_cliente_1000'] = (
                 getattr(user, 'is_superuser', False) and _cod is not None and str(_cod).strip() == COD_CLIENTE_PROJETO
             )
-            # Usuário (não superuser) vinculado ao cliente 1000: acesso total como empresa dona do projeto
+            # Usuário (não superuser) vinculado ao cliente PRCIT: acesso total como empresa dona do projeto
             request.session['usuario_cliente_1000'] = (
                 not getattr(user, 'is_superuser', False) and usuario_vinculado_cliente_1000(user)
             )
@@ -134,12 +134,19 @@ def fn_view_login(request):
                     cl_gdf_instance.ClienteGdf.cod_cliente
                     if getattr(cl_gdf_instance, 'ClienteGdf', None) else None
                 )
+                cod_cliente = (cod_cliente or '').strip() or None
+                # Primeira vez / sem cliente: superuser ou cliente PRCIT começam com cliente dono do projeto
+                if not cod_cliente and (getattr(user, 'is_superuser', False) or request.session.get('usuario_cliente_1000', False)):
+                    cod_cliente = COD_CLIENTE_PROJETO
                 if solucoes or getattr(user, 'is_superuser', False):
                     request.session['t_solucoes'] = solucoes or []
                     request.session['cod_cliente'] = cod_cliente
                     return redirect('Home')
                 return render(request, 'index_Login.html', {'error_message': 'Problema de Acesso.'})
-            return redirect('Home')   
+            # Redirecionamento sem solucoes (ex.: Retorn True): manter cliente dono do projeto (PRCIT) como padrão
+            if not request.session.get('cod_cliente') and (getattr(user, 'is_superuser', False) or request.session.get('usuario_cliente_1000', False)):
+                request.session['cod_cliente'] = COD_CLIENTE_PROJETO
+            return redirect('Home')
         else:
             return render(request, 'index_Login.html', {'error_message': 'Usuário ou senha inválidos.'})
 
@@ -164,8 +171,8 @@ def fn_view_home(request):
     if not request.user.is_authenticated:
         return redirect('Login')
     cod_cliente = request.session.get('cod_cliente')
-    # Superuser ou usuário cliente 1000: permitir trocar cliente por POST
-    _REDIRECT_NAMES = ('Home', 'Dm_Empresas', 'Dm_Usuarios', 'Dm_Clientes')
+    # Superuser ou usuário cliente dono do projeto (PRCIT): permitir trocar cliente por POST
+    _REDIRECT_NAMES = ('Home', 'Dm_Empresas', 'Dm_Usuarios', 'Dm_Clientes', 'Dm_Filiais')
     if request.method == "POST":
         codigo = request.POST.get('codigo')
         novo_cliente = request.POST.get('cod_cliente', '').strip()
@@ -254,22 +261,18 @@ def fn_view_home(request):
 
         # 4. Divergências abertas no reprocessamento (requer Reproc_Painel)
         if _tem_acesso('Reproc_Painel'):
-            empresas_cod = list(Empresa.objects.filter(
-                gdfcliente__cod_cliente=cod_cliente
-            ).values_list('cod_empresa', flat=True))
-            if empresas_cod:
-                divergencias = Divergencia.objects.filter(
-                    lote__cod_empresa__in=empresas_cod,
-                    status='ABERTA',
-                ).count()
-                if divergencias > 0:
-                    context['alertas'].append({
-                        'tipo': 'warning',
-                        'titulo': f'{divergencias} divergência(s) aberta(s) no confronto SPED x NFe',
-                        'meta': 'Reprocessamento',
-                        'tag': 'Revisar',
-                        'url': 'Reproc_Painel',
-                    })
+            divergencias = Divergencia.objects.filter(
+                lote__empresa__gdfcliente_id=cod_cliente,
+                status='ABERTA',
+            ).count()
+            if divergencias > 0:
+                context['alertas'].append({
+                    'tipo': 'warning',
+                    'titulo': f'{divergencias} divergência(s) aberta(s) no confronto SPED x NFe',
+                    'meta': 'Reprocessamento',
+                    'tag': 'Revisar',
+                    'url': 'Reproc_Painel',
+                })
 
         # 5. Atalhos informativos (apenas um por área, para quem tem acesso)
         if _tem_acesso('Pro_CargaXml') or _tem_acesso('Pro_CargaSped'):
@@ -337,11 +340,13 @@ def fn_view_home(request):
     context['atalhos'] = []
     context['tem_mnf'] = _tem_acesso('Mnf_Painel')
     context['tem_empresas'] = _tem_acesso('Dm_Empresas')
+    context['tem_filiais'] = _tem_acesso('Dm_Filiais')
     _atalhos_config = [
         ('Pro_CargaXml', 'Importar XML', 'Carga diária'),
         ('Pro_CargaSped', 'Carga SPED', 'Arquivos SPED'),
         ('Pro_Relatorio', 'Relatório Fiscal', 'NFe, CTe, NFS, SPED'),
         ('Dm_Empresas', 'Empresas', 'Cadastros'),
+        ('Dm_Filiais', 'Filiais', 'Cadastros'),
         ('Dm_Usuarios', 'Usuários', 'Acessos'),
     ]
     for cod, titulo, desc in _atalhos_config:
@@ -484,6 +489,76 @@ def fn_view_listar_clientes(request):
     if usuario_acesso_total_painel(request):
         context['is_superuser'] = request.session.get('is_superuser', False)
     return render(request, 'ClienteGdf/index_ClienteGdf.html', context)
+
+
+# Filiais (subsolução Administração)
+@login_required(login_url='Login')
+def fn_view_listar_filiais(request):
+    cod_cliente = request.session.get('cod_cliente', None)
+    is_superuser = request.session.get('is_superuser', False)
+    if not cod_cliente:
+        if is_superuser:
+            messages.info(request, 'Selecione um cliente na Home para gerenciar filiais.')
+            return redirect('Home')
+        return redirect('Login')
+    filiais = (
+        Filial.objects.filter(empresa__gdfcliente__cod_cliente=cod_cliente)
+        .select_related('empresa')
+        .order_by('empresa__cod_empresa', 'cod_filial')
+    )
+    empresas = list(
+        Empresa.objects.filter(gdfcliente_id=cod_cliente)
+        .order_by('fantasia', 'razao')
+        .values('cod_empresa', 'razao', 'fantasia')
+    )
+    context = {
+        'filiais': filiais,
+        'empresas': empresas,
+        'cod_cliente': cod_cliente,
+        'is_superuser': is_superuser,
+    }
+    if is_superuser and superuser_acesso_total_painel(request):
+        context['lista_clientes'] = ClGdf().get_clientes()
+    return render(request, 'Filiais/index_Filiais.html', context)
+
+
+@login_required(login_url='Login')
+@require_http_methods(["POST"])
+def fn_view_inserir_filial(request):
+    """Cadastrar nova filial (empresa do cliente na sessão)."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+    cod_empresa = request.POST.get("m_empresa", "").strip()
+    cod_filial = request.POST.get("m_cod_filial", "").strip()
+    nome = request.POST.get("m_nome", "").strip()
+    cnpj = request.POST.get("m_cnpj", "").strip()
+    ativo = request.POST.get("m_ativo") == "on" or request.POST.get("m_ativo") == "true"
+    errors = []
+    if not cod_empresa:
+        errors.append("Empresa é obrigatória")
+    if not cod_filial:
+        errors.append("Código da filial é obrigatório")
+    if errors:
+        return JsonResponse({"erro": " | ".join(errors)}, status=400)
+    try:
+        empresa = Empresa.objects.get(
+            cod_empresa=cod_empresa,
+            gdfcliente_id=cod_cliente,
+        )
+    except Empresa.DoesNotExist:
+        return JsonResponse({"erro": "Empresa não encontrada ou não pertence ao cliente"}, status=400)
+    if Filial.objects.filter(empresa=empresa, cod_filial=cod_filial).exists():
+        return JsonResponse({"erro": f"Já existe filial com código '{cod_filial}' para esta empresa"}, status=400)
+    Filial.objects.create(
+        empresa=empresa,
+        cod_filial=cod_filial,
+        nome=nome or None,
+        cnpj=cnpj.replace(" ", "").replace(".", "").replace("/", "").replace("-", "") or None,
+        ativo=ativo,
+    )
+    return JsonResponse({"success": True, "message": "Filial cadastrada com sucesso"})
+
 
 #--------------------------------------------------------------------
 #       Modais Views
@@ -769,7 +844,6 @@ def fn_view_inserir_empresa(request):
         cnpj = request.POST.get("m_cnpj", "").strip()
         cnpj = re.sub(r"\D", "", cnpj)
         fantasia = request.POST.get("m_fantasia", "").strip()
-        grp_empresa = request.POST.get("ls_grpempresas", "").strip()
         matriz = request.POST.get("m_matriz") == "on"
         ie = request.POST.get("m_ie", "").strip()
         im = request.POST.get("m_im", "").strip()
@@ -788,8 +862,6 @@ def fn_view_inserir_empresa(request):
             errors.append("CNPJ é obrigatório")
         if not fantasia:
             errors.append("Fantasia é obrigatória")
-        if not grp_empresa:
-            errors.append("Grupo de empresa é obrigatório")
         if errors:
             return JsonResponse({"erro": " | ".join(errors)}, status=400)
 
@@ -798,7 +870,6 @@ def fn_view_inserir_empresa(request):
             i_v_razao=razao,
             i_v_cnpj=cnpj,
             i_v_fantasia=fantasia,
-            i_v_grp_empresa=grp_empresa,
             i_v_cod_cliente=cod_cliente,
             i_b_matriz=matriz,
             i_v_ie=ie,
@@ -817,40 +888,6 @@ def fn_view_inserir_empresa(request):
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return JsonResponse({"success": True, "message": resultado.get("message", "Empresa cadastrada com sucesso")})
         return redirect('Dm_Empresas')
-
-
-@login_required(login_url='Login')
-@require_http_methods(["GET", "POST"])
-def fn_view_inserir_grp_empresa(request):
-    """Criar grupo de empresas. Superuser pode informar o cliente no formulário."""
-    is_superuser = request.session.get('is_superuser', False)
-    cod_cliente = request.session.get('cod_cliente', None)
-    if request.method == "GET":
-        return redirect('Dm_Empresas')
-    if is_superuser and request.POST.get("m_cod_cliente"):
-        cod_cliente = request.POST.get("m_cod_cliente", "").strip() or cod_cliente
-    if not cod_cliente:
-        messages.error(request, "Cliente não identificado.", extra_tags="MODAL_GRP_INS")
-        return redirect('Dm_Empresas')
-
-    grp_empresa = request.POST.get("m_grp_empresa", "").strip()[:5]
-    descricao = (request.POST.get("m_descricao", "").strip() or "")[:80]
-    if not grp_empresa:
-        messages.error(request, "Código do grupo é obrigatório.", extra_tags="MODAL_GRP_INS")
-        return redirect('Dm_Empresas')
-
-    try:
-        cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
-    except ClienteGdf.DoesNotExist:
-        return JsonResponse({"erro": "Cliente não encontrado"}, status=403)
-
-    if GrupoEmpresa.objects.filter(grp_empresa=grp_empresa).exists():
-        messages.error(request, f"Já existe um grupo com o código '{grp_empresa}'.", extra_tags="MODAL_GRP_INS")
-        return redirect('Dm_Empresas')
-
-    GrupoEmpresa.objects.create(grp_empresa=grp_empresa, descricao=descricao or None, gdfcliente=cliente)
-    messages.success(request, f"Grupo '{grp_empresa}' criado com sucesso.", extra_tags="MODAL_GRP_INS")
-    return redirect('Dm_Empresas')
 
 
 @login_required(login_url='Login')
@@ -884,7 +921,6 @@ def fn_view_atualizar_empresa(request, cod_empresa):
         crt = request.POST.get("m_crt", "").strip()
         cnae = request.POST.get("m_cnae", "").strip()
         suframa = request.POST.get("m_suframa", "").strip()
-        grp_empresa = request.POST.get("m_grpEmpresa_id", "").strip()
         chave_acesso = request.POST.get("m_chave_acesso", "").strip()
         matriz = request.POST.get("m_matriz") == "on"
         
@@ -898,7 +934,6 @@ def fn_view_atualizar_empresa(request, cod_empresa):
             i_v_crt=crt,
             i_v_cnae=cnae,
             i_v_suframa=suframa,
-            i_v_grp_empresa=grp_empresa,
             i_v_chave_acesso=chave_acesso,
             i_b_matriz=matriz,
             i_v_cod_cliente=cod_cliente
@@ -1245,7 +1280,7 @@ def fn_view_CargaXml(request):
         empresas_usuario = (
             Empresa.objects.filter(
                 gdfcliente=cliente,
-                userempresas__user=request.user,
+                usuarioempresa__user=request.user,
             )
             .order_by("fantasia", "razao", "cod_empresa")
             .distinct()
@@ -1666,7 +1701,7 @@ def fn_api_cargaxml_param_toggle(request, param_id):
 @login_required(login_url='Login')
 @require_http_methods(["POST"])
 def fn_api_sessao_cliente(request):
-    """Define o cliente ativo na sessão. Superuser ou cliente 1000 (dona do projeto)."""
+    """Define o cliente ativo na sessão. Superuser ou cliente PRCIT (dona do projeto)."""
     if not usuario_acesso_total_painel(request):
         return JsonResponse({'sucesso': False, 'erro': 'Acesso negado'}, status=403)
     try:
@@ -2212,7 +2247,7 @@ def fn_view_CargaSped(request):
         empresas_usuario = (
             Empresa.objects.filter(
                 gdfcliente=cliente,
-                userempresas__user=request.user,
+                usuarioempresa__user=request.user,
             )
             .order_by("fantasia", "razao", "cod_empresa")
             .distinct()
@@ -2237,9 +2272,6 @@ def fn_view_CargaSped(request):
 def fn_api_relatorio_nfe(request):
     """Lista NFe nível cabeçalho com filtros empresa, grupo de empresa e período."""
     empresas = relatorio_empresas_queryset(request)
-    grp_empresa = request.GET.get('grp_empresa', '').strip()
-    if grp_empresa:
-        empresas = empresas.filter(grp_empresa_id=grp_empresa)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_empresas and not cod_cliente:
@@ -2319,9 +2351,6 @@ def fn_api_relatorio_nfe(request):
 def fn_api_relatorio_cte(request):
     """Lista CTe nível cabeçalho com filtros empresa, grupo de empresa e período."""
     empresas = relatorio_empresas_queryset(request)
-    grp_empresa = request.GET.get('grp_empresa', '').strip()
-    if grp_empresa:
-        empresas = empresas.filter(grp_empresa_id=grp_empresa)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_empresas and not cod_cliente:
@@ -2382,9 +2411,6 @@ def fn_api_relatorio_cte(request):
 def fn_api_relatorio_nfse(request):
     """Lista NFSe nível cabeçalho com filtros empresa, grupo de empresa e período."""
     empresas = relatorio_empresas_queryset(request)
-    grp_empresa = request.GET.get('grp_empresa', '').strip()
-    if grp_empresa:
-        empresas = empresas.filter(grp_empresa_id=grp_empresa)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_empresas and not cod_cliente:
@@ -2445,9 +2471,6 @@ def fn_api_relatorio_sped(request):
     from app.db_GDF.sped_contribuicao.models import SpedContribuicaoArquivo
 
     empresas = relatorio_empresas_queryset(request)
-    grp_empresa = request.GET.get('grp_empresa', '').strip()
-    if grp_empresa:
-        empresas = empresas.filter(grp_empresa_id=grp_empresa)
     if not empresas.exists():
         return JsonResponse({'sucesso': True, 'items': []}, status=200)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
@@ -2852,7 +2875,7 @@ def fn_api_relatorio_sped_detalhe(request, tipo, id_arquivo):
 @require_http_methods(["GET"])
 def fn_view_Relatorio_Fiscal(request):
     """Relatório com dados e filtros das tabelas carregadas: NFe, CTe, NFS e SPED (nível cabeçalho).
-    Superuser ou cliente 1000: vê todas as empresas do cliente selecionado (igual Painel Reprocessamento)."""
+    Superuser ou cliente PRCIT: vê todas as empresas do cliente selecionado (igual Painel Reprocessamento)."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
@@ -2863,17 +2886,10 @@ def fn_view_Relatorio_Fiscal(request):
         else:
             empresas_usuario = Empresa.objects.filter(
                 gdfcliente=cliente,
-                userempresas__user=request.user
+                usuarioempresa__user=request.user
             ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
     except ClienteGdf.DoesNotExist:
         empresas_usuario = []
-        grupos_empresa = []
-    else:
-        grupos_empresa = list(
-            GrupoEmpresa.objects.filter(gdfcliente__cod_cliente=cod_cliente)
-            .order_by('grp_empresa')
-            .values('grp_empresa', 'descricao')
-        )
     # Opções de tipo de pagamento (NFe) para o filtro do relatório (código 2 dígitos = valor no XML tPag)
     try:
         meio_pagamento_choices = list(
@@ -2884,7 +2900,6 @@ def fn_view_Relatorio_Fiscal(request):
     context = {
         'cod_cliente': cod_cliente,
         'empresas_usuario': empresas_usuario,
-        'grupos_empresa': grupos_empresa,
         'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC,
         'meio_pagamento_choices': meio_pagamento_choices,
     }
@@ -2902,7 +2917,7 @@ def fn_view_Reprocessamento(request):
 
 @login_required(login_url='Login')
 def fn_view_Reprocessamento_Painel(request):
-    """Painel de Reprocessamento: confronto SPED x NFe, divergências e reprocessamento controlado."""
+    """Painel de Reprocessamento: confronto SPED x NFe por empresa, divergências e reprocessamento controlado."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         context = {'cod_cliente': None, 'empresas': [], 'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC}
@@ -2929,10 +2944,10 @@ def fn_api_reprocessamento_lotes(request):
     if not cod_empresas:
         return JsonResponse({'sucesso': True, 'lotes': [], 'total': 0})
 
-    qs = ReprocessamentoLote.objects.filter(cod_empresa__in=cod_empresas)
-    cod_empresa = request.GET.get('empresa')
+    qs = ReprocessamentoLote.objects.filter(empresa_id__in=cod_empresas).select_related('empresa')
+    cod_empresa = request.GET.get('empresa') or request.GET.get('grupo')
     if cod_empresa and cod_empresa in cod_empresas:
-        qs = qs.filter(cod_empresa=cod_empresa)
+        qs = qs.filter(empresa_id=cod_empresa)
     competencia = request.GET.get('competencia')
     if competencia:
         competencia = competencia.strip()
@@ -2971,8 +2986,9 @@ def fn_api_reprocessamento_lotes(request):
     lotes = [
         {
             'id_lote': l.id_lote,
-            'cod_empresa': l.cod_empresa,
-            'escopo_empresas': getattr(l, 'escopo_empresas', 'UMA'),
+            'cod_empresa': getattr(l.empresa, 'cod_empresa', l.empresa_id) if l.empresa_id else None,
+            'empresa_razao': getattr(l.empresa, 'razao', None) if l.empresa_id else None,
+            'empresa_fantasia': getattr(l.empresa, 'fantasia', None) if l.empresa_id else None,
             'competencia': str(l.competencia),
             'competencia_mes': l.competencia.strftime('%Y-%m') if l.competencia else None,
             'id_arquivo_sped': l.id_arquivo_sped,
@@ -2999,12 +3015,13 @@ def fn_api_reprocessamento_divergencias(request, id_lote):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
-    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
+    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, empresa_id__in=cod_empresas)
     total_divs = Divergencia.objects.filter(lote=lote).count()
     divs = Divergencia.objects.filter(lote=lote).order_by('tipo', 'chave_nfe', '-data_criacao')[:5000]
     lista = [
         {
             'id_divergencia': d.id_divergencia,
+            'cod_empresa': d.cod_empresa,
             'tipo': d.tipo,
             'status': d.status,
             'chave_nfe': d.chave_nfe,
@@ -3035,16 +3052,21 @@ def fn_api_reprocessamento_divergencias(request, id_lote):
 @login_required(login_url='Login')
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_confronto(request):
-    """Dispara confronto SPED x NFe para uma ou mais empresas (ou todas) e competência (mês)."""
+    """Dispara confronto SPED x NFe para uma empresa e competência (mês)."""
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    empresas_permitidas = reprocessamento_empresas_cliente(cod_cliente)
-    if not empresas_permitidas:
+    cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
+    if not cod_empresas:
         return JsonResponse({'sucesso': False, 'mensagem': 'Nenhuma empresa vinculada ao cliente.'}, status=400)
 
     data = json.loads(request.body) if request.body else {}
     competencia = data.get('competencia')
+    cod_empresa = (data.get('cod_empresa') or data.get('empresa') or '').strip()
+    if not cod_empresa:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Empresa obrigatória (cod_empresa).'}, status=400)
+    if cod_empresa not in cod_empresas:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Empresa não permitida para este cliente.'}, status=403)
     if not competencia:
         return JsonResponse({'sucesso': False, 'mensagem': 'Competência obrigatória (mês: YYYY-MM).'}, status=400)
 
@@ -3059,70 +3081,46 @@ def fn_api_reprocessamento_confronto(request):
     except ValueError:
         return JsonResponse({'sucesso': False, 'mensagem': 'Competência inválida. Use YYYY-MM (mês).'}, status=400)
 
-    # Definir lista de empresas: todas ou as selecionadas (cod_empresas array)
-    todas = data.get('todas_empresas', False)
-    cod_empresas_list = data.get('cod_empresas') or data.get('cod_empresa')
-    if isinstance(cod_empresas_list, str):
-        cod_empresas_list = [cod_empresas_list] if cod_empresas_list else []
-    if todas or not cod_empresas_list:
-        cod_empresas_a_processar = list(empresas_permitidas)
-    else:
-        cod_empresas_a_processar = [c for c in cod_empresas_list if c in empresas_permitidas]
-    if not cod_empresas_a_processar:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Selecione ao menos uma empresa válida.'}, status=400)
-
-    # Escopo para exibição: TODAS, VARIAS ou UMA
-    if todas:
-        escopo = 'TODAS'
-    elif len(cod_empresas_a_processar) > 1:
-        escopo = 'VARIAS'
-    else:
-        escopo = 'UMA'
     usuario = getattr(request.user, 'username', '') or str(request.user)
-    ids_lotes = []
-    for cod_empresa in cod_empresas_a_processar:
-        lote = ReprocessamentoLote.objects.create(
-            cod_empresa=cod_empresa,
-            competencia=dt,
-            status='PENDENTE',
-            usuario_criacao=usuario,
-            escopo_empresas=escopo,
-        )
-        job = ReprocessamentoJob.objects.create(
-            tipo='CONFRONTO',
-            status='AGUARDANDO',
-            id_lote=lote.id_lote,
-            usuario=usuario,
-        )
-        lote.status = 'EM_CONFRONTO'
-        lote.data_inicio = timezone.now()
-        lote.save(update_fields=['status', 'data_inicio'])
-        job.status = 'EM_EXECUCAO'
-        job.data_inicio = timezone.now()
-        job.save(update_fields=['status', 'data_inicio'])
-        try:
-            from app.classes.Reprocessamento import confrontar_sped_nfe
-            confrontar_sped_nfe(lote.id_lote, cod_empresa, dt)
-        except ImportError:
-            lote.total_nfe_esperado = 0
-            lote.total_nfe_encontrado = 0
-            lote.total_divergencias = 0
-            lote.status = 'CONCLUIDO'
-            lote.data_fim = timezone.now()
-            lote.save(update_fields=['total_nfe_esperado', 'total_nfe_encontrado', 'total_divergencias', 'status', 'data_fim'])
-            job.status = 'CONCLUIDO'
-            job.data_fim = timezone.now()
-            job.total_processados = 0
-            job.save(update_fields=['status', 'data_fim', 'total_processados'])
-        ids_lotes.append(lote.id_lote)
+    lote = ReprocessamentoLote.objects.create(
+        empresa_id=cod_empresa,
+        competencia=dt,
+        status='PENDENTE',
+        usuario_criacao=usuario,
+    )
+    job = ReprocessamentoJob.objects.create(
+        tipo='CONFRONTO',
+        status='AGUARDANDO',
+        id_lote=lote.id_lote,
+        usuario=usuario,
+    )
+    lote.status = 'EM_CONFRONTO'
+    lote.data_inicio = timezone.now()
+    lote.save(update_fields=['status', 'data_inicio'])
+    job.status = 'EM_EXECUCAO'
+    job.data_inicio = timezone.now()
+    job.save(update_fields=['status', 'data_inicio'])
+    try:
+        from app.classes.Reprocessamento import confrontar_sped_nfe
+        confrontar_sped_nfe(lote.id_lote, cod_empresa, dt)
+    except Exception:
+        lote.total_nfe_esperado = 0
+        lote.total_nfe_encontrado = 0
+        lote.total_divergencias = 0
+        lote.status = 'CONCLUIDO'
+        lote.data_fim = timezone.now()
+        lote.save(update_fields=['total_nfe_esperado', 'total_nfe_encontrado', 'total_divergencias', 'status', 'data_fim'])
+        job.status = 'CONCLUIDO'
+        job.data_fim = timezone.now()
+        job.total_processados = 0
+        job.save(update_fields=['status', 'data_fim', 'total_processados'])
 
-    n = len(ids_lotes)
     return JsonResponse({
         'sucesso': True,
-        'id_lote': ids_lotes[0] if ids_lotes else None,
-        'ids_lotes': ids_lotes,
-        'total_lotes': n,
-        'mensagem': f'Confronto iniciado para {n} empresa(s). Consulte o painel para acompanhar.',
+        'id_lote': lote.id_lote,
+        'ids_lotes': [lote.id_lote],
+        'total_lotes': 1,
+        'mensagem': 'Confronto iniciado. Consulte o painel para acompanhar.',
     })
 
 
@@ -3135,7 +3133,7 @@ def fn_api_reprocessamento_divergencia_detalhe(request, id_divergencia):
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
     div = get_object_or_404(Divergencia, id_divergencia=id_divergencia)
-    if div.lote.cod_empresa not in cod_empresas:
+    if (div.lote.empresa_id or '') not in cod_empresas:
         return JsonResponse({'sucesso': False, 'mensagem': 'Divergência não pertence ao cliente'}, status=403)
 
     from decimal import Decimal
@@ -3143,6 +3141,7 @@ def fn_api_reprocessamento_divergencia_detalhe(request, id_divergencia):
     payload = {
         'divergencia': {
             'id_divergencia': div.id_divergencia,
+            'cod_empresa': div.cod_empresa,
             'tipo': div.tipo,
             'status': div.status,
             'chave_nfe': div.chave_nfe,
@@ -3323,7 +3322,7 @@ def fn_api_reprocessamento_reprocessar_divergencia(request, id_divergencia):
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
     div = get_object_or_404(Divergencia, id_divergencia=id_divergencia)
-    if div.lote.cod_empresa not in cod_empresas:
+    if (div.lote.empresa_id or '') not in cod_empresas:
         return JsonResponse({'sucesso': False, 'mensagem': 'Divergência não pertence ao cliente'}, status=403)
     usuario = getattr(request.user, 'username', '') or str(request.user)
     div.status = 'RESOLVIDA'
@@ -3341,7 +3340,7 @@ def fn_api_reprocessamento_condicoes_gerar(request, id_lote):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
-    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
+    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, empresa_id__in=cod_empresas)
     try:
         from app.classes.Reprocessamento import gerar_condicoes_pagamento_lote
         criados, atualizados = gerar_condicoes_pagamento_lote(lote.id_lote)
@@ -3363,11 +3362,12 @@ def fn_api_reprocessamento_condicoes_listar(request, id_lote):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
-    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
+    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, empresa_id__in=cod_empresas)
     qs = CondicaoPagamentoLote.objects.filter(lote=lote).order_by('chave_nfe')
     lista = [
         {
             'id_reg': c.id_reg,
+            'cod_empresa': c.cod_empresa,
             'chave_nfe': c.chave_nfe,
             'numero_nfe': c.numero_nfe,
             'serie_nfe': c.serie_nfe,
@@ -3394,7 +3394,7 @@ def fn_api_reprocessamento_condicoes_atualizar_retorno(request, id_lote):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
-    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
+    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, empresa_id__in=cod_empresas)
     data = json.loads(request.body) if request.body else {}
     itens = data.get('itens') or data.get('retornos') or []
     if not itens:
@@ -3427,7 +3427,7 @@ def fn_api_reprocessamento_condicoes_enviar_sap(request, id_lote):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
-    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, cod_empresa__in=cod_empresas)
+    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, empresa_id__in=cod_empresas).select_related('empresa')
     condicoes = list(
         CondicaoPagamentoLote.objects.filter(lote=lote).order_by('chave_nfe').values(
             'chave_nfe', 'numero_nfe', 'serie_nfe', 'condicao_pagamento_nfe', 'condicao_pagamento_sap'
@@ -3435,9 +3435,12 @@ def fn_api_reprocessamento_condicoes_enviar_sap(request, id_lote):
     )
     if not condicoes:
         return JsonResponse({'sucesso': False, 'mensagem': 'Gere a tabela de condições antes de enviar ao SAP.'}, status=400)
+    cod_cliente_sap = getattr(lote.empresa, 'gdfcliente_id', None) if lote.empresa else cod_cliente
+    if not cod_cliente_sap:
+        cod_cliente_sap = cod_cliente
     try:
         from app.classes.SapRfc import enviar_condicoes_pagamento_sap
-        resultado = enviar_condicoes_pagamento_sap(lote.id_lote, lote.cod_empresa, condicoes)
+        resultado = enviar_condicoes_pagamento_sap(lote.id_lote, cod_cliente_sap, condicoes)
     except Exception as e:
         return JsonResponse({'sucesso': False, 'mensagem': str(e)[:500]}, status=500)
     if not resultado.get('sucesso'):

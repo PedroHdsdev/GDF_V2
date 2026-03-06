@@ -22,7 +22,6 @@ class QueryOptimizer:
         return queryset.select_related(
             'empresa',
             'empresa__gdfcliente',
-            'empresa__grp_empresa',
         ).prefetch_related(
             'groups',
             'user_permissions',
@@ -42,10 +41,9 @@ class QueryOptimizer:
         
         return queryset.select_related(
             'gdfcliente',
-            'grp_empresa',
         ).only(
             'cod_empresa', 'razao', 'fantasia',
-            'cnpj', 'gdfcliente_id', 'grp_empresa_id'
+            'cnpj', 'gdfcliente_id'
         )
     
     @staticmethod

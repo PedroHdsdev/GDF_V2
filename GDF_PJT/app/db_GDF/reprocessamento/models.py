@@ -1,16 +1,16 @@
 """
 Modelos do schema reprocessamento (banco default).
-Confronto SPED Fiscal (EFD ICMS/IPI) x XMLs NF-e, divergências e rastreabilidade.
+Confronto SPED Fiscal (EFD ICMS/IPI) x XMLs NF-e por grupo de empresa; divergências e rastreabilidade.
 Tabelas em db_table: "reprocessamento"."nome_tabela".
 """
 from django.db import models
 
-from app.db_GDF.Public.models import ClienteGdf
+from app.db_GDF.Public.models import ClienteGdf, Empresa
 
 
 class ReprocessamentoLote(models.Model):
     """
-    Lote de confronto: uma execução de comparação SPED x NFe para uma empresa/competência.
+    Lote de confronto: uma execução de comparação SPED x NFe para uma empresa e competência.
     """
     STATUS_CHOICES = [
         ("PENDENTE", "Pendente"),
@@ -21,15 +21,13 @@ class ReprocessamentoLote(models.Model):
     ]
 
     id_lote = models.BigAutoField(primary_key=True)
-    cod_empresa = models.CharField(max_length=10, db_index=True)
-    escopo_empresas = models.CharField(
-        max_length=10,
-        choices=[
-            ("UMA", "Uma empresa"),
-            ("VARIAS", "Várias empresas"),
-            ("TODAS", "Todas as empresas"),
-        ],
-        default="UMA",
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="reprocessamento_lotes",
+        db_column="cod_empresa_id",
+        to_field="cod_empresa",
+        db_index=True,
     )
     competencia = models.DateField(
         help_text="Competência do confronto (mês): 1º dia do mês (ex.: 2025-03-01 = mar/2025)",
@@ -54,7 +52,7 @@ class ReprocessamentoLote(models.Model):
         managed = True
         db_table = '"reprocessamento"."reprocessamento_lote"'
         indexes = [
-            models.Index(fields=["cod_empresa", "competencia"]),
+            models.Index(fields=["empresa_id", "competencia"]),
             models.Index(fields=["status", "data_criacao"]),
         ]
         ordering = ["-data_criacao"]
@@ -62,7 +60,8 @@ class ReprocessamentoLote(models.Model):
         verbose_name_plural = "Lotes de reprocessamento"
 
     def __str__(self):
-        return f"Lote #{self.id_lote} {self.cod_empresa} {self.competencia} ({self.get_status_display()})"
+        cod = getattr(self.empresa, "cod_empresa", self.empresa_id) if self.empresa_id else "-"
+        return f"Lote #{self.id_lote} {cod} {self.competencia} ({self.get_status_display()})"
 
 
 class Divergencia(models.Model):
@@ -90,6 +89,10 @@ class Divergencia(models.Model):
         on_delete=models.CASCADE,
         related_name="divergencias",
         db_index=True,
+    )
+    cod_empresa = models.CharField(
+        max_length=10, blank=True, null=True, db_index=True,
+        help_text="Empresa à qual a divergência se refere (quando aplicável).",
     )
     tipo = models.CharField(max_length=30, choices=TIPO_CHOICES, db_index=True)
     status = models.CharField(
@@ -193,6 +196,10 @@ class CondicaoPagamentoLote(models.Model):
         on_delete=models.CASCADE,
         related_name="condicoes_pagamento",
         db_index=True,
+    )
+    cod_empresa = models.CharField(
+        max_length=10, blank=True, null=True, db_index=True,
+        help_text="Empresa da NFe (para envio SAP por empresa quando necessário).",
     )
     chave_nfe = models.CharField(max_length=44, db_index=True)
     numero_nfe = models.CharField(max_length=20, blank=True, null=True)

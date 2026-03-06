@@ -107,7 +107,7 @@
                     const competenciaExibir = formatarCompetenciaMes(l.competencia_mes || l.competencia);
                     const dataCriacaoStr = formatarDataHora(l.data_criacao);
                     const divNum = (l.total_divergencias ?? 0);
-                    const empresaExibir = formatarEmpresaLote(l.escopo_empresas, l.cod_empresa);
+                    const empresaExibir = formatarEmpresaLote(l.cod_empresa, l.empresa_fantasia || l.empresa_razao);
                     tr.innerHTML =
                         '<td class="text-center">' + l.id_lote + '</td>' +
                         '<td class="col-empresa">' + empresaExibir + '</td>' +
@@ -485,16 +485,12 @@
         ativarAbaDivergencias('tab-por-tipo');
     }
 
-    /** Exibe empresa conforme escopo: Todas as empresas, Várias empresas ou código da empresa. */
-    function formatarEmpresaLote(escopo, codEmpresa) {
+    /** Exibe empresa do lote (código e nome). */
+    function formatarEmpresaLote(codEmpresa, nome) {
         const cod = escapeHtml(codEmpresa || '-');
-        if (escopo === 'TODAS') {
-            return '<span class="badge bg-primary me-1">Todas as empresas</span><br><span class="small text-muted">' + cod + '</span>';
-        }
-        if (escopo === 'VARIAS') {
-            return '<span class="badge bg-info text-dark me-1">Várias empresas</span><br><span class="small text-muted">' + cod + '</span>';
-        }
-        return '<span class="cod-empresa">' + cod + '</span>';
+        const desc = (nome || '').trim();
+        if (desc) return '<span class="empresa-nome">' + escapeHtml(desc) + '</span><br><span class="small text-muted">' + cod + '</span>';
+        return '<span class="empresa-cod">' + cod + '</span>';
     }
 
     function atualizarResumo(lotes) {
@@ -614,15 +610,6 @@
             }
         }
 
-        const todasCheck = document.getElementById('confronto-todas-empresas');
-        const listaEmpresas = document.getElementById('confronto-lista-empresas');
-        if (todasCheck && listaEmpresas) {
-            if (todasCheck.checked) {
-                listaEmpresas.style.display = 'none';
-            } else {
-                listaEmpresas.style.display = 'block';
-            }
-        }
         if (modal) modal.style.display = 'block';
     }
 
@@ -632,24 +619,17 @@
     }
 
     function executarConfronto() {
-        const todasCheck = document.getElementById('confronto-todas-empresas');
+        const selEmpresa = document.getElementById('confronto-empresa');
         const selMes = document.getElementById('confronto-mes');
         const selAno = document.getElementById('confronto-ano');
-        if (!selMes || !selAno) return;
+        if (!selEmpresa || !selMes || !selAno) return;
+        const cod_empresa = (selEmpresa.value || '').trim();
         const competencia = selAno.value + '-' + selMes.value;
-
-        let payload;
-        if (todasCheck && todasCheck.checked) {
-            payload = { todas_empresas: true, competencia: competencia };
-        } else {
-            const checkboxes = document.querySelectorAll('.confronto-empresa-cb:checked');
-            const cod_empresas = Array.from(checkboxes).map(cb => cb.value);
-            if (cod_empresas.length === 0) {
-                if (typeof Notificacoes !== 'undefined') Notificacoes.pagina('Marque "Todas as empresas" ou selecione ao menos uma empresa.', 'warning');
-                return;
-            }
-            payload = { cod_empresas: cod_empresas, competencia: competencia };
+        if (!cod_empresa) {
+            if (typeof Notificacoes !== 'undefined') Notificacoes.pagina('Selecione a empresa.', 'warning');
+            return;
         }
+        const payload = { cod_empresa: cod_empresa, competencia: competencia };
 
         const csrf = getCsrfToken();
         const btn = document.getElementById('btn-executar-confronto');
@@ -1058,18 +1038,5 @@
             });
         }
 
-        const todasCheck = document.getElementById('confronto-todas-empresas');
-        const listaEmpresas = document.getElementById('confronto-lista-empresas');
-        if (todasCheck && listaEmpresas) {
-            todasCheck.addEventListener('change', function () {
-                listaEmpresas.style.display = this.checked ? 'none' : 'block';
-            });
-        }
-        const selTodas = document.getElementById('confronto-sel-todas');
-        if (selTodas) {
-            selTodas.addEventListener('change', function () {
-                document.querySelectorAll('.confronto-empresa-cb').forEach(cb => { cb.checked = selTodas.checked; });
-            });
-        }
     });
 })();

@@ -156,6 +156,7 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
         log_lines.append(f"Diretorio nao encontrado: {base_dir}")
 
     for xml_path in xml_files:
+        processor._avisos = []
         try:
             with xml_path.open("rb") as handle:
                 xml_bytes = handle.read()
@@ -183,6 +184,7 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
                         param.origem_dados,
                         "SYSTEM",
                         param.gdfcliente.cod_cliente if param.gdfcliente else None,
+                        nome_arquivo=xml_path.name,
                     )
                 except EmpresaNaoCadastradaError as exc:
                     errors += 1
@@ -208,6 +210,8 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
                 )
             else:
                 raise ValueError(f"Tipo nao suportado: {tipo}")
+            for a in getattr(processor, "_avisos", []):
+                log_lines.append(f"AVISO: {a.get('file', '')} - {a.get('message', '')}")
             success += 1
             log_lines.append(f"OK: {xml_path.name}")
             try:

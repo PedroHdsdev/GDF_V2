@@ -2,7 +2,7 @@
 from django.db.models               import Prefetch
 from psycopg2                       import IntegrityError
 from django.contrib.auth.models     import User, Group
-from app.db_GDF.Public.models       import ClienteGdf, Empresa
+from app.db_GDF.Public.models       import ClienteGdf, Empresa, Filial
 from app.db_GDF.NFe.models          import (
     NFe, NFe_Total, NFe_Produto, NFe_Identificacao, NFe_Emitente, NFe_Destinatario,
     NFe_Endereco, NFe_ICMS, NFe_IPI, NFe_PIS, NFe_COFINS, NFe_Transporte,
@@ -86,7 +86,54 @@ class CargaXml:
             return parsed
         except:
             return None
-    
+
+    def _resolver_empresa_filial_por_cnpj(self, cnpj_para_busca: str, cod_cliente=None, contexto_erro: str = ""):
+        """
+        Resolve Empresa e Filial a partir do CNPJ (hierarquia ClienteGDF → Empresa → Filial).
+        - Se o CNPJ for da Empresa: retorna (empresa, filial ou None se houver filial com mesmo CNPJ).
+        - Se o CNPJ for só de Filial: busca a Filial, usa a Empresa a que a Filial pertence e retorna (empresa, filial).
+        Levanta EmpresaNaoCadastradaError se não encontrar nem Empresa nem Filial com o CNPJ.
+        """
+        if not (cnpj_para_busca or '').strip():
+            raise ValueError("CNPJ não informado para busca.")
+        cnpj_limpo = ''.join(c for c in cnpj_para_busca if c.isdigit())
+        if len(cnpj_limpo) != 14:
+            raise EmpresaNaoCadastradaError(f"CNPJ inválido: {cnpj_para_busca}{' - ' + contexto_erro if contexto_erro else ''}")
+
+        empresa = None
+        filial = None
+
+        # 1) Tentar Empresa pelo CNPJ (raw ou normalizado)
+        for cnpj_try in (cnpj_para_busca, cnpj_limpo):
+            try:
+                empresa = Empresa.objects.get(cnpj=cnpj_try)
+                break
+            except Empresa.DoesNotExist:
+                pass
+
+        if empresa:
+            if cod_cliente and empresa.gdfcliente and empresa.gdfcliente.cod_cliente != cod_cliente:
+                empresa = None
+            else:
+                # Filial opcional: mesma empresa com mesmo CNPJ (ex.: filial com CNPJ próprio)
+                for f in Filial.objects.filter(empresa=empresa).exclude(cnpj__isnull=True).exclude(cnpj=''):
+                    if f.cnpj and ''.join(c for c in f.cnpj if c.isdigit()) == cnpj_limpo:
+                        filial = f
+                        break
+                return (empresa, filial)
+
+        # 2) CNPJ não é de Empresa — tentar Filial; a Empresa é a que a Filial pertence
+        for f in Filial.objects.exclude(cnpj__isnull=True).exclude(cnpj='').select_related('empresa'):
+            if f.cnpj and ''.join(c for c in f.cnpj if c.isdigit()) == cnpj_limpo:
+                empresa_candidata = f.empresa
+                if cod_cliente and empresa_candidata.gdfcliente and empresa_candidata.gdfcliente.cod_cliente != cod_cliente:
+                    continue
+                return (empresa_candidata, f)
+
+        raise EmpresaNaoCadastradaError(
+            f"CNPJ {cnpj_para_busca} não pertence a nenhuma empresa nem filial cadastrada no GDF.{' ' + contexto_erro if contexto_erro else ''}"
+        )
+
     def _processar_endereco(self, element, is_emitente=True):
         """Processa endereço do emitente ou destinatário"""
         if element is None:
@@ -350,13 +397,28 @@ class CargaXml:
         """
         Se a condição de pagamento da NFe ainda não existir em CondicaoParam, grava
         (cliente, condição NFe, tipo_pagamento, SAP vazio).
-        Considera tipo_pagamento para permitir mesma condição com mapeamentos diferentes por tipo.
+        Não grava quando há parcela com valor negativo (CondicaoParam só para condições válidas).
         Requer cod_cliente para gravar (cada cliente tem sua tabela de parâmetros).
         """
         if not cod_cliente:
             return
         from app.classes.Reprocessamento import condicao_pagamento_da_nfe, tipo_pagamento_da_nfe
         from app.db_GDF.reprocessamento.models import CondicaoParam
+        from app.db_GDF.NFe.models import NFe_Cobranca
+
+        # Não gravar em CondicaoParam quando a condição tiver parcela negativa; registrar aviso no log
+        try:
+            cobranca = identificacao.cobranca
+            if cobranca.parcelas.filter(valor_parcela__lt=0).exists():
+                if not hasattr(self, '_avisos'):
+                    self._avisos = []
+                self._avisos.append({
+                    'file': getattr(self, '_current_file', '') or (getattr(identificacao, 'chave_acesso', None) or 'NFe'),
+                    'message': 'Condição de pagamento com parcela negativa - não gravado em CondicaoParam',
+                })
+                return
+        except NFe_Cobranca.DoesNotExist:
+            pass
 
         cond_nfe = condicao_pagamento_da_nfe(identificacao)
         if not (cond_nfe or '').strip():
@@ -364,7 +426,7 @@ class CargaXml:
         cond_nfe = (cond_nfe or '').strip()[:120]
         tipo_pag = tipo_pagamento_da_nfe(identificacao) or None
         CondicaoParam.objects.get_or_create(
-            cliente_id=cod_cliente,
+            gdfcliente_id=cod_cliente,
             condicao_pagamento_nfe=cond_nfe,
             tipo_pagamento=tipo_pag,
             defaults={'condicao_pagamento_sap': ''},
@@ -543,8 +605,10 @@ class CargaXml:
         result = {
             'success': [],
             'errors': [],
-            'pendentes': []  # não registrados: empresa não cadastrada no GDF (devem ir para pasta pendentes)
+            'pendentes': [],  # não registrados: empresa não cadastrada no GDF (devem ir para pasta pendentes)
+            'avisos': [],
         }
+        self._avisos = []
 
         for xml_file in I_LsXml:
             try:
@@ -563,7 +627,7 @@ class CargaXml:
                     continue
 
                 if i_type == 'NFe':
-                    self.set_nfe(xml_data, I_origem_dados, i_usuario, i_cod_cliente)
+                    self.set_nfe(xml_data, I_origem_dados, i_usuario, i_cod_cliente, nome_arquivo=xml_file.name)
                 
                 elif i_type == 'CTe':
                     self.set_cte(xml_data, I_origem_dados, i_usuario, i_cod_cliente)
@@ -572,7 +636,9 @@ class CargaXml:
                     self.set_nfse(xml_data, I_origem_dados, i_usuario, i_cod_cliente)
 
                 result['success'].append(xml_file.name)
-            
+                result['avisos'].extend(getattr(self, '_avisos', []))
+                self._avisos = []
+
             except EmpresaNaoCadastradaError as e:
                 result['pendentes'].append({
                     'file': xml_file.name,
@@ -587,12 +653,14 @@ class CargaXml:
 
         return result
     
-    def set_nfe(self, xml_data: bytes, origem_dados: str, usuario: str, cod_cliente: str = None):
+    def set_nfe(self, xml_data: bytes, origem_dados: str, usuario: str, cod_cliente: str = None, nome_arquivo: str = None):
         """
         Processa e insere NFe no banco de dados com TODOS os campos
         Detecta automaticamente se é entrada ou saída e busca a empresa corretamente
-        cod_cliente opcional é usado para validar que a empresa pertence ao cliente
+        cod_cliente opcional é usado para validar que a empresa pertence ao cliente.
+        nome_arquivo opcional é usado para avisos no log (ex.: condição com parcela negativa).
         """
+        self._current_file = nome_arquivo or ''
         try:
             # Fazer parse do XML
             root = ET.fromstring(xml_data)
@@ -687,36 +755,25 @@ class CargaXml:
                         }
                     )
             
-            # ========== BUSCAR EMPRESA ==========
-            # Se CNPJ não estiver cadastrado, grava com empresa=None (não é obrigatório informar empresa na carga)
-            empresa = None
-            cnpj_para_busca = None
+            # ========== BUSCAR EMPRESA E FILIAL (ClienteGDF → Empresa → Filial) ==========
             tipo_nfe = "SAÍDA" if tipo_operacao == '1' else "ENTRADA"
-            
-            if tipo_operacao == '1':  # SAÍDA
-                cnpj_para_busca = destinatario_cnpj
-            else:  # ENTRADA
-                cnpj_para_busca = emitente_cnpj
-            
-            if cnpj_para_busca:
-                try:
-                    empresa = Empresas.objects.get(cnpj=cnpj_para_busca)
-                    if cod_cliente and empresa.gdfcliente and empresa.gdfcliente.cod_cliente != cod_cliente:
-                        empresa = None
-                except Empresas.DoesNotExist:
-                    empresa = None
-            else:
+            cnpj_para_busca = destinatario_cnpj if tipo_operacao == '1' else emitente_cnpj
+            if not cnpj_para_busca:
                 raise ValueError(f"Não foi possível identificar CNPJ da empresa (tipo: {tipo_nfe})")
-            
-            # Cliente: nunca vazio. Preferir empresa.gdfcliente; se não encontrar, usar cod_cliente (cliente do usuário/parâmetro)
+            empresa, filial = self._resolver_empresa_filial_por_cnpj(
+                cnpj_para_busca, cod_cliente=cod_cliente, contexto_erro=f"tipo: {tipo_nfe}"
+            )
+            # Cliente: obrigatório — empresa.gdfcliente ou cod_cliente da sessão/parâmetro
             cliente_eff = None
             if empresa and empresa.gdfcliente:
                 cliente_eff = empresa.gdfcliente
             if not cliente_eff and cod_cliente:
                 try:
-                    cliente_eff = GdfClientes.objects.get(cod_cliente=cod_cliente)
-                except GdfClientes.DoesNotExist:
+                    cliente_eff = ClienteGdf.objects.get(cod_cliente=cod_cliente)
+                except ClienteGdf.DoesNotExist:
                     pass
+            if not cliente_eff:
+                raise ValueError("Cliente não identificado para esta carga. Informe o cliente na sessão ou vincule a empresa ao cliente.")
             
             # ========== CRIAR IDENTIFICAÇÃO COMPLETA ==========
             identificacao, _ = NFe_Identificacao.objects.update_or_create(
@@ -750,7 +807,8 @@ class CargaXml:
                     'emitente': emitente,
                     'destinatario': destinatario,
                     'empresa': empresa,
-                    'cliente': cliente_eff,
+                    'filial': filial,
+                    'gdfcliente': cliente_eff,
                     'status': 'DRAFT',
                     'xml_assinado': xml_data.decode('utf-8', errors='ignore'),
                     'usuario_atualizacao': usuario,
@@ -844,26 +902,25 @@ class CargaXml:
                         }
                     )
 
-            # Encontrar empresa (tenta emitente primeiro, depois destinatario)
-            empresa = None
+            # Empresa e Filial (ClienteGDF → Empresa → Filial); se CNPJ for de filial, busca a empresa da filial
             cnpj_para_busca = emitente_cnpj or destinatario_cnpj
-            if cnpj_para_busca:
-                try:
-                    empresa = Empresas.objects.get(cnpj=cnpj_para_busca)
-                    if cod_cliente and empresa.gdfcliente and empresa.gdfcliente.cod_cliente != cod_cliente:
-                        empresa = None
-                except Empresas.DoesNotExist:
-                    empresa = None
+            if not cnpj_para_busca:
+                raise ValueError("Não foi possível identificar CNPJ do emitente ou destinatário no CT-e.")
+            empresa, filial = self._resolver_empresa_filial_por_cnpj(
+                cnpj_para_busca, cod_cliente=cod_cliente, contexto_erro="CT-e"
+            )
 
-            # Cliente: nunca vazio. Preferir empresa.gdfcliente; se não encontrar, usar cod_cliente (cliente do usuário/parâmetro)
+            # Cliente: obrigatório
             cliente_eff = None
             if empresa and empresa.gdfcliente:
                 cliente_eff = empresa.gdfcliente
             if not cliente_eff and cod_cliente:
                 try:
-                    cliente_eff = GdfClientes.objects.get(cod_cliente=cod_cliente)
-                except GdfClientes.DoesNotExist:
+                    cliente_eff = ClienteGdf.objects.get(cod_cliente=cod_cliente)
+                except ClienteGdf.DoesNotExist:
                     pass
+            if not cliente_eff:
+                raise ValueError("Cliente não identificado para esta carga (CT-e). Informe o cliente na sessão ou vincule a empresa ao cliente.")
 
             # Criar/atualizar identificação
             identificacao, _ = CTe_Identificacao.objects.update_or_create(
@@ -884,7 +941,8 @@ class CargaXml:
                     'emitente': emitente,
                     'destinatario': destinatario,
                     'empresa': empresa,
-                    'cliente': cliente_eff,
+                    'filial': filial,
+                    'gdfcliente': cliente_eff,
                     'data_atualizacao': timezone.now()
                 }
             )
@@ -1106,30 +1164,29 @@ class CargaXml:
                         }
                     )
 
-            # Empresa: prestador (emissor) primeiro, depois tomador
-            empresa = None
+            # Empresa e Filial (ClienteGDF → Empresa → Filial); CNPJ do prestador ou tomador
             cnpj_para_busca = None
             if prest is not None:
                 cnpj_para_busca = self._get_text(prest, 'CNPJ') or self._get_text(prest, 'Cpf')
             if not cnpj_para_busca and tom is not None:
                 cnpj_para_busca = self._get_text(tom, 'CNPJ') or self._get_text(tom, 'CPF')
-            if cnpj_para_busca:
-                try:
-                    empresa = Empresas.objects.get(cnpj=cnpj_para_busca)
-                    if cod_cliente and empresa.gdfcliente and empresa.gdfcliente.cod_cliente != cod_cliente:
-                        empresa = None
-                except Empresas.DoesNotExist:
-                    empresa = None
+            if not cnpj_para_busca:
+                raise ValueError("Não foi possível identificar CNPJ do prestador ou tomador na NFSe.")
+            empresa, filial = self._resolver_empresa_filial_por_cnpj(
+                cnpj_para_busca, cod_cliente=cod_cliente, contexto_erro="NFSe"
+            )
 
-            # Cliente: nunca vazio. Preferir empresa.gdfcliente; se não encontrar, usar cod_cliente (cliente do usuário/parâmetro)
+            # Cliente: obrigatório
             cliente_eff = None
             if empresa and empresa.gdfcliente:
                 cliente_eff = empresa.gdfcliente
             if not cliente_eff and cod_cliente:
                 try:
-                    cliente_eff = GdfClientes.objects.get(cod_cliente=cod_cliente)
-                except GdfClientes.DoesNotExist:
+                    cliente_eff = ClienteGdf.objects.get(cod_cliente=cod_cliente)
+                except ClienteGdf.DoesNotExist:
                     pass
+            if not cliente_eff:
+                raise ValueError("Cliente não identificado para esta carga (NFSe). Informe o cliente na sessão ou vincule a empresa ao cliente.")
 
             # Identificacao
             identificacao, _ = NFSe_Identificacao.objects.update_or_create(
@@ -1150,7 +1207,8 @@ class CargaXml:
                     'prestador': prestador,
                     'tomador': tomador,
                     'empresa': empresa,
-                    'cliente': cliente_eff,
+                    'filial': filial,
+                    'gdfcliente': cliente_eff,
                     'data_atualizacao': timezone.now()
                 }
             )

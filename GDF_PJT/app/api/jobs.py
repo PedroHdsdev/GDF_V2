@@ -52,6 +52,8 @@ def processar_job_xml_background(job_id, temp_dir, type_xml, origem_dados, user_
             mensagem_lines.append(f"ERRO: {err.get('file', '')} - {err.get('error', '')}")
         for p in upload_result.get("pendentes", []):
             mensagem_lines.append(f"PENDENTES (empresa não cadastrada): {p.get('file', '')} - {p.get('motivo', '')}")
+        for a in upload_result.get("avisos", []):
+            mensagem_lines.append(f"AVISO: {a.get('file', '')} - {a.get('message', '')}")
         for name in upload_result.get("success", []):
             mensagem_lines.append(f"OK: {name}")
         resumo = "\n".join(mensagem_lines)[:5000]

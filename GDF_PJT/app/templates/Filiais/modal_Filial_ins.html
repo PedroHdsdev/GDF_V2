@@ -1,0 +1,78 @@
+<div class="modal fade" id="modalFilialIns" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <form method="post" action="{% url 'Filial_ins' %}" id="formFilialIns" onsubmit="return fn_validar_formulario_filial_ins(event)">
+        {% csrf_token %}
+
+        <div class="modal-header">
+          <h5 class="modal-title">Cadastrar Filial</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <div id="modalFilialInsAlerts"></div>
+          <div class="row g-3">
+            <div class="col-12">
+              <label for="ins_filial_empresa" class="form-label">* Empresa</label>
+              <select id="ins_filial_empresa" name="m_empresa" class="form-select" required>
+                <option value="">-- Selecione a empresa --</option>
+                {% for emp in empresas %}
+                <option value="{{ emp.cod_empresa }}">{{ emp.cod_empresa }} – {{ emp.fantasia|default:emp.razao }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label for="ins_filial_cod" class="form-label">* Código da filial</label>
+              <input
+                type="text"
+                id="ins_filial_cod"
+                name="m_cod_filial"
+                class="form-control"
+                placeholder="Ex: 001"
+                maxlength="10"
+                required>
+            </div>
+            <div class="col-md-6">
+              <label for="ins_filial_nome" class="form-label">Nome</label>
+              <input
+                type="text"
+                id="ins_filial_nome"
+                name="m_nome"
+                class="form-control"
+                placeholder="Nome da filial"
+                maxlength="120">
+            </div>
+            <div class="col-md-6">
+              <label for="ins_filial_cnpj" class="form-label">CNPJ</label>
+              <input
+                type="text"
+                id="ins_filial_cnpj"
+                name="m_cnpj"
+                class="form-control"
+                placeholder="00.000.000/0000-00"
+                maxlength="18">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Ativo</label>
+              <div class="form-check form-switch mt-2">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="ins_filial_ativo"
+                  name="m_ativo"
+                  checked>
+                <label class="form-check-label" for="ins_filial_ativo">Filial ativa</label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Cadastrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

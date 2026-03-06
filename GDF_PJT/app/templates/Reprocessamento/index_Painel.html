@@ -195,9 +195,18 @@
             <button type="button" class="btn btn-sm btn-outline-secondary close-modal" id="btn-fechar-modal-confronto" title="Fechar" aria-label="Fechar"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-reprocessamento-body">
-            <p class="text-muted small mb-3">Escolha as empresas e o mês/ano de competência para executar o confronto.</p>
+            <p class="text-muted small mb-3">Escolha a empresa e o mês/ano de competência para executar o confronto.</p>
 
-            <!-- Competência: mês e ano (mais claro que um único campo) -->
+            <div class="mb-3">
+                <label class="form-label">Empresa</label>
+                <select id="confronto-empresa" class="form-select" required>
+                    <option value="">Selecione a empresa</option>
+                    {% for emp in empresas %}
+                    <option value="{{ emp.cod_empresa }}">{{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
             <div class="mb-3">
                 <label class="form-label">Competência (mês/ano)</label>
                 <div class="row g-2">
@@ -220,27 +229,6 @@
                     <div class="col-6">
                         <select id="confronto-ano" class="form-select" required></select>
                     </div>
-                </div>
-            </div>
-
-            <!-- Empresas: todas ou seleção múltipla -->
-            <div class="mb-3">
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" id="confronto-todas-empresas" checked>
-                    <label class="form-check-label fw-semibold" for="confronto-todas-empresas">Reprocessar todas as empresas</label>
-                </div>
-                <div id="confronto-lista-empresas" class="border rounded p-2 bg-light" style="max-height: 200px; overflow-y: auto; display: none;">
-                    <div class="form-check mb-1">
-                        <input class="form-check-input" type="checkbox" id="confronto-sel-todas">
-                        <label class="form-check-label small" for="confronto-sel-todas">Selecionar todas</label>
-                    </div>
-                    <hr class="my-2">
-                    {% for emp in empresas %}
-                    <div class="form-check">
-                        <input class="form-check-input confronto-empresa-cb" type="checkbox" value="{{ emp.cod_empresa }}" id="confronto-emp-{{ emp.cod_empresa }}">
-                        <label class="form-check-label small" for="confronto-emp-{{ emp.cod_empresa }}">{{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})</label>
-                    </div>
-                    {% endfor %}
                 </div>
             </div>
 

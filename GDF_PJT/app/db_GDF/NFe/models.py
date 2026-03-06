@@ -1,6 +1,6 @@
 from django.db import models
 from django.utils import timezone
-from app.db_GDF.Public.models import Empresa, ClienteGdf
+from app.db_GDF.Public.models import Empresa, ClienteGdf, Filial
 
 
 class NFe_Endereco(models.Model):
@@ -579,6 +579,14 @@ class NFe(models.Model):
     id_nfe = models.AutoField(primary_key=True)
     identificacao = models.OneToOneField(NFe_Identificacao, on_delete=models.CASCADE, related_name='nfe')
     empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='nfe_docs', null=True, blank=True)  # Ao apagar empresa (ex.: ao apagar cliente), apaga NFe vinculadas
+    filial = models.ForeignKey(
+        Filial,
+        on_delete=models.SET_NULL,
+        related_name='nfe_docs_filial',
+        null=True,
+        blank=True,
+        db_column='filial_id',
+    )
     gdfcliente = models.ForeignKey(
         ClienteGdf,
         on_delete=models.CASCADE,

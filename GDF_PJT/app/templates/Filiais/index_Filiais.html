@@ -1,0 +1,148 @@
+{% extends 'index_Base.html' %}
+{% load static %}
+
+{% block title %}Filiais{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/Style_Empresas.css' %}">
+{% endblock %}
+
+{% block titlepage %}Filiais{% endblock %}
+
+{% block container %}
+<div class="layout-page">
+  <section class="layout-hero">
+    <div class="layout-hero-content">
+      <p class="layout-eyebrow">Cadastros</p>
+      <h1 class="layout-title">Filiais</h1>
+    </div>
+    <div class="layout-hero-actions">
+      <button
+        type="button"
+        id="btnAbrirModalFilialIns"
+        class="btn btn-light layout-btn"
+        data-bs-toggle="modal"
+        data-bs-target="#modalFilialIns">
+        Cadastrar filial
+      </button>
+    </div>
+  </section>
+
+  <section class="layout-panel">
+    <div class="layout-card">
+      <div class="layout-card-head">
+        <div>
+          <h2 class="layout-card-title">Lista de filiais</h2>
+          <p class="layout-card-subtitle">Filtradas pelo cliente da sessão. Busque por empresa, código ou nome da filial.</p>
+        </div>
+        <div class="layout-search">
+          <input
+            type="text"
+            id="searchBox"
+            class="form-control"
+            placeholder="Pesquisar empresa, filial, CNPJ...">
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 layout-table">
+          <thead>
+            <tr>
+              <th>Empresa</th>
+              <th>Cód. filial</th>
+              <th>Nome</th>
+              <th>CNPJ</th>
+              <th class="text-center">Ativo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in filiais %}
+            <tr class="filial-row" data-filial-id="{{ f.id }}">
+              <td>
+                <span class="fw-semibold">{{ f.empresa.cod_empresa }}</span>
+                <br>
+                <span class="small text-muted">{{ f.empresa.fantasia|default:f.empresa.razao }}</span>
+              </td>
+              <td>{{ f.cod_filial }}</td>
+              <td>{{ f.nome|default:"-" }}</td>
+              <td>{{ f.cnpj|default:"-" }}</td>
+              <td class="text-center">
+                {% if f.ativo %}
+                  <span class="badge bg-success">Sim</span>
+                {% else %}
+                  <span class="badge bg-secondary">Não</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="5" class="text-center text-muted">Nenhuma filial cadastrada. Use o botão &quot;Cadastrar filial&quot; para incluir.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+{% include 'Filiais/modal_Filial_ins.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const searchBox = document.getElementById('searchBox');
+  const rows = document.querySelectorAll('.filial-row');
+  if (searchBox && rows.length) {
+    searchBox.addEventListener('input', function () {
+      const q = this.value.trim().toLowerCase();
+      rows.forEach(function (tr) {
+        const text = tr.textContent.toLowerCase();
+        tr.style.display = q === '' || text.indexOf(q) !== -1 ? '' : 'none';
+      });
+    });
+  }
+
+  function fn_validar_formulario_filial_ins(event) {
+    event.preventDefault();
+    var form = document.getElementById('formFilialIns');
+    var empresa = document.getElementById('ins_filial_empresa');
+    var cod = document.getElementById('ins_filial_cod');
+    if (!empresa || !empresa.value) {
+      var alertEl = document.getElementById('modalFilialInsAlerts');
+      if (alertEl) alertEl.innerHTML = '<div class="alert alert-danger py-2">Selecione a empresa.</div>';
+      return false;
+    }
+    if (!cod || !cod.value.trim()) {
+      var alertEl = document.getElementById('modalFilialInsAlerts');
+      if (alertEl) alertEl.innerHTML = '<div class="alert alert-danger py-2">Código da filial é obrigatório.</div>';
+      return false;
+    }
+    var formData = new FormData(form);
+    var csrf = document.querySelector('[name=csrfmiddlewaretoken]') ? document.querySelector('[name=csrfmiddlewaretoken]').value : '';
+    fetch(form.action, {
+      method: 'POST',
+      body: formData,
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }).catch(function () { return { ok: r.ok, data: {} }; }); })
+    .then(function (result) {
+      var alertEl = document.getElementById('modalFilialInsAlerts');
+      if (result.ok && result.data.success) {
+        if (alertEl) alertEl.innerHTML = '<div class="alert alert-success py-2">' + (result.data.message || 'Filial cadastrada.') + '</div>';
+        setTimeout(function () { window.location.reload(); }, 1000);
+      } else {
+        if (alertEl) alertEl.innerHTML = '<div class="alert alert-danger py-2">' + (result.data.erro || 'Erro ao cadastrar.') + '</div>';
+      }
+    })
+    .catch(function () {
+      var alertEl = document.getElementById('modalFilialInsAlerts');
+      if (alertEl) alertEl.innerHTML = '<div class="alert alert-danger py-2">Erro de conexão.</div>';
+    });
+    return false;
+  }
+  window.fn_validar_formulario_filial_ins = fn_validar_formulario_filial_ins;
+})();
+</script>
+{% endblock %}

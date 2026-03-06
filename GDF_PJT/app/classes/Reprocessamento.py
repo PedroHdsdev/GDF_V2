@@ -1,7 +1,6 @@
 """
-Confronto SPED Fiscal (EFD ICMS/IPI) x XMLs NF-e.
+Confronto SPED Fiscal (EFD ICMS/IPI) x XMLs NF-e por empresa.
 Identifica inconsistências: NF-e sem SPED, SPED sem NF-e, e persiste divergências.
-Funciona mesmo sem SPED (só XML): todas as NF-e do mês aparecem como divergência "NF-e ausente no SPED".
 Condições de pagamento: extração a partir das parcelas da NFe e geração da tabela por lote para uso no SAP.
 """
 import re
@@ -20,8 +19,6 @@ def _normalizar_chave(chave):
 def _extrair_chaves_sped(competencia, cod_empresa):
     """
     Busca arquivos SPED da empresa/competência e extrai chaves NF-e dos registros C100/D100.
-    Considera sped_fiscal e sped_contribuicao — ambos têm C100 com chv_nfe.
-    Usa SpedFiscalReg_C100/SpedContribuicaoReg_C100 e SpedFiscalRegistro/SpedContribuicaoRegistro (D100).
     Retorna set de chaves (44 dígitos).
     """
     from app.db_GDF.sped_fiscal.models import (
@@ -96,7 +93,7 @@ def _extrair_chaves_sped(competencia, cod_empresa):
 
 def _nfe_do_mes(cod_empresa, competencia):
     """
-    Retorna lista de dict com id_nfe, chave_acesso, numero, serie, emissao
+    Retorna lista de dict com id_nfe, chave_acesso, numero, serie, emissao, cod_empresa
     para NF-e da empresa no mês da competência.
     """
     from app.db_GDF.NFe.models import NFe, NFe_Identificacao
@@ -115,16 +112,13 @@ def _nfe_do_mes(cod_empresa, competencia):
             'numero': idn.numero,
             'serie': idn.serie,
             'emissao': idn.emissao,
+            'cod_empresa': cod_empresa,
         })
     return lista
 
 
 def condicao_pagamento_da_nfe(identificacao):
-    """
-    Monta a string de condição de pagamento a partir das parcelas da NF-e.
-    identificacao: instância de NFe_Identificacao (com emissao).
-    Retorna ex.: "3x em 28/35/42 dias", "1x em 28 dias", "À vista" (sem cobrança/parcelas).
-    """
+    """Monta a string de condição de pagamento a partir das parcelas da NF-e."""
     from app.db_GDF.NFe.models import NFe_Cobranca
 
     try:
@@ -140,10 +134,7 @@ def condicao_pagamento_da_nfe(identificacao):
 
 
 def tipo_pagamento_da_nfe(identificacao):
-    """
-    Retorna o código do tipo de pagamento (tPag) da NF-e, ex.: '01', '02', '20'.
-    Usa o primeiro detPag (meio_pagamento) do NFe_Pagamento. Retorna '' se não houver.
-    """
+    """Retorna o código do tipo de pagamento (tPag) da NF-e."""
     try:
         pag = identificacao.pagamento
         t = (pag.meio_pagamento or '').strip()
@@ -153,12 +144,7 @@ def tipo_pagamento_da_nfe(identificacao):
 
 
 def _condicao_sap_da_param(condicao_nfe, tipo_pagamento=None, cod_cliente=None):
-    """
-    Busca condicao_pagamento_sap em CondicaoParam pelo condicao_pagamento_nfe e tipo_pagamento (depara).
-    Filtra por cod_cliente quando informado.
-    Primeiro tenta com tipo_pagamento específico; se não achar, tenta com tipo vazio (fallback).
-    Retorna string ou '' se não houver correspondência.
-    """
+    """Busca condicao_pagamento_sap em CondicaoParam (depara NFe -> SAP)."""
     from app.db_GDF.reprocessamento.models import CondicaoParam
 
     if not (condicao_nfe or '').strip():
@@ -180,35 +166,28 @@ def _condicao_sap_da_param(condicao_nfe, tipo_pagamento=None, cod_cliente=None):
         obj = qs.first()
         return (obj.condicao_pagamento_sap or '').strip() if obj else ''
 
-    # Primeiro tenta com tipo específico
     if tipo:
         result = _buscar(tipo)
         if result:
             return result
-    # Fallback: tipo vazio (compatibilidade com registros antigos)
     return _buscar(None)
 
 
 def gerar_condicoes_pagamento_lote(id_lote):
     """
-    Gera/atualiza registros em CondicaoPagamentoLote para todas as NF-e do lote
-    (empresa + competência do lote). Condição NFe é extraída das parcelas.
-    Faz depara com CondicaoParam (filtrado por cliente da empresa) para preencher condicao_pagamento_sap;
-    se não houver correspondência, fica vazio.
+    Gera/atualiza registros em CondicaoPagamentoLote para todas as NF-e do lote (empresa + competência).
     Retorna (criados, atualizados).
     """
     from app.db_GDF.reprocessamento.models import ReprocessamentoLote, CondicaoPagamentoLote
     from app.db_GDF.NFe.models import NFe
-    from app.db_GDF.Public.models import Empresa
 
-    lote = ReprocessamentoLote.objects.get(id_lote=id_lote)
+    lote = ReprocessamentoLote.objects.select_related('empresa').get(id_lote=id_lote)
+    cod_empresa = getattr(lote.empresa, 'cod_empresa', None) if lote.empresa_id else lote.empresa_id
     cod_cliente = None
-    try:
-        emp = Empresa.objects.get(cod_empresa=lote.cod_empresa)
-        cod_cliente = emp.gdfcliente_id if emp.gdfcliente_id else None
-    except Empresa.DoesNotExist:
-        pass
-    nfe_list = _nfe_do_mes(lote.cod_empresa, lote.competencia)
+    if lote.empresa and lote.empresa.gdfcliente_id:
+        cod_cliente = lote.empresa.gdfcliente_id
+
+    nfe_list = _nfe_do_mes(cod_empresa, lote.competencia)
     if not nfe_list:
         return 0, 0
     ids = [item['id_nfe'] for item in nfe_list]
@@ -231,6 +210,7 @@ def gerar_condicoes_pagamento_lote(id_lote):
             lote=lote,
             chave_nfe=item['chave_acesso'],
             defaults={
+                'cod_empresa': item.get('cod_empresa'),
                 'numero_nfe': item.get('numero'),
                 'serie_nfe': item.get('serie'),
                 'condicao_pagamento_nfe': condicao_nfe,
@@ -249,9 +229,6 @@ def gerar_condicoes_pagamento_lote(id_lote):
 def confrontar_sped_nfe(id_lote, cod_empresa, competencia):
     """
     Executa o confronto entre SPED Fiscal e NF-e (XML) para a empresa e o mês.
-    - Se não houver SPED: lista todas as NF-e do mês e registra cada uma como "NF-e ausente no SPED".
-    - Se não houver NF-e: lista todas as chaves do SPED e registra cada uma como "Registro SPED sem NF-e".
-    - Se houver ambos: cruza por chave e gera divergência para os que não batem.
     """
     from app.db_GDF.reprocessamento.models import ReprocessamentoLote, Divergencia, ReprocessamentoJob
 
@@ -268,11 +245,10 @@ def confrontar_sped_nfe(id_lote, cod_empresa, competencia):
                 chaves_nfe.add(ch)
                 nfe_por_chave[ch] = n
 
-        total_nfe_esperado = len(chaves_sped)  # documentos esperados pelo SPED
-        total_nfe_encontrado = len(nfe_list)   # documentos encontrados nos XMLs
+        total_nfe_esperado = len(chaves_sped)
+        total_nfe_encontrado = len(nfe_list)
         div_criadas = 0
 
-        # 1) NF-e que existem nos XMLs mas não no SPED (ou não há SPED)
         for n in nfe_list:
             ch = _normalizar_chave(n.get('chave_acesso'))
             if not ch or ch in chaves_sped:
@@ -282,24 +258,25 @@ def confrontar_sped_nfe(id_lote, cod_empresa, competencia):
                 descricao = 'NF-e presente nos XMLs. Não há arquivo SPED Fiscal para esta competência.'
             Divergencia.objects.create(
                 lote=lote,
+                cod_empresa=cod_empresa,
                 tipo='NFE_AUSENTE_SPED',
                 status='ABERTA',
                 chave_nfe=ch,
-                numero_nfe=n['numero'],
-                serie_nfe=n['serie'],
+                numero_nfe=n.get('numero'),
+                serie_nfe=n.get('serie'),
                 descricao=descricao,
-                id_nfe=n['id_nfe'],
+                id_nfe=n.get('id_nfe'),
                 detalhe_json={
                     'emissao': n['emissao'].isoformat() if n.get('emissao') else None,
                 },
             )
             div_criadas += 1
 
-        # 2) Chaves que existem no SPED mas não nos XMLs
         for chave in chaves_sped:
             if chave not in chaves_nfe:
                 Divergencia.objects.create(
                     lote=lote,
+                    cod_empresa=cod_empresa,
                     tipo='SPED_AUSENTE_NFE',
                     status='ABERTA',
                     chave_nfe=chave,

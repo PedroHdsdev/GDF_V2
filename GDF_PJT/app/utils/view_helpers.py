@@ -9,8 +9,8 @@ from django.conf import settings
 from app.db_GDF.Public.models import Empresa, AcessoSubsolucaoGrupo
 
 
-# Cliente 1000 = empresa dona do projeto (IT Process). Acesso total ao painel.
-COD_CLIENTE_PROJETO = "1000"
+# Cliente dono do projeto (ex.: IT Process). Acesso total ao painel.
+COD_CLIENTE_PROJETO = "PRCIT"
 
 # Dicionário tipo de pagamento (código XML → descrição) para relatório fiscal
 _path_tipo_pagamento = getattr(settings, "BASE_DIR", None)
@@ -33,7 +33,7 @@ def descricao_tipo_pagamento(codigo):
 
 
 def usuario_vinculado_cliente_1000(user):
-    """True se o usuário tem empresas vinculadas ao cliente 1000 (dona do projeto)."""
+    """True se o usuário tem empresas vinculadas ao cliente dono do projeto (COD_CLIENTE_PROJETO)."""
     if not user or not user.is_authenticated:
         return False
     return Empresa.objects.filter(
@@ -43,7 +43,7 @@ def usuario_vinculado_cliente_1000(user):
 
 
 def usuario_acesso_total_painel(request):
-    """True se o usuário pode gerenciar todos os clientes (superuser ou cliente 1000)."""
+    """True se o usuário pode gerenciar todos os clientes (superuser ou cliente dono do projeto)."""
     if not request.user.is_authenticated:
         return False
     if getattr(request.user, "is_superuser", False):
@@ -52,7 +52,7 @@ def usuario_acesso_total_painel(request):
 
 
 def superuser_acesso_total_painel(request):
-    """Compatibilidade: True se superuser OU usuário cliente 1000 tem acesso total."""
+    """Compatibilidade: True se superuser OU usuário do cliente dono do projeto tem acesso total."""
     return usuario_acesso_total_painel(request)
 
 
@@ -86,9 +86,11 @@ def relatorio_empresas_queryset(request):
 
 
 def reprocessamento_empresas_cliente(cod_cliente):
-    """Lista de cod_empresa permitidos para o cliente (lotes/divergências)."""
+    """Lista de cod_empresa permitidos para o cliente (uso em relatórios/outros)."""
     if not cod_cliente:
         return []
     return list(
         Empresa.objects.filter(gdfcliente_id=cod_cliente).values_list("cod_empresa", flat=True)
     )
+
+

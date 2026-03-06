@@ -4,9 +4,10 @@ from psycopg2                       import IntegrityError
 from django.conf                    import settings
 from django.contrib.auth.models     import User, Group
 from app.db_GDF.Public.models       import Empresa, ClienteGdf, CertificadoDigital, UsuarioEmpresa
-from app.db_GDF.Public.models       import PermissaoGrupoCliente, GrupoEmpresa
+from app.db_GDF.Public.models       import PermissaoGrupoCliente
 from app.db_GDF.Public.models       import Solucao, Subsolucao, AcessoSolucaoCliente, AcessoSubsolucaoGrupo
 from app.db_GDF.Public.models       import ConexaoSap
+from app.utils.view_helpers         import COD_CLIENTE_PROJETO
 from datetime                       import datetime
 from django.db.utils                import OperationalError
 from django.contrib.auth.hashers    import make_password
@@ -173,8 +174,8 @@ class ClGdf:
             # Superuser: acesso total
             if getattr(self, '_is_superuser', False):
                 return self._get_solucoes_superuser()
-            # Usuário com empresas no cliente 1000 (dona do projeto): acesso total
-            if self.empresas.filter(gdfcliente__cod_cliente='1000').exists():
+            # Usuário com empresas no cliente dono do projeto (PRCIT): acesso total
+            if self.empresas.filter(gdfcliente__cod_cliente=COD_CLIENTE_PROJETO).exists():
                 return self._get_solucoes_superuser()
 
             if not hasattr(self, 'subsolucoes_acesso') or not hasattr(self, 'solucoes_acesso'):
@@ -572,8 +573,6 @@ class ClGdf:
             print(f"[ERROR] Empresas nao encontradas: {str(e)}")
         except CertificadoDigital.DoesNotExist as e:
             print(f"[ERROR] Certificados nao encontrados: {str(e)}")
-        except GrupoEmpresa.DoesNotExist as e:
-            print(f"[ERROR] Grupos de empresas nao encontrados: {str(e)}")
         except IntegrityError as e:
             print(f"[ERROR] Erro de integridade: {str(e)}")
         except Exception as e:
@@ -582,37 +581,12 @@ class ClGdf:
         return lsl_dados_empresas 
     
 #--------------------------------------------------------------------------------
-    """Retorna todas as empresas e grupos disponíveis para o cliente"""
+    """Retorna dados disponíveis para inscrição de empresa (compatibilidade; grupos removidos)."""
     def get_empresa_dados_ins(self, i_v_cod_cliente):
         try:
-            # ✅ Validação
             if not i_v_cod_cliente:
                 raise ValueError("Cliente não identificado")
-            
-            print(f"[DEBUG] Get_Empresas_ins - cod_cliente: {i_v_cod_cliente}")
-
-            # ✅ Todos os grupos do cliente
-            l_v_queryset_todos_grupos = GrupoEmpresa.objects.filter(
-                gdfcliente__cod_cliente=i_v_cod_cliente
-            ).values('grp_empresa', 'descricao').distinct()
-            
-            print(f"[DEBUG] Grupos encontrados: {l_v_queryset_todos_grupos.count()}")
-            for l_v_grupo in l_v_queryset_todos_grupos:
-                print(f"  - {l_v_grupo['grp_empresa']}: {l_v_grupo['descricao']}")
-
-            lsl_grupos = [
-                {
-                    "grp_empresa": g['grp_empresa'],
-                    "descricao": g['descricao']
-                }
-                for g in l_v_queryset_todos_grupos
-            ]
-            
-            ol_resultado = {"todos_grupos": lsl_grupos}
-            print(f"[DEBUG] Retornando: {ol_resultado}")
-            
-            return ol_resultado
-
+            return {"todos_grupos": []}
         except Exception as e:
             print(f"[ERROR] Erro ao buscar dados para inscrição de empresa: {str(e)}")
             return {"erro": f"Erro ao buscar dados: {str(e)}"}
@@ -628,7 +602,7 @@ class ClGdf:
             
             # ✅ IDOR: Empresa deve pertencer ao cliente
             l_v_empresa = Empresa.objects.select_related(
-                'cert', 'grp_empresa', 'gdfcliente'
+                'cert', 'gdfcliente'
             ).get(
                 cod_empresa=i_v_cod_empresa,
                 gdfcliente__cod_cliente=i_v_cod_cliente
@@ -649,7 +623,6 @@ class ClGdf:
                 "suframa": l_v_empresa.suframa or "",
                 "chave_acesso": l_v_empresa.chave_acesso or "",
                 "matriz": l_v_empresa.matriz or False,
-                "grp_empresa": l_v_empresa.grp_empresa.grp_empresa if l_v_empresa.grp_empresa else None,
                 "cert_empresa": {
                     "raiz": l_v_empresa.cert.raiz_cnpj if l_v_empresa.cert else None,
                     "ini_validade": l_v_empresa.cert.ini_validade.strftime("%d/%m/%Y") if l_v_empresa.cert and l_v_empresa.cert.ini_validade else None,
@@ -675,7 +648,6 @@ class ClGdf:
         i_v_razao,
         i_v_cnpj,
         i_v_fantasia,
-        i_v_grp_empresa,
         i_v_cod_cliente,
         i_b_matriz=False,
         i_v_ie="",
@@ -689,17 +661,11 @@ class ClGdf:
 
         try:
             # ✅ Validações obrigatórias
-            if not i_v_cod_empresa or not i_v_razao or not i_v_cnpj or not i_v_fantasia or not i_v_grp_empresa:
+            if not i_v_cod_empresa or not i_v_razao or not i_v_cnpj or not i_v_fantasia:
                 raise ValueError("Todos os campos são obrigatórios")
             
             if not i_v_cod_cliente:
                 raise ValueError("Cliente não identificado")
-            
-            # ✅ Verificar se grupo de empresa existe
-            try:
-                q_grpempresa = GrupoEmpresa.objects.get(grp_empresa=i_v_grp_empresa)
-            except GrupoEmpresa.DoesNotExist:
-                raise ValueError(f"Grupo de empresa '{i_v_grp_empresa}' não encontrado")
             
             # ✅ Transação atômica: certificado + empresa
             with transaction.atomic():
@@ -723,8 +689,7 @@ class ClGdf:
                     razao=i_v_razao,
                     cnpj=i_v_cnpj,
                     fantasia=i_v_fantasia,
-                    grp_empresa=q_grpempresa,
-                    cliente=cliente,
+                    gdfcliente=cliente,
                     cert=cert_obj,
                     matriz=i_b_matriz,
                     ie=i_v_ie,
@@ -758,7 +723,6 @@ class ClGdf:
         i_v_cod_empresa,
         i_v_razao,
         i_v_fantasia,
-        i_v_grp_empresa,
         i_v_cod_cliente,
         i_b_matriz=False,
         i_v_ie="",
@@ -785,14 +749,6 @@ class ClGdf:
                 gdfcliente__cod_cliente=i_v_cod_cliente
             )
             
-            # ✅ Se grupo foi informado, validar
-            if i_v_grp_empresa:
-                try:
-                    q_grpempresa = GrupoEmpresa.objects.get(grp_empresa=i_v_grp_empresa)
-                    empresa.grp_empresa = q_grpempresa
-                except GrupoEmpresa.DoesNotExist:
-                    raise ValueError(f"Grupo de empresa '{i_v_grp_empresa}' não encontrado")
-            
             # ✅ Atualizar campos
             empresa.razao = i_v_razao
             empresa.fantasia = i_v_fantasia
@@ -807,7 +763,7 @@ class ClGdf:
             
             empresa.save(update_fields=[
                 'razao', 'fantasia', 'matriz', 'ie', 'im', 'iest', 
-                'crt', 'cnae', 'suframa', 'chave_acesso', 'grp_empresa'
+                'crt', 'cnae', 'suframa', 'chave_acesso'
             ])
             
             print(f"[OK] Empresa {i_v_cod_empresa} atualizada com sucesso")
