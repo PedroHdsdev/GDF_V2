@@ -177,18 +177,18 @@ function fn_atualizar_tabela_filtrada() {
    ADICIONAR LISTENERS NA TABELA (não usado - usar delegação)
 ================================ */
 function fn_adicionar_listeners_tabela() {
-    // NOTA: Função mantida para compatibilidade mas não usada
-    // Event listeners são gerenciados via delegação em fn_init_cliente_upd()
+    // NOTA: Função mantida para compatibilidade (delegação principal em fn_init_cliente_upd)
+    var modalEl = document.getElementById("modalClienteUpd");
+    if (!modalEl) return;
     document.querySelectorAll(".cliente-row").forEach(row => {
         row.addEventListener("click", async (e) => {
             if (e.target.closest("a, button, input, label")) return;
-            
             const clienteId = row.dataset.clienteId;
             if (!clienteId) return;
-            
-            await fn_carregar_cliente(clienteId);
-            const modal = new bootstrap.Modal(document.getElementById("modalClienteUpd"));
-            modal.show();
+            var sucesso = await fn_carregar_cliente(clienteId);
+            if (sucesso && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop: 'static', keyboard: false }).show();
+            }
         });
     });
 }
@@ -334,14 +334,14 @@ function fn_init_cliente_upd() {
         // ✅ Aguardar dados serem carregados ANTES de abrir o modal
         const sucesso = await fn_carregar_cliente(clienteId);
         
-        if (sucesso) {
-            const modal = new bootstrap.Modal(modalEl, {
-                backdrop: "static",
-                keyboard: false
-            });
+        if (sucesso && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop: 'static', keyboard: false });
             modal.show();
         } else {
             og_estado_clientes.modalAberto = null;
+            if (!sucesso && typeof Notificacoes !== 'undefined') {
+                Notificacoes.pagina('Erro ao carregar dados do cliente. Verifique o console ou tente novamente.', 'danger');
+            }
         }
     });
 
@@ -379,7 +379,10 @@ async function fn_carregar_cliente(clienteId) {
     try {
         console.log(`📥 Iniciando carregamento do cliente ${clienteId}...`);
         
-        const resp = await fetch(`/cliente/${clienteId}/`, {
+        var urlClienteUpd = (typeof window !== 'undefined' && window.APP_URLS && window.APP_URLS.clienteUpd)
+            ? window.APP_URLS.clienteUpd.replace('__ID__', encodeURIComponent(clienteId))
+            : ('/cliente/' + encodeURIComponent(clienteId) + '/');
+        const resp = await fetch(urlClienteUpd, {
             headers: { 
                 "X-Requested-With": "XMLHttpRequest",
                 "Accept": "application/json"
@@ -387,8 +390,15 @@ async function fn_carregar_cliente(clienteId) {
         });
 
         if (!resp.ok) {
-            console.error(`Erro ao carregar cliente: ${resp.status} - ${resp.statusText}`);
-            Notificacoes.modal('Erro ao carregar cliente: ' + resp.statusText, 'danger', 'modalClienteUpdAlerts');
+            var msg = resp.statusText;
+            try {
+                var errBody = await resp.json();
+                if (errBody && errBody.erro) msg = errBody.erro;
+            } catch (e) {}
+            console.error('Erro ao carregar cliente:', resp.status, msg);
+            if (typeof Notificacoes !== 'undefined') {
+                Notificacoes.pagina('Erro ao carregar cliente: ' + msg, 'danger');
+            }
             return false;  // ✅ Retornar false se falhar
         }
 
@@ -402,7 +412,9 @@ async function fn_carregar_cliente(clienteId) {
 
     } catch (err) {
         console.error("Erro ao fazer fetch do cliente:", err);
-        Notificacoes.modal("Erro ao carregar dados do cliente", 'danger', 'modalClienteUpdAlerts');
+        if (typeof Notificacoes !== 'undefined') {
+            Notificacoes.pagina('Erro ao carregar dados do cliente. Verifique a conexão.', 'danger');
+        }
         return false;  // ✅ Retornar false se erro
     }
 }

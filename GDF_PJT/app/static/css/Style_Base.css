@@ -216,6 +216,10 @@
 .alert-padrao.alert-info .alert-padrao-rotulo { color: #0369a1; }
 
 /* Modal: alertas dentro do modal (mesmo estilo, menor destaque) */
+/* Garantir que modais fiquem acima da navbar e do offcanvas */
+.modal-backdrop { z-index: 1045 !important; }
+.modal { z-index: 1050 !important; }
+
 .modal .alert-padrao {
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }

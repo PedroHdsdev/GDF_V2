@@ -2,6 +2,12 @@
 
 Pasta que concentra **decorators**, **validadores**, **middlewares** e utilitários de segurança do app GDF.
 
+## Proxy (NGINX)
+
+Quando a aplicação está atrás de **proxy reverso (NGINX)**:
+- **IP do cliente:** `RateLimitMiddleware` e `SessionFixationMiddleware` usam `SecurityLogger.get_client_ip(request)`, que considera `X-Forwarded-For` e `X-Real-IP` (definido em `app.security_logger`).
+- **Path de login:** o rate limit para a tela de login considera subpath (`FORCE_SCRIPT_NAME`, ex.: `/gdf/Login/`).
+
 ## Estrutura
 
 | Módulo | Descrição |
@@ -11,8 +17,8 @@ Pasta que concentra **decorators**, **validadores**, **middlewares** e utilitár
 | **validators.py** | `InputValidator`, `validate_input`, `sanitize` – validação e sanitização de entrada (SQL/XSS) |
 | **middlewares/** | |
 | → security_headers.py | `SecurityHeadersMiddleware`, `XSSProtectionUtility` – headers XSS, clickjacking, HSTS; escape JS/HTML/URL |
-| → rate_limit.py | `RateLimitMiddleware` – limite de requisições por IP/usuário |
-| → session_fixation.py | `SessionFixationMiddleware`, `JWTTokenValidator`, `validate_jwt_required` – proteção de sessão e JWT |
+| → rate_limit.py | `RateLimitMiddleware` – limite por IP/usuário (IP real via proxy); 5 req/min em login, 100 no resto |
+| → session_fixation.py | `SessionFixationMiddleware`, `JWTTokenValidator`, `validate_jwt_required` – proteção de sessão e JWT (IP real via proxy). Revogação de JWT é em memória; em multi-worker use cache/Redis para revogação global. |
 
 ## Uso
 

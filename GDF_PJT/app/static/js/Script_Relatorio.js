@@ -5,12 +5,16 @@ function relatorioTabAtivo() {
     return tab ? tab.id : 'rel-nfe';
 }
 
+var relatorioPaginaAtual = 1;
+
 function relatorioParams() {
     var params = {
         empresa_id: (document.getElementById('relatorio-empresa') && document.getElementById('relatorio-empresa').value.trim()) || '',
         data_inicio: (document.getElementById('relatorio-data-inicio') && document.getElementById('relatorio-data-inicio').value.trim()) || '',
         data_fim: (document.getElementById('relatorio-data-fim') && document.getElementById('relatorio-data-fim').value.trim()) || '',
-        busca: (document.getElementById('relatorio-busca') && document.getElementById('relatorio-busca').value.trim()) || ''
+        busca: (document.getElementById('relatorio-busca') && document.getElementById('relatorio-busca').value.trim()) || '',
+        page: relatorioPaginaAtual,
+        page_size: 50
     };
     var tab = relatorioTabAtivo();
     if (tab === 'rel-nfe') {
@@ -33,6 +37,8 @@ function relatorioBuildUrl(base, params) {
     if (params.tipo_operacao) q.set('tipo_operacao', params.tipo_operacao);
     if (params.tipo_pagamento) q.set('tipo_pagamento', params.tipo_pagamento);
     if (params.tipo_sped) q.set('tipo_sped', params.tipo_sped);
+    if (params.page) q.set('page', String(params.page));
+    if (params.page_size) q.set('page_size', String(params.page_size));
     var s = q.toString();
     return s ? base + '?' + s : base;
 }
@@ -519,15 +525,67 @@ function renderTabs(tabs, tabsContainer, tabContentContainer) {
     });
 }
 
-function relatorioAtualizarContador(tipo, total) {
+function relatorioAtualizarContador(tipo, total, paginacao) {
     var el = document.getElementById('relatorio-contador-num');
     if (!el) return;
     var label = tipo === 'sped' ? 'arquivo(s)' : 'nota(s)';
     if (total === 0) {
-        el.textContent = 'Nenhuma ' + label + ' exibida';
+        el.textContent = 'Nenhuma ' + label;
+    } else if (paginacao && paginacao.total_pages > 1) {
+        var from = (paginacao.page - 1) * paginacao.page_size + 1;
+        var to = Math.min(paginacao.page * paginacao.page_size, total);
+        el.textContent = 'Exibindo ' + from + ' a ' + to + ' de ' + total + ' ' + label;
     } else {
         el.textContent = total + ' ' + label + ' exibida' + (total === 1 ? '' : 's');
     }
+}
+
+function relatorioRenderizarPaginacao(paginacao) {
+    var nav = document.getElementById('relatorio-paginacao');
+    var ul = nav ? nav.querySelector('ul.pagination') : null;
+    if (!ul) return;
+    ul.innerHTML = '';
+    if (!paginacao || paginacao.total_pages <= 1) {
+        nav.classList.add('d-none');
+        return;
+    }
+    nav.classList.remove('d-none');
+    var page = paginacao.page;
+    var totalPages = paginacao.total_pages;
+    var add = function (label, num, disabled) {
+        var li = document.createElement('li');
+        li.className = 'page-item' + (disabled ? ' disabled' : '') + (num === page ? ' active' : '');
+        var a = document.createElement('a');
+        a.className = 'page-link';
+        a.href = '#';
+        a.setAttribute('data-page', String(num !== undefined ? num : ''));
+        a.textContent = label;
+        a.addEventListener('click', function (e) {
+            e.preventDefault();
+            if (disabled || num === page) return;
+            if (num !== undefined) {
+                relatorioPaginaAtual = num;
+                relatorioAplicar(false);
+            }
+        });
+        li.appendChild(a);
+        ul.appendChild(li);
+    };
+    add('Anterior', page - 1, page <= 1);
+    var maxBotoes = 7;
+    var ini = Math.max(1, page - Math.floor(maxBotoes / 2));
+    var fim = Math.min(totalPages, ini + maxBotoes - 1);
+    if (fim - ini + 1 < maxBotoes) ini = Math.max(1, fim - maxBotoes + 1);
+    if (ini > 1) {
+        add('1', 1, false);
+        if (ini > 2) add('…', undefined, true);
+    }
+    for (var p = ini; p <= fim; p++) add(String(p), p, false);
+    if (fim < totalPages) {
+        if (fim < totalPages - 1) add('…', undefined, true);
+        add(String(totalPages), totalPages, false);
+    }
+    add('Próxima', page + 1, page >= totalPages);
 }
 
 function relatorioCarregarNFe() {
@@ -539,7 +597,9 @@ function relatorioCarregarNFe() {
         .then(function (r) { return r.json(); })
         .then(function (data) {
             var items = data.items || [];
-            relatorioAtualizarContador('nfe', items.length);
+            var pag = { total: data.total || items.length, page: data.page || 1, page_size: data.page_size || 50, total_pages: data.total_pages || 1 };
+            relatorioAtualizarContador('nfe', pag.total, pag);
+            relatorioRenderizarPaginacao(pag);
             if (items.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Nenhum registro</td></tr>';
                 return;
@@ -557,7 +617,7 @@ function relatorioCarregarNFe() {
                 tr.addEventListener('click', function () { abrirDetalhe(tr.getAttribute('data-tipo'), tr.getAttribute('data-id')); });
             });
         })
-        .catch(function () { tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('nfe', 0); });
+        .catch(function () { tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('nfe', 0); relatorioRenderizarPaginacao(null); });
 }
 
 function relatorioCarregarCTe() {
@@ -569,7 +629,9 @@ function relatorioCarregarCTe() {
         .then(function (r) { return r.json(); })
         .then(function (data) {
             var items = data.items || [];
-            relatorioAtualizarContador('cte', items.length);
+            var pag = { total: data.total || items.length, page: data.page || 1, page_size: data.page_size || 50, total_pages: data.total_pages || 1 };
+            relatorioAtualizarContador('cte', pag.total, pag);
+            relatorioRenderizarPaginacao(pag);
             if (items.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum registro</td></tr>';
                 return;
@@ -584,7 +646,7 @@ function relatorioCarregarCTe() {
                 tr.addEventListener('click', function () { abrirDetalhe(tr.getAttribute('data-tipo'), tr.getAttribute('data-id')); });
             });
         })
-        .catch(function () { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('cte', 0); });
+        .catch(function () { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('cte', 0); relatorioRenderizarPaginacao(null); });
 }
 
 function relatorioCarregarNFSe() {
@@ -596,7 +658,9 @@ function relatorioCarregarNFSe() {
         .then(function (r) { return r.json(); })
         .then(function (data) {
             var items = data.items || [];
-            relatorioAtualizarContador('nfse', items.length);
+            var pag = { total: data.total || items.length, page: data.page || 1, page_size: data.page_size || 50, total_pages: data.total_pages || 1 };
+            relatorioAtualizarContador('nfse', pag.total, pag);
+            relatorioRenderizarPaginacao(pag);
             if (items.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Nenhum registro</td></tr>';
                 return;
@@ -611,7 +675,7 @@ function relatorioCarregarNFSe() {
                 tr.addEventListener('click', function () { abrirDetalhe(tr.getAttribute('data-tipo'), tr.getAttribute('data-id')); });
             });
         })
-        .catch(function () { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('nfse', 0); });
+        .catch(function () { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('nfse', 0); relatorioRenderizarPaginacao(null); });
 }
 
 function relatorioCarregarSped() {
@@ -622,7 +686,9 @@ function relatorioCarregarSped() {
         .then(function (r) { return r.json(); })
         .then(function (data) {
             var items = data.items || [];
-            relatorioAtualizarContador('sped', items.length);
+            var pag = { total: data.total || items.length, page: data.page || 1, page_size: data.page_size || 50, total_pages: data.total_pages || 1 };
+            relatorioAtualizarContador('sped', pag.total, pag);
+            relatorioRenderizarPaginacao(pag);
             if (items.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum registro</td></tr>';
                 return;
@@ -641,10 +707,11 @@ function relatorioCarregarSped() {
                 tr.addEventListener('click', function () { abrirDetalhe(t, id, tipoSped); });
             });
         })
-        .catch(function () { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('sped', 0); });
+        .catch(function () { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('sped', 0); relatorioRenderizarPaginacao(null); });
 }
 
-function relatorioAplicar() {
+function relatorioAplicar(resetarPagina) {
+    if (resetarPagina !== false) relatorioPaginaAtual = 1;
     var tab = document.querySelector('.tab-pane.active');
     if (!tab) return;
     if (tab.id === 'rel-nfe') relatorioCarregarNFe();

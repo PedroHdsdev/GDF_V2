@@ -55,15 +55,15 @@ class BaseDashboard(ABC):
             user = User.objects.get(username=self.auth.username)
             if self.auth.acesso_total and self.auth.cod_cliente:
                 self.empresas_qs = Empresa.objects.filter(
-                    cliente__cod_cliente=self.auth.cod_cliente
+                    gdfcliente__cod_cliente=self.auth.cod_cliente
                 ).distinct()
             else:
                 self.empresas_qs = Empresa.objects.filter(
-                    userempresas__user=user
+                    usuarioempresa__user=user
                 ).distinct()
                 if self.auth.cod_cliente:
                     self.empresas_qs = self.empresas_qs.filter(
-                        cliente__cod_cliente=self.auth.cod_cliente
+                        gdfcliente__cod_cliente=self.auth.cod_cliente
                     )
 
             if not self.empresas_qs.exists():

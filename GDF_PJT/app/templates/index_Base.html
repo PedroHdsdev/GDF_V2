@@ -58,7 +58,7 @@
         <div class="sidebar-cliente-selector p-3 border-bottom">
             <form id="formSidebarCliente" class="sidebar-cliente-form" method="post" action="#" onsubmit="return false;">
                 {% csrf_token %}
-                <label class="form-label small fw-semibold mb-1">Cliente ativo</label>
+                <label for="sidebarSelectCliente" class="form-label small fw-semibold mb-1">Cliente ativo</label>
                 <select name="cod_cliente" id="sidebarSelectCliente" class="form-select form-select-sm mb-2">
                     <option value="">-- Selecione --</option>
                     {% for c in lista_clientes %}
@@ -125,6 +125,35 @@
 
 <!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Garantir que modais abram: fallback se o Bootstrap não abrir (ex.: evento não disparado) -->
+<script>
+(function() {
+  function initModalFallback() {
+    if (typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+    document.querySelectorAll('[data-bs-toggle="modal"]').forEach(function(trigger) {
+      var targetId = trigger.getAttribute('data-bs-target');
+      if (!targetId || targetId.indexOf('#') !== 0) return;
+      var targetEl = document.getElementById(targetId.slice(1));
+      if (!targetEl) return;
+      trigger.addEventListener('click', function() {
+        var el = targetEl;
+        setTimeout(function() {
+          if (el.classList.contains('show')) return;
+          try {
+            bootstrap.Modal.getOrCreateInstance(el).show();
+          } catch (err) { console.warn('Modal fallback:', err); }
+        }, 10);
+      }, false);
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initModalFallback);
+  } else {
+    initModalFallback();
+  }
+})();
+</script>
 
 <!-- Padrão de notificações (erros/avisos/sucesso) - página e modal -->
 <script src="{% static 'js/NotificacoesPadrao.js' %}"></script>

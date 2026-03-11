@@ -1,24 +1,28 @@
 """
-Factory para criação de Dashboards.
-Para adicionar novo tipo: registre o mapeamento em DASHBOARD_REGISTRY.
+Factory para criação de Dashboards Streamlit.
+Cada solução pode ter um ou mais dashboards de análise; todos são registrados aqui.
+Para adicionar um novo dashboard (de qualquer solução):
+  1. Crie uma classe herdando de BaseDashboard em dashboards/
+  2. Registre em DASHBOARD_REGISTRY com uma chave (ex.: "Vendas", "Compras", "Reprocessamento")
+  3. No Django: view que gera token com tipo_relatorio=chave; o iframe usa só ?token=... (o dashboard vem do token).
 """
 from core.auth import AuthResult
 from dashboards.vendas import DashboardVendas
 from dashboards.compras import DashboardCompras
 
 
-# Registro de dashboards disponíveis: tipo_relatorio -> classe
+# Registro de dashboards: chave -> classe (solução Dashboard hoje; outras soluções podem registrar no futuro)
 DASHBOARD_REGISTRY = {
     "Vendas": DashboardVendas,
     "Compras": DashboardCompras,
 }
 
 
-def create_dashboard(auth: AuthResult):
+def create_dashboard(auth: AuthResult, dashboard_key: str | None = None):
     """
     Cria e retorna a instância do dashboard apropriado.
-    Usa o tipo_relatorio do auth para selecionar a classe.
+    dashboard_key: chave no DASHBOARD_REGISTRY (ex.: "Vendas", "Compras"). Se None, usa auth.tipo_relatorio.
     """
-    tipo = auth.tipo_relatorio or "Vendas"
-    cls = DASHBOARD_REGISTRY.get(tipo, DashboardVendas)
+    key = (dashboard_key or auth.tipo_relatorio or "Vendas").strip()
+    cls = DASHBOARD_REGISTRY.get(key, DashboardVendas)
     return cls(auth)

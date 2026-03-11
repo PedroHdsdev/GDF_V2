@@ -51,7 +51,7 @@ def validate_idor_usuario(view_func):
         if user_id:
             user_pertence = User.objects.filter(
                 id=user_id,
-                userempresas__empresa__gdfcliente__cod_cliente=cod_cliente,
+                usuarioempresa__empresa__gdfcliente__cod_cliente=cod_cliente,
             ).exists()
             if not user_pertence:
                 return JsonResponse({

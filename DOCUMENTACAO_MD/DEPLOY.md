@@ -51,10 +51,14 @@ O `settings.py` deve definir `CELERY_BROKER_URL` e, se necessário, `CELERY_RESU
 
 Se houver integração SAP, as credenciais costumam ficar no banco (modelo `ConexaoSap` por cliente). Variáveis de ambiente podem ser usadas para override ou para um usuário genérico; isso depende da implementação. Não armazene senhas SAP em arquivos versionados.
 
-### 2.4 Outras
+### 2.4 Dashboard (Streamlit) e outras
 
-- **STREAMLIT_FRAME_ORIGINS:** se usado no middleware de security headers, lista de origens permitidas para iframe dos dashboards (ex.: https://localhost:8600).
-- Qualquer outra variável referenciada no `settings.py` (e-mail, cache, etc.) deve ser definida conforme o ambiente.
+Configure no **.env**:
+
+- **STREAMLIT_IFRAME_URL:** URL do Streamlit para o iframe do Dashboard. Produção: `https://homo.processit.com.br/streamlit`. Dev: `http://127.0.0.1:8600`.
+- **CSP_FRAME_SRC_EXTRA:** Origens extras para o CSP `frame-src` (iframe), separadas por vírgula. Ex.: `https://homo.processit.com.br`, `https://localhost:8600`.
+- **STREAMLIT_FRAME_ORIGINS:** se usado no middleware de security headers, lista de origens para iframe.
+- Demais variáveis referenciadas no `settings.py` (e-mail, cache, etc.) conforme o ambiente.
 
 ---
 
@@ -105,18 +109,14 @@ O `run_gunicorn.sh` pode encapsular o comando; use-o se já existir no projeto.
 
 ### 4.2 Nginx (proxy reverso e estáticos)
 
-- **Proxy:** encaminhar requisições para o Gunicorn (ex.: `http://127.0.0.1:8000`).
+- **Proxy:** encaminhar requisições para o Gunicorn. No projeto o Gunicorn usa a **porta 8500** (`bin/start_gdf.sh` e `etc/gunicorn_config.py`).
+- **Streamlit:** usado para dashboards de análise de **qualquer solução** (não só a solução Dashboard). Uma única URL base (ex.: `/gdf/streamlit/`) atende todos; o dashboard exibido vem do parâmetro `?dashboard=`. É **obrigatório** ter um `location` para esse path fazendo proxy para o processo Streamlit (porta 8600). Sem isso, o iframe retorna **404**. Ver também `GDF_PJT/streamlit/README.md` para adicionar novos dashboards por solução.
 - **Estáticos:** `alias` (ou `root`) apontando para o diretório de `collectstatic` (ex.: `staticfiles/`).
 - **SSL:** configurar certificado e listen 443; redirecionar HTTP para HTTPS se desejado.
 
-Exemplo mínimo (ajuste paths e domínio):
+Exemplo mínimo com app na **raiz** (ajuste paths e domínio):
 
 ```nginx
-server {
-    listen 80;
-    server_name seu-dominio.com;
-    return 301 https://$server_name$request_uri;
-}
 server {
     listen 443 ssl;
     server_name seu-dominio.com;
@@ -125,8 +125,19 @@ server {
     location /static/ {
         alias /app/gdf_v2/GDF_PJT/staticfiles/;
     }
+    location /streamlit/ {
+        proxy_pass http://127.0.0.1:8600/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400;
+    }
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:8500;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -134,6 +145,75 @@ server {
     }
 }
 ```
+
+Exemplo com aplicação sob o prefixo **`/gdf`** (ex.: `FORCE_SCRIPT_NAME=/gdf`):
+
+- `.env`: use a URL completa do iframe, ex. `STREAMLIT_BASE_URL=https://homo.processit.com.br/gdf/streamlit`.
+- Nginx: o proxy do Streamlit **deve vir antes** do `location /gdf/`, para que `/gdf/streamlit/` não seja enviado ao Django.
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name homo.processit.com.br;
+    ssl_certificate     /caminho/cert.crt;
+    ssl_certificate_key /caminho/cert.key;
+
+    location /gdf/static/ {
+        alias /app/gdf_v2/GDF_PJT/staticfiles/;
+    }
+    # Streamlit: obrigatório para o iframe do Dashboard (antes do location /gdf/)
+    location /gdf/streamlit/ {
+        proxy_pass http://127.0.0.1:8600/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400;
+    }
+    location /gdf/ {
+        proxy_pass http://127.0.0.1:8500/gdf/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+**Se o iframe continuar com 404:** inspecione o `src` do iframe no navegador (botão direito no quadro → Inspecionar). A URL deve ser exatamente a que está no Nginx (ex.: `https://homo.processit.com.br/gdf/streamlit/`). Confirme que existe um `location` para esse path fazendo proxy para `http://127.0.0.1:8600/` e que o processo Streamlit está em execução na porta 8600.
+
+### 4.3 404 no iframe do Dashboard (JSON "The requested URL was not found...")
+
+Quando o iframe do Dashboard (Compras/Vendas) retorna **404** com corpo em JSON (`"detail": "The requested URL was not found on the server."`), a requisição está indo para o **Django** em vez do **Streamlit**. O proxy reverso não está encaminhando o path do Streamlit para a porta 8600.
+
+**Checklist no servidor:**
+
+1. **Confirmar a URL do iframe**  
+   No navegador: botão direito no quadro do dashboard → **Inspecionar** → no `<iframe>` veja o atributo `src`.  
+   Será algo como:
+   - `https://seu-dominio.com/gdf/streamlit/?token=...` (app em `/gdf`), ou  
+   - `https://seu-dominio.com/streamlit/?token=...` (app na raiz).
+
+2. **Configurar o Nginx para esse path exato**
+   - Se o `src` for `.../gdf/streamlit/`, o Nginx **precisa** de um bloco **`location /gdf/streamlit/`** com `proxy_pass http://127.0.0.1:8600/;` (e os headers de WebSocket do exemplo acima). Esse `location` deve vir **antes** do `location /gdf/`.
+   - Se o `src` for `.../streamlit/`, use **`location /streamlit/`** com o mesmo `proxy_pass`.
+
+3. **Garantir que o Streamlit está em execução** na porta 8600 (ex.: `sudo systemctl status gdf` deve mostrar o processo `streamlit run ... --server.port 8600`).
+
+4. **Alinhar o `.env` com o path do Nginx**  
+   A URL do iframe vem de **`STREAMLIT_BASE_URL`** no `.env`. Se a aplicação está em `/gdf/`, use:
+   ```env
+   STREAMLIT_BASE_URL=https://seu-dominio.com/gdf/streamlit
+   ```
+   (sem barra no final; uma única URL, sem vírgulas.)
+
+5. **Recarregar o Nginx** após alterar a config:
+   ```bash
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
 
 ---
 
@@ -190,6 +270,7 @@ Mantenha esse script rodando (ex.: via systemd ou supervisor). Ele verifica a ca
 - [ ] **collectstatic** executado; Nginx (ou outro) servindo `/static/` a partir do diretório de static files.
 - [ ] **Gunicorn** em execução (ou outro WSGI); Nginx faz proxy para a aplicação e envia headers (Host, X-Forwarded-For, X-Forwarded-Proto).
 - [ ] **HTTPS** ativo no proxy; certificados válidos; Django com SECURE_*, SESSION_COOKIE_SECURE, CSRF_COOKIE_SECURE.
+- [ ] **Streamlit** em execução (porta 8600) e **Nginx** com `location /streamlit/` (ou path equivalente) em proxy para o processo; `STREAMLIT_BASE_URL` no `.env` com a URL completa do iframe.
 - [ ] **Celery worker e beat** rodando (se usar carga agendada) ou **run_carga_scheduler.py** em execução.
 - [ ] **Redis** acessível quando Celery estiver em uso.
 - [ ] **Logs** configurados (Django LOGGING e logs do Gunicorn/Nginx); **monitoramento** (opcional: saúde da aplicação, fila Celery, disco para diretórios de carga).

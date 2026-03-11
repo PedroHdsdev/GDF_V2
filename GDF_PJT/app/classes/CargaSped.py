@@ -286,11 +286,11 @@ class CargaSped:
                 if cod_cliente:
                     try:
                         from app.db_GDF.Public.models import ClienteGdf
-                        cliente_eff = GdfClientes.objects.get(cod_cliente=cod_cliente)
+                        cliente_eff = ClienteGdf.objects.get(cod_cliente=cod_cliente)
                     except Exception:
                         pass
                 arq = M['Arquivo'].objects.create(
-                    cliente=cliente_eff,
+                    gdfcliente=cliente_eff,
                     empresa=empresa_eff,
                     competencia=competencia,
                     nome_arquivo=nome,
@@ -360,7 +360,7 @@ class CargaSped:
             return None
         try:
             from app.db_GDF.Public.models import Empresa
-            return Empresas.objects.filter(gdfcliente__cod_cliente=cod_cliente, cnpj=cnpj_14).first()
+            return Empresa.objects.filter(gdfcliente__cod_cliente=cod_cliente, cnpj=cnpj_14).first()
         except Exception:
             return None
 
@@ -451,11 +451,11 @@ class CargaSped:
                 if cod_cliente:
                     try:
                         from app.db_GDF.Public.models import ClienteGdf
-                        cliente_eff = GdfClientes.objects.get(cod_cliente=cod_cliente)
+                        cliente_eff = ClienteGdf.objects.get(cod_cliente=cod_cliente)
                     except Exception:
                         pass
                 arq = M['Arquivo'].objects.create(
-                    cliente=cliente_eff,
+                    gdfcliente=cliente_eff,
                     empresa=empresa_eff,
                     competencia=competencia,
                     nome_arquivo=nome,

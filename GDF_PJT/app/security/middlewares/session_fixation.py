@@ -1,15 +1,17 @@
 """
 Session Fixation Protection
-Valida JWT tokens com expiração e emissão (iat/exp)
-Previne reutilização de tokens antigos
+Valida JWT tokens com expiração e emissão (iat/exp).
+Previne reutilização de tokens antigos.
+Considera X-Forwarded-For / X-Real-IP quando atrás de proxy (NGINX).
 """
 
 import time
-from datetime import datetime, timezone
 
 from django.conf import settings
 from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
+
+from app.security_logger import SecurityLogger
 
 try:
     from jwt import decode as jwt_decode, DecodeError, ExpiredSignatureError
@@ -26,6 +28,10 @@ except ImportError:
 
 
 class JWTTokenValidator:
+    """
+    Revogação em memória: em multi-worker (Gunicorn) cada worker tem seu próprio set.
+    Para revogação global use cache (ex.: Redis) ou persistência.
+    """
     REVOKED_TOKENS = set()
 
     @staticmethod
@@ -73,7 +79,7 @@ class SessionFixationMiddleware(MiddlewareMixin):
         if not request.user.is_authenticated:
             return None
         user_agent = request.META.get("HTTP_USER_AGENT", "")
-        remote_addr = request.META.get("REMOTE_ADDR", "")
+        remote_addr = SecurityLogger.get_client_ip(request) or ""
         session_user_agent = request.session.get("_user_agent", None)
         session_remote_addr = request.session.get("_remote_addr", None)
         if not session_user_agent:

@@ -87,11 +87,17 @@ function obterCsrfToken() {
     return token ? token.value : '';
 }
 
+/** Prefixo da aplicação (ex: '' ou '/gdf') para chamadas à API quando o app está em subpath. */
+function getApiBase() {
+    var el = document.querySelector('.layout-page[data-url-prefix]');
+    return (el && el.getAttribute('data-url-prefix')) || '';
+}
+
 /* ===============================
    RESUMO DOS JOBS (Total, Concluídos, Com erros, Em andamento)
 ================================ */
 function carregarResumoCargaXml() {
-    fetch('/api/cargaxml/resumo/', { method: 'GET', headers: { 'X-CSRFToken': obterCsrfToken() } })
+    fetch(getApiBase() + '/api/cargaxml/resumo/', { method: 'GET', headers: { 'X-CSRFToken': obterCsrfToken() } })
         .then(function (r) { return r.json(); })
         .then(function (data) {
             if (!data.sucesso) return;
@@ -120,7 +126,7 @@ function carregarResumoCargaXml() {
    AVISOS – LOGS DE CARGAS COM ERROS
 ================================ */
 function carregarAvisosCargaXml(preencherModal) {
-    fetch('/api/cargaxml/avisos/', {
+    fetch(getApiBase() + '/api/cargaxml/avisos/', {
         method: 'GET',
         headers: { 'X-CSRFToken': obterCsrfToken() },
     })
@@ -138,6 +144,11 @@ function carregarAvisosCargaXml(preencherModal) {
             }
             if (preencherModal) {
                 preencherModalAvisosCargaXml(data.items || []);
+            }
+            if (data.items && data.items.length > 0) {
+                renderizarLogsResumo(data.items);
+            } else {
+                renderizarLogsResumo([]);
             }
         })
         .catch(function () {
@@ -308,7 +319,7 @@ function carregarParametrosPrincipais() {
     const tbody = document.querySelector('#tabela-parametros-main tbody');
     if (!tbody) return;
 
-    fetch('/api/cargaxml/parametros/')
+    fetch(getApiBase() + '/api/cargaxml/parametros/')
         .then(response => response.json())
         .then(data => {
             const items = data.items || [];
@@ -401,7 +412,7 @@ function renderizarTabelaParametrosPrincipais() {
     if (!estadoParametros.filtrados.length) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="4" class="text-center text-muted py-4">
+                <td colspan="5" class="text-center text-muted py-4">
                     <i class="fas fa-list" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
                     Nenhum parâmetro cadastrado
                 </td>
@@ -503,7 +514,7 @@ function carregarJobsDoParametro(paramId) {
         </tr>
     `;
 
-    fetch(`/api/cargaxml/jobs/?parametro_id=${paramId}`)
+    fetch(getApiBase() + `/api/cargaxml/jobs/?parametro_id=${paramId}`)
         .then(resp => resp.json())
         .then(data => {
             const items = data.items || [];
@@ -568,7 +579,7 @@ function abrirModalParametro(paramId) {
     }
 
     // Recarrega dados detalhados do parâmetro (caso backend forneça)
-    fetch(`/api/cargaxml/parametros/${paramId}/`)
+    fetch(getApiBase() + `/api/cargaxml/parametros/${paramId}/`)
         .then(resp => resp.json())
         .then(data => {
             if (data.sucesso && data.parametro) {
@@ -592,7 +603,7 @@ function abrirModalParametro(paramId) {
    CARREGAR TODAS AS CARGAS
 ================================ */
 function carregarTodasAsCargas() {
-    fetch('/api/cargaxml/jobs/')
+    fetch(getApiBase() + '/api/cargaxml/jobs/')
         .then(resp => {
             console.log('API Response Status:', resp.status);
             return resp.json().then(data => {
@@ -605,6 +616,8 @@ function carregarTodasAsCargas() {
                 console.error('Erro 403: Cliente não identificado');
                 Notificacoes.pagina('Erro ao carregar jobs: Cliente não identificado', 'error');
                 estadoCargaXml.todasCargas = [];
+                renderizarEmExecucao();
+                renderizarJaExecutado();
             } else if (data.sucesso && data.items && data.items.length > 0) {
                 console.log('Jobs carregados:', data.items.length);
                 // mapear para formato compatível
@@ -629,13 +642,6 @@ function carregarTodasAsCargas() {
                 });
             } else if (data.sucesso && (!data.items || data.items.length === 0)) {
                 console.log('Nenhum job encontrado');
-                // Se o template já renderizou jobs (server-side), não sobrescrever
-                const serverRows = document.querySelectorAll('#tabela-cargas tbody .job-row');
-                if (serverRows && serverRows.length > 0) {
-                    console.log('Mantendo jobs renderizados pelo servidor (nenhuma alteração pela API).');
-                    // não alterar estadoCargaXml.todasCargas nem re-renderizar
-                    return;
-                }
                 estadoCargaXml.todasCargas = [];
             } else {
                 console.error('Erro ao carregar jobs:', data.mensagem);
@@ -643,15 +649,152 @@ function carregarTodasAsCargas() {
                 estadoCargaXml.todasCargas = [];
             }
             aplicarFiltrosCarga();
-            renderizarTabelaCargas();
+            renderizarEmExecucao();
+            renderizarJaExecutado();
         })
         .catch(erro => {
             console.error('Erro na requisição:', erro);
             Notificacoes.pagina('Erro ao conectar na API: ' + erro.message, 'error');
             estadoCargaXml.todasCargas = [];
             aplicarFiltrosCarga();
-            renderizarTabelaCargas();
+            renderizarEmExecucao();
+            renderizarJaExecutado();
         });
+}
+
+/* ===============================
+   EM EXECUÇÃO / JÁ EXECUTADO (containers tipo Home)
+================================ */
+function renderizarEmExecucao() {
+    const lista = document.getElementById('lista-em-execucao');
+    if (!lista) return;
+
+    const emExecucao = estadoCargaXml.todasCargas.filter(function (c) {
+        var s = (c.status || '').toUpperCase();
+        return s === 'RUNNING' || s === 'PENDING';
+    });
+
+    lista.innerHTML = '';
+    if (emExecucao.length === 0) {
+        lista.innerHTML = '<li class="cargaxml-lista-empty text-muted py-3 text-center"><i class="fas fa-check-circle fa-2x mb-2 d-block opacity-50"></i>Nenhum job em execução no momento.</li>';
+        return;
+    }
+
+    emExecucao.forEach(function (carga) {
+        var li = document.createElement('li');
+        li.className = 'home-activity-item cargaxml-job-item';
+        li.style.cursor = 'pointer';
+        li.setAttribute('data-job-id', carga.id);
+        var dataHora = (carga.detalhes && carga.detalhes.started_at) ? carga.detalhes.started_at : (carga.data + 'T' + (carga.hora || ''));
+        var dataStr = dataHora ? (dataHora.split('T')[0] + ' ' + (dataHora.split('T')[1] || '').substring(0, 5)) : '-';
+        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + (carga.tipo || 'XML') + '</span>' +
+            '<div class="home-activity-detail">' +
+            '<span class="home-activity-status home-activity-status-running">Em execução</span>' +
+            '<span class="home-activity-meta">' + (carga.resumo || '') + '</span></div>' +
+            '<div class="home-activity-time">' + dataStr + '</div>' +
+            '<a href="#" class="home-activity-link" data-job-id="' + carga.id + '" title="Ver detalhes">→</a>';
+        li.addEventListener('click', function (e) {
+            e.preventDefault();
+            abrirModalJob(carga.id);
+        });
+        var link = li.querySelector('a.home-activity-link');
+        if (link) link.addEventListener('click', function (e) { e.preventDefault(); abrirModalJob(carga.id); });
+        lista.appendChild(li);
+    });
+}
+
+function renderizarJaExecutado() {
+    const lista = document.getElementById('lista-ja-executado');
+    if (!lista) return;
+
+    const jaExecutado = estadoCargaXml.todasCargas.filter(function (c) {
+        var s = (c.status || '').toUpperCase();
+        return s === 'SUCCESS' || s === 'ERROR';
+    }).slice(0, 25);
+
+    lista.innerHTML = '';
+    if (jaExecutado.length === 0) {
+        lista.innerHTML = '<li class="cargaxml-lista-empty text-muted py-3 text-center"><i class="fas fa-inbox fa-2x mb-2 d-block opacity-50"></i>Nenhuma execução recente.</li>';
+        return;
+    }
+
+    jaExecutado.forEach(function (carga) {
+        var li = document.createElement('li');
+        li.className = 'home-activity-item cargaxml-job-item';
+        li.style.cursor = 'pointer';
+        var statusClass = (carga.status || '').toUpperCase() === 'ERROR' ? 'home-activity-status-error' : 'home-activity-status-success';
+        var dataHora = (carga.detalhes && carga.detalhes.started_at) ? carga.detalhes.started_at : (carga.data + 'T' + (carga.hora || ''));
+        var dataStr = dataHora ? (dataHora.split('T')[0] + ' ' + (dataHora.split('T')[1] || '').substring(0, 5)) : '-';
+        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + (carga.tipo || 'XML') + '</span>' +
+            '<div class="home-activity-detail">' +
+            '<span class="home-activity-status ' + statusClass + '">' + (carga.status === 'SUCCESS' ? 'Concluído' : 'Erro') + '</span>' +
+            '<span class="home-activity-meta">' + (carga.resumo || '') + '</span></div>' +
+            '<div class="home-activity-time">' + dataStr + '</div>' +
+            '<a href="#" class="home-activity-link" data-job-id="' + carga.id + '" title="Ver log">→</a>';
+        li.addEventListener('click', function (e) {
+            e.preventDefault();
+            abrirModalJob(carga.id);
+        });
+        var linkJa = li.querySelector('a.home-activity-link');
+        if (linkJa) linkJa.addEventListener('click', function (e) { e.preventDefault(); abrirModalJob(carga.id); });
+        lista.appendChild(li);
+    });
+}
+
+/* ===============================
+   LOGS RESUMO (card na página)
+================================ */
+function renderizarLogsResumo(items) {
+    var emptyEl = document.getElementById('logs-resumo-empty');
+    var contentEl = document.getElementById('logs-resumo-content');
+    if (!emptyEl || !contentEl) return;
+
+    if (!items || items.length === 0) {
+        emptyEl.style.display = 'block';
+        contentEl.style.display = 'none';
+        contentEl.innerHTML = '';
+        return;
+    }
+
+    emptyEl.style.display = 'none';
+    contentEl.style.display = 'block';
+
+    function formatDt(iso) {
+        if (!iso) return '-';
+        try {
+            var d = new Date(iso);
+            return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+        } catch (e) { return iso; }
+    }
+    function escapeHtml(s) {
+        return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function classLog(line) {
+        var t = (line || '').trim();
+        if (t.indexOf('ERRO:') === 0) return 'aviso-log-erro';
+        if (t.indexOf('PENDENTES') === 0) return 'aviso-log-pendente';
+        if (t.indexOf('OK:') === 0) return 'aviso-log-ok';
+        return 'aviso-log-outro';
+    }
+
+    var html = '';
+    items.slice(0, 3).forEach(function (job) {
+        var logLines = (job.log && job.log.length) ? job.log.filter(function (l) {
+            var t = (l || '').trim();
+            return t.indexOf('ERRO:') === 0 || t.indexOf('PENDENTES') === 0;
+        }).slice(0, 5) : [];
+        html += '<div class="cargaxml-log-job mb-3">';
+        html += '<div class="small fw-600 text-secondary mb-1">Job #' + job.id + ' &middot; ' + formatDt(job.started_at) + '</div>';
+        if (logLines.length === 0) {
+            html += '<div class="small text-muted">Sem linhas de log</div>';
+        } else {
+            logLines.forEach(function (l) {
+                html += '<div class="cargaxml-log-line ' + classLog(l) + '">' + escapeHtml(l) + '</div>';
+            });
+        }
+        html += '</div>';
+    });
+    contentEl.innerHTML = html;
 }
 
 /* ===============================
@@ -660,7 +803,7 @@ function carregarTodasAsCargas() {
 
 
 function abrirModalJob(jobId) {
-    fetch(`/api/cargaxml/jobs/${jobId}/`)
+    fetch(getApiBase() + `/api/cargaxml/jobs/${jobId}/`)
         .then(resp => resp.json())
         .then(data => {
             if (!data.sucesso) {
@@ -950,7 +1093,7 @@ function criarParametroCarga() {
         return;
     }
 
-    fetch('/api/cargaxml/parametros/', {
+    fetch(getApiBase() + '/api/cargaxml/parametros/', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -983,7 +1126,7 @@ function carregarParametrosAtivos() {
     const tabela = document.querySelector('#tabela-parametros tbody');
     if (!tabela) return;
 
-    fetch('/api/cargaxml/parametros/?ativo=1')
+    fetch(getApiBase() + '/api/cargaxml/parametros/?ativo=1')
         .then(response => response.json())
         .then(data => {
             tabela.innerHTML = '';
@@ -1049,7 +1192,7 @@ function enviarZipParaPasta() {
     const btn = document.getElementById('btn-confirmar-upload-zip');
     btn.disabled = true;
 
-    fetch(`/api/cargaxml/parametros/${paramId}/upload-zip/`, {
+    fetch(getApiBase() + `/api/cargaxml/parametros/${paramId}/upload-zip/`, {
         method: 'POST',
         body: formData
     })
@@ -1088,7 +1231,7 @@ function atualizarParametroCarga() {
         return;
     }
 
-    fetch(`/api/cargaxml/parametros/${id}/`, {
+    fetch(getApiBase() + `/api/cargaxml/parametros/${id}/`, {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -1118,7 +1261,7 @@ function atualizarParametroCarga() {
 }
 
 function toggleParametro(paramId, ativoAtual) {
-    fetch(`/api/cargaxml/parametros/${paramId}/toggle/`, {
+    fetch(getApiBase() + `/api/cargaxml/parametros/${paramId}/toggle/`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

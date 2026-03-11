@@ -18,23 +18,20 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
         response["X-Frame-Options"] = "SAMEORIGIN"
         response["X-XSS-Protection"] = "1; mode=block"
         response["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Apenas features reconhecidas pelos navegadores atuais (evita erros no console)
         response["Permissions-Policy"] = (
-            "accelerometer=(), ambient-light-sensor=(), autoplay=(), "
-            "battery=(), camera=(), cross-origin-isolated=(), display-capture=(), "
-            "document-domain=(), encrypted-media=(), execution-while-not-rendered=(), "
-            "execution-while-out-of-viewport=(), fullscreen=(), geolocation=(), "
-            "gyroscope=(), magnetometer=(), microphone=(), midi=(), "
-            "navigation-override=(), payment=(), picture-in-picture=(), "
-            "publickey-credentials-get=(), sync-xhr=(), usb=(), "
-            "xr-spatial-tracking=(), vr=(), wake-lock=()"
+            "accelerometer=(), autoplay=(), camera=(), display-capture=(), "
+            "encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), "
+            "magnetometer=(), microphone=(), midi=(), payment=(), "
+            "picture-in-picture=(), publickey-credentials-get=(), usb=()"
         )
         frame_sources = getattr(
             settings,
             "STREAMLIT_FRAME_ORIGINS",
             [
+                "https://homo.processit.com.br",
                 "https://localhost:8600",
-                "https://10.0.1.19:8600",
-                "https://10.0.1.158:8600",
+                "https://127.0.0.1:8600",
             ],
         )
         response["Strict-Transport-Security"] = (

@@ -156,16 +156,17 @@ function fn_atualizar_tabela_filtrada() {
    ADICIONAR LISTENERS NA TABELA
 ================================ */
 function fn_adicionar_listeners_tabela() {
+    var modalEl = document.getElementById("modalEmpresaUpd");
+    if (!modalEl) return;
     document.querySelectorAll(".empresa-row").forEach(row => {
         row.addEventListener("click", async (e) => {
             if (e.target.closest("a, button, input, label")) return;
-            
             const empresaId = row.dataset.empresaId;
             if (!empresaId) return;
-            
-            await fn_carregar_empresa(empresaId);
-            const modal = new bootstrap.Modal(document.getElementById("modalEmpresaUpd"));
-            modal.show();
+            var sucesso = await fn_carregar_empresa(empresaId);
+            if (sucesso && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop: 'static', keyboard: false }).show();
+            }
         });
     });
 }
@@ -320,14 +321,14 @@ function fn_init_empresa_upd() {
         // ✅ Aguardar dados serem carregados ANTES de abrir o modal
         const sucesso = await fn_carregar_empresa(empresaId);
         
-        if (sucesso) {
-            const modal = new bootstrap.Modal(modalEl, {
-                backdrop: "static",
-                keyboard: false
-            });
+        if (sucesso && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop: 'static', keyboard: false });
             modal.show();
         } else {
             og_estado_empresas.modalAberto = null;
+            if (!sucesso && typeof Notificacoes !== 'undefined') {
+                Notificacoes.pagina('Erro ao carregar dados da empresa. Verifique o console ou tente novamente.', 'danger');
+            }
         }
     });
 
@@ -377,7 +378,9 @@ async function fn_carregar_empresa(empresaId) {
 
         if (!resp.ok) {
             console.error(`Erro ao carregar empresa: ${resp.status} - ${resp.statusText}`);
-            Notificacoes.modal('Erro ao carregar empresa: ' + resp.statusText, 'danger', 'modalEmpresaUpdAlerts');
+            if (typeof Notificacoes !== 'undefined') {
+                Notificacoes.pagina('Erro ao carregar empresa: ' + resp.statusText, 'danger');
+            }
             return false;  // ✅ Retornar false se falhar
         }
 
@@ -391,7 +394,9 @@ async function fn_carregar_empresa(empresaId) {
 
     } catch (err) {
         console.error("Erro ao fazer fetch da empresa:", err);
-        Notificacoes.modal("Erro ao carregar dados da empresa", 'danger', 'modalEmpresaUpdAlerts');
+        if (typeof Notificacoes !== 'undefined') {
+            Notificacoes.pagina('Erro ao carregar dados da empresa. Verifique a conexão.', 'danger');
+        }
         return false;  // ✅ Retornar false se erro
     }
 }

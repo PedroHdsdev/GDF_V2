@@ -59,7 +59,7 @@
                         </select>
                     </div>
                     <div class="col-md-2 col-lg-2">
-                        <label class="form-label small mb-0">Competência (mês/ano)</label>
+                        <label for="filtro-mes" class="form-label small mb-0">Competência (mês/ano)</label>
                         <div class="d-flex gap-1">
                             <select id="filtro-mes" class="form-select form-select-sm">
                                 <option value="">Mês</option>
@@ -198,7 +198,7 @@
             <p class="text-muted small mb-3">Escolha a empresa e o mês/ano de competência para executar o confronto.</p>
 
             <div class="mb-3">
-                <label class="form-label">Empresa</label>
+                <label for="confronto-empresa" class="form-label">Empresa</label>
                 <select id="confronto-empresa" class="form-select" required>
                     <option value="">Selecione a empresa</option>
                     {% for emp in empresas %}
@@ -208,7 +208,7 @@
             </div>
 
             <div class="mb-3">
-                <label class="form-label">Competência (mês/ano)</label>
+                <label for="confronto-mes" class="form-label">Competência (mês/ano)</label>
                 <div class="row g-2">
                     <div class="col-6">
                         <select id="confronto-mes" class="form-select" required>
@@ -474,7 +474,6 @@
                         <thead class="table-light">
                             <tr>
                                 <th class="text-center">Chave (44)</th>
-                                <th>Nº / Série</th>
                                 <th>Condição NFe</th>
                                 <th class="text-center">Tipo</th>
                                 <th>Condição SAP</th>

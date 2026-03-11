@@ -49,9 +49,15 @@ class SapRfc:
         Parâmetro obrigatório: cod_cliente (código do cliente para filtrar na tabela SapConnection).
         """
         if not cod_cliente:
+            print("[SapRfc] get_connection: cod_cliente vazio, retornando None")
             return None
         SapConnection = _get_sap_connection_model()
-        return SapConnection.objects.filter(gdfcliente_id=cod_cliente, active=True).first()
+        conn = SapConnection.objects.filter(gdfcliente_id=cod_cliente, active=True).first()
+        if conn:
+            print(f"[SapRfc] get_connection: conexão encontrada para cliente '{cod_cliente}' (id={conn.id}, ashost={getattr(conn, 'ashost', '?')})")
+        else:
+            print(f"[SapRfc] get_connection: nenhuma conexão SAP ativa para cliente '{cod_cliente}'")
+        return conn
 
     @staticmethod
     def get_active_connections(cod_cliente=None, queryset=None):
@@ -90,12 +96,16 @@ class SapRfc:
         Retorna None se PyRFC não estiver disponível ou se a conexão falhar.
         """
         if not PYRFC_AVAILABLE:
+            print("[SapRfc] connect: PyRFC não disponível")
             return None
         config = SapRfc.config_from_connection(conn)
+        print(f"[SapRfc] connect: abrindo conexão SAP (conn id={getattr(conn, 'id', '?')}, ashost={config.get('ashost', '')})")
         try:
-            return PyRfcConnection(**config)
+            sap = PyRfcConnection(**config)
+            print(f"[SapRfc] connect: conexão SAP aberta com sucesso (conn id={getattr(conn, 'id', '?')})")
+            return sap
         except Exception as e:
-            print(f"❌ Erro ao conectar SAP (conn id={getattr(conn, 'id', conn)}): {e}")
+            print(f"[SapRfc] connect: ERRO ao conectar SAP (conn id={getattr(conn, 'id', conn)}): {e}")
             return None
 
     @staticmethod
@@ -127,26 +137,33 @@ class SapRfc:
             tuple (success: bool, result_or_error)
         """
         if not PYRFC_AVAILABLE:
+            print("[SapRfc] call: PyRFC não disponível")
             return False, "PyRFC não disponível. SAP desativado."
         conn = SapRfc._resolve_conn(cod_cliente_or_conn)
         if conn is None:
             cod = cod_cliente_or_conn if isinstance(cod_cliente_or_conn, str) else getattr(cod_cliente_or_conn, 'gdfcliente_id', '?')
+            print(f"[SapRfc] call: nenhuma conexão para cliente '{cod}'")
             return False, f"Nenhuma conexão SAP ativa para o cliente '{cod}' (tabela SapConnection)."
         sap = None
         try:
+            print(f"[SapRfc] call: chamando RFC '{rfc_name}' (params keys: {list(params.keys())})")
             sap = SapRfc.connect(conn)
             if sap is None:
+                print("[SapRfc] call: falha ao abrir conexão SAP")
                 return False, "Falha ao abrir conexão SAP."
             result = sap.call(rfc_name, **params)
+            print(f"[SapRfc] call: RFC '{rfc_name}' executado com sucesso (result type={type(result).__name__})")
             return True, result
         except Exception as e:
+            print(f"[SapRfc] call: EXCEÇÃO ao chamar RFC '{rfc_name}': {e}")
             return False, str(e)
         finally:
             if sap is not None:
                 try:
                     sap.close()
-                except Exception:
-                    pass
+                    print("[SapRfc] call: conexão SAP fechada")
+                except Exception as ex:
+                    print(f"[SapRfc] call: aviso ao fechar conexão: {ex}")
 
     @staticmethod
     def with_connection(cod_cliente_or_conn, callback, close=True):
@@ -163,26 +180,33 @@ class SapRfc:
             tuple (success: bool, result_or_error)
         """
         if not PYRFC_AVAILABLE:
+            print("[SapRfc] with_connection: PyRFC não disponível")
             return False, "PyRFC não disponível. SAP desativado."
         conn = SapRfc._resolve_conn(cod_cliente_or_conn)
         if conn is None:
             cod = cod_cliente_or_conn if isinstance(cod_cliente_or_conn, str) else getattr(cod_cliente_or_conn, 'gdfcliente_id', '?')
+            print(f"[SapRfc] with_connection: nenhuma conexão para cliente '{cod}'")
             return False, f"Nenhuma conexão SAP ativa para o cliente '{cod}' (tabela SapConnection)."
         sap = None
         try:
+            print("[SapRfc] with_connection: abrindo conexão para callback")
             sap = SapRfc.connect(conn)
             if sap is None:
+                print("[SapRfc] with_connection: falha ao abrir conexão")
                 return False, "Falha ao abrir conexão SAP."
             result = callback(sap)
+            print("[SapRfc] with_connection: callback executado com sucesso")
             return True, result
         except Exception as e:
+            print(f"[SapRfc] with_connection: EXCEÇÃO no callback: {e}")
             return False, str(e)
         finally:
             if close and sap is not None:
                 try:
                     sap.close()
-                except Exception:
-                    pass
+                    print("[SapRfc] with_connection: conexão fechada")
+                except Exception as ex:
+                    print(f"[SapRfc] with_connection: aviso ao fechar: {ex}")
 
     @staticmethod
     def run_for_active_connections(rfc_name, cod_cliente=None, params_callback=None, call_callback=None):
@@ -254,7 +278,8 @@ class SapRfc:
         Returns:
             tuple (success: bool, result_or_error)
         """
-        return SapRfc.call(
+        print(f"[SapRfc] importar_custo_cliente: cod_cliente={cod_cliente!r} bukrs={bukrs} branch={branch} psdat_ini={psdat_ini} psdat_fim={psdat_fim}")
+        ok, res = SapRfc.call(
             cod_cliente,
             '/PRCIT/GDF_condicoes_pagamento',
             I_V_BUKRS=bukrs,
@@ -262,6 +287,8 @@ class SapRfc:
             I_V_PSDAT_INI=psdat_ini,
             I_V_PSDAT_FIM=psdat_fim,
         )
+        print(f"[SapRfc] importar_custo_cliente: resultado success={ok} result_type={type(res).__name__}")
+        return ok, res
 
 
 def enviar_condicoes_pagamento_sap(id_lote, cod_cliente, condicoes_lista):
@@ -282,10 +309,14 @@ def enviar_condicoes_pagamento_sap(id_lote, cod_cliente, condicoes_lista):
             'retornos': [ {'chave_nfe': str, 'condicao_sap': str}, ... ]
         }
     """
+    print(f"[SapRfc] enviar_condicoes_pagamento_sap: INÍCIO id_lote={id_lote} cod_cliente={cod_cliente!r} qtd_condicoes={len(condicoes_lista) if condicoes_lista else 0}")
+
     if not condicoes_lista:
+        print("[SapRfc] enviar_condicoes_pagamento_sap: lista vazia, retornando sucesso sem envio")
         return {'sucesso': True, 'mensagem': 'Nenhum registro para enviar.', 'retornos': []}
 
     if not SapRfc.is_available():
+        print("[SapRfc] enviar_condicoes_pagamento_sap: PyRFC não disponível")
         retornos = [
             {'chave_nfe': (c.get('chave_nfe') or ''), 'condicao_sap': (c.get('condicao_pagamento_sap') or c.get('condicao_pagamento_nfe') or '-')}
             for c in condicoes_lista
@@ -297,6 +328,7 @@ def enviar_condicoes_pagamento_sap(id_lote, cod_cliente, condicoes_lista):
         }
 
     if not cod_cliente:
+        print("[SapRfc] enviar_condicoes_pagamento_sap: cod_cliente não informado")
         retornos = [
             {'chave_nfe': (c.get('chave_nfe') or ''), 'condicao_sap': (c.get('condicao_pagamento_sap') or c.get('condicao_pagamento_nfe') or '-')}
             for c in condicoes_lista
@@ -316,6 +348,7 @@ def enviar_condicoes_pagamento_sap(id_lote, cod_cliente, condicoes_lista):
             'COND_PAG_NFE': (c.get('condicao_pagamento_nfe') or '')[:50],
             'COND_PAG_SAP': (c.get('condicao_pagamento_sap') or '')[:4],
         })
+    print(f"[SapRfc] enviar_condicoes_pagamento_sap: montada tabela T_COND_PAGAMENTO com {len(t_cond_pagamento)} registro(s), chamando RFC ZGDF_CONDICOES_PAGAMENTO")
 
     success, result = SapRfc.call(
         cod_cliente,
@@ -323,28 +356,40 @@ def enviar_condicoes_pagamento_sap(id_lote, cod_cliente, condicoes_lista):
         T_COND_PAGAMENTO=t_cond_pagamento,
     )
 
+    # Status válidos do modelo CondicaoPagamentoLote: P, E, S, U, I, R
+    STATUS_VALIDOS = ('P', 'E', 'S', 'U', 'I', 'R')
+
     retornos = [
-        {'chave_nfe': (c.get('chave_nfe') or ''), 'condicao_sap': (c.get('condicao_pagamento_sap') or c.get('condicao_pagamento_nfe') or '-'), 'status': 'S'}
+        {
+            'chave_nfe': (c.get('chave_nfe') or ''),
+            'condicao_sap': (c.get('condicao_pagamento_sap') or c.get('condicao_pagamento_nfe') or '-'),
+            'status': 'R',
+        }
         for c in condicoes_lista
     ]
     if not success:
+        print(f"[SapRfc] enviar_condicoes_pagamento_sap: FALHA na chamada RFC - {result}")
         return {
             'sucesso': False,
             'mensagem': result or 'Erro ao chamar SAP.',
             'retornos': retornos,
         }
-    # SAP retorna R_T_COND (mesma tabela com STATUS preenchido: U=update, I=insert)
+    # SAP retorna R_T_COND (mesma tabela com STATUS: P, E, S, U, I, R)
     if result:
         r_t_cond = result.get('R_T_COND') or result.get('T_COND_PAGAMENTO') or []
+        print(f"[SapRfc] enviar_condicoes_pagamento_sap: RFC retornou result com {len(r_t_cond)} item(ns) em R_T_COND/T_COND_PAGAMENTO")
         retornos = []
         for r in r_t_cond:
-            status_sap = (r.get('STATUS') or r.get('status') or '').strip().upper()
-            status_lote = 'U' if status_sap == 'U' else ('I' if status_sap == 'I' else 'S')
+            status_sap = (r.get('STATUS') or r.get('status') or '').strip().upper()[:1]
+            status_lote = status_sap if status_sap in STATUS_VALIDOS else 'S'
             retornos.append({
                 'chave_nfe': (r.get('CHAVE') or r.get('chave') or ''),
                 'condicao_sap': (r.get('COND_PAG_SAP') or r.get('cond_pag_sap') or ''),
                 'status': status_lote,
             })
+    else:
+        print("[SapRfc] enviar_condicoes_pagamento_sap: RFC retornou result vazio/None, usando retornos padrão")
+    print(f"[SapRfc] enviar_condicoes_pagamento_sap: SUCESSO - {len(retornos)} retorno(s)")
     return {
         'sucesso': True,
         'mensagem': f'{len(retornos)} registro(s) enviado(s) ao SAP.',

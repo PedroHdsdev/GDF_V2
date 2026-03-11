@@ -188,6 +188,7 @@ class CondicaoPagamentoLote(models.Model):
         ("S", "Processado no SAP"),
         ("U", "Atualizado no SAP (U)"),
         ("I", "Processado no SAP (I)"),
+        ("R", "Erro Processamento (R)"),
     ]
 
     id_reg = models.BigAutoField(primary_key=True)

@@ -33,6 +33,7 @@ if _NWRFC_PATH.exists():
 # SECURITY WARNING: keep the secret key used in production secret!
 import environ
 from csp.constants import NONCE
+from django.urls import reverse_lazy
 
 env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
@@ -51,9 +52,11 @@ SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=False)  # True em 
 SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=not DEBUG)
 CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=not DEBUG)
 # Origens confiáveis para CSRF (HTTPS) - Django 4+ exige para POST via HTTPS
+# Acesso público: https://homo.processit.com.br/gdf/
 CSRF_TRUSTED_ORIGINS = env.list(
     'CSRF_TRUSTED_ORIGINS',
     default=[
+        'https://homo.processit.com.br',
         'https://localhost:8500',
         'https://127.0.0.1:8500',
         'https://0.0.0.0:8500',
@@ -61,8 +64,25 @@ CSRF_TRUSTED_ORIGINS = env.list(
         'http://localhost:8500',
         'http://127.0.0.1:8500',
         'http://10.0.1.158:8500',
+        'http://localhost:8600',
     ]
 )
+
+# Subpath quando atrás do NGINX (ex.: https://homo.processit.com.br/gdf/). Deixe vazio para raiz.
+FORCE_SCRIPT_NAME = env('FORCE_SCRIPT_NAME', default='/gdf')
+
+# URL base do Streamlit para iframes (qualquer solução que use dashboard de análise).
+# Uma única URL atende todos os dashboards (Vendas, Compras e futuros por solução).
+# Ex. produção (com app em /gdf): STREAMLIT_BASE_URL=https://homo.processit.com.br/gdf/streamlit
+# Ex. desenvolvimento: STREAMLIT_BASE_URL=http://127.0.0.1:8600
+# Se vier lista separada por vírgula, usa só a primeira.
+_raw = (env('STREAMLIT_BASE_URL', default='http://127.0.0.1:8600') or '').strip()
+STREAMLIT_IFRAME_URL = _raw.split(',')[0].strip() if _raw else 'http://127.0.0.1:8600'
+
+# Proxy reverso (NGINX): confiar nos headers para HTTPS e Host corretos
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
 SECURE_HSTS_SECONDS = env.int('SECURE_HSTS_SECONDS', default=31536000)  # 1 ano
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=True)
 SECURE_HSTS_PRELOAD = env.bool('SECURE_HSTS_PRELOAD', default=True)
@@ -85,6 +105,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'app.security.middlewares.static_prefix_fix.StaticPrefixFixMiddleware',  # /static/ -> /gdf/static/ quando atrás de proxy
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Servir estáticos com Gunicorn (CSS/JS)
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -168,9 +190,10 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-LOGIN_URL = '/login/'
-LOGIN_REDIRECT_URL = '/home/'
-LOGOUT_REDIRECT_URL = '/login/'
+# Usar nomes de URL para respeitar FORCE_SCRIPT_NAME (/gdf/ em produção)
+LOGIN_URL = reverse_lazy('Login')
+LOGIN_REDIRECT_URL = reverse_lazy('Home')
+LOGOUT_REDIRECT_URL = reverse_lazy('Login')
 
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_SAVE_EVERY_REQUEST = False
@@ -256,14 +279,13 @@ USE_I18N = True
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/6.0/howto/static-files/
+# Com subpath (FORCE_SCRIPT_NAME=/gdf): STATIC_URL = /gdf/static/
+STATIC_URL = (FORCE_SCRIPT_NAME.rstrip('/') + '/static/') if FORCE_SCRIPT_NAME else '/static/'
 
-STATIC_URL = 'static/'
-
-STATIC_ROOT = os.path.join(BASE_DIR,"staticfiles")
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 STATICFILES_DIRS = [
-        os.path.join(BASE_DIR,"static")
+    os.path.join(BASE_DIR, "static"),
 ]
 
 # Default primary key field type
@@ -294,6 +316,7 @@ CONTENT_SECURITY_POLICY = {
             "'unsafe-inline'",
             "https://cdn.jsdelivr.net",
             "https://code.jquery.com",
+            "https://cdnjs.cloudflare.com",
         ),
 
         "style-src": (
@@ -301,6 +324,7 @@ CONTENT_SECURITY_POLICY = {
             "'unsafe-inline'",
             "https://cdn.jsdelivr.net",
             "https://fonts.googleapis.com",
+            "https://cdnjs.cloudflare.com",
         ),
 
         "img-src": ("'self'", "data:", "https:"),
@@ -308,18 +332,24 @@ CONTENT_SECURITY_POLICY = {
         "font-src": (
             "'self'",
             "https://fonts.gstatic.com",
+            "https://cdnjs.cloudflare.com",
         ),
 
         "connect-src": ("'self'", "https:"),
 
-        "frame-src": (
-            "'self'",
-            "https://10.0.1.19:8600",
-            "https://10.0.1.158:8600",
-            "https://localhost:8600",
-            "https://127.0.0.1:8600",
-            "https://201.6.103.133:8600",
-        ),
+        # frame-src: 'self' + origens do .env (CSP_FRAME_SRC_EXTRA) para iframe do Dashboard (Streamlit).
+        # Inclui http para desenvolvimento local (Streamlit em http://127.0.0.1:8600).
+        # Ex. no .env: CSP_FRAME_SRC_EXTRA=https://homo.processit.com.br,https://localhost:8600
+        "frame-src": ("'self'",) + tuple(env.list(
+            "CSP_FRAME_SRC_EXTRA",
+            default=[
+                "http://localhost:8600",
+                "http://127.0.0.1:8600",
+                "https://localhost:8600",
+                "https://127.0.0.1:8600",
+                "https://homo.processit.com.br",
+            ],
+        )),
 
         "frame-ancestors": ("'none'",),
     }

@@ -308,7 +308,7 @@ class ClGdf:
 
             # Soluções já atribuídas ao cliente
             l_v_query_solucoes_acesso = AcessoSolucaoCliente.objects.filter(
-                    cliente=l_v_cliente
+                    gdfcliente=l_v_cliente
             ).select_related('solucao')
             
             # Todas as soluções cadastradas
@@ -469,14 +469,14 @@ class ClGdf:
                 for cod_sol, is_active_sol in solucoes_dict.items():
                     solucao = Solucao.objects.get(cod_solucao=cod_sol)
                     AcessoSolucaoCliente.objects.update_or_create(
-                        cliente=cliente,
+                        gdfcliente=cliente,
                         solucao=solucao,
                         defaults={'is_active': is_active_sol}
                     )
 
                 # Remover vínculos não listados
                 AcessoSolucaoCliente.objects.filter(
-                    cliente=cliente
+                    gdfcliente=cliente
                 ).exclude(
                     solucao__cod_solucao__in=solucoes_dict.keys()
                 ).delete()

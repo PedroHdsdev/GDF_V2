@@ -708,10 +708,19 @@
                 estado.condicoesLista = data.condicoes;
                 if (resumo) resumo.textContent = data.condicoes.length + ' registro(s).';
                 if (wrap) wrap.classList.remove('d-none');
+                // Status: alinhado ao CondicaoPagamentoLote.STATUS_CHOICES (P, E, S, U, I, R) – cores distintas
+                const statusCondicoesConfig = {
+                    P: { cls: 'badge bg-secondary', lbl: 'Pendente', title: 'Aguardando envio ao SAP' },
+                    E: { cls: 'badge bg-info', lbl: 'Enviado', title: 'Enviado ao SAP' },
+                    S: { cls: 'badge bg-success', lbl: 'Processado', title: 'Processado no SAP' },
+                    U: { cls: 'badge bg-primary', lbl: 'Atualizado (U)', title: 'Atualizado no SAP (U)' },
+                    I: { cls: 'badge bg-success', lbl: 'Processado (I)', title: 'Processado no SAP (I)' },
+                    R: { cls: 'badge bg-danger', lbl: 'Erro', title: 'Erro no processamento SAP' }
+                };
                 const statusBadge = function (s) {
-                    const m = { P: 'badge bg-secondary', E: 'badge bg-info', S: 'badge bg-success', U: 'badge bg-success', I: 'badge bg-success' };
-                    const lbl = { P: 'Pendente', E: 'Enviado', S: 'Processado', U: 'Atualizado (U)', I: 'Processado (I)' };
-                    return '<span class="' + (m[s] || 'badge bg-light text-dark') + '" title="' + (s || '') + '">' + (lbl[s] || s || '-') + '</span>';
+                    var code = (s && String(s).trim().toUpperCase()) ? String(s).trim().toUpperCase().charAt(0) : 'P';
+                    var cfg = statusCondicoesConfig[code] || { cls: 'badge bg-light text-dark', lbl: code || 'Pendente', title: code || 'Pendente' };
+                    return '<span class="' + cfg.cls + '" title="' + escapeHtml(cfg.title) + '">' + escapeHtml(cfg.lbl) + '</span>';
                 };
                 const descTipo = function (cod) {
                     const m = window.TIPO_PAGAMENTO_DESC || {};
@@ -719,12 +728,11 @@
                 };
                 data.condicoes.forEach(function (c) {
                     const tr = document.createElement('tr');
-                    const chaveShort = (c.chave_nfe || '').length > 20 ? (c.chave_nfe.substring(0, 10) + '…' + c.chave_nfe.slice(-10)) : (c.chave_nfe || '-');
+                    const chaveInteira = c.chave_nfe || '-';
                     const condSap = c.condicao_pagamento_sap || '-';
                     const tipoExibir = descTipo(c.tipo_pagamento);
                     tr.innerHTML =
-                        '<td class="small font-monospace" title="' + escapeHtml(c.chave_nfe || '') + '">' + escapeHtml(chaveShort) + '</td>' +
-                        '<td class="small">' + escapeHtml(c.numero_nfe || '-') + ' / ' + escapeHtml(c.serie_nfe || '-') + '</td>' +
+                        '<td class="small font-monospace text-nowrap" title="' + escapeHtml(chaveInteira) + '">' + escapeHtml(chaveInteira) + '</td>' +
                         '<td class="small">' + escapeHtml(c.condicao_pagamento_nfe || '-') + '</td>' +
                         '<td class="small text-center" title="' + escapeHtml(c.tipo_pagamento || '') + '">' + escapeHtml(tipoExibir) + '</td>' +
                         '<td class="small">' + escapeHtml(condSap) + '</td>' +

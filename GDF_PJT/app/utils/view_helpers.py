@@ -37,7 +37,7 @@ def usuario_vinculado_cliente_1000(user):
     if not user or not user.is_authenticated:
         return False
     return Empresa.objects.filter(
-        userempresas__user=user,
+        usuarioempresa__user=user,
         gdfcliente__cod_cliente=COD_CLIENTE_PROJETO,
     ).exists()
 
@@ -81,7 +81,7 @@ def relatorio_empresas_queryset(request):
         return Empresa.objects.filter(gdfcliente__cod_cliente=cod_cliente).distinct()
     return Empresa.objects.filter(
         gdfcliente__cod_cliente=cod_cliente,
-        userempresas__user=request.user,
+        usuarioempresa__user=request.user,
     ).distinct()
 
 

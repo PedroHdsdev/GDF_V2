@@ -712,19 +712,31 @@ def fn_view_atualizar_usuario(request, user_id):
 #--------------------------------------------------------------------
 #       Sub-soluções Views (Dashboard)
 #--------------------------------------------------------------------
+def _streamlit_iframe_url(request):
+    """URL absoluta do Streamlit para o iframe; se a config for relativa, monta a partir do request."""
+    streamlit_url = getattr(settings, 'STREAMLIT_IFRAME_URL', 'http://127.0.0.1:8600').rstrip('/')
+    if streamlit_url.startswith(('http://', 'https://')):
+        return streamlit_url
+    base = request.build_absolute_uri('/').rstrip('/')
+    path = (streamlit_url or 'streamlit').strip().lstrip('/') or 'streamlit'
+    return f"{base}/{path}"
+
+
 @login_required(login_url='Login')
-def fn_view_dashboard_vendas(request):   
+def fn_view_dashboard_vendas(request):
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Vendas')
     if not token:
         return render(request, 'index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
-    return render(request, "Dashboard/index_Vendas.html", {"token": token })
+    streamlit_url = _streamlit_iframe_url(request)
+    return render(request, "Dashboard/index_Vendas.html", {"token": token, "streamlit_iframe_url": streamlit_url})
 
 @login_required(login_url='Login')
-def fn_view_dashboard_compras(request):   
+def fn_view_dashboard_compras(request):
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Compras')
     if not token:
         return render(request, 'index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
-    return render(request, "Dashboard/index_Compras.html", {"token": token })
+    streamlit_url = _streamlit_iframe_url(request)
+    return render(request, "Dashboard/index_Compras.html", {"token": token, "streamlit_iframe_url": streamlit_url})
 
 #--------------------------------------------------------------------
 #       Sub-soluções Views (Manifesto)
@@ -1289,11 +1301,17 @@ def fn_view_CargaXml(request):
         jobs = []
         parametros = []
         empresas_usuario = []
+    url_prefix = (request.META.get("SCRIPT_NAME") or getattr(settings, "FORCE_SCRIPT_NAME", "") or "").strip()
+    if url_prefix and not url_prefix.startswith("/"):
+        url_prefix = "/" + url_prefix
+    url_prefix = url_prefix.rstrip("/")  # '' ou '/gdf'
+
     context = {
         "cod_cliente": cod_cliente,
         "jobs": jobs,
         "parametros": parametros,
         "empresas_usuario": empresas_usuario,
+        "url_prefix": url_prefix,
     }
     return render(request, "Processamento/index_CargaXml.html", context)
 
@@ -2328,7 +2346,20 @@ def fn_api_relatorio_nfe(request):
                 qs = qs.filter(identificacao__emissao__date__lte=dt)
         except Exception:
             pass
-    qs = qs.order_by('-identificacao__emissao')[:500]
+    qs = qs.order_by('-identificacao__emissao')
+    try:
+        page_size = min(max(int(request.GET.get('page_size', 50)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 50
+    try:
+        page = max(1, int(request.GET.get('page', 1)))
+    except (TypeError, ValueError):
+        page = 1
+    total = qs.count()
+    total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
+    page = min(page, total_pages)
+    start = (page - 1) * page_size
+    qs = qs[start:start + page_size]
     items = []
     for nfe in qs:
         id_ = nfe.identificacao
@@ -2343,7 +2374,14 @@ def fn_api_relatorio_nfe(request):
             'empresa': nfe.empresa.cod_empresa if nfe.empresa else None,
             'natureza': id_.natureza_operacao,
         })
-    return JsonResponse({'sucesso': True, 'items': items}, status=200)
+    return JsonResponse({
+        'sucesso': True,
+        'items': items,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': total_pages,
+    }, status=200)
 
 
 @login_required(login_url='Login')
@@ -2391,7 +2429,20 @@ def fn_api_relatorio_cte(request):
                 qs = qs.filter(identificacao__emissao__date__lte=dt)
         except Exception:
             pass
-    qs = qs.order_by('-identificacao__emissao')[:500]
+    qs = qs.order_by('-identificacao__emissao')
+    try:
+        page_size = min(max(int(request.GET.get('page_size', 50)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 50
+    try:
+        page = max(1, int(request.GET.get('page', 1)))
+    except (TypeError, ValueError):
+        page = 1
+    total = qs.count()
+    total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
+    page = min(page, total_pages)
+    start = (page - 1) * page_size
+    qs = qs[start:start + page_size]
     items = []
     for cte in qs:
         id_ = cte.identificacao
@@ -2403,7 +2454,14 @@ def fn_api_relatorio_cte(request):
             'emissao': id_.emissao.isoformat() if id_.emissao else None,
             'empresa': cte.empresa.cod_empresa if cte.empresa else None,
         })
-    return JsonResponse({'sucesso': True, 'items': items}, status=200)
+    return JsonResponse({
+        'sucesso': True,
+        'items': items,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': total_pages,
+    }, status=200)
 
 
 @login_required(login_url='Login')
@@ -2450,7 +2508,20 @@ def fn_api_relatorio_nfse(request):
                 qs = qs.filter(identificacao__emissao__date__lte=dt)
         except Exception:
             pass
-    qs = qs.order_by('-identificacao__emissao')[:500]
+    qs = qs.order_by('-identificacao__emissao')
+    try:
+        page_size = min(max(int(request.GET.get('page_size', 50)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 50
+    try:
+        page = max(1, int(request.GET.get('page', 1)))
+    except (TypeError, ValueError):
+        page = 1
+    total = qs.count()
+    total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
+    page = min(page, total_pages)
+    start = (page - 1) * page_size
+    qs = qs[start:start + page_size]
     items = []
     for nfse in qs:
         id_ = nfse.identificacao
@@ -2461,7 +2532,14 @@ def fn_api_relatorio_nfse(request):
             'emissao': id_.emissao.isoformat() if id_.emissao else None,
             'empresa': nfse.empresa.cod_empresa if nfse.empresa else None,
         })
-    return JsonResponse({'sucesso': True, 'items': items}, status=200)
+    return JsonResponse({
+        'sucesso': True,
+        'items': items,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': total_pages,
+    }, status=200)
 
 
 @login_required(login_url='Login')
@@ -2471,96 +2549,132 @@ def fn_api_relatorio_sped(request):
     from app.db_GDF.sped_contribuicao.models import SpedContribuicaoArquivo
 
     empresas = relatorio_empresas_queryset(request)
-    if not empresas.exists():
-        return JsonResponse({'sucesso': True, 'items': []}, status=200)
+    cod_cliente = request.session.get('cod_cliente', None)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
     empresa_id = request.GET.get('empresa_id', '').strip()
     if empresa_id:
         cod_empresas = [empresa_id] if empresa_id in cod_empresas else []
+    # Inclui arquivos por empresa OU arquivos sem empresa do cliente (alinhado a NFe/CTe)
+    q_sped_base = Q(empresa__cod_empresa__in=cod_empresas)
+    if cod_cliente:
+        q_sped_base |= Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
+    if not cod_empresas and not cod_cliente:
+        return JsonResponse({'sucesso': True, 'items': []}, status=200)
     data_inicio = request.GET.get('data_inicio', '').strip()
     data_fim = request.GET.get('data_fim', '').strip()
     busca = request.GET.get('busca', '').strip()
     tipo_sped = request.GET.get('tipo_sped', '').strip().upper()  # F=Fiscal, C=Contribuição
 
+    try:
+        page_size = min(max(int(request.GET.get('page_size', 50)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 50
+    try:
+        page = max(1, int(request.GET.get('page', 1)))
+    except (TypeError, ValueError):
+        page = 1
+
     items = []
     if tipo_sped in ('F', 'C'):
-        qs = (SpedFiscalArquivo if tipo_sped == 'F' else SpedContribuicaoArquivo).objects.filter(
-            empresa__cod_empresa__in=cod_empresas
-        ).select_related('empresa')
-    else:
-        qs_f = SpedFiscalArquivo.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('empresa')
-        qs_c = SpedContribuicaoArquivo.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('empresa')
-        qs = list(qs_f) + list(qs_c)
-        qs = sorted(qs, key=lambda a: (a.data_carga or timezone.now()), reverse=True)[:500]
-        for arq in qs:
-            t = 'F' if isinstance(arq, SpedFiscalArquivo) else 'C'
+        ModelSped = SpedFiscalArquivo if tipo_sped == 'F' else SpedContribuicaoArquivo
+        qs = ModelSped.objects.filter(q_sped_base).select_related('empresa')
+        if busca:
+            qs = qs.filter(Q(nome_arquivo__icontains=busca))
+        if data_inicio:
+            try:
+                from django.utils.dateparse import parse_date
+                dt = parse_date(data_inicio)
+                if dt:
+                    qs = qs.filter(competencia__gte=dt)
+            except Exception:
+                pass
+        if data_fim:
+            try:
+                from django.utils.dateparse import parse_date
+                dt = parse_date(data_fim)
+                if dt:
+                    qs = qs.filter(competencia__lte=dt)
+            except Exception:
+                pass
+        qs = qs.order_by('-data_carga')
+        total = qs.count()
+        total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
+        page = min(page, total_pages)
+        start = (page - 1) * page_size
+        for arq in qs[start:start + page_size]:
             items.append({
                 'id_arquivo': arq.id_arquivo,
-                'tipo': t,
-                'tipo_display': 'Fiscal' if t == 'F' else 'Contribuição',
+                'tipo': tipo_sped,
+                'tipo_display': 'Fiscal' if tipo_sped == 'F' else 'Contribuição',
                 'competencia': arq.competencia.isoformat() if arq.competencia else None,
                 'nome_arquivo': arq.nome_arquivo,
                 'data_carga': arq.data_carga.isoformat() if arq.data_carga else None,
                 'empresa': arq.empresa.cod_empresa if arq.empresa else None,
             })
-        if data_inicio or data_fim or busca:
-            from django.utils.dateparse import parse_date
-            filtered = []
-            dt_ini = parse_date(data_inicio) if data_inicio else None
-            dt_fim = parse_date(data_fim) if data_fim else None
-            for it in items:
-                if dt_ini and it.get('competencia'):
-                    try:
-                        from datetime import datetime
-                        comp = datetime.fromisoformat(it['competencia'].replace('Z', '+00:00')).date() if it['competencia'] else None
-                        if comp and comp < dt_ini:
-                            continue
-                    except Exception:
-                        pass
-                if dt_fim and it.get('competencia'):
-                    try:
-                        from datetime import datetime
-                        comp = datetime.fromisoformat(it['competencia'].replace('Z', '+00:00')).date() if it['competencia'] else None
-                        if comp and comp > dt_fim:
-                            continue
-                    except Exception:
-                        pass
-                if busca and busca.lower() not in (it.get('nome_arquivo') or '').lower() and busca.lower() not in (it.get('tipo_display') or '').lower():
-                    continue
-                filtered.append(it)
-            items = filtered[:500]
-        return JsonResponse({'sucesso': True, 'items': items}, status=200)
+        return JsonResponse({
+            'sucesso': True,
+            'items': items,
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+        }, status=200)
 
-    if busca:
-        qs = qs.filter(Q(nome_arquivo__icontains=busca))
-    if data_inicio:
-        try:
-            from django.utils.dateparse import parse_date
-            dt = parse_date(data_inicio)
-            if dt:
-                qs = qs.filter(competencia__gte=dt)
-        except Exception:
-            pass
-    if data_fim:
-        try:
-            from django.utils.dateparse import parse_date
-            dt = parse_date(data_fim)
-            if dt:
-                qs = qs.filter(competencia__lte=dt)
-        except Exception:
-            pass
-    qs = qs.order_by('-data_carga')[:500]
+    # tipo_sped vazio = todos (F + C)
+    qs_f = SpedFiscalArquivo.objects.filter(q_sped_base).select_related('empresa')
+    qs_c = SpedContribuicaoArquivo.objects.filter(q_sped_base).select_related('empresa')
+    qs = list(qs_f) + list(qs_c)
+    qs = sorted(qs, key=lambda a: (a.data_carga or timezone.now()), reverse=True)
     for arq in qs:
+        t = 'F' if isinstance(arq, SpedFiscalArquivo) else 'C'
         items.append({
             'id_arquivo': arq.id_arquivo,
-            'tipo': tipo_sped,
-            'tipo_display': 'Fiscal' if tipo_sped == 'F' else 'Contribuição',
+            'tipo': t,
+            'tipo_display': 'Fiscal' if t == 'F' else 'Contribuição',
             'competencia': arq.competencia.isoformat() if arq.competencia else None,
             'nome_arquivo': arq.nome_arquivo,
             'data_carga': arq.data_carga.isoformat() if arq.data_carga else None,
             'empresa': arq.empresa.cod_empresa if arq.empresa else None,
         })
-    return JsonResponse({'sucesso': True, 'items': items}, status=200)
+    if data_inicio or data_fim or busca:
+        from django.utils.dateparse import parse_date
+        filtered = []
+        dt_ini = parse_date(data_inicio) if data_inicio else None
+        dt_fim = parse_date(data_fim) if data_fim else None
+        for it in items:
+            if dt_ini and it.get('competencia'):
+                try:
+                    from datetime import datetime
+                    comp = datetime.fromisoformat(it['competencia'].replace('Z', '+00:00')).date() if it['competencia'] else None
+                    if comp and comp < dt_ini:
+                        continue
+                except Exception:
+                    pass
+            if dt_fim and it.get('competencia'):
+                try:
+                    from datetime import datetime
+                    comp = datetime.fromisoformat(it['competencia'].replace('Z', '+00:00')).date() if it['competencia'] else None
+                    if comp and comp > dt_fim:
+                        continue
+                except Exception:
+                    pass
+            if busca and busca.lower() not in (it.get('nome_arquivo') or '').lower() and busca.lower() not in (it.get('tipo_display') or '').lower():
+                continue
+            filtered.append(it)
+        items = filtered
+    total = len(items)
+    total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
+    page = min(page, total_pages)
+    start = (page - 1) * page_size
+    items = items[start:start + page_size]
+    return JsonResponse({
+        'sucesso': True,
+        'items': items,
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'total_pages': total_pages,
+    }, status=200)
 
 
 def _serialize_model(inst, exclude=None):
@@ -2793,14 +2907,15 @@ def fn_api_relatorio_sped_detalhe(request, tipo, id_arquivo):
 
     empresas = relatorio_empresas_queryset(request)
     cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
-    arq = get_object_or_404(
-        Arquivo.objects.prefetch_related(
-            'reg_0000', 'reg_0001', 'reg_0005', 'reg_0150', 'reg_0190', 'reg_0200',
-            'reg_c001', 'reg_c100', 'reg_c170', 'reg_c190', 'reg_d100', 'registros',
-        ).select_related('empresa'),
-        id_arquivo=id_arquivo,
-        empresa__cod_empresa__in=cod_empresas,
-    )
+    cod_cliente = request.session.get('cod_cliente', None)
+    q_detalhe = Q(empresa__cod_empresa__in=cod_empresas)
+    if cod_cliente:
+        q_detalhe |= Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
+    qs_arquivo = Arquivo.objects.filter(q_detalhe).prefetch_related(
+        'reg_0000', 'reg_0001', 'reg_0005', 'reg_0150', 'reg_0190', 'reg_0200',
+        'reg_c001', 'reg_c100', 'reg_c170', 'reg_c190', 'reg_d100', 'registros',
+    ).select_related('empresa')
+    arq = get_object_or_404(qs_arquivo, id_arquivo=id_arquivo)
     cabecalho = _serialize_model(arq)
     if cabecalho:
         cabecalho['empresa'] = arq.empresa.cod_empresa if arq.empresa else None
@@ -3427,7 +3542,8 @@ def fn_api_reprocessamento_condicoes_enviar_sap(request, id_lote):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     cod_empresas = reprocessamento_empresas_cliente(cod_cliente)
-    lote = get_object_or_404(ReprocessamentoLote, id_lote=id_lote, empresa_id__in=cod_empresas).select_related('empresa')
+    qs_lote = ReprocessamentoLote.objects.filter(empresa_id__in=cod_empresas).select_related('empresa')
+    lote = get_object_or_404(qs_lote, id_lote=id_lote)
     condicoes = list(
         CondicaoPagamentoLote.objects.filter(lote=lote).order_by('chave_nfe').values(
             'chave_nfe', 'numero_nfe', 'serie_nfe', 'condicao_pagamento_nfe', 'condicao_pagamento_sap'
