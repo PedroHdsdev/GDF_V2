@@ -220,8 +220,22 @@ LOGGING = {
             'format': '[{asctime}] {levelname} - User: {username} | IP: {ip} | Action: {action} | Details: {details}',
             'style': '{',
         },
+        'gdf_request': {
+            'format': '[{asctime}] {levelname} {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
     },
     'handlers': {
+        'gdf_file': {
+            'level': 'DEBUG',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'gdf.log'),
+            'maxBytes': 1024 * 1024 * 10,
+            'backupCount': 5,
+            'formatter': 'gdf_request',
+            'encoding': 'utf-8',
+        },
         'security_file': {
             'level': 'WARNING',
             'class': 'logging.handlers.RotatingFileHandler',
@@ -253,6 +267,11 @@ LOGGING = {
         'audit': {
             'handlers': ['audit_file'],
             'level': 'INFO',
+            'propagate': False,
+        },
+        'gdf': {
+            'handlers': ['gdf_file'],
+            'level': 'DEBUG',
             'propagate': False,
         },
         'django': {
