@@ -1364,132 +1364,184 @@ function iniciarUpload() {
 
 /* ===============================
    UPLOAD EM LOTE
+   Com muitos arquivos (ex.: pasta): envia em lotes de 50 para evitar 400 e ERR_CONTENT_LENGTH_MISMATCH.
 ================================ */
-function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
-    const formData = new FormData();
-    
-    // Adicionar todos os arquivos
-    arquivos.forEach(file => {
-        formData.append('arquivo', file);
-    });
-    
-    // Adicionar tipo e origem (empresa não é mais obrigatória na carga)
+var TAMANHO_LOTE_CARGA_XML = 100;
+
+function enviarUmLoteXml(arquivosLote, tipoDocumento, origemDados, apiUrl, csrfToken, jobId, ultimoLote) {
+    var formData = new FormData();
+    arquivosLote.forEach(function (f) { formData.append('arquivo', f); });
     formData.append('type_xml', tipoDocumento);
     formData.append('origem_dados', origemDados);
-
-    // Obter CSRF token
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-
-    // Marcar como processando
-    atualizarStatusUpload(0, 'processing', 'Enviando arquivos...');
-
-    var apiUrl = (document.querySelector('.layout-page') && document.querySelector('.layout-page').getAttribute('data-api-processar-xml')) || '/api/processar-xml/';
-    fetch(apiUrl, {
+    if (jobId) formData.append('job_id', String(jobId));
+    if (ultimoLote) formData.append('ultimo_lote', '1');
+    return fetch(apiUrl, {
         method: 'POST',
-        headers: {
-            'X-CSRFToken': csrfToken
-        },
+        headers: { 'X-CSRFToken': csrfToken },
         body: formData
-    })
-        .then(function (response) {
-            return response.json()
-                .then(function (data) {
-                    return { status: response.status, data: data };
+    }).then(function (response) {
+        var status = response.status;
+        if (status === 413) {
+            return { status: 413, data: { sucesso: false, mensagem: 'Arquivo(s) muito grande (413). Configure Nginx: client_max_body_size 100M; ou envie menos arquivos.' } };
+        }
+        return response.text().then(function (text) {
+            var data;
+            try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
+            if (!data.mensagem && data.sucesso === undefined) data = { sucesso: false, mensagem: 'Resposta inválida (status ' + status + ')' };
+            return { status: status, data: data };
+        });
+    });
+}
+
+function finalizarUploadCargaXml(erroMsg) {
+    estadoCargaXml.uploadEmProgresso = false;
+    var btn = document.getElementById('btn-enviar-xml');
+    if (btn) btn.disabled = false;
+    finalizarCargas();
+    if (erroMsg) {
+        fecharModalCargaXml();
+        if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+            Notificacoes.pagina(erroMsg, 'danger');
+        } else { alert(erroMsg); }
+    }
+}
+
+function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
+    var apiUrl = (document.querySelector('.layout-page') && document.querySelector('.layout-page').getAttribute('data-api-processar-xml')) || '/api/processar-xml/';
+    var csrfToken = (document.querySelector('[name=csrfmiddlewaretoken]') && document.querySelector('[name=csrfmiddlewaretoken]').value) || (typeof window.getCsrfToken === 'function' ? window.getCsrfToken() : '');
+    var total = arquivos.length;
+    var usarLotes = total > TAMANHO_LOTE_CARGA_XML;
+
+    atualizarStatusUpload(0, 'processing', usarLotes ? 'Enviando em lotes (evita erro de rede)...' : 'Enviando arquivos...');
+
+    if (usarLotes) {
+        var lotes = [];
+        for (var i = 0; i < total; i += TAMANHO_LOTE_CARGA_XML) {
+            lotes.push(arquivos.slice(i, i + TAMANHO_LOTE_CARGA_XML));
+        }
+        var numLotes = lotes.length;
+        var loteAtual = 0;
+        var jobIdUnico = null;
+        function enviarProximoLote() {
+            if (loteAtual >= numLotes) {
+                fecharModalCargaXml();
+                if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                    Notificacoes.pagina('Job #' + (jobIdUnico || '') + ' criado com ' + total + ' arquivo(s). Atualize o painel para acompanhar.', 'success');
+                } else { alert('Job criado. Atualize o painel.'); }
+                carregarResumoCargaXml();
+                carregarTodasAsCargas();
+                finalizarUploadCargaXml();
+                return;
+            }
+            var ehUltimoLote = (loteAtual === numLotes - 1);
+            atualizarStatusUpload(0, 'processing', 'Enviando lote ' + (loteAtual + 1) + '/' + numLotes + ' (' + lotes[loteAtual].length + ' arquivos)...');
+            enviarUmLoteXml(lotes[loteAtual], tipoDocumento, origemDados, apiUrl, csrfToken, jobIdUnico || null, ehUltimoLote)
+                .then(function (result) {
+                    if (result.status === 413) {
+                        finalizarUploadCargaXml(result.data.mensagem || 'Erro 413.');
+                        return;
+                    }
+                    if (result.status === 400) {
+                        finalizarUploadCargaXml((result.data && result.data.mensagem) ? result.data.mensagem : 'Erro 400 no lote ' + (loteAtual + 1) + '.');
+                        return;
+                    }
+                    if (result.status !== 200 && result.status !== 202) {
+                        finalizarUploadCargaXml((result.data && result.data.mensagem) ? result.data.mensagem : 'Erro no lote ' + (loteAtual + 1) + '.');
+                        return;
+                    }
+                    if (result.data && result.data.job_id) jobIdUnico = result.data.job_id;
+                    loteAtual++;
+                    if (result.status === 202) {
+                        enviarProximoLote();
+                    } else {
+                        enviarProximoLote();
+                    }
                 })
-                .catch(function () {
-                    return { status: response.status, data: { sucesso: false, mensagem: 'Resposta inválida do servidor (status ' + response.status + ')' } };
+                .catch(function (err) {
+                    var msg = 'Erro ao enviar lote ' + (loteAtual + 1) + ': ' + (err.message || 'Falha na rede. Tente novamente ou envie um ZIP.');
+                    if (err.message && (err.message.indexOf('fetch') !== -1 || err.message.indexOf('Failed') !== -1)) {
+                        msg = 'Conexão interrompida (rede/proxy). Tente de novo ou envie a pasta em um .zip.';
+                    }
+                    finalizarUploadCargaXml(msg);
                 });
-        })
+        }
+        enviarProximoLote();
+        return;
+    }
+
+    enviarUmLoteXml(arquivos, tipoDocumento, origemDados, apiUrl, csrfToken)
         .then(function (result) {
             var status = result.status;
             var data = result.data;
 
-            // Job em segundo plano (202)
+            if (status === 413) {
+                finalizarUploadCargaXml(data.mensagem || 'Erro 413: arquivo(s) muito grande.');
+                return;
+            }
+            if (status === 400) {
+                var msg = (data && data.mensagem) ? data.mensagem : 'Requisição inválida (400). Envie apenas .xml ou .zip.';
+                if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                    Notificacoes.pagina(msg, 'danger');
+                } else { alert(msg); }
+                arquivos.forEach(function (file, index) { atualizarStatusUpload(index, 'error', '✗ ' + (data.mensagem || 'Erro 400')); });
+                finalizarUploadCargaXml();
+                return;
+            }
             if (status === 202) {
                 fecharModalCargaXml();
                 if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
                     Notificacoes.pagina(data.mensagem || 'Job criado e em execução. Atualize o painel para acompanhar.', 'success');
-                } else {
-                    alert(data.mensagem || 'Job criado e em execução.');
-                }
+                } else { alert(data.mensagem || 'Job criado e em execução.'); }
                 carregarResumoCargaXml();
                 carregarTodasAsCargas();
-                estadoCargaXml.uploadEmProgresso = false;
-                var btn = document.getElementById('btn-enviar-xml');
-                if (btn) btn.disabled = false;
-                finalizarCargas();
+                finalizarUploadCargaXml();
                 return;
             }
-
             if (data.sucesso) {
-                // MODO DIRETÓRIO: Atualizar status geral
                 if (estadoCargaXml.modoDiretorio) {
                     var totalSucesso = (data.detalhes && data.detalhes.success) ? data.detalhes.success.length : 0;
                     var totalErro = (data.detalhes && data.detalhes.errors) ? data.detalhes.errors.length : 0;
                     var mensagemStatus = totalSucesso + ' processado(s), ' + totalErro + ' erro(s)';
-                    if (totalErro === 0) {
-                        atualizarStatusUpload(arquivos.length - 1, 'success', '✓ ' + mensagemStatus);
-                    } else {
-                        atualizarStatusUpload(arquivos.length - 1, 'error', '⚠️ ' + mensagemStatus);
-                    }
+                    atualizarStatusUpload(arquivos.length - 1, totalErro === 0 ? 'success' : 'error', (totalErro === 0 ? '✓ ' : '⚠️ ') + mensagemStatus);
                 } else {
-                    // MODO INDIVIDUAL: Atualizar cada arquivo
                     if (data.detalhes && data.detalhes.success) {
                         data.detalhes.success.forEach(function (fileName) {
-                            var index = arquivos.findIndex(function (f) { return f.name === fileName; });
-                            if (index !== -1) {
-                                atualizarStatusUpload(index, 'success', '✓ Processado');
-                            }
+                            var idx = arquivos.findIndex(function (f) { return f.name === fileName; });
+                            if (idx !== -1) atualizarStatusUpload(idx, 'success', '✓ Processado');
                         });
                     }
                     if (data.detalhes && data.detalhes.errors) {
                         data.detalhes.errors.forEach(function (erro) {
-                            var index = arquivos.findIndex(function (f) { return f.name === erro.file; });
-                            if (index !== -1) {
-                                atualizarStatusUpload(index, 'error', '✗ ' + (erro.error || ''));
-                            }
+                            var idx = arquivos.findIndex(function (f) { return f.name === erro.file; });
+                            if (idx !== -1) atualizarStatusUpload(idx, 'error', '✗ ' + (erro.error || ''));
                         });
                     }
                 }
                 fecharModalCargaXml();
                 if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
                     Notificacoes.pagina(data.mensagem, 'success');
-                } else {
-                    alert(data.mensagem);
-                }
+                } else { alert(data.mensagem); }
             } else {
                 fecharModalCargaXml();
                 if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
                     Notificacoes.pagina(data.mensagem || 'Erro ao processar XMLs', 'danger');
-                } else {
-                    alert(data.mensagem || 'Erro ao processar XMLs');
-                }
-                arquivos.forEach(function (file, index) {
-                    atualizarStatusUpload(index, 'error', '✗ Erro no processamento');
-                });
+                } else { alert(data.mensagem || 'Erro ao processar XMLs'); }
+                arquivos.forEach(function (file, index) { atualizarStatusUpload(index, 'error', '✗ Erro no processamento'); });
             }
-            estadoCargaXml.uploadEmProgresso = false;
-            var btn = document.getElementById('btn-enviar-xml');
-            if (btn) btn.disabled = false;
-            finalizarCargas();
+            finalizarUploadCargaXml();
         })
         .catch(function (error) {
             console.error('Erro ao fazer upload:', error);
+            var msg = 'Erro ao enviar arquivos: ' + (error.message || 'Erro de conexão');
+            if (error.message && (String(error.message).indexOf('fetch') !== -1 || String(error.message).indexOf('Failed') !== -1)) {
+                msg = 'Conexão falhou (rede ou proxy cortou a requisição). Se escolheu uma pasta com muitos arquivos, tente: (1) enviar de novo – o envio em lotes já está ativo para pastas grandes – ou (2) compactar em .zip e enviar o ZIP.';
+            }
             fecharModalCargaXml();
             if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
-                Notificacoes.pagina('Erro ao enviar arquivos: ' + (error.message || 'Erro de conexão'), 'danger');
-            } else {
-                alert('Erro ao enviar arquivos: ' + (error.message || 'Erro de conexão'));
-            }
-            // Marcar todos como erro
-            arquivos.forEach((file, index) => {
-                atualizarStatusUpload(index, 'error', '✗ Erro de conexão');
-            });
-            
-            estadoCargaXml.uploadEmProgresso = false;
-            var btn = document.getElementById('btn-enviar-xml');
-            if (btn) btn.disabled = false;
-            finalizarCargas();
+                Notificacoes.pagina(msg, 'danger');
+            } else { alert(msg); }
+            arquivos.forEach(function (file, index) { atualizarStatusUpload(index, 'error', '✗ Erro de conexão'); });
+            finalizarUploadCargaXml();
         });
 }
 

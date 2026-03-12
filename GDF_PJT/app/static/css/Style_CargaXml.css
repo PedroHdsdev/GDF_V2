@@ -207,6 +207,11 @@
     border-color: #0056b3;
 }
 
+/* Input sobreposto na drop-zone (label): garante que o clique abra o seletor de arquivos/pasta */
+.overlay-file-input {
+    pointer-events: auto;
+}
+
 /* Ícone e texto do drop */
 .drop-zone-icon {
     font-size: 48px;

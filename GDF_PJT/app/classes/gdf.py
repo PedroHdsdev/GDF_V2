@@ -1084,7 +1084,7 @@ class ClGdf:
             # ✅ Vincular empresas
             l_v_queryset_empresas = Empresa.objects.filter(cod_empresa__in=i_lsl_empresas_ids)
             for l_v_empresa in l_v_queryset_empresas:
-                UserEmpresa.objects.create(
+                UsuarioEmpresa.objects.create(
                     user=l_v_user_instance,
                     empresa=l_v_empresa
                 )

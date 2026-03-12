@@ -645,7 +645,7 @@ def fn_view_atualizar_usuario(request, user_id):
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
     
     # ✅ VALIDAR IDOR: User só pode editar usuários de suas empresas
-    user_belongs_to_client = UserEmpresa.objects.filter(
+    user_belongs_to_client = UsuarioEmpresa.objects.filter(
         user_id=user_id,
         empresa__gdfcliente__cod_cliente=cod_cliente
     ).exists()
@@ -1340,9 +1340,14 @@ def fn_api_processar_xml(request):
         l_v_type_xml     = request.POST.get('type_xml', 'NFe')
         l_v_origem_dados = request.POST.get('origem_dados', 'LOCAL')
         l_v_empresa_id   = (request.POST.get('empresa_id') or '').strip()
+        job_id_existente = request.POST.get('job_id', '').strip()
+        ultimo_lote      = request.POST.get('ultimo_lote', '').strip().lower() in ('1', 'true', 's', 'sim', 'yes')
 
         if not lsl_Xml:
-            return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo selecionado'}, status=400)
+            return JsonResponse({
+                'sucesso': False,
+                'mensagem': 'Nenhum arquivo selecionado. Envie arquivos .xml ou .zip (campo "arquivo"). Se escolheu uma pasta, confira se há arquivos .xml dentro.'
+            }, status=400)
 
         # Aceitar .xml e .zip; se for .zip, extrair XMLs na "mesma pasta" (lista) e processar
         MAX_SIZE = 50 * 1024 * 1024
@@ -1373,11 +1378,80 @@ def fn_api_processar_xml(request):
                 continue  # Ignorar arquivos que não sejam .xml ou .zip (ex.: PDF em pasta)
 
         if not expanded:
-            return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo XML encontrado (envie .xml ou .zip com XMLs dentro)'}, status=400)
+            return JsonResponse({
+                'sucesso': False,
+                'mensagem': 'Nenhum arquivo XML encontrado. Envie apenas arquivos .xml ou .zip que contenham .xml dentro (outros tipos são ignorados).'
+            }, status=400)
 
-        # Salvar XMLs em pasta temp e processar em segundo plano (job)
-        temp_dir = tempfile.mkdtemp(prefix='cargaxml_')
+        def _temp_dir_para_job(jid):
+            base = getattr(settings, 'CARGAXML_TEMP_ROOT', None) or tempfile.gettempdir()
+            return os.path.join(base, 'gdf_cargaxml', str(jid))
+
+        cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
+        from app.api.jobs import processar_job_xml_background
+
+        if job_id_existente:
+            try:
+                job_id_int = int(job_id_existente)
+            except ValueError:
+                return JsonResponse({'sucesso': False, 'mensagem': 'job_id inválido.'}, status=400)
+            job = get_object_or_404(JobCargaXml, id=job_id_int, gdfcliente__cod_cliente=cod_cliente)
+            if job.status != 'PENDING':
+                return JsonResponse({'sucesso': False, 'mensagem': f'Job #{job.id} já foi finalizado ou está em execução (status={job.status}).'}, status=400)
+            temp_dir = _temp_dir_para_job(job.id)
+            if not os.path.isdir(temp_dir):
+                return JsonResponse({'sucesso': False, 'mensagem': f'Pasta do job #{job.id} não encontrada. Envie os lotes em sequência sem demora.'}, status=400)
+            offset = len([f for f in os.listdir(temp_dir) if os.path.isfile(os.path.join(temp_dir, f)) and f.lower().endswith('.xml')])
+            try:
+                for i, item in enumerate(expanded):
+                    xml_bytes = item.read() if hasattr(item, 'read') else item
+                    nome = getattr(item, 'name', f'{offset + i}.xml')
+                    safe_name = os.path.basename(nome).replace('..', '_') or f'{offset + i}.xml'
+                    dest = os.path.join(temp_dir, f'{offset + i}_{safe_name}')
+                    with open(dest, 'wb') as out:
+                        out.write(xml_bytes)
+            except Exception as e:
+                return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao salvar arquivos no job: {e}'}, status=500)
+            job.total_arquivos += len(expanded)
+            job.save(update_fields=['total_arquivos'])
+            if ultimo_lote:
+                job.status = 'RUNNING'
+                job.mensagem = f'Carga manual – em execução ({job.total_arquivos} arquivo(s))...'
+                job.started_at = timezone.localtime()
+                job.save(update_fields=['status', 'mensagem', 'started_at'])
+                t = threading.Thread(
+                    target=processar_job_xml_background,
+                    args=(job.id, temp_dir, l_v_type_xml, l_v_origem_dados, request.user.id, cod_cliente, l_v_empresa_id),
+                    daemon=True,
+                )
+                t.start()
+                return JsonResponse({
+                    'sucesso': True,
+                    'mensagem': f'Job #{job.id} finalizado e em execução ({job.total_arquivos} arquivo(s)). Atualize o painel para acompanhar.',
+                    'job_id': job.id,
+                }, status=202)
+            return JsonResponse({
+                'sucesso': True,
+                'mensagem': f'Lote recebido. Job #{job.id} com {job.total_arquivos} arquivo(s). Envie o próximo lote com o mesmo job_id.',
+                'job_id': job.id,
+            }, status=200)
+
+        # Primeiro lote: criar job e pasta temp
+        job = JobCargaXml.objects.create(
+            gdfcliente=cliente,
+            parametro=None,
+            status='PENDING',
+            total_arquivos=len(expanded),
+            total_sucesso=0,
+            total_erro=0,
+            mensagem='Aguardando lotes...',
+            started_at=None,
+            finished_at=None,
+            usuario_execucao=request.user,
+        )
+        temp_dir = _temp_dir_para_job(job.id)
         try:
+            os.makedirs(temp_dir, exist_ok=True)
             for i, item in enumerate(expanded):
                 xml_bytes = item.read() if hasattr(item, 'read') else item
                 nome = getattr(item, 'name', f'{i}.xml')
@@ -1390,33 +1464,30 @@ def fn_api_processar_xml(request):
                 shutil.rmtree(temp_dir, ignore_errors=True)
             except Exception:
                 pass
+            job.delete()
             return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao salvar arquivos: {e}'}, status=500)
 
-        cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
-        job = JobCargaXml.objects.create(
-            gdfcliente=cliente,
-            parametro=None,
-            status='RUNNING',
-            total_arquivos=len(expanded),
-            total_sucesso=0,
-            total_erro=0,
-            mensagem=f'Carga manual – em execução ({len(expanded)} arquivo(s))...',
-            started_at=timezone.localtime(),
-            finished_at=None,
-            usuario_execucao=request.user,
-        )
-        from app.api.jobs import processar_job_xml_background
-        t = threading.Thread(
-            target=processar_job_xml_background,
-            args=(job.id, temp_dir, l_v_type_xml, l_v_origem_dados, request.user.id, cod_cliente, l_v_empresa_id),
-            daemon=True,
-        )
-        t.start()
+        if ultimo_lote:
+            job.status = 'RUNNING'
+            job.mensagem = f'Carga manual – em execução ({job.total_arquivos} arquivo(s))...'
+            job.started_at = timezone.localtime()
+            job.save(update_fields=['status', 'mensagem', 'started_at'])
+            t = threading.Thread(
+                target=processar_job_xml_background,
+                args=(job.id, temp_dir, l_v_type_xml, l_v_origem_dados, request.user.id, cod_cliente, l_v_empresa_id),
+                daemon=True,
+            )
+            t.start()
+            return JsonResponse({
+                'sucesso': True,
+                'mensagem': f'Job #{job.id} criado e em execução em segundo plano. Atualize o painel para acompanhar.',
+                'job_id': job.id,
+            }, status=202)
         return JsonResponse({
             'sucesso': True,
-            'mensagem': f'Job #{job.id} criado e em execução em segundo plano. Atualize o painel para acompanhar.',
+            'mensagem': f'Job #{job.id} criado com {job.total_arquivos} arquivo(s). Envie o próximo lote com job_id={job.id} e ultimo_lote=1 no último.',
             'job_id': job.id,
-        }, status=202)
+        }, status=200)
 
     except Exception as e:
         return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao processar: {str(e)}'}, status=500)
@@ -1904,22 +1975,91 @@ def fn_api_cargaxml_job_details(request, job_id):
 @login_required(login_url='Login')
 @require_http_methods(["POST"])
 def fn_api_processar_sped(request):
-    """API para processar upload de arquivos SPED (.txt). Cria job e executa em segundo plano."""
+    """API para processar upload de arquivos SPED (.txt). Suporta lotes em um único job (job_id + ultimo_lote)."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    arquivos = request.FILES.getlist('arquivo')
-    if not arquivos and request.FILES.get('arquivo'):
-        arquivos = [request.FILES.get('arquivo')]
-    if not arquivos:
+    arquivos_raw = request.FILES.getlist('arquivo')
+    if not arquivos_raw and request.FILES.get('arquivo'):
+        arquivos_raw = [request.FILES.get('arquivo')]
+    if not arquivos_raw:
         return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo selecionado. Selecione arquivos .txt ou uma pasta.'}, status=400)
 
+    arquivos = [f for f in arquivos_raw if getattr(f, 'name', None) and (f.name or '').lower().endswith('.txt')]
+    if not arquivos:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo .txt encontrado. Envie apenas arquivos .txt.'}, status=400)
+
+    job_id_existente = request.POST.get('job_id', '').strip()
+    ultimo_lote = request.POST.get('ultimo_lote', '').strip().lower() in ('1', 'true', 's', 'sim', 'yes')
+
+    def _temp_dir_para_job_sped(jid):
+        base = getattr(settings, 'CARGASPED_TEMP_ROOT', None) or tempfile.gettempdir()
+        return os.path.join(base, 'gdf_cargasped', str(jid))
+
     cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
-    temp_dir = tempfile.mkdtemp(prefix='cargasped_')
+    from app.api.jobs import processar_job_sped_background
+
+    if job_id_existente:
+        try:
+            job_id_int = int(job_id_existente)
+        except ValueError:
+            return JsonResponse({'sucesso': False, 'mensagem': 'job_id inválido.'}, status=400)
+        job = get_object_or_404(JobCargaSped, id=job_id_int, gdfcliente__cod_cliente=cod_cliente)
+        if job.status != 'PENDING':
+            return JsonResponse({'sucesso': False, 'mensagem': f'Job #{job.id} já foi finalizado ou está em execução (status={job.status}).'}, status=400)
+        temp_dir = _temp_dir_para_job_sped(job.id)
+        if not os.path.isdir(temp_dir):
+            return JsonResponse({'sucesso': False, 'mensagem': f'Pasta do job #{job.id} não encontrada. Envie os lotes em sequência.'}, status=400)
+        offset = len([f for f in os.listdir(temp_dir) if os.path.isfile(os.path.join(temp_dir, f)) and f.lower().endswith('.txt')])
+        try:
+            for i, f in enumerate(arquivos):
+                safe_name = os.path.basename(f.name).replace('..', '_')
+                dest = os.path.join(temp_dir, f'{offset + i}_{safe_name}')
+                with open(dest, 'wb') as out:
+                    for chunk in f.chunks():
+                        out.write(chunk)
+        except Exception as e:
+            return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao salvar arquivos no job: {e}'}, status=500)
+        job.total_arquivos += len(arquivos)
+        job.save(update_fields=['total_arquivos'])
+        if ultimo_lote:
+            job.status = 'RUNNING'
+            job.mensagem = f'Carga manual – em execução ({job.total_arquivos} arquivo(s))...'
+            job.started_at = timezone.localtime()
+            job.save(update_fields=['status', 'mensagem', 'started_at'])
+            t = threading.Thread(
+                target=processar_job_sped_background,
+                args=(job.id, temp_dir, cod_cliente, request.user.id),
+                daemon=True,
+            )
+            t.start()
+            return JsonResponse({
+                'sucesso': True,
+                'mensagem': f'Job #{job.id} finalizado e em execução ({job.total_arquivos} arquivo(s)). Atualize o painel.',
+                'job_id': job.id,
+            }, status=202)
+        return JsonResponse({
+            'sucesso': True,
+            'mensagem': f'Lote recebido. Job #{job.id} com {job.total_arquivos} arquivo(s). Envie o próximo lote com o mesmo job_id.',
+            'job_id': job.id,
+        }, status=200)
+
+    job = JobCargaSped.objects.create(
+        gdfcliente=cliente,
+        parametro=None,
+        status='PENDING',
+        total_arquivos=len(arquivos),
+        total_sucesso=0,
+        total_erro=0,
+        mensagem='Aguardando lotes...',
+        started_at=None,
+        finished_at=None,
+        usuario_execucao=request.user,
+    )
+    temp_dir = _temp_dir_para_job_sped(job.id)
     try:
+        os.makedirs(temp_dir, exist_ok=True)
         for i, f in enumerate(arquivos):
-            if not getattr(f, 'name', None) or not (f.name or '').lower().endswith('.txt'):
-                continue
             safe_name = os.path.basename(f.name).replace('..', '_')
             dest = os.path.join(temp_dir, f'{i}_{safe_name}')
             with open(dest, 'wb') as out:
@@ -1927,36 +2067,33 @@ def fn_api_processar_sped(request):
                     out.write(chunk)
     except Exception as e:
         try:
-            import shutil
             shutil.rmtree(temp_dir, ignore_errors=True)
         except Exception:
             pass
+        job.delete()
         return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao salvar arquivos: {e}'}, status=500)
 
-    job = JobCargaSped.objects.create(
-        gdfcliente=cliente,
-        parametro=None,
-        status='RUNNING',
-        total_arquivos=0,
-        total_sucesso=0,
-        total_erro=0,
-        mensagem=f'Carga manual – em execução ({len(arquivos)} arquivo(s))...',
-        started_at=timezone.localtime(),
-        finished_at=None,
-        usuario_execucao=request.user,
-    )
-    from app.api.jobs import processar_job_sped_background
-    t = threading.Thread(
-        target=processar_job_sped_background,
-        args=(job.id, temp_dir, cod_cliente, request.user.id),
-        daemon=True,
-    )
-    t.start()
+    if ultimo_lote:
+        job.status = 'RUNNING'
+        job.mensagem = f'Carga manual – em execução ({job.total_arquivos} arquivo(s))...'
+        job.started_at = timezone.localtime()
+        job.save(update_fields=['status', 'mensagem', 'started_at'])
+        t = threading.Thread(
+            target=processar_job_sped_background,
+            args=(job.id, temp_dir, cod_cliente, request.user.id),
+            daemon=True,
+        )
+        t.start()
+        return JsonResponse({
+            'sucesso': True,
+            'mensagem': f'Job #{job.id} criado e em execução. Atualize o painel para acompanhar.',
+            'job_id': job.id,
+        }, status=202)
     return JsonResponse({
         'sucesso': True,
-        'mensagem': f'Job #{job.id} criado e em execução em segundo plano. Atualize o painel para acompanhar.',
+        'mensagem': f'Job #{job.id} criado com {job.total_arquivos} arquivo(s). Envie o próximo lote com job_id={job.id} e ultimo_lote=1 no último.',
         'job_id': job.id,
-    }, status=202)
+    }, status=200)
 
 
 @login_required(login_url='Login')

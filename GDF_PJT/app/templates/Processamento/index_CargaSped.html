@@ -190,22 +190,26 @@
                         <div class="row g-3 mb-3">
                             <div class="col-md-6">
                                 <div class="card-upload-xml">
-                                    <div class="drop-zone drop-zone-sped-option" id="drop-zone-sped-arquivo" role="button" tabindex="0">
-                                        <i class="fas fa-file-alt fa-3x text-muted mb-2"></i>
-                                        <div class="drop-zone-text">Clique para selecionar <strong>arquivos</strong> .txt</div>
-                                    </div>
+                                    <label class="drop-zone drop-zone-sped-option d-block position-relative mb-0" id="drop-zone-sped-arquivo" style="cursor: pointer;">
+                                        <input type="file" id="file-input-sped" multiple accept=".txt" class="position-absolute overlay-file-input" style="opacity: 0; top: 0; left: 0; width: 100%; height: 100%; cursor: pointer; z-index: 1;">
+                                        <span class="position-relative" style="z-index: 0;">
+                                            <i class="fas fa-file-alt fa-3x text-muted mb-2 d-block"></i>
+                                            <span class="drop-zone-text d-block">Clique para selecionar <strong>arquivos</strong> .txt</span>
+                                        </span>
+                                    </label>
                                 </div>
-                                <input type="file" id="file-input-sped" multiple accept=".txt" style="display: none;">
                             </div>
                             <div class="col-md-6">
                                 <div class="card-upload-xml">
-                                    <div class="drop-zone drop-zone-sped-option" id="drop-zone-sped-pasta" role="button" tabindex="0">
-                                        <i class="fas fa-folder-open fa-3x text-muted mb-2"></i>
-                                        <div class="drop-zone-text">Clique para selecionar uma <strong>pasta</strong></div>
-                                    <div class="drop-zone-hint small text-muted mt-1">Lê todos os .txt dentro da pasta e subpastas.</div>
-                                    </div>
+                                    <label class="drop-zone drop-zone-sped-option d-block position-relative mb-0" id="drop-zone-sped-pasta" style="cursor: pointer;">
+                                        <input type="file" id="file-input-sped-pasta" webkitdirectory directory multiple accept=".txt" class="position-absolute overlay-file-input" style="opacity: 0; top: 0; left: 0; width: 100%; height: 100%; cursor: pointer; z-index: 1;">
+                                        <span class="position-relative" style="z-index: 0;">
+                                            <i class="fas fa-folder-open fa-3x text-muted mb-2 d-block"></i>
+                                            <span class="drop-zone-text d-block">Clique para selecionar uma <strong>pasta</strong></span>
+                                            <span class="drop-zone-hint small text-muted mt-1 d-block">Lê todos os .txt dentro da pasta e subpastas.</span>
+                                        </span>
+                                    </label>
                                 </div>
-                                <input type="file" id="file-input-sped-pasta" webkitdirectory directory multiple style="display: none;">
                             </div>
                         </div>
                         <p class="text-muted small mt-2">Formatos: .txt. Tamanho máximo por arquivo: 10GB.</p>

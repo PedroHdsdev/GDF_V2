@@ -387,13 +387,13 @@ function aplicarFiltrosSped() {
 function renderizarTabelaParametrosSped() {
     const tbody = document.querySelector('#tabela-parametros-main tbody');
     if (!tbody) return;
+    const pagEl = document.getElementById('paginacao-cargas');
     const total = estadoSped.filtrados.length;
     const start = (estadoSped.currentPage - 1) * estadoSped.itemsPerPage;
     const page = estadoSped.filtrados.slice(start, start + estadoSped.itemsPerPage);
 
     if (page.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4"><i class="fas fa-list fa-2x mb-2 d-block opacity-50"></i>Nenhum parâmetro cadastrado</td></tr>';
-        var pagEl = document.getElementById('paginacao-cargas');
         if (pagEl) pagEl.innerHTML = '';
         return;
     }
@@ -412,7 +412,6 @@ function renderizarTabelaParametrosSped() {
     for (let i = 1; i <= totalPages; i++) {
         pagHtml += `<li class="page-item ${i === estadoSped.currentPage ? 'active' : ''}"><a class="page-link" href="#" data-page="${i}">${i}</a></li>`;
     }
-    const pagEl = document.getElementById('paginacao-cargas');
     pagEl.innerHTML = pagHtml;
     pagEl.querySelectorAll('.page-link').forEach(link => {
         link.addEventListener('click', e => { e.preventDefault(); estadoSped.currentPage = parseInt(link.dataset.page, 10); renderizarTabelaParametrosSped(); });
@@ -448,41 +447,124 @@ function carregarParametrosModal() {
         });
 }
 
+var TAMANHO_LOTE_CARGA_SPED = 100;
+
+function enviarUmLoteSped(arquivosLote, apiUrl, csrfToken, jobId, ultimoLote) {
+    var fd = new FormData();
+    arquivosLote.forEach(function (f) { fd.append('arquivo', f); });
+    if (jobId) fd.append('job_id', String(jobId));
+    if (ultimoLote) fd.append('ultimo_lote', '1');
+    return fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken },
+        body: fd
+    }).then(function (r) {
+        return r.text().then(function (text) {
+            var data;
+            try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
+            return { status: r.status, data: data };
+        });
+    });
+}
+
+function fecharModalELimparArquivosSped() {
+    estadoSped.arquivosManuais = [];
+    var contador = document.getElementById('contador-sped');
+    if (contador) contador.textContent = '0';
+    var fileInput = document.getElementById('file-input-sped');
+    var fileInputPasta = document.getElementById('file-input-sped-pasta');
+    if (fileInput) fileInput.value = '';
+    if (fileInputPasta) fileInputPasta.value = '';
+    var modal = document.getElementById('modalCargaSped');
+    if (modal && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        var inst = bootstrap.Modal.getInstance(modal);
+        if (inst) inst.hide();
+    }
+    carregarParametrosPrincipais();
+    carregarResumoCargaSped();
+    carregarJobsCargaSped();
+    carregarAvisosCargaSped();
+}
+
 function enviarArquivosManuais() {
     if (estadoSped.arquivosManuais.length === 0) {
         Notificacoes.modal('Selecione ao menos um arquivo .txt', 'warning', 'modalCargaSpedAlerts');
         return;
     }
-    const fd = new FormData();
-    estadoSped.arquivosManuais.forEach(f => fd.append('arquivo', f));
-    fd.append('csrfmiddlewaretoken', obterCsrfToken());
-    const btn = document.getElementById('btn-enviar-sped');
+    var arquivos = estadoSped.arquivosManuais;
+    var total = arquivos.length;
+    var usarLotes = total > TAMANHO_LOTE_CARGA_SPED;
+    var apiUrl = getApiBase() + '/api/processar-sped/';
+    var csrfToken = obterCsrfToken();
+    if (typeof window.getCsrfToken === 'function') csrfToken = csrfToken || window.getCsrfToken();
+    var btn = document.getElementById('btn-enviar-sped');
     btn.disabled = true;
-    fetch(getApiBase() + '/api/processar-sped/', { method: 'POST', body: fd })
-        .then(r => r.json())
-        .then(data => {
-            btn.disabled = false;
-            Notificacoes.modal(data.mensagem || (data.sucesso ? 'Job em execução.' : 'Erro.'), data.sucesso ? 'success' : 'danger', 'modalCargaSpedAlerts');
-            if (data.sucesso) {
-                estadoSped.arquivosManuais = [];
-                var contador = document.getElementById('contador-sped');
-                if (contador) contador.textContent = '0';
-                var fileInput = document.getElementById('file-input-sped');
-                var fileInputPasta = document.getElementById('file-input-sped-pasta');
-                if (fileInput) fileInput.value = '';
-                if (fileInputPasta) fileInputPasta.value = '';
-                var modal = document.getElementById('modalCargaSped');
-                if (modal && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                    var inst = bootstrap.Modal.getInstance(modal);
-                    if (inst) inst.hide();
-                }
-                carregarParametrosPrincipais();
-                carregarResumoCargaSped();
-                carregarJobsCargaSped();
-                carregarAvisosCargaSped();
+
+    if (usarLotes) {
+        var lotes = [];
+        for (var i = 0; i < total; i += TAMANHO_LOTE_CARGA_SPED) {
+            lotes.push(arquivos.slice(i, i + TAMANHO_LOTE_CARGA_SPED));
+        }
+        var numLotes = lotes.length;
+        var loteAtual = 0;
+        var jobIdUnico = null;
+        function enviarProximoLote() {
+            if (loteAtual >= numLotes) {
+                btn.disabled = false;
+                Notificacoes.modal('Job #' + (jobIdUnico || '') + ' criado com ' + total + ' arquivo(s). Atualize o painel.', 'success', 'modalCargaSpedAlerts');
+                fecharModalELimparArquivosSped();
+                return;
             }
+            var ehUltimoLote = (loteAtual === numLotes - 1);
+            enviarUmLoteSped(lotes[loteAtual], apiUrl, csrfToken, jobIdUnico || null, ehUltimoLote)
+                .then(function (result) {
+                    if (result.status === 413) {
+                        btn.disabled = false;
+                        Notificacoes.modal(result.data.mensagem || 'Arquivo(s) muito grande (413). Configure Nginx.', 'danger', 'modalCargaSpedAlerts');
+                        return;
+                    }
+                    if (result.status === 400) {
+                        btn.disabled = false;
+                        Notificacoes.modal((result.data && result.data.mensagem) ? result.data.mensagem : 'Erro 400.', 'danger', 'modalCargaSpedAlerts');
+                        return;
+                    }
+                    if (result.status !== 200 && result.status !== 202) {
+                        btn.disabled = false;
+                        Notificacoes.modal((result.data && result.data.mensagem) ? result.data.mensagem : 'Erro no lote.', 'danger', 'modalCargaSpedAlerts');
+                        return;
+                    }
+                    if (result.data && result.data.job_id) jobIdUnico = result.data.job_id;
+                    loteAtual++;
+                    enviarProximoLote();
+                })
+                .catch(function (err) {
+                    btn.disabled = false;
+                    Notificacoes.modal('Erro ao enviar lote: ' + (err.message || 'Falha na rede.'), 'danger', 'modalCargaSpedAlerts');
+                });
+        }
+        enviarProximoLote();
+        return;
+    }
+
+    enviarUmLoteSped(arquivos, apiUrl, csrfToken, null, true)
+        .then(function (result) {
+            btn.disabled = false;
+            if (result.status === 413) {
+                Notificacoes.modal(result.data.mensagem || 'Arquivo(s) muito grande (413).', 'danger', 'modalCargaSpedAlerts');
+                return;
+            }
+            if (result.status === 400) {
+                Notificacoes.modal((result.data && result.data.mensagem) ? result.data.mensagem : 'Requisição inválida.', 'danger', 'modalCargaSpedAlerts');
+                return;
+            }
+            var data = result.data;
+            Notificacoes.modal(data.mensagem || (data.sucesso ? 'Job em execução.' : 'Erro.'), data.sucesso ? 'success' : 'danger', 'modalCargaSpedAlerts');
+            if (data.sucesso) fecharModalELimparArquivosSped();
         })
-        .catch(() => { btn.disabled = false; Notificacoes.modal('Erro na requisição.', 'danger', 'modalCargaSpedAlerts'); });
+        .catch(function () {
+            btn.disabled = false;
+            Notificacoes.modal('Erro na requisição.', 'danger', 'modalCargaSpedAlerts');
+        });
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -513,31 +595,24 @@ document.addEventListener('DOMContentLoaded', function () {
     if (chkAtivos) chkAtivos.addEventListener('change', function () { estadoSped.filtros.mostrarAtivos = this.checked; aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
     if (chkInativos) chkInativos.addEventListener('change', function () { estadoSped.filtros.mostrarInativos = this.checked; aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
 
-    const dropZoneArquivo = document.getElementById('drop-zone-sped-arquivo');
-    const dropZonePasta = document.getElementById('drop-zone-sped-pasta');
     const fileInput = document.getElementById('file-input-sped');
     const fileInputPasta = document.getElementById('file-input-sped-pasta');
-    if (dropZoneArquivo && fileInput) {
-        dropZoneArquivo.addEventListener('click', function () { fileInput.value = ''; fileInput.click(); });
-        dropZoneArquivo.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
-    }
-    if (dropZonePasta && fileInputPasta) {
-        dropZonePasta.addEventListener('click', function () { fileInputPasta.value = ''; fileInputPasta.click(); });
-        dropZonePasta.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputPasta.click(); } });
-    }
     if (fileInput) {
+        fileInput.addEventListener('click', function () { this.value = ''; });
         fileInput.addEventListener('change', function () {
             const files = Array.from(this.files || []).filter(f => (f.name || '').toLowerCase().endsWith('.txt'));
             estadoSped.arquivosManuais = files;
-            document.getElementById('contador-sped').textContent = files.length;
+            var cont = document.getElementById('contador-sped');
+            if (cont) cont.textContent = files.length;
         });
     }
     if (fileInputPasta) {
+        fileInputPasta.addEventListener('click', function () { this.value = ''; });
         fileInputPasta.addEventListener('change', function () {
             const files = Array.from(this.files || []).filter(f => (f.name || '').toLowerCase().endsWith('.txt'));
             estadoSped.arquivosManuais = files;
-            document.getElementById('contador-sped').textContent = files.length;
-            this.value = '';
+            var cont = document.getElementById('contador-sped');
+            if (cont) cont.textContent = files.length;
         });
     }
 

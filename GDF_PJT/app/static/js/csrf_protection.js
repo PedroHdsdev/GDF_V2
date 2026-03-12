@@ -54,22 +54,50 @@
 
     /**
      * Setup Fetch API com CSRF
-     * Intercepta todas as chamadas fetch
+     * Intercepta todas as chamadas fetch.
+     * Aceita fetch(url, options) ou fetch(Request).
      */
     const originalFetch = window.fetch;
     window.fetch = function(...args) {
         const [resource, config] = args;
-        const options = config || {};
-        
-        // Verificar se é requisição local e unsafe
-        const url = new URL(resource, window.location.href);
-        const isLocal = url.hostname === window.location.hostname;
-        const isUnsafeMethod = /^(POST|PUT|DELETE|PATCH)$/i.test((options.method || 'GET').toUpperCase());
+        const isRequest = resource && typeof resource === 'object' && typeof resource.url !== 'undefined';
 
-        // Adicionar CSRF token
+        let urlStr;
+        let options;
+        let method;
+
+        if (isRequest) {
+            urlStr = resource.url;
+            method = (resource.method || 'GET').toUpperCase();
+            options = resource;
+        } else {
+            urlStr = typeof resource === 'string' ? resource : String(resource);
+            options = Object.assign({}, config || {});
+            method = (options.method || 'GET').toUpperCase();
+        }
+
+        try {
+            var url = new URL(urlStr, window.location.href);
+        } catch (e) {
+            return originalFetch.apply(this, args);
+        }
+
+        const isLocal = url.hostname === window.location.hostname;
+        const isUnsafeMethod = /^(POST|PUT|DELETE|PATCH)$/i.test(method);
+
         if (isLocal && isUnsafeMethod) {
+            const token = getCsrfToken();
+            if (isRequest) {
+                const headers = new Headers(resource.headers);
+                headers.set('X-CSRFToken', token);
+                return originalFetch.apply(this, [new Request(resource, { headers: headers })]);
+            }
             options.headers = options.headers || {};
-            options.headers['X-CSRFToken'] = getCsrfToken();
+            if (options.headers instanceof Headers) {
+                options.headers.set('X-CSRFToken', token);
+            } else {
+                options.headers['X-CSRFToken'] = token;
+            }
         }
 
         return originalFetch.apply(this, [resource, options]);
