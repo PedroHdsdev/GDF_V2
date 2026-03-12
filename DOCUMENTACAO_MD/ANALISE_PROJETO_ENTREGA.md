@@ -252,8 +252,15 @@ As seguintes alterações foram aplicadas ao executar este documento:
    - **DEPLOY.md:** tabela obrigatória de variáveis (SECRET_KEY, DEBUG, ALLOWED_HOSTS, DB_*), seções CSRF/FORCE_SCRIPT_NAME, CACHE_URL/REDIS_URL.
    - **ANALISE_PROJETO_ENTREGA.md:** esta seção 10 atualizada com o que foi executado.
 
-**Pendente (próximos passos):**
-- Quebrar `views.py` em módulos por domínio (auth, cadastros, carga_xml, carga_sped, relatorio, reprocessamento, sap) e reexportar em `app/views/__init__.py`; opcionalmente manter `app/views.py` como reexportador que importa do pacote.
-- Migração dos novos índices: executar `python3 manage.py makemigrations app` (e confirmar se houver pergunta sobre renomeação de model) e `python3 manage.py migrate`.
+**Concluído (pacote de views):**
+- `app/views.py` foi substituído pelo **pacote** `app/views/`:
+  - **`app/views/_views.py`** – contém toda a implementação atual (telas e APIs).
+  - **`app/views/__init__.py`** – reexporta todas as funções para compatibilidade com `urls.py` e `app.api`.
+- Assim, `from app import views` passa a carregar o pacote; as URLs e o `app.api` continuam funcionando sem alteração.
+- **`app/views/README.md`** descreve a estrutura e como migrar, no futuro, as funções de `_views.py` para módulos por domínio (auth, cadastros, carga_xml, carga_sped, relatorio, reprocessamento, sap).
+
+**Pendente (opcional):**
+- Migrar funções de `_views.py` para os módulos auth, cadastros, etc., conforme `app/views/README.md`.
+- Migração dos novos índices: executar `python3 manage.py makemigrations app` e `python3 manage.py migrate`.
 
 Com isso, o projeto avança em código mais limpo, seguro e performático, com base documentada para as refatorações restantes.
