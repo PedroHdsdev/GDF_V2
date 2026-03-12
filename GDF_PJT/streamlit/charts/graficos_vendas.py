@@ -1,4 +1,4 @@
-"""Gráficos para Dashboard de Vendas."""
+"""Gráficos para Dashboard de Vendas – dinâmicos e alinhados ao tema GDF."""
 import altair as alt
 import streamlit as st
 import pandas as pd
@@ -6,6 +6,12 @@ import numpy as np
 
 from .base import GraficoBase
 from . import lists_vendas as tl
+
+try:
+    from config.constants import CHART_PALETTE, CHART_COLORS
+except ImportError:
+    CHART_PALETTE = ["#0ea5e9", "#f97316", "#8b5cf6", "#ec4899", "#14b8a6"]
+    CHART_COLORS = {"primary": "#0ea5e9", "secondary": "#f97316"}
 
 
 class Grafico_pizza(GraficoBase):
@@ -36,16 +42,20 @@ class Grafico_pizza(GraficoBase):
         if titulo is None:
             titulo = f"{valor_y} por {valor_x}"
 
-        chart = alt.Chart(df_agg).mark_arc(innerRadius=50).encode(
+        selection = alt.selection_single(on="click", empty="none", fields=[valor_x])
+        chart = alt.Chart(df_agg).mark_arc(innerRadius=55, strokeWidth=2).encode(
             theta=alt.Theta(field='percent', type='quantitative'),
-            color=alt.Color(field=valor_x, type='nominal'),
+            color=alt.condition(
+                selection,
+                alt.Color(field=valor_x, type='nominal', scale=alt.Scale(range=CHART_PALETTE), legend=alt.Legend(title=valor_x)),
+                alt.value("lightgray"),
+            ),
             tooltip=[
                 alt.Tooltip(valor_x, title=valor_x),
                 alt.Tooltip(valor_y, title=valor_y, format=',.2f'),
                 alt.Tooltip('percent:Q', title='Percentual', format='.2%')
             ]
-        ).properties(title=titulo, height=400)
-
+        ).properties(title=titulo, height=400).add_selection(selection).interactive()
         st.altair_chart(chart, use_container_width=True)
 
 
@@ -80,9 +90,14 @@ class Grafico_barra(GraficoBase):
         if titulo is None:
             titulo = f"{valor_y} por {valor_x}"
 
+        total_val = df_rank[valor_y].sum()
+        df_rank = df_rank.copy()
+        df_rank['pct'] = (df_rank[valor_y] / total_val * 100).round(1) if total_val else 0
+        fmt = ',.0f' if 'Quantidade' in valor_y else ',.2f'
+        selection = alt.selection_single(on="click", empty="none", fields=[valor_x])
         chart = (
             alt.Chart(df_rank)
-            .mark_bar()
+            .mark_bar(cornerRadius=6, strokeWidth=2)
             .encode(
                 x=alt.X(valor_y, type='quantitative', title=valor_y),
                 y=alt.Y(
@@ -91,14 +106,22 @@ class Grafico_barra(GraficoBase):
                     title=valor_x,
                     sort=df_rank[valor_x].tolist()
                 ),
+                color=alt.condition(
+                    selection,
+                    alt.value(CHART_COLORS.get("secondary", "#f97316")),
+                    alt.Color(valor_x, type='nominal', scale=alt.Scale(range=CHART_PALETTE), legend=None),
+                ),
+                opacity=alt.condition(selection, alt.value(1), alt.value(0.85)),
                 tooltip=[
                     alt.Tooltip(valor_x, title=valor_x),
-                    alt.Tooltip(valor_y, title=valor_y, format=',.2f'),
+                    alt.Tooltip(valor_y, title=valor_y, format=fmt),
+                    alt.Tooltip('pct:Q', title='% do total', format='.1f'),
                 ],
             )
             .properties(title=titulo, height=600)
+            .add_selection(selection)
+            .interactive()
         )
-
         st.altair_chart(chart, use_container_width=True)
 
 
@@ -191,11 +214,11 @@ class Grafico_linha(GraficoBase):
         if periodo == "Mensal":
             chart = (
                 alt.Chart(df_long)
-                .mark_line(point=alt.OverlayMarkDef(size=80), strokeWidth=3)
+                .mark_line(point=alt.OverlayMarkDef(size=90, filled=True), strokeWidth=2.5)
                 .encode(
                     x=alt.X(f'{coluna_data}:N', title='Mês', sort=x_sort),
                     y=alt.Y('Valor_plot:Q', title='Valor', scale=alt.Scale(padding=0.1)),
-                    color=alt.Color('Métrica:N', legend=alt.Legend(title='Métrica')),
+                    color=alt.Color('Métrica:N', legend=alt.Legend(title='Métrica'), scale=alt.Scale(range=CHART_PALETTE)),
                     strokeDash=alt.StrokeDash(f'{coluna_ano}:N', legend=alt.Legend(title='Ano')),
                     tooltip=[
                         alt.Tooltip(f'{coluna_ano}:N', title='Ano'),
@@ -210,7 +233,7 @@ class Grafico_linha(GraficoBase):
             labels = chart.mark_text(align='center', baseline='bottom', dy=-5, fontSize=10).encode(
                 text=alt.Text('label:N')
             )
-            final_chart = (chart + labels).properties(height=420, title=titulo)
+            final_chart = (chart + labels).properties(height=420, title=titulo).interactive()
         else:
             chart = (
                 alt.Chart(df_long)
@@ -218,7 +241,7 @@ class Grafico_linha(GraficoBase):
                 .encode(
                     x=alt.X(f'{coluna_data}:N', title='Ano'),
                     y=alt.Y('Valor_plot:Q', title='Valor', scale=alt.Scale(padding=0.1)),
-                    color=alt.Color('Métrica:N', legend=alt.Legend(title='Métrica')),
+                    color=alt.Color('Métrica:N', legend=alt.Legend(title='Métrica'), scale=alt.Scale(range=CHART_PALETTE)),
                     tooltip=[
                         alt.Tooltip(f'{coluna_ano}:N', title='Ano'),
                         alt.Tooltip('Métrica:N', title='Métrica'),
@@ -231,7 +254,7 @@ class Grafico_linha(GraficoBase):
             labels = chart.mark_text(align='center', baseline='bottom', dy=-3, fontSize=10).encode(
                 text=alt.Text('label:N')
             )
-            final_chart = (chart + labels).properties(height=400, title=titulo)
+            final_chart = (chart + labels).properties(height=400, title=titulo).interactive()
         st.altair_chart(final_chart, use_container_width=True)
 
 
@@ -272,20 +295,26 @@ class Grafico_comparacao(GraficoBase):
             df_agg['label'] = df_agg['mes'].apply(lambda x: _MESES_PT[x - 1])
             x_sort = df_agg['label'].tolist()
             titulo = f"Comparativo de meses ({anos_select[0]}) - {metrica}"
-
+            media_val = df_agg[metrica].mean()
+            df_agg['media'] = media_val
             chart = (
                 alt.Chart(df_agg)
                 .mark_bar(cornerRadius=8)
                 .encode(
                     x=alt.X('label:N', title='Mês', sort=x_sort),
                     y=alt.Y(f'{metrica}:Q', title=metrica),
-                    color=alt.Color('label:N', scale=alt.Scale(scheme='blues'), legend=None),
-                    tooltip=[alt.Tooltip('label:N', title='Mês'), alt.Tooltip(f'{metrica}:Q', title=metrica, format=fmt_tooltip)]
+                    color=alt.Color('label:N', scale=alt.Scale(range=CHART_PALETTE), legend=None),
+                    tooltip=[
+                        alt.Tooltip('label:N', title='Mês'),
+                        alt.Tooltip(f'{metrica}:Q', title=metrica, format=fmt_tooltip),
+                        alt.Tooltip('media:Q', title='Média período', format=fmt_tooltip),
+                    ]
                 )
                 .properties(height=400, title=titulo)
             )
+            rule = alt.Chart(pd.DataFrame({'y': [media_val]})).mark_rule(color=CHART_COLORS.get('secondary', '#f97316'), strokeDash=[4, 2]).encode(y='y:Q')
             text = chart.mark_text(align='center', baseline='bottom', dy=-5).encode(text=alt.Text(f'{metrica}:Q', format=fmt_text))
-            st.altair_chart((chart + text), use_container_width=True)
+            st.altair_chart((chart + rule + text), use_container_width=True)
             return
 
         # Modo 2: vários anos + 1 mês → barras por ano
@@ -297,20 +326,26 @@ class Grafico_comparacao(GraficoBase):
             df_agg['label'] = df_agg['ano'].astype(str)
             anos_sort = df_agg['label'].tolist()
             titulo = f"{mes_nome} - Comparação entre anos - {metrica}"
-
+            media_val = df_agg[metrica].mean()
+            df_agg['media'] = media_val
             chart = (
                 alt.Chart(df_agg)
                 .mark_bar(cornerRadius=8)
                 .encode(
                     x=alt.X('label:N', title='Ano', sort=anos_sort),
                     y=alt.Y(f'{metrica}:Q', title=metrica),
-                    color=alt.Color('label:N', scale=alt.Scale(scheme='blues'), legend=None),
-                    tooltip=[alt.Tooltip('label:N', title='Ano'), alt.Tooltip(f'{metrica}:Q', title=metrica, format=fmt_tooltip)]
+                    color=alt.Color('label:N', scale=alt.Scale(range=CHART_PALETTE), legend=None),
+                    tooltip=[
+                        alt.Tooltip('label:N', title='Ano'),
+                        alt.Tooltip(f'{metrica}:Q', title=metrica, format=fmt_tooltip),
+                        alt.Tooltip('media:Q', title='Média', format=fmt_tooltip),
+                    ]
                 )
                 .properties(height=400, title=titulo)
             )
+            rule = alt.Chart(pd.DataFrame({'y': [media_val]})).mark_rule(color=CHART_COLORS.get('secondary', '#f97316'), strokeDash=[4, 2]).encode(y='y:Q')
             text = chart.mark_text(align='center', baseline='bottom', dy=-5).encode(text=alt.Text(f'{metrica}:Q', format=fmt_text))
-            st.altair_chart((chart + text), use_container_width=True)
+            st.altair_chart((chart + rule + text), use_container_width=True)
             return
 
         # Modo 3: vários anos + vários meses → barras por (mês, ano), mesmos meses lado a lado
@@ -320,20 +355,26 @@ class Grafico_comparacao(GraficoBase):
         df_agg = df_agg.sort_values(['mes', 'ano'])  # Jan/21, Jan/22, Fev/21, Fev/22...
         x_sort = df_agg['label'].tolist()
         titulo = f"Comparativo - {metrica}"
-
+        media_val = df_agg[metrica].mean()
+        df_agg['media'] = media_val
         chart = (
             alt.Chart(df_agg)
             .mark_bar(cornerRadius=8)
             .encode(
                 x=alt.X('label:N', title='Período', sort=x_sort),
                 y=alt.Y(f'{metrica}:Q', title=metrica),
-                color=alt.Color('label:N', scale=alt.Scale(scheme='blues'), legend=None),
-                tooltip=[alt.Tooltip('label:N', title='Período'), alt.Tooltip(f'{metrica}:Q', title=metrica, format=fmt_tooltip)]
+                color=alt.Color('label:N', scale=alt.Scale(range=CHART_PALETTE), legend=None),
+                tooltip=[
+                    alt.Tooltip('label:N', title='Período'),
+                    alt.Tooltip(f'{metrica}:Q', title=metrica, format=fmt_tooltip),
+                    alt.Tooltip('media:Q', title='Média', format=fmt_tooltip),
+                ]
             )
             .properties(height=400, title=titulo)
         )
+        rule = alt.Chart(pd.DataFrame({'y': [media_val]})).mark_rule(color=CHART_COLORS.get('secondary', '#f97316'), strokeDash=[4, 2]).encode(y='y:Q')
         text = chart.mark_text(align='center', baseline='bottom', dy=-5).encode(text=alt.Text(f'{metrica}:Q', format=fmt_text))
-        st.altair_chart((chart + text), use_container_width=True)
+        st.altair_chart((chart + rule + text), use_container_width=True)
 
     def G_comparacao_anos_meses(self, tipo_comparacao="Mês vs Mês", metrica="Faturamento",
                                 anos_select=None, mes_select=None, titulo=None):

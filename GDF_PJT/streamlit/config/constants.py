@@ -2,6 +2,17 @@
 import json
 import os
 
+# Paleta e tema dos gráficos (alinhado ao GDF: sky #0ea5e9, sun #f97316)
+CHART_COLORS = {
+    "primary": "#0ea5e9",      # sky - principal
+    "secondary": "#f97316",   # sun - destaque
+    "success": "#10b981",      # verde
+    "warning": "#eab308",      # amarelo
+    "neutral": "#64748b",      # slate
+}
+CHART_PALETTE = [CHART_COLORS["primary"], CHART_COLORS["secondary"], "#8b5cf6", "#ec4899", "#14b8a6"]
+CHART_PALETTE_GRADIENT = ["#0ea5e9", "#38bdf8", "#7dd3fc", "#bae6fd"]
+
 
 def _load_tipo_pagamento():
     """Carrega dicionário de tipos de pagamento do JSON."""

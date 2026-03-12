@@ -1,10 +1,25 @@
-"""Widgets de gráficos reutilizáveis."""
+"""Widgets de gráficos reutilizáveis – dinâmicos e voltados à análise."""
+import io
 import streamlit as st
 import pandas as pd
 import altair as alt
 
+try:
+    from config.constants import CHART_PALETTE, CHART_COLORS
+except ImportError:
+    CHART_PALETTE = ["#0ea5e9", "#f97316", "#8b5cf6", "#ec4899", "#14b8a6"]
+    CHART_COLORS = {"primary": "#0ea5e9", "secondary": "#f97316"}
 
 _MESES_NOMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+
+
+def _download_csv(df, filename="dados.csv"):
+    """Gera botão de download CSV para um DataFrame."""
+    if df is None or df.empty:
+        return
+    buf = io.StringIO()
+    df.to_csv(buf, index=False, sep=";", decimal=",", encoding="utf-8-sig")
+    st.download_button("📥 Baixar dados (CSV)", buf.getvalue(), file_name=filename, mime="text/csv", key=filename)
 
 
 def render_evolucao_temporal(df_merged, grafico_mod, tipo_relatorio: str):
@@ -19,7 +34,7 @@ def render_evolucao_temporal(df_merged, grafico_mod, tipo_relatorio: str):
         metricas_opcoes.append(("Credito_Tributario_Total", "Créditos tributários (ICMS, PIS, COFINS)"))
 
     st.markdown("**O que você quer analisar?**")
-    st.caption("Veja como as métricas evoluem mês a mês ou o total anual. Útil para identificar tendências e sazonalidade.")
+    st.caption("Evolução mês a mês ou total anual. Use zoom (arrastar no gráfico) e passe o mouse para ver valores. Ideal para tendências e sazonalidade.")
 
     col_filtro1, col_filtro2, col_filtro3 = st.columns([2, 2, 2])
 
@@ -95,7 +110,7 @@ def render_comparativo(df_merged, grafico_mod, tipo_relatorio: str = "Vendas"):
         metricas_base = metricas_base + ["Credito_Tributario_Total"]
 
     st.markdown("**O que você quer comparar?**")
-    st.caption("Vários meses + 1 ano = compare meses. 1 mês + vários anos = compare o mesmo mês entre anos.")
+    st.caption("Compare meses no mesmo ano ou o mesmo mês em anos diferentes. Clique na legenda (se houver) e use o tooltip para detalhes.")
 
     col_metrica, col_filtros = st.columns([1, 2])
 
@@ -142,8 +157,8 @@ def render_comparativo(df_merged, grafico_mod, tipo_relatorio: str = "Vendas"):
 
 
 def render_ranking(df_merged, tipo_relatorio: str):
-    """Tab: Ranking por Clientes, Cidades ou Fornecedores."""
-    st.caption("Maiores por faturamento, quantidade ou impostos.")
+    """Tab: Ranking por Clientes, Cidades ou Fornecedores – interativo e com download."""
+    st.caption("Maiores por faturamento, quantidade ou impostos. Passe o mouse para ver % do total e outras métricas; baixe em CSV para análise externa.")
 
     col_rank1, col_rank2, col_rank3 = st.columns([2, 2, 1])
 
@@ -177,6 +192,7 @@ def render_ranking(df_merged, tipo_relatorio: str):
         df_rank_src['Valor Líquido'] = df_rank_src['Faturamento'] - df_rank_src['Total Impostos']
 
         col_sort = metrica_rank
+        fmt_val = ',.2f' if col_sort != 'Quantidade Total' else ',.0f'
 
         if tipo_relatorio == "Compras" or dimensao_rank == "Fornecedores":
             key_cnpj = 'cnpj_fornecedor' if tipo_relatorio == "Compras" else 'cnpj_cliente'
@@ -192,19 +208,26 @@ def render_ranking(df_merged, tipo_relatorio: str):
             titulo_eixo = "Fornecedor" if tipo_relatorio == "Compras" else "Cliente"
             titulo_chart = f"Top {top_n} {titulo_eixo}s por {col_sort}"
 
-            chart_rank = alt.Chart(df_rank).mark_bar(cornerRadius=6).encode(
+            selection = alt.selection_single(on="click", empty="none", fields=["label"])
+            chart_rank = alt.Chart(df_rank).mark_bar(cornerRadius=6, strokeWidth=2).encode(
                 y=alt.Y('label:N', title=titulo_eixo, sort=alt.EncodingSortField(field=col_sort, order='descending')),
                 x=alt.X(f'{col_sort}:Q', title=col_sort),
-                color=alt.Color('label:N', scale=alt.Scale(scheme='blues'), legend=None),
+                color=alt.condition(
+                    selection,
+                    alt.value(CHART_COLORS.get("secondary", "#f97316")),
+                    alt.Color('label:N', scale=alt.Scale(range=CHART_PALETTE), legend=None),
+                ),
+                opacity=alt.condition(selection, alt.value(1), alt.value(0.85)),
                 tooltip=[
                     alt.Tooltip('label:N', title=titulo_eixo),
-                    alt.Tooltip(f'{col_sort}:Q', title=col_sort, format=',.2f' if col_sort != 'Quantidade Total' else ',.0f'),
+                    alt.Tooltip(f'{col_sort}:Q', title=col_sort, format=fmt_val),
                     alt.Tooltip('pct_total:Q', title='% do total', format='.1f'),
                     alt.Tooltip('Faturamento:Q', title='Faturamento', format=',.2f'),
                     alt.Tooltip('Quantidade Total:Q', title='Quantidade', format=',.0f'),
                 ]
-            ).properties(height=max(300, len(df_rank) * 36), title=titulo_chart)
+            ).properties(height=max(300, len(df_rank) * 36), title=titulo_chart).add_selection(selection).interactive()
             st.altair_chart(chart_rank, use_container_width=True)
+            _download_csv(df_rank[['label', col_sort, 'pct_total', 'Faturamento', 'Quantidade Total', 'Total Impostos', 'Valor Líquido']].rename(columns={'label': titulo_eixo, 'pct_total': '% do total'}), f"ranking_{dimensao_rank.lower()}.csv")
 
         elif dimensao_rank == "Cidades":
             df_rank = df_rank_src.dropna(subset=['cidade']).groupby('cidade').agg({
@@ -215,26 +238,34 @@ def render_ranking(df_merged, tipo_relatorio: str):
             total_geral = df_rank_src[col_sort].sum()
             df_rank['pct_total'] = (df_rank[col_sort] / total_geral * 100).round(1) if total_geral else 0
 
-            chart_rank = alt.Chart(df_rank).mark_bar(cornerRadius=6).encode(
+            selection = alt.selection_single(on="click", empty="none", fields=["cidade"])
+            chart_rank = alt.Chart(df_rank).mark_bar(cornerRadius=6, strokeWidth=2).encode(
                 y=alt.Y('cidade:N', title='Cidade', sort=alt.EncodingSortField(field=col_sort, order='descending')),
                 x=alt.X(f'{col_sort}:Q', title=col_sort),
-                color=alt.Color('cidade:N', scale=alt.Scale(scheme='blues'), legend=None),
+                color=alt.condition(
+                    selection,
+                    alt.value(CHART_COLORS.get("secondary", "#f97316")),
+                    alt.Color('cidade:N', scale=alt.Scale(range=CHART_PALETTE), legend=None),
+                ),
+                opacity=alt.condition(selection, alt.value(1), alt.value(0.85)),
                 tooltip=[
                     alt.Tooltip('cidade:N', title='Cidade'),
-                    alt.Tooltip(f'{col_sort}:Q', title=col_sort, format=',.2f' if col_sort != 'Quantidade Total' else ',.0f'),
+                    alt.Tooltip(f'{col_sort}:Q', title=col_sort, format=fmt_val),
                     alt.Tooltip('pct_total:Q', title='% do total', format='.1f'),
                     alt.Tooltip('Faturamento:Q', title='Faturamento', format=',.2f'),
                     alt.Tooltip('Quantidade Total:Q', title='Quantidade', format=',.0f'),
                 ]
-            ).properties(height=max(300, len(df_rank) * 36), title=f"Top {top_n} Cidades por {col_sort}")
+            ).properties(height=max(300, len(df_rank) * 36), title=f"Top {top_n} Cidades por {col_sort}").add_selection(selection).interactive()
             st.altair_chart(chart_rank, use_container_width=True)
+            _download_csv(df_rank, "ranking_cidades.csv")
 
     except Exception as err_rank:
         st.error(f"❌ Erro ao gerar ranking: {str(err_rank)}")
 
 
 def render_grupo_mercadorias(df_produtos):
-    """Tab: Grupo de mercadorias."""
+    """Tab: Grupo de mercadorias – com % do total e download."""
+    st.caption("Produtos que mais contribuem. Use o tooltip para ver percentual do total.")
     col_grp1, col_grp2 = st.columns(2)
 
     with col_grp1:
@@ -260,56 +291,68 @@ def render_grupo_mercadorias(df_produtos):
         df_grp['Total Impostos'] = df_grp['Faturamento'] * 0.15
 
         df_grp = df_grp.nlargest(top_n, metrica_grp)
+        total_metrica = df_grp[metrica_grp].sum()
+        df_grp['pct_total'] = (df_grp[metrica_grp] / total_metrica * 100).round(1) if total_metrica else 0
 
-        chart_grp = alt.Chart(df_grp).mark_bar().encode(
+        fmt = ',.2f' if metrica_grp != 'Quantidade Total' else ',.0f'
+        chart_grp = alt.Chart(df_grp).mark_bar(cornerRadius=6).encode(
             y=alt.Y('Descrição:N', sort=alt.EncodingSortField(field=metrica_grp, order='descending')),
             x=alt.X(f'{metrica_grp}:Q', title=metrica_grp),
-            color=alt.value('#1f77d4')
-        ).properties(height=max(300, len(df_grp) * 25), title=f"Top {top_n} Produtos por {metrica_grp}")
-
+            color=alt.Color('Descrição:N', scale=alt.Scale(range=CHART_PALETTE), legend=None),
+            tooltip=[
+                alt.Tooltip('Descrição:N', title='Produto'),
+                alt.Tooltip(f'{metrica_grp}:Q', title=metrica_grp, format=fmt),
+                alt.Tooltip('pct_total:Q', title='% do total', format='.1f'),
+            ]
+        ).properties(height=max(300, len(df_grp) * 28), title=f"Top {top_n} Produtos por {metrica_grp}").interactive()
         st.altair_chart(chart_grp, use_container_width=True)
+        _download_csv(df_grp[['Descrição', metrica_grp, 'pct_total']].rename(columns={'pct_total': '% do total'}), "grupo_mercadorias.csv")
     except Exception as err_grp:
         st.error(f"❌ Erro ao gerar grupo de mercadorias: {str(err_grp)}")
 
 
 def render_por_tipo_pagamento(df_pagamento):
-    """Seção: Por tipo de pagamento."""
-    st.caption("Tipos de pagamento conforme cadastro em json/Tipo_pagamento.json (código do XML → descrição).")
+    """Seção: Por tipo de pagamento – interativo e com download."""
+    st.caption("Tipos de pagamento conforme cadastro (código XML → descrição). Passe o mouse para valores; baixe em CSV.")
     if not df_pagamento.empty:
         agg_pag = df_pagamento.groupby("tipo_pagamento_desc").agg(
             quantidade_nfe=("id_identificacao", "nunique"),
             valor_total=("valor_pago", "sum"),
         ).reset_index()
         agg_pag = agg_pag.sort_values("valor_total", ascending=False)
+        total_valor = agg_pag["valor_total"].sum()
+        agg_pag["pct_valor"] = (agg_pag["valor_total"] / total_valor * 100).round(1) if total_valor else 0
 
         st.markdown("#### Por quantidade de NF-e")
-        chart_pag_qtd = alt.Chart(agg_pag).mark_bar().encode(
+        chart_pag_qtd = alt.Chart(agg_pag).mark_bar(cornerRadius=6).encode(
             y=alt.Y("tipo_pagamento_desc:N", sort=alt.EncodingSortField(field="quantidade_nfe", order="descending")),
             x=alt.X("quantidade_nfe:Q", title="Quantidade de NF-e"),
-            color=alt.value("#2ca02c"),
+            color=alt.Color("tipo_pagamento_desc:N", scale=alt.Scale(range=CHART_PALETTE), legend=None),
             tooltip=[
                 alt.Tooltip("tipo_pagamento_desc:N", title="Tipo"),
                 alt.Tooltip("quantidade_nfe:Q", title="Qtd. NF-e"),
-                alt.Tooltip("valor_total:Q", title="Valor (R$)"),
+                alt.Tooltip("valor_total:Q", title="Valor (R$)", format=",.2f"),
+                alt.Tooltip("pct_valor:Q", title="% do valor total", format=".1f"),
             ],
-        ).properties(height=max(300, len(agg_pag) * 32), title="NF-e por tipo de pagamento")
+        ).properties(height=max(300, len(agg_pag) * 32), title="NF-e por tipo de pagamento").interactive()
         st.altair_chart(chart_pag_qtd, use_container_width=True)
+        export_df = agg_pag.rename(columns={
+            "tipo_pagamento_desc": "Tipo de pagamento",
+            "quantidade_nfe": "Qtd. NF-e",
+            "valor_total": "Valor total (R$)",
+            "pct_valor": "% do total",
+        })
+        _download_csv(export_df, "tipo_pagamento.csv")
         with st.expander("Ver tabela por tipo de pagamento"):
-            st.dataframe(
-                agg_pag.rename(columns={
-                    "tipo_pagamento_desc": "Tipo de pagamento",
-                    "quantidade_nfe": "Qtd. NF-e",
-                    "valor_total": "Valor total (R$)"
-                }),
-                use_container_width=True
-            )
+            st.dataframe(export_df, use_container_width=True)
     else:
         st.info("ℹ️ Nenhum dado de pagamento cadastrado nas NF-e do período.")
 
 
 def render_condicoes_pagamento(df_parcelas, df_merged):
-    """Tab: Condições de pagamento mais usadas (Vendas)."""
+    """Tab: Condições de pagamento mais usadas – com % e download."""
     if not df_parcelas.empty and "id_identificacao" in df_parcelas.columns:
+        st.caption("Prazos mais usados nas NF-e. Passe o mouse para ver % do total; baixe em CSV.")
         df_emissao = df_merged[["id_identificacao", "emissao"]].drop_duplicates()
         df_cp = df_parcelas.merge(df_emissao, on="id_identificacao", how="left")
         emissao_dt = pd.to_datetime(df_cp["emissao"], utc=True).dt.normalize()
@@ -332,23 +375,30 @@ def render_condicoes_pagamento(df_parcelas, df_merged):
         cond_counts = cond_por_nfe["condicao"].value_counts().reset_index()
         cond_counts.columns = ["Condição de pagamento", "Quantidade de NF-e"]
         cond_counts = cond_counts.sort_values("Quantidade de NF-e", ascending=False)
+        total_nfe = cond_counts["Quantidade de NF-e"].sum()
+        cond_counts["pct"] = (cond_counts["Quantidade de NF-e"] / total_nfe * 100).round(1) if total_nfe else 0
 
         top_n = st.slider("Top N condições a exibir", min_value=5, max_value=30, value=15, key="cond_pag_top")
         cond_plot = cond_counts.head(top_n)
 
-        chart_cond = alt.Chart(cond_plot).mark_bar().encode(
+        chart_cond = alt.Chart(cond_plot).mark_bar(cornerRadius=6).encode(
             y=alt.Y("Condição de pagamento:N", sort=alt.EncodingSortField(field="Quantidade de NF-e", order="descending")),
             x=alt.X("Quantidade de NF-e:Q", title="Quantidade de NF-e"),
-            color=alt.value("#1f77d4"),
-            tooltip=[alt.Tooltip("Condição de pagamento:N"), alt.Tooltip("Quantidade de NF-e:Q")],
-        ).properties(height=max(300, len(cond_plot) * 28), title="Condições de pagamento mais usadas (prazo por parcela)")
+            color=alt.Color("Condição de pagamento:N", scale=alt.Scale(range=CHART_PALETTE), legend=None),
+            tooltip=[
+                alt.Tooltip("Condição de pagamento:N", title="Condição"),
+                alt.Tooltip("Quantidade de NF-e:Q", title="Qtd. NF-e"),
+                alt.Tooltip("pct:Q", title="% do total", format=".1f"),
+            ],
+        ).properties(height=max(300, len(cond_plot) * 28), title="Condições de pagamento mais usadas (prazo por parcela)").interactive()
         st.altair_chart(chart_cond, use_container_width=True)
+        _download_csv(cond_plot.rename(columns={"pct": "% do total"}), "condicoes_pagamento.csv")
     else:
         st.info("ℹ️ Nenhuma parcela cadastrada para analisar condições de pagamento.")
 
 
 def render_compras_analise(df_merged, df_produtos):
-    """Tabs: CFOP, Créditos tributários, Curva ABC (Compras)."""
+    """Tabs: CFOP, Créditos tributários, Curva ABC (Compras) – dinâmicos e com download."""
     tab_cfop, tab_creditos, tab_abc = st.tabs([
         "📋 Distribuição por CFOP",
         "💰 Créditos tributários",
@@ -357,28 +407,43 @@ def render_compras_analise(df_merged, df_produtos):
 
     with tab_cfop:
         st.markdown("### Distribuição das compras por CFOP")
+        st.caption("Clique no gráfico para destacar; use o tooltip para valor e %.")
         if not df_produtos.empty and 'cfop' in df_produtos.columns:
             df_produtos_copy = df_produtos.copy()
             df_produtos_copy['cfop'] = df_produtos_copy['cfop'].fillna('Sem CFOP').astype(str)
             df_produtos_copy['valor_total'] = pd.to_numeric(df_produtos_copy['valor_total'], errors='coerce').fillna(0)
             cfop_agg = df_produtos_copy.groupby('cfop', as_index=False)['valor_total'].sum()
             cfop_agg = cfop_agg.sort_values('valor_total', ascending=False).head(15)
-            chart_cfop = alt.Chart(cfop_agg).mark_arc(innerRadius=50).encode(
+            total_cfop = cfop_agg['valor_total'].sum()
+            cfop_agg['pct'] = (cfop_agg['valor_total'] / total_cfop * 100).round(1) if total_cfop else 0
+            selection = alt.selection_single(on="click", empty="none", fields=["cfop"])
+            chart_cfop = alt.Chart(cfop_agg).mark_arc(innerRadius=60, strokeWidth=2).encode(
                 theta=alt.Theta('valor_total:Q'),
-                color=alt.Color('cfop:N'),
-                tooltip=[alt.Tooltip('cfop:N'), alt.Tooltip('valor_total:Q', format=',.2f')]
-            ).properties(height=400, title="Compras por CFOP")
+                color=alt.condition(
+                    selection,
+                    alt.Color('cfop:N', scale=alt.Scale(range=CHART_PALETTE), legend=alt.Legend(title="CFOP")),
+                    alt.value("lightgray"),
+                ),
+                tooltip=[
+                    alt.Tooltip('cfop:N', title='CFOP'),
+                    alt.Tooltip('valor_total:Q', title='Valor (R$)', format=',.2f'),
+                    alt.Tooltip('pct:Q', title='% do total', format='.1f'),
+                ],
+            ).properties(height=400, title="Compras por CFOP").add_selection(selection).interactive()
             st.altair_chart(chart_cfop, use_container_width=True)
-            st.dataframe(cfop_agg, use_container_width=True, height=300)
+            _download_csv(cfop_agg.rename(columns={'valor_total': 'Valor (R$)', 'pct': '% do total'}), "cfop_compras.csv")
+            with st.expander("Ver tabela CFOP"):
+                st.dataframe(cfop_agg, use_container_width=True, height=300)
         else:
             st.info("ℹ️ Nenhum CFOP nos itens das NF-e.")
 
     with tab_creditos:
         st.markdown("### Créditos tributários (ICMS, PIS, COFINS)")
-        cred_icms = df_merged['Credito_ICMS'].sum()
-        cred_pis = df_merged['Credito_PIS'].sum()
-        cred_cof = df_merged['Credito_COFINS'].sum()
-        cred_total = df_merged['Credito_Tributario_Total'].sum()
+        st.caption("Comparação entre tributos; passe o mouse para valor exato.")
+        cred_icms = pd.to_numeric(df_merged['Credito_ICMS'], errors='coerce').fillna(0).sum()
+        cred_pis = pd.to_numeric(df_merged['Credito_PIS'], errors='coerce').fillna(0).sum()
+        cred_cof = pd.to_numeric(df_merged['Credito_COFINS'], errors='coerce').fillna(0).sum()
+        cred_total = pd.to_numeric(df_merged['Credito_Tributario_Total'], errors='coerce').fillna(0).sum()
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Crédito ICMS", f"R$ {cred_icms:,.2f}")
         col2.metric("Crédito PIS", f"R$ {cred_pis:,.2f}")
@@ -388,36 +453,54 @@ def render_compras_analise(df_merged, df_produtos):
             'Tributo': ['ICMS', 'PIS', 'COFINS'],
             'Valor': [cred_icms, cred_pis, cred_cof]
         })
-        chart_cred = alt.Chart(df_cred).mark_bar().encode(
-            x=alt.X('Tributo:N'),
+        df_cred['pct'] = (df_cred['Valor'] / cred_total * 100).round(1) if cred_total else 0
+        chart_cred = alt.Chart(df_cred).mark_bar(cornerRadius=6).encode(
+            x=alt.X('Tributo:N', title='Tributo'),
             y=alt.Y('Valor:Q', title='Valor (R$)'),
-            color=alt.Color('Tributo:N', scale=alt.Scale(range=['#1f77d4', '#ff7f0e', '#2ca02c']))
-        ).properties(height=300)
+            color=alt.Color('Tributo:N', scale=alt.Scale(range=CHART_PALETTE[:3]), legend=None),
+            tooltip=[
+                alt.Tooltip('Tributo:N', title='Tributo'),
+                alt.Tooltip('Valor:Q', title='Valor (R$)', format=',.2f'),
+                alt.Tooltip('pct:Q', title='% do total', format='.1f'),
+            ],
+        ).properties(height=300, title="Créditos por tributo").interactive()
         st.altair_chart(chart_cred, use_container_width=True)
+        _download_csv(df_cred.rename(columns={'Valor': 'Valor (R$)', 'pct': '% do total'}), "creditos_tributarios.csv")
 
     with tab_abc:
         st.markdown("### Curva ABC – Concentração de compras por fornecedor")
+        st.caption("Classe A: até 80%; B: 80–95%; C: restante. Clique na barra para destacar; baixe em CSV.")
         df_abc = df_merged.dropna(subset=['cnpj_fornecedor']).groupby(['cnpj_fornecedor', 'nome_fornecedor']).agg(
             valor=('Faturamento', 'sum')
         ).reset_index()
+        df_abc['valor'] = pd.to_numeric(df_abc['valor'], errors='coerce').fillna(0)
         df_abc = df_abc[df_abc['valor'] > 0].sort_values('valor', ascending=False)
         if not df_abc.empty:
             total = df_abc['valor'].sum()
             df_abc['pct_acumulado'] = df_abc['valor'].cumsum() / total * 100
             df_abc['classe'] = pd.cut(df_abc['pct_acumulado'], bins=[0, 80, 95, 100], labels=['A', 'B', 'C'])
-            df_abc['label'] = df_abc['cnpj_fornecedor'].astype(str) + ' - ' + df_abc['nome_fornecedor'].fillna('S/N')
+            df_abc['label'] = df_abc['cnpj_fornecedor'].astype(str) + ' - ' + df_abc['nome_fornecedor'].fillna('S/N').str[:35]
             df_abc_plot = df_abc.head(25)
-            chart_abc = alt.Chart(df_abc_plot).mark_bar().encode(
-                y=alt.Y('label:N', sort=alt.EncodingSortField(field='valor', order='descending')),
+            abc_colors = [CHART_COLORS.get("success", "#10b981"), CHART_COLORS.get("secondary", "#f97316"), "#ef4444"]
+            selection = alt.selection_single(on="click", empty="none", fields=["label"])
+            chart_abc = alt.Chart(df_abc_plot).mark_bar(cornerRadius=4, strokeWidth=2).encode(
+                y=alt.Y('label:N', sort=alt.EncodingSortField(field='valor', order='descending'), title='Fornecedor'),
                 x=alt.X('valor:Q', title='Valor compras (R$)'),
-                color=alt.Color('classe:N', scale=alt.Scale(domain=['A', 'B', 'C'], range=['#2ecc71', '#f39c12', '#e74c3c'])),
+                color=alt.condition(
+                    selection,
+                    alt.value(CHART_COLORS.get("secondary", "#f97316")),
+                    alt.Color('classe:N', scale=alt.Scale(domain=['A', 'B', 'C'], range=abc_colors), legend=alt.Legend(title="Classe")),
+                ),
+                opacity=alt.condition(selection, alt.value(1), alt.value(0.9)),
                 tooltip=[
-                    alt.Tooltip('label:N'),
-                    alt.Tooltip('valor:Q', format=',.2f'),
-                    alt.Tooltip('pct_acumulado:Q', format='.1f', title='% Acumulado')
+                    alt.Tooltip('label:N', title='Fornecedor'),
+                    alt.Tooltip('valor:Q', title='Valor (R$)', format=',.2f'),
+                    alt.Tooltip('pct_acumulado:Q', title='% Acumulado', format='.1f'),
+                    alt.Tooltip('classe:N', title='Classe ABC'),
                 ]
-            ).properties(height=max(350, len(df_abc_plot) * 22), title="Curva ABC – Classe A (até 80%), B (80–95%), C (restante)")
+            ).properties(height=max(350, len(df_abc_plot) * 24), title="Curva ABC – A (até 80%), B (80–95%), C (restante)").add_selection(selection).interactive()
             st.altair_chart(chart_abc, use_container_width=True)
+            _download_csv(df_abc_plot[['label', 'valor', 'pct_acumulado', 'classe']].rename(columns={'label': 'Fornecedor', 'valor': 'Valor (R$)', 'pct_acumulado': '% Acumulado', 'classe': 'Classe'}), "curva_abc_compras.csv")
             st.caption("Classe A: até 80% do valor; B: 80–95%; C: acima de 95%.")
         else:
             st.info("ℹ️ Sem dados de fornecedor para Curva ABC.")
