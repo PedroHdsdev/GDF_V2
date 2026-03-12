@@ -48,7 +48,7 @@ if not DEBUG and SECRET_KEY == _SECRET_DEFAULT:
     import warnings
     warnings.warn('SECRET_KEY em produção deve ser definida no .env', UserWarning)
 # Em produção definir no .env: ALLOWED_HOSTS=homo.processit.com.br,localhost
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1', '0.0.0.0'])
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
 
 # HTTPS & Security Configuration
 SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=False)  # True em produção
