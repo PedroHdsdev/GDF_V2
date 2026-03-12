@@ -4,6 +4,7 @@
 {% block title %}Carga SPED{% endblock %}
 
 {% block styles %}
+<link rel="stylesheet" href="{% static 'css/Style_Home.css' %}">
 <link rel="stylesheet" href="{% static 'css/Style_CargaXml.css' %}">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 {% endblock %}
@@ -11,119 +12,157 @@
 {% block titlepage %}Carga SPED{% endblock %}
 
 {% block container %}
-<div class="layout-page" data-url-prefix="{{ url_prefix|default:'' }}">
+<div class="cargaxml-page layout-page" data-url-prefix="{{ url_prefix|default:'' }}">
     {% csrf_token %}
-    <section class="layout-hero">
-        <div class="layout-hero-content">
-            <p class="layout-eyebrow">Processamento Fiscal</p>
-            <h1 class="layout-title">Carga SPED</h1>
-            <p class="layout-subtitle">Importe arquivos SPED (EFD ICMS/IPI, EFD Contribuições, etc.) no mesmo fluxo da Carga XML.</p>
+
+    <!-- Hero / Ações -->
+    <section class="home-welcome cargaxml-welcome">
+        <div class="home-welcome-main">
+            <h2 class="home-welcome-title">Carga SPED</h2>
+            <p class="home-welcome-meta">Importe arquivos SPED (EFD ICMS/IPI, EFD Contribuições) no mesmo fluxo da Carga XML.</p>
         </div>
-        <div class="layout-hero-actions d-flex gap-2 align-items-center">
-            <button type="button" class="btn btn-outline-secondary layout-btn position-relative" id="btn-avisos-cargasped" data-bs-toggle="modal" data-bs-target="#modalAvisosCargaSped" title="Logs de cargas com erros">
+        <div class="home-hero-actions d-flex gap-2 align-items-center flex-wrap">
+            <button type="button" class="btn btn-outline-light position-relative" id="btn-avisos-cargasped" data-bs-toggle="modal" data-bs-target="#modalAvisosCargaSped" title="Logs de cargas com erros">
                 <i class="fas fa-bell"></i> Avisos
-                <span class="avisos-badge badge rounded-pill bg-danger position-absolute top-0 end-0 translate-middle" id="avisos-badge-cargasped" style="display: none; font-size: 0.7rem;">0</span>
+                <span class="badge rounded-pill bg-danger position-absolute top-0 end-0 translate-middle" id="avisos-badge-cargasped" style="display: none; font-size: 0.7rem;">0</span>
             </button>
-            <button class="btn btn-light layout-btn" data-bs-toggle="modal" data-bs-target="#modalCargaSped">
+            <button class="btn btn-light" data-bs-toggle="modal" data-bs-target="#modalCargaSped">
                 <i class="fas fa-file-alt"></i> Carregar SPED
+            </button>
+            <button type="button" class="btn btn-outline-light btn-sm" id="btn-atualizar-resumo-sped" title="Atualizar tudo">
+                <i class="fas fa-sync-alt"></i> Atualizar
             </button>
         </div>
     </section>
 
-    <section class="layout-panel">
-        <!-- Resumo: Total, Concluídos, Com erros, Em andamento -->
-        <div class="layout-subcard resumo-cargasped mb-3">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                <span class="fw-semibold text-secondary"><i class="fas fa-chart-pie me-1"></i> Resumo dos jobs</span>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-atualizar-resumo-sped" title="Atualizar contadores">
-                    <i class="fas fa-sync-alt"></i> Atualizar
+    <!-- Grid de containers (estilo Home) -->
+    <section class="home-grid cargaxml-grid">
+        <!-- Card 1: Resumo -->
+        <article class="home-card cargaxml-card cargaxml-card-resumo">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Visão geral</p>
+                    <h3>Resumo dos jobs</h3>
+                </div>
+            </div>
+            <div class="cargaxml-resumo-grid">
+                <div class="cargaxml-resumo-item resumo-total">
+                    <span class="cargaxml-resumo-numero" id="resumo-sped-total">0</span>
+                    <span class="cargaxml-resumo-label">Total</span>
+                </div>
+                <div class="cargaxml-resumo-item resumo-concluido">
+                    <span class="cargaxml-resumo-numero" id="resumo-sped-concluidos">0</span>
+                    <span class="cargaxml-resumo-label">Concluídos</span>
+                </div>
+                <div class="cargaxml-resumo-item resumo-divergencias">
+                    <span class="cargaxml-resumo-numero" id="resumo-sped-com-erros">0</span>
+                    <span class="cargaxml-resumo-label">Com erros</span>
+                </div>
+                <div class="cargaxml-resumo-item resumo-andamento">
+                    <span class="cargaxml-resumo-numero" id="resumo-sped-em-andamento">0</span>
+                    <span class="cargaxml-resumo-label">Em andamento</span>
+                </div>
+            </div>
+        </article>
+
+        <!-- Card 2: Em execução -->
+        <article class="home-card cargaxml-card cargaxml-card-em-execucao">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Agora</p>
+                    <h3>Em execução</h3>
+                </div>
+            </div>
+            <div id="alertas-container-sped"></div>
+            <ul id="lista-em-execucao-sped" class="home-activity-list cargaxml-lista-jobs">
+                <li class="cargaxml-lista-empty text-muted py-3 text-center">
+                    <i class="fas fa-check-circle fa-2x mb-2 d-block opacity-50"></i>
+                    Nenhum job em execução no momento.
+                </li>
+            </ul>
+        </article>
+
+        <!-- Card 3: Já executado -->
+        <article class="home-card cargaxml-card cargaxml-card-ja-executado">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Histórico</p>
+                    <h3>Já executado</h3>
+                </div>
+            </div>
+            <ul id="lista-ja-executado-sped" class="home-activity-list cargaxml-lista-jobs">
+                <li class="cargaxml-lista-empty text-muted py-3 text-center">
+                    <i class="fas fa-inbox fa-2x mb-2 d-block opacity-50"></i>
+                    Nenhuma execução recente.
+                </li>
+            </ul>
+        </article>
+
+        <!-- Card 4: Parâmetros -->
+        <article class="home-card cargaxml-card cargaxml-card-parametros">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Configuração</p>
+                    <h3>Parâmetros de carga</h3>
+                </div>
+            </div>
+            <div class="cargaxml-filtros-param mb-3">
+                <label class="form-label small mb-1">Buscar parâmetro</label>
+                <input type="text" id="filtro-param-busca" class="form-control form-control-sm" placeholder="Diretório, tipo, horário...">
+                <div class="d-flex gap-3 mt-2">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="filtro-param-ativos" checked>
+                        <label class="form-check-label" for="filtro-param-ativos">Ativos</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="filtro-param-inativos" checked>
+                        <label class="form-check-label" for="filtro-param-inativos">Inativos</label>
+                    </div>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table id="tabela-parametros-main" class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 15%;">Horário</th>
+                            <th>Diretório</th>
+                            <th>Empresa</th>
+                            <th style="width: 12%;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-4">
+                                <i class="fas fa-list fa-2x mb-2 d-block opacity-50"></i>
+                                Nenhum parâmetro cadastrado
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <nav aria-label="Paginação parâmetros" class="mt-2">
+                <ul id="paginacao-cargas" class="pagination pagination-sm justify-content-end mb-0"></ul>
+            </nav>
+        </article>
+
+        <!-- Card 5: Logs e avisos -->
+        <article class="home-card cargaxml-card cargaxml-card-logs">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Últimos logs</p>
+                    <h3>Logs e avisos</h3>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalAvisosCargaSped" title="Ver todos os avisos">
+                    Ver todos
                 </button>
             </div>
-            <div class="row g-2 g-md-3">
-                <div class="col-6 col-md-3">
-                    <div class="resumo-card resumo-total">
-                        <span class="resumo-numero" id="resumo-sped-total">0</span>
-                        <span class="resumo-label">Total de lotes</span>
-                    </div>
+            <div id="container-logs-resumo-sped" class="cargaxml-logs-resumo">
+                <div id="logs-resumo-empty-sped" class="text-muted small py-3 text-center">
+                    Nenhum log recente. Clique em um job em "Já executado" para ver detalhes.
                 </div>
-                <div class="col-6 col-md-3">
-                    <div class="resumo-card resumo-concluido">
-                        <span class="resumo-numero" id="resumo-sped-concluidos">0</span>
-                        <span class="resumo-label">Concluídos</span>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <div class="resumo-card resumo-divergencias">
-                        <span class="resumo-numero" id="resumo-sped-com-erros">0</span>
-                        <span class="resumo-label">Com erros</span>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <div class="resumo-card resumo-andamento">
-                        <span class="resumo-numero" id="resumo-sped-em-andamento">0</span>
-                        <span class="resumo-label">Em andamento</span>
-                    </div>
-                </div>
+                <div id="logs-resumo-content-sped" class="cargaxml-log-lines" style="display: none;"></div>
             </div>
-        </div>
-
-        <div class="layout-card">
-            <div id="alertas-container"></div>
-            <div class="layout-card-head">
-                <h2 class="layout-card-title">Gerenciador de carga SPED</h2>
-            </div>
-
-            <div class="layout-subcard">
-                <div class="row align-items-end">
-                    <div class="col-md-6">
-                        <label class="form-label fw-500">Buscar parâmetro:</label>
-                        <input type="text" id="filtro-param-busca" class="form-control" placeholder="Diretório, tipo, horário...">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-500">Status:</label>
-                        <div class="d-flex gap-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="filtro-param-ativos" checked>
-                                <label class="form-check-label" for="filtro-param-ativos">Ativos</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="filtro-param-inativos" checked>
-                                <label class="form-check-label" for="filtro-param-inativos">Inativos</label>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="layout-subcard">
-                <div class="table-responsive">
-                    <table id="tabela-parametros-main" class="table table-uploads table-hover mb-0 layout-table">
-                        <thead>
-                            <tr>
-                                <th style="width: 15%;">Horário</th>
-                                <th>Diretório</th>
-                                <th>Empresa</th>
-                                <th style="width: 12%;">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td colspan="4" class="text-center text-muted py-4">
-                                    <i class="fas fa-list" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
-                                    Nenhum parâmetro cadastrado
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="layout-card-footer">
-                <nav aria-label="Paginação">
-                    <ul id="paginacao-cargas" class="pagination justify-content-end"></ul>
-                </nav>
-            </div>
-        </div>
+        </article>
     </section>
 </div>
 

@@ -2281,11 +2281,16 @@ def fn_view_CargaSped(request):
         jobs = []
         parametros = []
         empresas_usuario = []
+    url_prefix = (request.META.get("SCRIPT_NAME") or getattr(settings, "FORCE_SCRIPT_NAME", "") or "").strip()
+    if url_prefix and not url_prefix.startswith("/"):
+        url_prefix = "/" + url_prefix
+    url_prefix = url_prefix.rstrip("/")  # '' ou '/gdf'
     context = {
         "cod_cliente": cod_cliente,
         "jobs": jobs,
         "parametros": parametros,
         "empresas_usuario": empresas_usuario,
+        "url_prefix": url_prefix,
     }
     return render(request, "Processamento/index_CargaSped.html", context)
 

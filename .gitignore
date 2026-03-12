@@ -1,21 +1,90 @@
 # Python
 __pycache__/
 *.py[cod]
-*.log
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Virtualenv
+# Virtualenv / env
 venv/
+.venv/
+env/
 .env
+.env.local
+.env.*.local
+
+# Logs e arquivos de execução
+*.log
+logs/
+*.pid
+run/*.pid
 
 # Django
 db.sqlite3
+*.sqlite3
 staticfiles/
 media/
+local_static/
+GDF_PJT/static/
 
-# IDE
+# Relatórios gerados (podem ser recriados com os comandos manage.py)
+RELATORIO_PERFORMANCE.md
+RELATORIO_ESCALABILIDADE.md
+RELATORIO_SEGURANCA.md
+**/RELATORIO_*.md
+
+# Testes e cobertura
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+
+# IDE e editores
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
 
 # OS
 .DS_Store
 Thumbs.db
+ehthumbs.db
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SAP / RFC (SDK não versionado)
+nwrfcsdk/
+
+# Segredos e chaves
+*.pem
+secrets/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# mypy
+.mypy_cache/

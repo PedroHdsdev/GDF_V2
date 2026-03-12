@@ -2,6 +2,7 @@
 const estadoSped = {
     todos: [],
     filtrados: [],
+    todosJobs: [],
     filtros: { busca: '', mostrarAtivos: true, mostrarInativos: true },
     currentPage: 1,
     itemsPerPage: 10,
@@ -38,6 +39,7 @@ function carregarResumoCargaSped() {
             if (data.em_andamento > 0 && !intervaloResumoSped) {
                 intervaloResumoSped = setInterval(function () {
                     carregarResumoCargaSped();
+                    carregarJobsCargaSped();
                 }, 3000);
             } else if (data.em_andamento === 0 && intervaloResumoSped) {
                 clearInterval(intervaloResumoSped);
@@ -66,6 +68,11 @@ function carregarAvisosCargaSped(preencherModal) {
             }
             if (preencherModal) {
                 preencherModalAvisosCargaSped(data.items || []);
+            }
+            if (data.items && data.items.length > 0) {
+                renderizarLogsResumoSped(data.items);
+            } else {
+                renderizarLogsResumoSped([]);
             }
         })
         .catch(function () {
@@ -159,7 +166,185 @@ function preencherModalAvisosCargaSped(items) {
                 header.click();
             }
         });
+        });
+}
+
+/* ===============================
+   JOBS – Em execução / Já executado (containers tipo Home)
+================================ */
+function carregarJobsCargaSped() {
+    fetch(getApiBase() + '/api/cargasped/jobs/', { method: 'GET', headers: { 'X-CSRFToken': obterCsrfToken() } })
+        .then(function (r) {
+            return r.json().then(function (data) { return { status: r.status, data: data }; });
+        })
+        .then(function (out) {
+            var data = out.data;
+            if (out.status === 403) {
+                estadoSped.todosJobs = [];
+            } else if (data.sucesso && data.items && data.items.length > 0) {
+                estadoSped.todosJobs = data.items.map(function (j) {
+                    var totalArq = j.total_arquivos || 0;
+                    var sucesso = j.total_sucesso || 0;
+                    var erro = j.total_erro || 0;
+                    var resumo = totalArq > 0 ? sucesso + '\u2713/' + erro + '\u2717' : '-';
+                    return {
+                        id: j.id,
+                        status: j.status,
+                        resumo: totalArq + ' arquivo(s) - ' + resumo,
+                        tipo: j.parametro_id ? 'Automático' : 'Manual',
+                        started_at: j.started_at
+                    };
+                });
+            } else {
+                estadoSped.todosJobs = [];
+            }
+            renderizarEmExecucaoSped();
+            renderizarJaExecutadoSped();
+        })
+        .catch(function () {
+            estadoSped.todosJobs = [];
+            renderizarEmExecucaoSped();
+            renderizarJaExecutadoSped();
+        });
+}
+
+function renderizarEmExecucaoSped() {
+    var lista = document.getElementById('lista-em-execucao-sped');
+    if (!lista) return;
+    var emExecucao = estadoSped.todosJobs.filter(function (c) {
+        var s = (c.status || '').toUpperCase();
+        return s === 'RUNNING' || s === 'PENDING';
     });
+    lista.innerHTML = '';
+    if (emExecucao.length === 0) {
+        lista.innerHTML = '<li class="cargaxml-lista-empty text-muted py-3 text-center"><i class="fas fa-check-circle fa-2x mb-2 d-block opacity-50"></i>Nenhum job em execução no momento.</li>';
+        return;
+    }
+    emExecucao.forEach(function (carga) {
+        var li = document.createElement('li');
+        li.className = 'home-activity-item cargaxml-job-item';
+        li.style.cursor = 'pointer';
+        li.setAttribute('data-job-id', carga.id);
+        var dataStr = carga.started_at ? (carga.started_at.split('T')[0] + ' ' + (carga.started_at.split('T')[1] || '').substring(0, 5)) : '-';
+        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + (carga.tipo || 'SPED') + '</span>' +
+            '<div class="home-activity-detail">' +
+            '<span class="home-activity-status home-activity-status-running">Em execução</span>' +
+            '<span class="home-activity-meta">' + (carga.resumo || '') + '</span></div>' +
+            '<div class="home-activity-time">' + dataStr + '</div>' +
+            '<a href="#" class="home-activity-link" data-job-id="' + carga.id + '" title="Ver detalhes">\u2192</a>';
+        li.addEventListener('click', function (e) {
+            e.preventDefault();
+            abrirModalJobSped(carga.id);
+        });
+        var link = li.querySelector('a.home-activity-link');
+        if (link) link.addEventListener('click', function (e) { e.preventDefault(); abrirModalJobSped(carga.id); });
+        lista.appendChild(li);
+    });
+}
+
+function renderizarJaExecutadoSped() {
+    var lista = document.getElementById('lista-ja-executado-sped');
+    if (!lista) return;
+    var jaExecutado = estadoSped.todosJobs.filter(function (c) {
+        var s = (c.status || '').toUpperCase();
+        return s === 'SUCCESS' || s === 'ERROR';
+    }).slice(0, 25);
+    lista.innerHTML = '';
+    if (jaExecutado.length === 0) {
+        lista.innerHTML = '<li class="cargaxml-lista-empty text-muted py-3 text-center"><i class="fas fa-inbox fa-2x mb-2 d-block opacity-50"></i>Nenhuma execução recente.</li>';
+        return;
+    }
+    jaExecutado.forEach(function (carga) {
+        var li = document.createElement('li');
+        li.className = 'home-activity-item cargaxml-job-item';
+        li.style.cursor = 'pointer';
+        var statusClass = (carga.status || '').toUpperCase() === 'ERROR' ? 'home-activity-status-error' : 'home-activity-status-success';
+        var dataStr = carga.started_at ? (carga.started_at.split('T')[0] + ' ' + (carga.started_at.split('T')[1] || '').substring(0, 5)) : '-';
+        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + (carga.tipo || 'SPED') + '</span>' +
+            '<div class="home-activity-detail">' +
+            '<span class="home-activity-status ' + statusClass + '">' + (carga.status === 'SUCCESS' ? 'Concluído' : 'Erro') + '</span>' +
+            '<span class="home-activity-meta">' + (carga.resumo || '') + '</span></div>' +
+            '<div class="home-activity-time">' + dataStr + '</div>' +
+            '<a href="#" class="home-activity-link" data-job-id="' + carga.id + '" title="Ver log">\u2192</a>';
+        li.addEventListener('click', function (e) {
+            e.preventDefault();
+            abrirModalJobSped(carga.id);
+        });
+        var linkJa = li.querySelector('a.home-activity-link');
+        if (linkJa) linkJa.addEventListener('click', function (e) { e.preventDefault(); abrirModalJobSped(carga.id); });
+        lista.appendChild(li);
+    });
+}
+
+function renderizarLogsResumoSped(items) {
+    var emptyEl = document.getElementById('logs-resumo-empty-sped');
+    var contentEl = document.getElementById('logs-resumo-content-sped');
+    if (!emptyEl || !contentEl) return;
+    if (!items || items.length === 0) {
+        emptyEl.style.display = 'block';
+        contentEl.style.display = 'none';
+        contentEl.innerHTML = '';
+        return;
+    }
+    emptyEl.style.display = 'none';
+    contentEl.style.display = 'block';
+    function formatDt(iso) {
+        if (!iso) return '-';
+        try {
+            var d = new Date(iso);
+            return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+        } catch (e) { return iso; }
+    }
+    function escapeHtml(s) {
+        return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function classLog(line) {
+        var t = (line || '').trim();
+        if (t.indexOf('ERRO:') === 0) return 'aviso-log-erro';
+        if (t.indexOf('PENDENTES') === 0) return 'aviso-log-pendente';
+        if (t.indexOf('OK:') === 0) return 'aviso-log-ok';
+        return 'aviso-log-outro';
+    }
+    var html = '';
+    items.slice(0, 3).forEach(function (job) {
+        var logLines = (job.log && job.log.length) ? job.log.filter(function (l) {
+            var t = (l || '').trim();
+            return t.indexOf('ERRO:') === 0 || t.indexOf('PENDENTES') === 0;
+        }).slice(0, 5) : [];
+        html += '<div class="cargaxml-log-job mb-3">';
+        html += '<div class="small fw-600 text-secondary mb-1">Job #' + job.id + ' \u00b7 ' + formatDt(job.started_at) + '</div>';
+        if (logLines.length === 0) {
+            html += '<div class="small text-muted">Sem linhas de log</div>';
+        } else {
+            logLines.forEach(function (l) {
+                html += '<div class="cargaxml-log-line ' + classLog(l) + '">' + escapeHtml(l) + '</div>';
+            });
+        }
+        html += '</div>';
+    });
+    contentEl.innerHTML = html;
+}
+
+function abrirModalJobSped(jobId) {
+    if (!jobId) return;
+    fetch(getApiBase() + '/api/cargasped/jobs/' + jobId + '/', { method: 'GET', headers: { 'X-CSRFToken': obterCsrfToken() } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.sucesso || !data.job) return;
+            var job = data.job;
+            var logLines = data.log || [];
+            document.getElementById('modal-sped-job-id').textContent = job.id;
+            document.getElementById('modal-sped-job-status').textContent = job.status || '-';
+            document.getElementById('modal-sped-job-started').textContent = job.started_at ? new Date(job.started_at).toLocaleString('pt-BR') : '-';
+            document.getElementById('modal-sped-job-finished').textContent = job.finished_at ? new Date(job.finished_at).toLocaleString('pt-BR') : '-';
+            document.getElementById('modal-sped-job-log').textContent = logLines.length ? logLines.join('\n') : 'Sem log.';
+            var modal = document.getElementById('modalJobDetailsSped');
+            if (modal && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                var inst = bootstrap.Modal.getOrCreateInstance(modal);
+                inst.show();
+            }
+        })
+        .catch(function () {});
 }
 
 function carregarParametrosPrincipais() {
@@ -207,8 +392,9 @@ function renderizarTabelaParametrosSped() {
     const page = estadoSped.filtrados.slice(start, start + estadoSped.itemsPerPage);
 
     if (page.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">Nenhum parâmetro cadastrado</td></tr>';
-        document.getElementById('paginacao-cargas').innerHTML = '';
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4"><i class="fas fa-list fa-2x mb-2 d-block opacity-50"></i>Nenhum parâmetro cadastrado</td></tr>';
+        var pagEl = document.getElementById('paginacao-cargas');
+        if (pagEl) pagEl.innerHTML = '';
         return;
     }
 
@@ -292,6 +478,7 @@ function enviarArquivosManuais() {
                 }
                 carregarParametrosPrincipais();
                 carregarResumoCargaSped();
+                carregarJobsCargaSped();
                 carregarAvisosCargaSped();
             }
         })
@@ -301,10 +488,15 @@ function enviarArquivosManuais() {
 document.addEventListener('DOMContentLoaded', function () {
     carregarParametrosPrincipais();
     carregarResumoCargaSped();
+    carregarJobsCargaSped();
     carregarAvisosCargaSped();
 
     var btnAtualizarResumo = document.getElementById('btn-atualizar-resumo-sped');
-    if (btnAtualizarResumo) btnAtualizarResumo.addEventListener('click', function () { carregarResumoCargaSped(); });
+    if (btnAtualizarResumo) btnAtualizarResumo.addEventListener('click', function () {
+        carregarResumoCargaSped();
+        carregarJobsCargaSped();
+        carregarAvisosCargaSped();
+    });
 
     var modalAvisos = document.getElementById('modalAvisosCargaSped');
     if (modalAvisos) {
