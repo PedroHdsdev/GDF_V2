@@ -141,10 +141,18 @@ class ClGdf:
                 user=l_v_query_user
             )
 
-            # Cliente associado às empresas do usuário (ou primeiro cliente se superuser sem empresas)
-            self.ClienteGdf = ClienteGdf.objects.filter(
-                empresa_set__in=self.empresas
-            ).distinct().first()
+            # Cliente: pelas empresas do usuário (empresa.gdfcliente); depois grupos (PermissaoGrupoCliente); depois superuser
+            empresa_com_cliente = self.empresas.filter(gdfcliente__isnull=False).select_related('gdfcliente').first()
+            if empresa_com_cliente and empresa_com_cliente.gdfcliente:
+                self.ClienteGdf = empresa_com_cliente.gdfcliente
+            else:
+                self.ClienteGdf = None
+            if self.ClienteGdf is None and self.groups.exists():
+                perm = PermissaoGrupoCliente.objects.filter(
+                    group__in=self.groups
+                ).exclude(gdfcliente_id__isnull=True).select_related('gdfcliente').first()
+                if perm and perm.gdfcliente:
+                    self.ClienteGdf = perm.gdfcliente
             if self.ClienteGdf is None and self._is_superuser:
                 self.ClienteGdf = ClienteGdf.objects.filter(is_active=True).first()
 
