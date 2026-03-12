@@ -1,4 +1,5 @@
 
+from django.db import transaction
 from django.db.models               import Prefetch
 from psycopg2                       import IntegrityError
 from django.contrib.auth.models     import User, Group
@@ -16,12 +17,22 @@ from app.db_GDF.NFSe.models         import (
     NFSe, NFSe_Identificacao, NFSe_Prestador, NFSe_Tomador, NFSe_Servico, NFSe_Endereco,
     NFSe_RPS, NFSe_Retencao, NFSe_Pagamento, NFSe_Credenciamento, NFSe_Evento
 )
-from typing                        import List, Dict, Optional
+from typing                        import List, Dict, Optional, Tuple, Any
 from datetime import datetime, time
 from decimal import Decimal
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime, parse_date
 import xml.etree.ElementTree as ET
+
+# Parsing XML seguro: preferir defusedxml contra entity expansion e XXE
+try:
+    from defusedxml.ElementTree import fromstring as _xml_fromstring
+except ImportError:
+    _xml_fromstring = ET.fromstring
+
+# Constantes para tipo de operação (ponto de vista do nosso sistema)
+TIPO_ENTRADA = '0'
+TIPO_SAIDA = '1'
 
 
 class EmpresaNaoCadastradaError(Exception):
@@ -133,6 +144,72 @@ class CargaXml:
         raise EmpresaNaoCadastradaError(
             f"CNPJ {cnpj_para_busca} não pertence a nenhuma empresa nem filial cadastrada no GDF.{' ' + contexto_erro if contexto_erro else ''}"
         )
+
+    def _try_resolver_empresa_filial_por_cnpj(
+        self, cnpj_para_busca: str, cod_cliente: Optional[str] = None
+    ) -> Optional[Tuple[Any, Any]]:
+        """
+        Retorna (empresa, filial) se o CNPJ pertencer a uma empresa/filial do cliente, ou None.
+        Não levanta exceção; útil para decidir tipo da nota (emitente vs destinatário).
+        """
+        if not (cnpj_para_busca or '').strip():
+            return None
+        cnpj_limpo = ''.join(c for c in cnpj_para_busca if c.isdigit())
+        if len(cnpj_limpo) != 14:
+            return None
+        try:
+            return self._resolver_empresa_filial_por_cnpj(
+                cnpj_para_busca, cod_cliente=cod_cliente, contexto_erro=""
+            )
+        except (EmpresaNaoCadastradaError, ValueError):
+            return None
+
+    def _determinar_tipo_nota_e_empresa_por_emit_dest(
+        self,
+        emitente_cnpj: Optional[str],
+        destinatario_cnpj: Optional[str],
+        cod_cliente: Optional[str],
+        contexto: str = "nota",
+    ) -> Tuple[Any, Any, str]:
+        """
+        Determina se o documento é ENTRADA ou SAÍDA pelo nosso critério:
+        - Emitente nosso → SAÍDA (nós emitimos).
+        - Destinatário nosso → ENTRADA (recebemos).
+        Prioridade: emitente primeiro. Retorna (empresa, filial, tipo_operacao).
+        tipo_operacao: '0'=Entrada, '1'=Saída.
+        """
+        resolved = self._try_resolver_empresa_filial_por_cnpj(emitente_cnpj, cod_cliente)
+        if resolved is not None:
+            empresa, filial = resolved
+            return (empresa, filial, TIPO_SAIDA)
+        resolved = self._try_resolver_empresa_filial_por_cnpj(destinatario_cnpj, cod_cliente)
+        if resolved is not None:
+            empresa, filial = resolved
+            return (empresa, filial, TIPO_ENTRADA)
+        cnpjs_info = []
+        if emitente_cnpj:
+            cnpjs_info.append(f"emitente {emitente_cnpj}")
+        if destinatario_cnpj:
+            cnpjs_info.append(f"destinatário {destinatario_cnpj}")
+        raise EmpresaNaoCadastradaError(
+            f"Nenhum CNPJ da {contexto} (emitente ou destinatário) pertence a empresa ou filial "
+            f"cadastrada no GDF. {', '.join(cnpjs_info)}."
+        )
+
+    def _determinar_tipo_nota_e_empresa_nfe(
+        self,
+        emitente_cnpj: Optional[str],
+        destinatario_cnpj: Optional[str],
+        cod_cliente: Optional[str],
+    ) -> Tuple[Any, Any, str]:
+        """Determina tipo da NFe (ENTRADA/SAÍDA) e empresa/filial. Ver _determinar_tipo_nota_e_empresa_por_emit_dest."""
+        return self._determinar_tipo_nota_e_empresa_por_emit_dest(
+            emitente_cnpj, destinatario_cnpj, cod_cliente, contexto="NFe"
+        )
+
+    def _parse_xml_safe(self, xml_data: bytes):
+        """Faz parse do XML de forma segura (defusedxml quando disponível)."""
+        return _xml_fromstring(xml_data)
 
     def _processar_endereco(self, element, is_emitente=True):
         """Processa endereço do emitente ou destinatário"""
@@ -483,7 +560,7 @@ class CargaXml:
         ou None se não for XML de evento.
         """
         try:
-            root = ET.fromstring(xml_data)
+            root = self._parse_xml_safe(xml_data)
             tag_root = root.tag.split('}')[-1] if '}' in root.tag else root.tag
             if tag_root not in ('procEventoNFe', 'procEventoCTe'):
                 return None
@@ -655,62 +732,58 @@ class CargaXml:
     
     def set_nfe(self, xml_data: bytes, origem_dados: str, usuario: str, cod_cliente: str = None, nome_arquivo: str = None):
         """
-        Processa e insere NFe no banco de dados com TODOS os campos
-        Detecta automaticamente se é entrada ou saída e busca a empresa corretamente
-        cod_cliente opcional é usado para validar que a empresa pertence ao cliente.
-        nome_arquivo opcional é usado para avisos no log (ex.: condição com parcela negativa).
+        Processa e insere NFe no banco de dados com TODOS os campos.
+        Tipo da nota (ENTRADA/SAÍDA) é determinado pelo nosso critério:
+        - Emitente nosso → SAÍDA; destinatário nosso → ENTRADA (não pelo tpNF/CFOP do XML).
+        cod_cliente opcional valida que a empresa pertence ao cliente.
+        nome_arquivo opcional é usado para avisos no log.
         """
         self._current_file = nome_arquivo or ''
         try:
-            # Fazer parse do XML
-            root = ET.fromstring(xml_data)
-            
+            # Parse seguro do XML (defusedxml quando disponível)
+            root = self._parse_xml_safe(xml_data)
+
             # Extrair dados básicos da NFe
             infNFe = root.find('.//nfe:infNFe', self.ns) or root.find('.//infNFe')
             if infNFe is None:
                 raise ValueError("Estrutura de NFe inválida: infNFe não encontrado")
-            
+
+            # ========== EMITENTE E DESTINATÁRIO (CNPJs para determinar tipo da nota) ==========
+            emit = infNFe.find('.//nfe:emit', self.ns) or infNFe.find('.//emit')
+            dest = infNFe.find('.//nfe:dest', self.ns) or infNFe.find('.//dest')
+            emitente_cnpj = (self._get_text(emit, 'CNPJ') or '').strip() if emit is not None else None
+            destinatario_cnpj = None
+            if dest is not None:
+                # Só consideramos CNPJ para "nosso" destinatário (CPF não é empresa/filial)
+                destinatario_cnpj = (self._get_text(dest, 'CNPJ') or '').strip() or None
+
+            if not emitente_cnpj:
+                raise ValueError("CNPJ do emitente é obrigatório")
+
+            # Tipo da nota pelo nosso critério: emitente nosso = SAÍDA, destinatário nosso = ENTRADA
+            empresa, filial, tipo_operacao = self._determinar_tipo_nota_e_empresa_nfe(
+                emitente_cnpj, destinatario_cnpj, cod_cliente
+            )
+
             # ========== IDENTIFICAÇÃO ==========
             ide = infNFe.find('.//nfe:ide', self.ns) or infNFe.find('.//ide')
             if ide is None:
                 raise ValueError("Seção ide não encontrada")
-            
+
             numero = self._get_text(ide, 'nNF')
             serie = self._get_text(ide, 'serie')
             chave_acesso = infNFe.get('Id', '').replace('NFe', '')
-            
+
             if not numero or not serie:
                 raise ValueError("Número e série são obrigatórios")
-            
-            # Dados de emissão e operação
+
             data_emissao = self._to_datetime(self._get_text(ide, 'dhEmi') or self._get_text(ide, 'dEmi'), '%Y-%m-%dT%H:%M:%S') or self._to_datetime(self._get_text(ide, 'dEmi'))
             data_saida = self._to_datetime(self._get_text(ide, 'dhSaiEnt') or self._get_text(ide, 'dSaiEnt'), '%Y-%m-%dT%H:%M:%S')
-            # tpNF: 0 = Entrada, 1 = Saída (manual NFe). Default '0' para não marcar entrada como saída quando tag faltar.
-            tipo_operacao = (self._get_text(ide, 'tpNF', '0') or '0').strip()
-            if tipo_operacao not in ('0', '1'):
-                # Fallback: inferir pelo primeiro CFOP (1,2,3 = entrada; 5,6,7 = saída)
-                primeiro_cfop = None
-                for det in (infNFe.findall('.//nfe:det', self.ns) or infNFe.findall('.//det'))[:1]:
-                    prod = det.find('.//nfe:prod', self.ns) or det.find('.//prod')
-                    if prod is not None:
-                        primeiro_cfop = (self._get_text(prod, 'CFOP') or '').strip()
-                        break
-                if primeiro_cfop and len(primeiro_cfop) >= 1:
-                    tipo_operacao = '0' if primeiro_cfop[0] in ('1', '2', '3') else '1'
-                else:
-                    tipo_operacao = '0'
             tipo_documento = self._get_text(ide, 'tpEmis', '1')
-            
-            # ========== EMITENTE ==========
-            emit = infNFe.find('.//nfe:emit', self.ns) or infNFe.find('.//emit')
-            emitente_cnpj = self._get_text(emit, 'CNPJ')
-            
-            if not emitente_cnpj:
-                raise ValueError("CNPJ do emitente é obrigatório")
-            
+
             # Processar endereço do emitente
             endereco_emit = self._processar_endereco(emit, is_emitente=True)
-            
+
             # Criar/atualizar emitente completo
             emitente, _ = NFe_Emitente.objects.update_or_create(
                 cnpj=emitente_cnpj,
@@ -726,23 +799,16 @@ class CargaXml:
                     'data_atualizacao': timezone.now()
                 }
             )
-            
+
             # ========== DESTINATÁRIO ==========
-            dest = infNFe.find('.//nfe:dest', self.ns) or infNFe.find('.//dest')
             destinatario = None
-            destinatario_cnpj = None
-            
             if dest is not None:
-                # Pode ser CNPJ ou CPF
-                destinatario_cnpj = self._get_text(dest, 'CNPJ') or self._get_text(dest, 'CPF')
-                tipo_doc = '1' if self._get_text(dest, 'CNPJ') else '2'  # 1=CNPJ, 2=CPF
-                
-                if destinatario_cnpj:
-                    # Processar endereço do destinatário
+                destinatario_doc = self._get_text(dest, 'CNPJ') or self._get_text(dest, 'CPF')
+                tipo_doc = '1' if self._get_text(dest, 'CNPJ') else '2'
+                if destinatario_doc:
                     endereco_dest = self._processar_endereco(dest, is_emitente=False)
-                    
                     destinatario, _ = NFe_Destinatario.objects.update_or_create(
-                        documento=destinatario_cnpj,
+                        documento=destinatario_doc,
                         defaults={
                             'tipo': tipo_doc,
                             'razao_social': self._get_text(dest, 'xNome', 'S/N'),
@@ -754,15 +820,6 @@ class CargaXml:
                             'data_atualizacao': timezone.now()
                         }
                     )
-            
-            # ========== BUSCAR EMPRESA E FILIAL (ClienteGDF → Empresa → Filial) ==========
-            tipo_nfe = "SAÍDA" if tipo_operacao == '1' else "ENTRADA"
-            cnpj_para_busca = destinatario_cnpj if tipo_operacao == '1' else emitente_cnpj
-            if not cnpj_para_busca:
-                raise ValueError(f"Não foi possível identificar CNPJ da empresa (tipo: {tipo_nfe})")
-            empresa, filial = self._resolver_empresa_filial_por_cnpj(
-                cnpj_para_busca, cod_cliente=cod_cliente, contexto_erro=f"tipo: {tipo_nfe}"
-            )
             # Cliente: obrigatório — empresa.gdfcliente ou cod_cliente da sessão/parâmetro
             cliente_eff = None
             if empresa and empresa.gdfcliente:
@@ -774,71 +831,72 @@ class CargaXml:
                     pass
             if not cliente_eff:
                 raise ValueError("Cliente não identificado para esta carga. Informe o cliente na sessão ou vincule a empresa ao cliente.")
-            
-            # ========== CRIAR IDENTIFICAÇÃO COMPLETA ==========
-            identificacao, _ = NFe_Identificacao.objects.update_or_create(
-                chave_acesso=chave_acesso,
-                defaults={
-                    'numero': numero,
-                    'serie': serie,
-                    'emissao': data_emissao or timezone.now(),
-                    'saida_entrada': data_saida,
-                    'tipo_documento': tipo_documento,
-                    'tipo_operacao': tipo_operacao,
-                    'codigo_municipio': self._get_text(ide, 'cMunFG'),
-                    'municipio': self._get_text(ide, 'xMunFG'),
-                    'uf': self._get_text(ide, 'UF'),
-                    'finalidade_emissao': self._get_text(ide, 'finNFe', '1'),
-                    'consumidor_final': self._get_text(ide, 'indFinal', '0'),
-                    'presenca_comprador': self._get_text(ide, 'indPres', '0'),
-                    'natureza_operacao': self._get_text(ide, 'natOp'),
-                    'modelo': self._get_text(ide, 'mod', '55'),
-                    'ambiente': self._get_text(ide, 'tpAmb', '2'),
-                    'forma_emissao': tipo_documento,
-                    'dv_chave': chave_acesso[-1] if chave_acesso else '0',
-                    'data_atualizacao': timezone.now()
-                }
-            )
-            
-            # ========== CRIAR NFe PRINCIPAL ==========
-            nfe, created = NFe.objects.update_or_create(
-                identificacao=identificacao,
-                defaults={
-                    'emitente': emitente,
-                    'destinatario': destinatario,
-                    'empresa': empresa,
-                    'filial': filial,
-                    'gdfcliente': cliente_eff,
-                    'status': 'DRAFT',
-                    'xml_assinado': xml_data.decode('utf-8', errors='ignore'),
-                    'usuario_atualizacao': usuario,
-                    'origem_dados': origem_dados,
-                    'data_atualizacao': timezone.now()
-                }
-            )
 
-            if created:
-                nfe.usuario_criacao = usuario
-                nfe.save(update_fields=['usuario_criacao'])
-            
-            # ========== PROCESSAR PRODUTOS E IMPOSTOS ==========
-            self._processar_produtos(infNFe, identificacao)
-            
-            # ========== PROCESSAR TOTAIS ==========
-            self._processar_total(infNFe, identificacao)
-            
-            # ========== PROCESSAR COBRANÇA E PARCELAS ==========
-            self._processar_cobranca(infNFe, identificacao)
+            with transaction.atomic():
+                # ========== CRIAR IDENTIFICAÇÃO COMPLETA ==========
+                identificacao, _ = NFe_Identificacao.objects.update_or_create(
+                    chave_acesso=chave_acesso,
+                    defaults={
+                        'numero': numero,
+                        'serie': serie,
+                        'emissao': data_emissao or timezone.now(),
+                        'saida_entrada': data_saida,
+                        'tipo_documento': tipo_documento,
+                        'tipo_operacao': tipo_operacao,
+                        'codigo_municipio': self._get_text(ide, 'cMunFG'),
+                        'municipio': self._get_text(ide, 'xMunFG'),
+                        'uf': self._get_text(ide, 'UF'),
+                        'finalidade_emissao': self._get_text(ide, 'finNFe', '1'),
+                        'consumidor_final': self._get_text(ide, 'indFinal', '0'),
+                        'presenca_comprador': self._get_text(ide, 'indPres', '0'),
+                        'natureza_operacao': self._get_text(ide, 'natOp'),
+                        'modelo': self._get_text(ide, 'mod', '55'),
+                        'ambiente': self._get_text(ide, 'tpAmb', '2'),
+                        'forma_emissao': tipo_documento,
+                        'dv_chave': chave_acesso[-1] if chave_acesso else '0',
+                        'data_atualizacao': timezone.now()
+                    }
+                )
 
-            # ========== PROCESSAR PAGAMENTO (pag/detPag) ==========
-            self._processar_pagamento(infNFe, identificacao)
+                # ========== CRIAR NFe PRINCIPAL ==========
+                nfe, created = NFe.objects.update_or_create(
+                    identificacao=identificacao,
+                    defaults={
+                        'emitente': emitente,
+                        'destinatario': destinatario,
+                        'empresa': empresa,
+                        'filial': filial,
+                        'gdfcliente': cliente_eff,
+                        'status': 'DRAFT',
+                        'xml_assinado': xml_data.decode('utf-8', errors='ignore'),
+                        'usuario_atualizacao': usuario,
+                        'origem_dados': origem_dados,
+                        'data_atualizacao': timezone.now()
+                    }
+                )
 
-            # ========== PROCESSAR INFORMAÇÕES ADICIONAIS (infAdic) ==========
-            self._processar_informacoes_adicionais(infNFe, identificacao)
+                if created:
+                    nfe.usuario_criacao = usuario
+                    nfe.save(update_fields=['usuario_criacao'])
 
-            # ========== SALVAR CONDIÇÃO DE PAGAMENTO EM CondicaoParam (se ainda não existir) ==========
-            _cod_cliente = cod_cliente or (empresa.gdfcliente_id if empresa and getattr(empresa, 'gdfcliente_id', None) else None)
-            self._salvar_condicao_param_se_nao_existir(identificacao, cod_cliente=_cod_cliente)
+                # ========== PROCESSAR PRODUTOS E IMPOSTOS ==========
+                self._processar_produtos(infNFe, identificacao)
+
+                # ========== PROCESSAR TOTAIS ==========
+                self._processar_total(infNFe, identificacao)
+
+                # ========== PROCESSAR COBRANÇA E PARCELAS ==========
+                self._processar_cobranca(infNFe, identificacao)
+
+                # ========== PROCESSAR PAGAMENTO (pag/detPag) ==========
+                self._processar_pagamento(infNFe, identificacao)
+
+                # ========== PROCESSAR INFORMAÇÕES ADICIONAIS (infAdic) ==========
+                self._processar_informacoes_adicionais(infNFe, identificacao)
+
+                # ========== SALVAR CONDIÇÃO DE PAGAMENTO EM CondicaoParam (se ainda não existir) ==========
+                _cod_cliente = cod_cliente or (empresa.gdfcliente_id if empresa and getattr(empresa, 'gdfcliente_id', None) else None)
+                self._salvar_condicao_param_se_nao_existir(identificacao, cod_cliente=_cod_cliente)
 
             return []
         
@@ -853,7 +911,7 @@ class CargaXml:
         Processa e insere CTe no banco de dados com extração completa de todos os campos
         """
         try:
-            root = ET.fromstring(xml_data)
+            root = self._parse_xml_safe(xml_data)
             infCte = root.find('.//cte:infCte', self.ns) or root.find('.//infCte')
             
             if infCte is None:
@@ -888,8 +946,10 @@ class CargaXml:
             dest = infCte.find('.//cte:dest', self.ns) or infCte.find('.//dest')
             destinatario = None
             destinatario_cnpj = None
+            dest_cnpj_14 = None  # só CNPJ (14 dígitos) para determinação de tipo
             if dest is not None:
                 destinatario_cnpj = self._get_text(dest, 'CNPJ') or self._get_text(dest, 'CPF')
+                dest_cnpj_14 = (self._get_text(dest, 'CNPJ') or '').strip() or None
                 if destinatario_cnpj:
                     endereco_dest = self._processar_endereco(dest, is_emitente=False)
                     destinatario, _ = CTe_Destinatario.objects.update_or_create(
@@ -902,12 +962,14 @@ class CargaXml:
                         }
                     )
 
-            # Empresa e Filial (ClienteGDF → Empresa → Filial); se CNPJ for de filial, busca a empresa da filial
-            cnpj_para_busca = emitente_cnpj or destinatario_cnpj
-            if not cnpj_para_busca:
-                raise ValueError("Não foi possível identificar CNPJ do emitente ou destinatário no CT-e.")
-            empresa, filial = self._resolver_empresa_filial_por_cnpj(
-                cnpj_para_busca, cod_cliente=cod_cliente, contexto_erro="CT-e"
+            # Emitente: só considerar CNPJ (14 dígitos) para determinação de tipo
+            emit_cnpj_14 = None
+            if emitente_cnpj and len(''.join(c for c in emitente_cnpj if c.isdigit())) == 14:
+                emit_cnpj_14 = emitente_cnpj.strip() if isinstance(emitente_cnpj, str) else emitente_cnpj
+
+            # Tipo e empresa pelo nosso critério: emitente nosso = SAÍDA, destinatário nosso = ENTRADA
+            empresa, filial, _ = self._determinar_tipo_nota_e_empresa_por_emit_dest(
+                emit_cnpj_14, dest_cnpj_14, cod_cliente, contexto="CT-e"
             )
 
             # Cliente: obrigatório
@@ -1073,7 +1135,7 @@ class CargaXml:
         the parser much more tolerant of default namespaces and missing prefixes.
         """
         try:
-            root = ET.fromstring(xml_data)
+            root = self._parse_xml_safe(xml_data)
 
             def find_local(root, *names):
                 for elem in root.iter():

@@ -47,30 +47,36 @@ DEBUG = env.bool('DEBUG', default=True)
 if not DEBUG and SECRET_KEY == _SECRET_DEFAULT:
     import warnings
     warnings.warn('SECRET_KEY em produção deve ser definida no .env', UserWarning)
-# Em produção definir no .env: ALLOWED_HOSTS=homo.processit.com.br,localhost
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
+# Acesso pode ser realizado por todos. Padrão: ALLOWED_HOSTS = ['*'] (aceita qualquer Host).
+# Para restringir, defina no .env: ALLOWED_HOSTS=homo.processit.com.br,localhost
+_raw_hosts = env.list('ALLOWED_HOSTS', default=['*'])
+ALLOWED_HOSTS = [h.strip() for h in _raw_hosts if (h and str(h).strip())] or ['*']
 
 # HTTPS & Security Configuration
 SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=False)  # True em produção
 # Em DEBUG: cookies Secure=False para HTTP funcionar; em produção: True
 SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=not DEBUG)
 CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=not DEBUG)
-# Origens confiáveis para CSRF (HTTPS) - Django 4+ exige para POST via HTTPS
-# Acesso público: https://homo.processit.com.br/gdf/
-CSRF_TRUSTED_ORIGINS = env.list(
-    'CSRF_TRUSTED_ORIGINS',
-    default=[
-        'https://homo.processit.com.br',
-        'https://localhost:8500',
-        'https://127.0.0.1:8500',
-        'https://0.0.0.0:8500',
-        'https://10.0.1.158:8500',
-        'http://localhost:8500',
-        'http://127.0.0.1:8500',
-        'http://10.0.1.158:8500',
-        'http://localhost:8600',
-    ]
-)
+# Origens confiáveis para CSRF (HTTPS) - Django 4+ exige para POST via HTTPS. Não bloqueia acesso externo.
+# Inclui URL pública e :443 para proxies/VPN. Se definir no .env, use lista separada por vírgula.
+_default_csrf = [
+    'https://homo.processit.com.br',
+    'https://localhost:8500',
+    'https://127.0.0.1:8500',
+    'https://0.0.0.0:8500',
+    'https://10.0.1.158:8500',
+    'http://localhost:8500',
+    'http://127.0.0.1:8500',
+    'http://10.0.1.158:8500',
+    'http://localhost:8600',
+]
+_raw_csrf = env.list('CSRF_TRUSTED_ORIGINS', default=[])
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in _raw_csrf if (o and str(o).strip())] if _raw_csrf else _default_csrf
+
+# Rate limiting (acesso externo/VPN: aumentar limites ou RATE_LIMIT_DISABLED=True se 429 em login)
+RATE_LIMIT_DISABLED = env.bool('RATE_LIMIT_DISABLED', default=False)
+RATE_LIMIT_LOGIN_MAX = env.int('RATE_LIMIT_LOGIN_MAX', default=15)   # requisições/min na tela de login
+RATE_LIMIT_GENERAL_MAX = env.int('RATE_LIMIT_GENERAL_MAX', default=100)  # requisições/min por rota
 
 # Subpath quando atrás do NGINX (ex.: https://homo.processit.com.br/gdf/). Deixe vazio para raiz.
 FORCE_SCRIPT_NAME = env('FORCE_SCRIPT_NAME', default='/gdf')
@@ -216,9 +222,6 @@ SESSION_COOKIE_HTTPONLY = env.bool('SESSION_COOKIE_HTTPONLY', default=True)
 CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=not DEBUG)
 CSRF_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SAMESITE = 'Lax'
-
-# Upload limits
-DATA_UPLOAD_MAX_NUMBER_FILES = env.int('DATA_UPLOAD_MAX_NUMBER_FILES', default=2000)
 
 # Logging - Security & Audit
 LOGGING = {
