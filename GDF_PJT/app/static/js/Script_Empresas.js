@@ -411,7 +411,11 @@ function fn_preencher_formulario(data) {
   // Atualizar action do form de empresa com o ID da empresa
   var urlUpd = (window.APP_URLS && window.APP_URLS.empresaUpd) ? window.APP_URLS.empresaUpd.replace('__ID__', encodeURIComponent(data.cod_empresa || '')) : ((typeof getUrlPrefix === 'function' ? getUrlPrefix() : '') || '') + '/empresa/' + (data.cod_empresa || '') + '/';
   document.getElementById('formEmpresaUpd').action = urlUpd;
-  // Certificado tem action estático no HTML: /empresa/Cert/
+  var formCert = document.getElementById('formCertUpd');
+  if (formCert && !(window.APP_URLS && window.APP_URLS.empresaCert)) {
+    var prefix = (typeof getUrlPrefix === 'function') ? getUrlPrefix() : '';
+    formCert.action = (prefix || '') + '/empresa/Cert/';
+  }
   document.getElementById('upd_empresa_id_hidden').value = data.cod_empresa || '';
   
   // Dados da empresa
@@ -454,6 +458,8 @@ function fn_preencher_formulario(data) {
    LIMPAR CAMPOS DO CERTIFICADO
 ================================ */
 function fn_limpar_certificado() {
+  var senhaEl = document.getElementById('upd_senha_certificado');
+  if (senhaEl) senhaEl.value = '';
   document.getElementById('upd_emissor').value = '';
   document.getElementById('upd_cert_cnpj').value = '';
   document.getElementById('upd_dt_inicial').value = '';

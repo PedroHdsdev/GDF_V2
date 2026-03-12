@@ -674,7 +674,10 @@ def fn_view_atualizar_usuario(request, user_id):
 
         # ✅ Processar grupos: podem vir como string separada por vírgula do hidden input
         grupos_str = request.POST.get("ls_grupos", "")
-        grupo_ids = [int(g.strip()) for g in grupos_str.split(",") if g.strip()]
+        try:
+            grupo_ids = [int(g.strip()) for g in grupos_str.split(",") if g.strip()]
+        except ValueError:
+            return JsonResponse({"erro": "IDs de grupos inválidos (devem ser numéricos)"}, status=400)
 
         # ✅ Validações básicas antes de chamar método
         if not email:
@@ -684,6 +687,14 @@ def fn_view_atualizar_usuario(request, user_id):
         if not grupo_ids:
             return JsonResponse({"erro": "Selecione pelo menos 1 grupo"}, status=400)
 
+        new_password = request.POST.get("upd_new_password", "").strip()
+        new_password_confirm = request.POST.get("upd_new_password_confirm", "").strip()
+        if new_password or new_password_confirm:
+            if new_password != new_password_confirm:
+                return JsonResponse({"erro": "Nova senha e confirmação não conferem"}, status=400)
+            if len(new_password) < 6:
+                return JsonResponse({"erro": "A nova senha deve ter no mínimo 6 caracteres"}, status=400)
+
         resultado = cl_gdf.upd_usuario(
             i_v_user_id=int(user_id),
             i_v_first_name=first_name,
@@ -692,7 +703,8 @@ def fn_view_atualizar_usuario(request, user_id):
             i_v_is_active=is_active,
             i_lsl_empresa_ids=empresa_ids,
             i_lsl_grupo_ids=grupo_ids,
-            i_v_cod_cliente=cod_cliente
+            i_v_cod_cliente=cod_cliente,
+            i_v_new_password=new_password or None,
         )
         
         # ✅ Detectar se é requisição AJAX
@@ -904,6 +916,10 @@ def fn_view_inserir_empresa(request):
         if not resultado.get("success"):
             return JsonResponse({"erro": resultado.get("message")}, status=400)
 
+        # Garantir que a lista exiba o cliente em que a empresa foi criada (ex.: superuser escolheu outro cliente)
+        request.session['cod_cliente'] = cod_cliente
+        request.session.modified = True
+
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return JsonResponse({"success": True, "message": resultado.get("message", "Empresa cadastrada com sucesso")})
         return redirect('Dm_Empresas')
@@ -982,10 +998,22 @@ def fn_view_atualizar_empresa(request, cod_empresa):
 @require_http_methods(["POST"])
 def fn_view_atualizar_certificado(request):
     """Atualizar certificado digital da empresa"""
-    
-    cl_gdf = ClGdf()
-    
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        messages.error(request, "Cliente não identificado.", extra_tags='MODAL_UPD')
+        return redirect('Dm_Empresas')
+
     cod_empresa = request.POST.get('m_codempresa', '').strip()
+    if not cod_empresa:
+        messages.error(request, "Empresa não identificada.", extra_tags='MODAL_UPD')
+        return redirect('Dm_Empresas')
+
+    # ✅ IDOR: empresa deve pertencer ao cliente da sessão
+    if not Empresa.objects.filter(cod_empresa=cod_empresa, gdfcliente__cod_cliente=cod_cliente).exists():
+        messages.error(request, "Acesso negado: empresa não pertence ao seu cliente.", extra_tags='MODAL_UPD')
+        return redirect('Dm_Empresas')
+
+    cl_gdf = ClGdf()
 
     # ✅ Pegar arquivo (OPCIONAL - pode atualizar só metadados)
     cert_file = request.FILES.get('m_file')
@@ -1000,6 +1028,7 @@ def fn_view_atualizar_certificado(request):
     cnpj = request.POST.get('m_cnpj', '').strip()
     dt_inicial = request.POST.get('m_dt_inicial', '').strip()
     dt_fim = request.POST.get('m_dt_fim', '').strip()
+    senha_certificado = request.POST.get('m_senha_certificado', '').strip()
     
     # ✅ Se nenhum dado foi enviado, erro
     if not cert_file and not (emissor or cnpj or dt_inicial or dt_fim):
@@ -1013,7 +1042,8 @@ def fn_view_atualizar_certificado(request):
         i_v_cpf_cnpj=cnpj,
         i_v_ini_validade=dt_inicial,
         i_v_fim_validade=dt_fim,
-        i_v_cod_empresa=cod_empresa
+        i_v_cod_empresa=cod_empresa,
+        i_v_senha_certificado=senha_certificado or None,
     )
     
     if resultado.get("success"):
@@ -1118,17 +1148,14 @@ def fn_view_atualizar_cliente(request, cod_cliente):
             mensagem = resultado.get("message", "Erro ao atualizar")
             if is_ajax:
                 return JsonResponse({"success": False, "message": mensagem}, status=400)
-            else:
-                messages.error(request, mensagem, extra_tags='MODAL_UPD')
-        else:
-            mensagem = resultado.get("message", "Cliente atualizado com sucesso!")
-            if is_ajax:
-                return JsonResponse({"success": True, "message": mensagem}, status=200)
-            else:
-                messages.success(request, mensagem, extra_tags='MODAL_UPD')
-
-        if not is_ajax:
+            messages.error(request, mensagem, extra_tags='MODAL_UPD')
             return redirect('Dm_Clientes')
+
+        mensagem = resultado.get("message", "Cliente atualizado com sucesso!")
+        if is_ajax:
+            return JsonResponse({"success": True, "message": mensagem}, status=200)
+        messages.success(request, mensagem, extra_tags='MODAL_UPD')
+        return redirect('Dm_Clientes')
 
 @login_required(login_url='Login')
 @require_http_methods(["POST"])
@@ -1143,7 +1170,12 @@ def fn_view_atualizar_acesso_cliente(request):
     if not cod_cliente:
         messages.error(request, "Cliente não identificado no formulário", extra_tags='MODAL_UPD')
         return redirect('Dm_Clientes')
-    
+
+    # ✅ IDOR: usuário sem acesso total só pode alterar o cliente da sessão
+    if not usuario_acesso_total_painel(request) and str(cod_cliente) != str(cod_cliente_sessao):
+        messages.error(request, "Acesso negado: você não pode alterar acessos de outro cliente.", extra_tags='MODAL_UPD')
+        return redirect('Dm_Clientes')
+
     cl_gdf = ClGdf()
     ls_solucoes = request.POST.get("ls_solucoes", "").strip()  # Formato: "COD1:1,COD2:0"
     
@@ -1188,6 +1220,10 @@ def fn_view_atualizar_grupos_cliente(request):
     cod_cliente = request.POST.get("Grupos_cliente_id", "").strip()
     if not cod_cliente:
         return JsonResponse({"erro": "Cliente não identificado no formulário"}, status=400)
+
+    # ✅ IDOR: usuário sem acesso total só pode alterar o cliente da sessão
+    if not usuario_acesso_total_painel(request) and str(cod_cliente) != str(cod_cliente_sessao):
+        return JsonResponse({"erro": "Acesso negado: você não pode alterar grupos de outro cliente."}, status=403)
 
     ls_grupos = request.POST.get("ls_grupos", "").strip()
     cl_gdf = ClGdf()

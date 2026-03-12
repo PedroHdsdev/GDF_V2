@@ -39,9 +39,16 @@ function fn_validar_formulario_ins(event) {
     
     if (errors.length > 0) {
         Notificacoes.modal("Erros ao preencher formulário:\n\n" + errors.join("\n"), 'danger', 'modalUsuarioInsAlerts');
+        if (!empresas_hidden) {
+            var tabEmp = document.querySelector('#modalUsuarioIns button[data-bs-target="#tab-ins-empresas"]');
+            if (tabEmp) tabEmp.click();
+        } else if (!grupos_hidden) {
+            var tabGrp = document.querySelector('#modalUsuarioIns button[data-bs-target="#tab-ins-grupos"]');
+            if (tabGrp) tabGrp.click();
+        }
         return false;
     }
-    
+
     console.log("✅ Formulário validado com sucesso!");
     console.log("   Empresas:", empresas_hidden);
     console.log("   Grupos:", grupos_hidden);
@@ -55,22 +62,34 @@ function fn_validar_formulario_ins(event) {
 ================================ */
 function fn_validar_formulario_upd(event) {
     event.preventDefault();
-    
+
     const email = document.getElementById('upd_email').value.trim();
     const empresas_hidden = document.getElementById('upd_empresas_hidden').value.trim();
     const grupos_hidden = document.getElementById('upd_grupos_hidden').value.trim();
-    
+    const newPassword = document.getElementById('upd_new_password') ? document.getElementById('upd_new_password').value : '';
+    const newPasswordConfirm = document.getElementById('upd_new_password_confirm') ? document.getElementById('upd_new_password_confirm').value : '';
+
     const errors = [];
     if (!email) errors.push("Email é obrigatório");
     if (!empresas_hidden) errors.push("Selecione pelo menos 1 empresa");
     if (!grupos_hidden) errors.push("Selecione pelo menos 1 grupo");
-    
+    if (newPassword || newPasswordConfirm) {
+        if (newPassword !== newPasswordConfirm) errors.push("Nova senha e confirmação não conferem");
+        else if (newPassword.length < 6) errors.push("A nova senha deve ter no mínimo 6 caracteres");
+    }
+
     if (errors.length > 0) {
         Notificacoes.modal("❌ Erros:\n\n" + errors.join("\n"), 'danger', 'modalUsuarioUpdAlerts');
+        if (!empresas_hidden) {
+            var tabEmp = document.querySelector('#modalUsuarioUpd button[data-bs-target="#tab-upd-empresas"]');
+            if (tabEmp) tabEmp.click();
+        } else if (!grupos_hidden) {
+            var tabGrp = document.querySelector('#modalUsuarioUpd button[data-bs-target="#tab-upd-grupos"]');
+            if (tabGrp) tabGrp.click();
+        }
         return false;
     }
-    
-    // ✅ Submeter via AJAX
+
     fn_submit_form_ajax(event.target, 'Usuario');
 }
 
@@ -405,8 +424,8 @@ function fn_init_usuario_ins() {
                 const data = await resp.json();
                 const empresas = data.Todas_Empresas || data.todas_empresas || data.TodasEmpresas || [];
                 const grupos = data.Todos_Grupos || data.todos_grupos || data.TodosGrupos || [];
-                fn_preencher_select_ins_empresas(empresas);
-                fn_preencher_select_ins_grupos(grupos);
+                fn_renderizar_checkboxes_ins_empresas(empresas);
+                fn_renderizar_checkboxes_ins_grupos(grupos);
             } else {
                 console.warn('Falha ao carregar dados para modal INSERT. Se for superusuário, selecione o cliente.', resp.status);
             }
@@ -429,8 +448,8 @@ function fn_init_usuario_ins() {
                     const data = await resp.json();
                     const empresas = data.Todas_Empresas || data.todas_empresas || data.TodasEmpresas || [];
                     const grupos = data.Todos_Grupos || data.todos_grupos || data.TodosGrupos || [];
-                    fn_preencher_select_ins_empresas(empresas);
-                    fn_preencher_select_ins_grupos(grupos);
+                    fn_renderizar_checkboxes_ins_empresas(empresas);
+                    fn_renderizar_checkboxes_ins_grupos(grupos);
                 }
             } catch (err) {
                 console.error('Erro ao recarregar dados por cliente:', err);
@@ -441,16 +460,7 @@ function fn_init_usuario_ins() {
     modalEl.addEventListener("hidden.bs.modal", () => {
         const form = modalEl.querySelector("form");
         if (form) form.reset();
-        
-        // ✅ Limpar também os arrays de empresas e grupos
-        og_estado_usuarios.empresasSelecionadas = [];
-        og_estado_usuarios.gruposSelecionados = [];
-        
-        // ✅ Limpar as tabelas e hidden inputs
-        fn_renderizar_empresas_selecionadas_ins();
-        fn_renderizar_grupos_selecionados_ins();
-        
-        // ✅ Desmarcar modal aberto
+        fn_limpar_checkboxes_ins();
         if (og_estado_usuarios.modalAberto === "modalUsuarioIns") {
             og_estado_usuarios.modalAberto = null;
         }
@@ -578,429 +588,209 @@ function fn_preencher_modal_usuario(user) {
         form.action = urlUpd;
     }
 
-    // ✅ Limpar e preencher empresas
-    og_estado_usuarios.empresasSelecionadas = [];
-    user.empresas.forEach(emp => {
-        og_estado_usuarios.empresasSelecionadas.push({
-            id: emp.cod_empresa,
-            nome: emp.fantasia || emp.razao || emp.cod_empresa
-        });
+    var idsEmpresas = (user.empresas || []).map(function(e) { return String(e.cod_empresa || e.id || e.cod || ''); });
+    var idsGrupos = (user.grupos || []).map(function(g) { return String(g.id || g.group_id || ''); });
+    var empresasDisp = user.empresas_disponiveis || user.Empresas_Disponiveis || user.empresasDisponiveis || [];
+    var gruposDisp = user.grupos_disponiveis || user.Grupos_Disponiveis || user.gruposDisponiveis || [];
+    var todasEmpresas = (user.empresas || []).slice();
+    var seen = {};
+    (user.empresas || []).forEach(function(e) { seen[String(e.cod_empresa || e.id || e.cod || '')] = true; });
+    (Array.isArray(empresasDisp) ? empresasDisp : []).forEach(function(e) {
+        var id = String(e.cod_empresa || e.id || e.cod || '');
+        if (!seen[id]) { seen[id] = true; todasEmpresas.push(e); }
     });
-    fn_renderizar_empresas_selecionadas();
-    
-    // ✅ Limpar e preencher grupos
-    og_estado_usuarios.gruposSelecionados = [];
-    user.grupos.forEach(grp => {
-        og_estado_usuarios.gruposSelecionados.push({
-            id: grp.id,
-            nome: grp.name
-        });
+    var todosGrupos = (user.grupos || []).slice();
+    seen = {};
+    (user.grupos || []).forEach(function(g) { seen[String(g.id || g.group_id || '')] = true; });
+    (Array.isArray(gruposDisp) ? gruposDisp : []).forEach(function(g) {
+        var id = String(g.id || g.group_id || '');
+        if (!seen[id]) { seen[id] = true; todosGrupos.push(g); }
     });
-    fn_renderizar_grupos_selecionados();
-    
-    // ✅ Preencher selects com dados disponíveis (aceitar variações de key names)
-    const empresasDisp = user.empresas_disponiveis || user.Empresas_Disponiveis || user.empresasDisponiveis || user.Empresas_Disponiveis || [];
-    const gruposDisp = user.grupos_disponiveis || user.Grupos_Disponiveis || user.gruposDisponiveis || user.Grupos_Disponiveis || [];
-
-    console.log("🏢 Empresas disponíveis para preencher:", empresasDisp);
-    console.log("👥 Grupos disponíveis para preencher:", gruposDisp);
-
-    if (Array.isArray(empresasDisp) && empresasDisp.length > 0) {
-        console.log("✅ Preenchendo empresas...");
-        fn_preencher_select_empresas(empresasDisp);
-    } else {
-        console.warn("⚠️ Nenhuma empresa disponível encontrada");
-    }
-
-    if (Array.isArray(gruposDisp) && gruposDisp.length > 0) {
-        console.log("✅ Preenchendo grupos...");
-        fn_preencher_select_grupos(gruposDisp);
-    } else {
-        console.warn("⚠️ Nenhum grupo disponível encontrado");
-    }
+    fn_renderizar_checkboxes_upd_empresas(todasEmpresas, idsEmpresas);
+    fn_renderizar_checkboxes_upd_grupos(todosGrupos, idsGrupos);
 }
 
 /* ===============================
-   PREENCHER SELECT COM EMPRESAS DISPONÍVEIS
+   INS: CHECKBOXES EMPRESAS E GRUPOS
 ================================ */
-function fn_preencher_select_empresas(empresas) {
-    const select = document.getElementById("upd_empresas_select");
-    if (!select) return;
-    
-    // Limpar options existentes (mantendo o primeiro placeholder)
-    while (select.options.length > 1) {
-        select.removeChild(select.lastChild);
+function fn_renderizar_checkboxes_ins_empresas(empresas) {
+    var list = document.getElementById("ins_empresas_list");
+    var emptyEl = document.getElementById("ins_empresas_empty");
+    var hidden = document.getElementById("ins_empresas_hidden");
+    var badge = document.getElementById("ins_empresas_count");
+    if (!list) return;
+    list.innerHTML = "";
+    if (emptyEl) emptyEl.classList.add("d-none");
+    if (hidden) hidden.value = "";
+    if (badge) badge.textContent = "0";
+    if (!Array.isArray(empresas) || empresas.length === 0) {
+        if (emptyEl) emptyEl.classList.remove("d-none");
+        return;
     }
-    
-    // Adicionar opções disponíveis
-    empresas.forEach(emp => {
-        const option = document.createElement("option");
-        // aceitar formatos: {cod_empresa, fantasia, razao} ou {id, nome}
-        option.value = emp.cod_empresa || emp.id || emp.cod || emp.codigo || '';
-        option.textContent = emp.fantasia || emp.nome || emp.razao || emp.codigo || emp.id || option.value;
-        option.dataset.nome = option.textContent;
-        select.appendChild(option);
+    empresas.forEach(function(emp) {
+        var id = String(emp.cod_empresa || emp.id || emp.cod || "").trim();
+        var nome = emp.fantasia || emp.razao || emp.nome || id;
+        var label = document.createElement("label");
+        label.className = "form-check admin-checkbox-item";
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "form-check-input ins-empresa-cb";
+        cb.value = id;
+        cb.dataset.nome = nome;
+        cb.addEventListener("change", fn_sync_ins_empresas);
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(" " + nome));
+        list.appendChild(label);
     });
+}
+
+function fn_sync_ins_empresas() {
+    var checks = document.querySelectorAll("#ins_empresas_list .ins-empresa-cb:checked");
+    var ids = [];
+    for (var i = 0; i < checks.length; i++) ids.push(checks[i].value);
+    var hidden = document.getElementById("ins_empresas_hidden");
+    var badge = document.getElementById("ins_empresas_count");
+    if (hidden) hidden.value = ids.join(",");
+    if (badge) badge.textContent = ids.length;
+}
+
+function fn_renderizar_checkboxes_ins_grupos(grupos) {
+    var list = document.getElementById("ins_grupos_list");
+    var emptyEl = document.getElementById("ins_grupos_empty");
+    var hidden = document.getElementById("ins_grupos_hidden");
+    var badge = document.getElementById("ins_grupos_count");
+    if (!list) return;
+    list.innerHTML = "";
+    if (emptyEl) emptyEl.classList.add("d-none");
+    if (hidden) hidden.value = "";
+    if (badge) badge.textContent = "0";
+    if (!Array.isArray(grupos) || grupos.length === 0) {
+        if (emptyEl) emptyEl.classList.remove("d-none");
+        return;
+    }
+    grupos.forEach(function(grp) {
+        var id = String(grp.id || grp.group_id || "").trim();
+        var nome = grp.name || grp.nome || grp.group_name || id;
+        var label = document.createElement("label");
+        label.className = "form-check admin-checkbox-item";
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "form-check-input ins-grupo-cb";
+        cb.value = id;
+        cb.dataset.nome = nome;
+        cb.addEventListener("change", fn_sync_ins_grupos);
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(" " + nome));
+        list.appendChild(label);
+    });
+}
+
+function fn_sync_ins_grupos() {
+    var checks = document.querySelectorAll("#ins_grupos_list .ins-grupo-cb:checked");
+    var ids = [];
+    for (var i = 0; i < checks.length; i++) ids.push(checks[i].value);
+    var hidden = document.getElementById("ins_grupos_hidden");
+    var badge = document.getElementById("ins_grupos_count");
+    if (hidden) hidden.value = ids.join(",");
+    if (badge) badge.textContent = ids.length;
+}
+
+function fn_limpar_checkboxes_ins() {
+    fn_renderizar_checkboxes_ins_empresas([]);
+    fn_renderizar_checkboxes_ins_grupos([]);
 }
 
 /* ===============================
-   PREENCHER SELECT COM GRUPOS DISPONÍVEIS
+   UPD: CHECKBOXES EMPRESAS E GRUPOS
 ================================ */
-function fn_preencher_select_grupos(grupos) {
-    const select = document.getElementById("upd_grupos_select");
-    if (!select) {
-        console.error("❌ Select 'upd_grupos_select' não encontrado!");
+function fn_renderizar_checkboxes_upd_empresas(empresasDisp, idsSelecionados) {
+    var list = document.getElementById("upd_empresas_list");
+    var emptyEl = document.getElementById("upd_empresas_empty");
+    var hidden = document.getElementById("upd_empresas_hidden");
+    var badge = document.getElementById("upd_empresas_count");
+    if (!list) return;
+    list.innerHTML = "";
+    if (emptyEl) emptyEl.classList.add("d-none");
+    var idsSet = {};
+    if (Array.isArray(idsSelecionados)) idsSelecionados.forEach(function(id) { idsSet[String(id)] = true; });
+    if (!Array.isArray(empresasDisp) || empresasDisp.length === 0) {
+        if (emptyEl) emptyEl.classList.remove("d-none");
+        if (hidden) hidden.value = idsSelecionados ? idsSelecionados.join(",") : "";
+        if (badge) badge.textContent = idsSelecionados ? idsSelecionados.length : 0;
         return;
     }
-    
-    console.log("📝 Limpando select e adicionando opções...");
-    // Limpar options existentes (mantendo o primeiro placeholder)
-    while (select.options.length > 1) {
-        select.removeChild(select.lastChild);
-    }
-    
-    // Adicionar opções disponíveis
-    grupos.forEach((grp, index) => {
-        console.log(`  Grupo ${index}:`, grp);
-        const option = document.createElement("option");
-        // aceitar: {id, name} ou {group__id, group__name}
-        option.value = grp.id || grp.group__id || grp.group_id || grp.group || '';
-        option.textContent = grp.name || grp.group__name || grp.group_name || grp.nome || option.value;
-        console.log(`    → value: "${option.value}", text: "${option.textContent}"`);
-        select.appendChild(option);
+    empresasDisp.forEach(function(emp) {
+        var id = String(emp.cod_empresa || emp.id || emp.cod || "").trim();
+        var nome = emp.fantasia || emp.razao || emp.nome || id;
+        var label = document.createElement("label");
+        label.className = "form-check admin-checkbox-item";
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "form-check-input upd-empresa-cb";
+        cb.value = id;
+        cb.dataset.nome = nome;
+        if (idsSet[id]) cb.checked = true;
+        cb.addEventListener("change", fn_sync_upd_empresas);
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(" " + nome));
+        list.appendChild(label);
     });
-    console.log(`✅ Total de grupos adicionados: ${grupos.length}`);
+    fn_sync_upd_empresas();
 }
 
-/* ===============================
-   INSERT: PREENCHER SELECTS (dados vindos da view /usuario_ins/)
-================================ */
-function fn_preencher_select_ins_empresas(empresas) {
-    const select = document.getElementById("ins_empresas_select");
-    if (!select) return;
-    while (select.options.length > 1) select.removeChild(select.lastChild);
-
-    empresas.forEach(emp => {
-        const option = document.createElement('option');
-        option.value = emp.cod_empresa || emp.id || emp.cod || '';
-        option.textContent = emp.fantasia || emp.razao || emp.nome || option.value;
-        option.dataset.nome = option.textContent;
-        select.appendChild(option);
-    });
+function fn_sync_upd_empresas() {
+    var checks = document.querySelectorAll("#upd_empresas_list .upd-empresa-cb:checked");
+    var ids = [];
+    for (var i = 0; i < checks.length; i++) ids.push(checks[i].value);
+    var hidden = document.getElementById("upd_empresas_hidden");
+    var badge = document.getElementById("upd_empresas_count");
+    if (hidden) hidden.value = ids.join(",");
+    if (badge) badge.textContent = ids.length;
 }
 
-function fn_preencher_select_ins_grupos(grupos) {
-    const select = document.getElementById("ins_grupos_select");
-    if (!select) return;
-    while (select.options.length > 1) select.removeChild(select.lastChild);
-
-    grupos.forEach(grp => {
-        const option = document.createElement('option');
-        option.value = grp.id || grp.group_id || '';
-        option.textContent = grp.name || grp.nome || option.value;
-        select.appendChild(option);
-    });
-}
-
-/* ===============================
-   ADICIONAR/REMOVER EMPRESAS
-================================ */
-function fn_adicionar_empresa() {
-    const select = document.getElementById("upd_empresas_select");
-    if (!select.value) {
-        Notificacoes.modal("Selecione uma empresa!", 'warning', 'modalUsuarioUpdAlerts');
+function fn_renderizar_checkboxes_upd_grupos(gruposDisp, idsSelecionados) {
+    var list = document.getElementById("upd_grupos_list");
+    var emptyEl = document.getElementById("upd_grupos_empty");
+    var hidden = document.getElementById("upd_grupos_hidden");
+    var badge = document.getElementById("upd_grupos_count");
+    if (!list) return;
+    list.innerHTML = "";
+    if (emptyEl) emptyEl.classList.add("d-none");
+    var idsSet = {};
+    if (Array.isArray(idsSelecionados)) idsSelecionados.forEach(function(id) { idsSet[String(id)] = true; });
+    if (!Array.isArray(gruposDisp) || gruposDisp.length === 0) {
+        if (emptyEl) emptyEl.classList.remove("d-none");
+        if (hidden) hidden.value = idsSelecionados ? idsSelecionados.join(",") : "";
+        if (badge) badge.textContent = idsSelecionados ? idsSelecionados.length : 0;
         return;
     }
-    
-    const empId = select.value;
-    const empNome = select.options[select.selectedIndex].text;
-    
-    // ✅ Verificar se já foi adicionada
-    if (og_estado_usuarios.empresasSelecionadas.some(e => e.id == empId)) {
-        Notificacoes.modal("Esta empresa já foi adicionada!", 'warning', 'modalUsuarioUpdAlerts');
-        return;
-    }
-    
-    og_estado_usuarios.empresasSelecionadas.push({
-        id: empId,
-        nome: empNome
+    gruposDisp.forEach(function(grp) {
+        var id = String(grp.id || grp.group_id || "").trim();
+        var nome = grp.name || grp.nome || grp.group_name || id;
+        var label = document.createElement("label");
+        label.className = "form-check admin-checkbox-item";
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "form-check-input upd-grupo-cb";
+        cb.value = id;
+        cb.dataset.nome = nome;
+        if (idsSet[id]) cb.checked = true;
+        cb.addEventListener("change", fn_sync_upd_grupos);
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(" " + nome));
+        list.appendChild(label);
     });
-    
-    select.value = ""; // ✅ Limpar select
-    fn_renderizar_empresas_selecionadas();
+    fn_sync_upd_grupos();
 }
 
-function fn_remover_empresa(empId) {
-    og_estado_usuarios.empresasSelecionadas = og_estado_usuarios.empresasSelecionadas.filter(
-        e => e.id != empId
-    );
-    fn_renderizar_empresas_selecionadas();
-}
-
-function fn_renderizar_empresas_selecionadas() {
-    const tbody = document.getElementById("upd_empresas_tbody");
-    const hidden = document.getElementById("upd_empresas_hidden");
-    
-    if (!tbody) return;
-    
-    // ✅ Limpar tbody
-    tbody.innerHTML = "";
-    
-    // ✅ Adicionar linhas
-    og_estado_usuarios.empresasSelecionadas.forEach(emp => {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td>${emp.nome}</td>
-            <td>
-                <button type="button" class="btn btn-sm btn-danger" 
-                        onclick="fn_remover_empresa(${emp.id})">
-                    Remover
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-    
-    // ✅ Atualizar hidden input com IDs separados por vírgula
-    hidden.value = og_estado_usuarios.empresasSelecionadas
-        .map(e => e.id)
-        .join(",");
-}
-
-/* ===============================
-   ADICIONAR/REMOVER GRUPOS
-================================ */
-function fn_adicionar_grupo() {
-    const select = document.getElementById("upd_grupos_select");
-    if (!select.value) {
-        Notificacoes.modal("Selecione um grupo!", 'warning', 'modalUsuarioUpdAlerts');
-        return;
-    }
-    
-    const grupoId = select.value;
-    const grupoNome = select.options[select.selectedIndex].text;
-    
-    // ✅ Verificar se já foi adicionado
-    if (og_estado_usuarios.gruposSelecionados.some(g => g.id == grupoId)) {
-        Notificacoes.modal("Este grupo já foi adicionado!", 'warning', 'modalUsuarioUpdAlerts');
-        return;
-    }
-    
-    og_estado_usuarios.gruposSelecionados.push({
-        id: grupoId,
-        nome: grupoNome
-    });
-    
-    select.value = ""; // ✅ Limpar select
-    fn_renderizar_grupos_selecionados();
-}
-
-function fn_remover_grupo(grupoId) {
-    og_estado_usuarios.gruposSelecionados = og_estado_usuarios.gruposSelecionados.filter(
-        g => g.id != grupoId
-    );
-    fn_renderizar_grupos_selecionados();
-}
-
-function fn_renderizar_grupos_selecionados() {
-    const tbody = document.getElementById("upd_grupos_tbody");
-    const hidden = document.getElementById("upd_grupos_hidden");
-    
-    if (!tbody) return;
-    
-    // ✅ Limpar tbody
-    tbody.innerHTML = "";
-    
-    // ✅ Adicionar linhas
-    og_estado_usuarios.gruposSelecionados.forEach(grp => {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td>${grp.nome}</td>
-            <td>
-                <button type="button" class="btn btn-sm btn-danger" 
-                        onclick="fn_remover_grupo(${grp.id})">
-                    Remover
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-    
-    // ✅ Atualizar hidden input com IDs separados por vírgula
-    hidden.value = og_estado_usuarios.gruposSelecionados
-        .map(g => g.id)
-        .join(",");
-}
-
-/* ===============================
-   INSERT: ADICIONAR/REMOVER EMPRESAS
-================================ */
-function fn_adicionar_empresa_ins() {
-    const select = document.getElementById("ins_empresas_select");
-    if (!select.value) {
-        Notificacoes.modal("Selecione uma empresa!", 'warning', 'modalUsuarioInsAlerts');
-        return;
-    }
-    
-    const empId = select.value;
-    const empNome = select.options[select.selectedIndex].text;
-    
-    // ✅ Verificar se já foi adicionada
-    if (og_estado_usuarios.empresasSelecionadas.some(e => e.id == empId)) {
-        Notificacoes.modal("Esta empresa já foi adicionada!", 'warning', 'modalUsuarioInsAlerts');
-        return;
-    }
-    
-    og_estado_usuarios.empresasSelecionadas.push({
-        id: empId,
-        nome: empNome
-    });
-    
-    select.value = ""; // ✅ Limpar select
-    fn_renderizar_empresas_selecionadas_ins();
-}
-
-function fn_remover_empresa_ins(empId) {
-    og_estado_usuarios.empresasSelecionadas = og_estado_usuarios.empresasSelecionadas.filter(
-        e => e.id != empId
-    );
-    fn_renderizar_empresas_selecionadas_ins();
-}
-
-function fn_renderizar_empresas_selecionadas_ins() {
-    const tbody = document.getElementById("ins_empresas_tbody");
-    const hidden = document.getElementById("ins_empresas_hidden");
-    
-    if (!tbody) return;
-    
-    // ✅ Limpar tbody
-    tbody.innerHTML = "";
-    
-    // ✅ Adicionar linhas
-    og_estado_usuarios.empresasSelecionadas.forEach(emp => {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td>${emp.nome}</td>
-            <td>
-                <button type="button" class="btn btn-sm btn-danger" 
-                        onclick="fn_remover_empresa_ins(${emp.id})">
-                    Remover
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-    
-    // ✅ Atualizar hidden input com IDs separados por vírgula
-    hidden.value = og_estado_usuarios.empresasSelecionadas
-        .map(e => e.id)
-        .join(",");
-    
-    // ✅ Feedback visual
-    const count = og_estado_usuarios.empresasSelecionadas.length;
-    if (count > 0) {
-        console.log(`✅ ${count} empresa(s) selecionada(s)`);
-    }
-}
-
-/* ===============================
-   INSERT: ADICIONAR/REMOVER GRUPOS
-================================ */
-function fn_adicionar_grupo_ins() {
-    const select = document.getElementById("ins_grupos_select");
-    if (!select.value) {
-        Notificacoes.modal("Selecione um grupo!", 'warning', 'modalUsuarioInsAlerts');
-        return;
-    }
-    
-    const grupoId = select.value;
-    const grupoNome = select.options[select.selectedIndex].text;
-    
-    // ✅ Verificar se já foi adicionado
-    if (og_estado_usuarios.gruposSelecionados.some(g => g.id == grupoId)) {
-        Notificacoes.modal("Este grupo já foi adicionado!", 'warning', 'modalUsuarioInsAlerts');
-        return;
-    }
-    
-    og_estado_usuarios.gruposSelecionados.push({
-        id: grupoId,
-        nome: grupoNome
-    });
-    
-    select.value = ""; // ✅ Limpar select
-    fn_renderizar_grupos_selecionados_ins();
-}
-
-function fn_remover_grupo_ins(grupoId) {
-    og_estado_usuarios.gruposSelecionados = og_estado_usuarios.gruposSelecionados.filter(
-        g => g.id != grupoId
-    );
-    fn_renderizar_grupos_selecionados_ins();
-}
-
-function fn_renderizar_grupos_selecionados_ins() {
-    const tbody = document.getElementById("ins_grupos_tbody");
-    const hidden = document.getElementById("ins_grupos_hidden");
-    
-    if (!tbody) return;
-    
-    // ✅ Limpar tbody
-    tbody.innerHTML = "";
-    
-    // ✅ Adicionar linhas
-    og_estado_usuarios.gruposSelecionados.forEach(grp => {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td>${grp.nome}</td>
-            <td>
-                <button type="button" class="btn btn-sm btn-danger" 
-                        onclick="fn_remover_grupo_ins(${grp.id})">
-                    Remover
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-    
-    // ✅ Atualizar hidden input com IDs separados por vírgula
-    hidden.value = og_estado_usuarios.gruposSelecionados
-        .map(g => g.id)
-        .join(",");
-}
-
-/* ===============================
-   INSERT: PREENCHER SELECTS (dados vindos da view /usuario/inserir/)
-================================ */
-function fn_preencher_select_ins_empresas(empresas) {
-    const select = document.getElementById('ins_empresas_select');
-    if (!select) return;
-    // manter placeholder e limpar demais options
-    while (select.options.length > 1) select.removeChild(select.lastChild);
-
-    empresas.forEach(emp => {
-        const val = emp.cod_empresa || emp.id || emp.codigo || '';
-        const text = emp.fantasia || emp.razao || emp.nome || val;
-        const option = document.createElement('option');
-        option.value = val;
-        option.textContent = text;
-        option.dataset.nome = text;
-        select.appendChild(option);
-    });
-}
-
-function fn_preencher_select_ins_grupos(grupos) {
-    const select = document.getElementById('ins_grupos_select');
-    if (!select) return;
-    while (select.options.length > 1) select.removeChild(select.lastChild);
-
-    grupos.forEach(grp => {
-        const val = grp.id || grp.group_id || '';
-        const text = grp.name || grp.nome || val;
-        const option = document.createElement('option');
-        option.value = val;
-        option.textContent = text;
-        select.appendChild(option);
-    });
+function fn_sync_upd_grupos() {
+    var checks = document.querySelectorAll("#upd_grupos_list .upd-grupo-cb:checked");
+    var ids = [];
+    for (var i = 0; i < checks.length; i++) ids.push(checks[i].value);
+    var hidden = document.getElementById("upd_grupos_hidden");
+    var badge = document.getElementById("upd_grupos_count");
+    if (hidden) hidden.value = ids.join(",");
+    if (badge) badge.textContent = ids.length;
 }
 
 

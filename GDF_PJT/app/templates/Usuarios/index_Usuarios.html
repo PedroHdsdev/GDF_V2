@@ -4,7 +4,8 @@
 {% block title %}Usuário{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="{% static 'css/style_usuarios.css' %}">
+<link rel="stylesheet" href="{% static 'css/Style_Usuarios.css' %}">
+<link rel="stylesheet" href="{% static 'css/Style_Admin.css' %}">
 {% endblock %}
 
 {% block titlepage %}Usuários{% endblock %}
@@ -32,16 +33,11 @@
       <div class="layout-card-head">
         <div>
           <h2 class="layout-card-title">Lista de usuários</h2>
-          <p class="layout-card-subtitle">Pesquise e abra um registro para editar.</p>
+          <p class="layout-card-subtitle">Clique em uma linha para editar. Use a busca para filtrar por nome, e-mail ou cliente.</p>
         </div>
         <form method="get" action="{% url 'Dm_Usuarios' %}" class="layout-search d-flex gap-2">
-          <input
-            type="text"
-            name="Buscar"
-            class="form-control"
-            placeholder="Pesquisar..."
-            value="{{ query }}">
-          <button class="btn btn-primary" type="submit" style="display: none;">Buscar</button>
+          <input type="text" name="Buscar" class="form-control" placeholder="Buscar por nome, e-mail ou cliente..." value="{{ query }}">
+          <button class="btn btn-primary" type="submit"><i class="fas fa-search me-1"></i> Buscar</button>
         </form>
       </div>
 
@@ -50,7 +46,7 @@
           <thead>
             <tr>
               <th>ID</th>
-              <th>Aglomerado</th>
+              <th>Cliente</th>
               <th class="text-center">Status</th>
               <th>Usuário</th>
               <th>E-mail</th>
@@ -77,8 +73,10 @@
             </tr>
             {% empty %}
             <tr>
-              <td colspan="7" class="text-center py-3">
-                Nenhum usuário cadastrado
+              <td colspan="7" class="text-center py-5 admin-empty-state">
+                <i class="fas fa-users fa-2x text-muted mb-2 d-block"></i>
+                <p class="mb-0 text-muted">Nenhum usuário cadastrado para este cliente.</p>
+                <p class="small text-muted mt-1">Clique em <strong>Cadastrar usuário</strong> para começar.</p>
               </td>
             </tr>
             {% endfor %}

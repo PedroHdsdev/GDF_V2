@@ -1,63 +1,31 @@
 {% load static %}
-<div class="modal fade" id="modalClienteUpd" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+<div class="modal fade admin-modal" id="modalClienteUpd" tabindex="-1" aria-labelledby="modalClienteUpdLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
 
       <div class="modal-header">
-        <h5 class="modal-title">Editar Cliente</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <h5 class="modal-title" id="modalClienteUpdLabel">
+          <span class="modal-title-icon"><i class="fas fa-handshake"></i></span>
+          Editar Cliente
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
       </div>
 
       <div class="modal-body">
+        <div id="modalClienteUpdAlerts" class="admin-modal-alerts"></div>
 
-        <!-- CONTAINER DE MENSAGENS DO MODAL -->
-        <div id="modalClienteUpdAlerts"></div>
-
-        <!-- NAV TABS -->
-        <ul class="nav nav-tabs mb-3" id="clienteTabs" role="tablist">
+        <ul class="nav nav-tabs" id="clienteTabs" role="tablist">
           <li class="nav-item">
-            <button
-              type="button"
-              class="nav-link active"
-              id="tab-cliente-btn"
-              data-bs-toggle="tab"
-              data-bs-target="#tab-cliente"
-              role="tab">
-              Dados do Cliente
-            </button>
+            <button type="button" class="nav-link active" id="tab-cliente-btn" data-bs-toggle="tab" data-bs-target="#tab-cliente" role="tab"><i class="fas fa-user"></i> Dados</button>
           </li>
           <li class="nav-item">
-            <button
-              type="button"
-              class="nav-link"
-              id="tab-acesso-btn"
-              data-bs-toggle="tab"
-              data-bs-target="#tab-acesso"
-              role="tab">
-              Direitos de Acesso
-            </button>
+            <button type="button" class="nav-link" id="tab-acesso-btn" data-bs-toggle="tab" data-bs-target="#tab-acesso" role="tab"><i class="fas fa-key"></i> Acesso</button>
           </li>
           <li class="nav-item">
-            <button
-              type="button"
-              class="nav-link"
-              id="tab-grupos-btn"
-              data-bs-toggle="tab"
-              data-bs-target="#tab-grupos"
-              role="tab">
-              Grupo de usuários
-            </button>
+            <button type="button" class="nav-link" id="tab-grupos-btn" data-bs-toggle="tab" data-bs-target="#tab-grupos" role="tab"><i class="fas fa-users"></i> Grupos</button>
           </li>
           <li class="nav-item">
-            <button
-              type="button"
-              class="nav-link"
-              id="tab-sap-btn"
-              data-bs-toggle="tab"
-              data-bs-target="#tab-sap"
-              role="tab">
-              Conexão SAP
-            </button>
+            <button type="button" class="nav-link" id="tab-sap-btn" data-bs-toggle="tab" data-bs-target="#tab-sap" role="tab"><i class="fas fa-plug"></i> Conexão SAP</button>
           </li>
         </ul>
 
@@ -75,7 +43,7 @@
 
           <!-- TAB 1: DADOS DO CLIENTE -->
           <div class="tab-pane fade show active" id="tab-cliente" role="tabpanel">
-            <form method="post" id="formClienteUpd" action="/cliente/" onsubmit="fn_validar_formulario_upd(event)">
+            <form method="post" id="formClienteUpd" action="{{ url_prefix|default:'' }}{% url 'Cliente_upd' cod_cliente='__ID__' %}" onsubmit="fn_validar_formulario_upd(event)">
               {% csrf_token %}
               <input type="hidden" id="upd_cliente_id" name="upd_cliente_id" value="">
               <div class="row g-3">
@@ -140,7 +108,7 @@
 
           <!-- TAB 2: DIREITOS DE ACESSO -->
           <div class="tab-pane fade" id="tab-acesso" role="tabpanel">
-            <form method="post" id="formAcessoUpd" action="/cliente/Acesso/">
+            <form method="post" id="formAcessoUpd" action="{{ url_prefix|default:'' }}{% url 'Cliente_acesso_upd' %}">
               {% csrf_token %}
               <input type="hidden" id="Acesso_cliente_id" name="Acesso_cliente_id" value="">
               <div class="mb-3">
@@ -187,7 +155,7 @@
 
           <!-- TAB 3: GRUPO DE USUÁRIOS -->
           <div class="tab-pane fade" id="tab-grupos" role="tabpanel">
-            <form method="post" id="formGruposUpd" action="/cliente/Grupos/">
+            <form method="post" id="formGruposUpd" action="{{ url_prefix|default:'' }}{% url 'Cliente_grupos_upd' %}">
               {% csrf_token %}
               <input type="hidden" id="Grupos_cliente_id" name="Grupos_cliente_id" value="">
               <div class="mb-3">

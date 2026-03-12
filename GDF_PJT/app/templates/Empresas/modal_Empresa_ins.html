@@ -1,29 +1,37 @@
-<div class="modal fade" id="modalEmpresaIns" tabindex="-1">
+<div class="modal fade admin-modal" id="modalEmpresaIns" tabindex="-1" aria-labelledby="modalEmpresaInsLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
 
-      <form method="post" action="{% url 'Empresa_ins' %}" onsubmit="fn_validar_formulario_ins(event)">
+      <form method="post" action="{{ url_prefix|default:'' }}{% url 'Empresa_ins' %}" onsubmit="fn_validar_formulario_ins(event)">
         {% csrf_token %}
 
         <div class="modal-header">
-          <h5 class="modal-title">Cadastrar Empresa</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          <h5 class="modal-title" id="modalEmpresaInsLabel">
+            <span class="modal-title-icon"><i class="fas fa-building"></i></span>
+            Cadastrar Empresa
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
 
-        <div class="modal-body modal-body-scroll">
-          <div id="modalEmpresaInsAlerts"></div>
+        <div class="modal-body">
+          <div id="modalEmpresaInsAlerts" class="admin-modal-alerts"></div>
+          <p class="admin-step-hint text-muted small mb-3">
+            <i class="fas fa-info-circle me-1"></i> Preencha os dados obrigatórios (código, CNPJ, razão e nome fantasia). Certificado pode ser enviado depois.
+          </p>
+
+          {% if is_superuser and lista_clientes %}
+          <div class="admin-modal-cliente-wrap">
+            <label for="ins_cod_cliente" class="form-label">* Cliente</label>
+            <select id="ins_cod_cliente" name="m_cod_cliente" class="form-select" required>
+              <option value="">-- Selecione o cliente --</option>
+              {% for c in lista_clientes %}
+              <option value="{{ c.cod_cliente }}" {% if cod_cliente == c.cod_cliente %}selected{% endif %}>{{ c.cod_cliente }} – {{ c.razao|default:"" }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endif %}
+
           <div class="row g-3">
-            {% if is_superuser and lista_clientes %}
-            <div class="col-12">
-              <label for="ins_cod_cliente" class="form-label">* Cliente</label>
-              <select id="ins_cod_cliente" name="m_cod_cliente" class="form-select" required>
-                <option value="">-- Selecione o cliente --</option>
-                {% for c in lista_clientes %}
-                <option value="{{ c.cod_cliente }}" {% if cod_cliente == c.cod_cliente %}selected{% endif %}>{{ c.cod_cliente }} – {{ c.razao|default:"" }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            {% endif %}
             <div class="col-md-6">
               <label for="ins_codempresa" class="form-label">* Código da Empresa</label>
               <input
@@ -81,9 +89,8 @@
               </div>
             </div>
 
-            <!-- Opcionais -->
-            <div class="col-12 mt-3">
-              <h6 class="fw-bold text-secondary mb-2">Dados opcionais</h6>
+            <div class="col-12 admin-form-section">
+              <div class="admin-form-section-title">Dados opcionais</div>
             </div>
 
             <div class="col-md-4">
@@ -174,7 +181,7 @@
 
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-success">Cadastrar</button>
+          <button type="submit" class="btn btn-success"><i class="fas fa-check me-1"></i> Cadastrar</button>
         </div>
 
       </form>

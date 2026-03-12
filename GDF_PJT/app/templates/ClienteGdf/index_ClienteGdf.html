@@ -5,6 +5,7 @@
 
 {% block styles %}
 <link rel="stylesheet" href="{% static 'css/Style_Clientes.css' %}">
+<link rel="stylesheet" href="{% static 'css/Style_Admin.css' %}">
 {% endblock %}
 
 {% block titlepage %}Clientes{% endblock %}
@@ -32,16 +33,16 @@
       <div class="layout-card-head">
         <div>
           <h2 class="layout-card-title">Lista de clientes</h2>
-          <p class="layout-card-subtitle">Acompanhe cadastros e acesso rapido.</p>
+          <p class="layout-card-subtitle">Clique em uma linha para editar. Use a busca para filtrar por código, razão ou CNPJ.</p>
         </div>
         <form method="get" action="{% url 'Dm_Clientes' %}" class="layout-search d-flex gap-2">
           <input
             type="text"
             name="Buscar"
             class="form-control"
-            placeholder="Pesquisar..."
+            placeholder="Buscar por código, razão ou CNPJ..."
             value="{{ query }}">
-          <button class="btn btn-primary" type="submit" style="display: none;">Buscar</button>
+          <button class="btn btn-primary" type="submit"><i class="fas fa-search me-1"></i> Buscar</button>
         </form>
       </div>
 
@@ -72,8 +73,11 @@
               <td>{{ clie.date_joined|date:"d/m/Y" }}</td>
             </tr>
             {% empty %}
-            <tr>
-              <td colspan="5" class="text-center text-muted">Nenhum cliente cadastrado.</td>
+            <tr class="admin-empty-state">
+              <td colspan="5" class="text-center py-4">
+                <span class="d-block">Nenhum cliente cadastrado.</span>
+                <span class="admin-empty-cta d-block">Clique em <strong>Cadastrar cliente</strong> para começar.</span>
+              </td>
             </tr>
             {% endfor %}
           </tbody>

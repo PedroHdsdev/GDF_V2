@@ -1,148 +1,95 @@
-<div class="modal fade" id="modalUsuarioIns" tabindex="-1">
+<div class="modal fade admin-modal" id="modalUsuarioIns" tabindex="-1" aria-labelledby="modalUsuarioInsLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
 
-      <form method="post" action="{% url 'Usuario_ins' %}" onsubmit="fn_validar_formulario_ins(event)">
+      <form method="post" action="{{ url_prefix|default:'' }}{% url 'Usuario_ins' %}" onsubmit="fn_validar_formulario_ins(event)">
         {% csrf_token %}
 
         <div class="modal-header">
-          <h5 class="modal-title">Cadastrar Usuário</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          <h5 class="modal-title" id="modalUsuarioInsLabel">
+            <span class="modal-title-icon"><i class="fas fa-user-plus"></i></span>
+            Cadastrar Usuário
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
 
         <div class="modal-body">
-          <div id="modalUsuarioInsAlerts"></div>
-          <!-- NAV TABS -->
-          <ul class="nav nav-tabs mb-3" role="tablist">
+          <div id="modalUsuarioInsAlerts" class="admin-modal-alerts"></div>
+
+          <p class="admin-step-hint text-muted small mb-3">
+            <i class="fas fa-info-circle me-1"></i> 1. Preencha os dados → 2. Adicione ao menos uma empresa → 3. Adicione ao menos um grupo
+          </p>
+
+          {% if is_superuser and lista_clientes %}
+          <div class="admin-modal-cliente-wrap">
+            <label for="ins_cod_cliente" class="form-label">* Cliente</label>
+            <select id="ins_cod_cliente" name="m_cod_cliente" class="form-select" required>
+              <option value="">-- Selecione o cliente --</option>
+              {% for c in lista_clientes %}
+              <option value="{{ c.cod_cliente }}" {% if cod_cliente == c.cod_cliente %}selected{% endif %}>{{ c.cod_cliente }} – {{ c.razao|default:"" }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endif %}
+
+          <ul class="nav nav-tabs" role="tablist">
             <li class="nav-item">
-              <button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-ins-dados">
-                Dados do Usuário
-              </button>
+              <button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-ins-dados" role="tab"><i class="fas fa-user"></i> Dados</button>
             </li>
             <li class="nav-item">
-              <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ins-empresas">
-                Empresas
-              </button>
+              <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ins-empresas" role="tab"><i class="fas fa-building"></i> Empresas <span class="badge bg-secondary ms-1" id="ins_empresas_count">0</span></button>
             </li>
             <li class="nav-item">
-              <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ins-grupos">
-                Grupos
-              </button>
+              <button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ins-grupos" role="tab"><i class="fas fa-users"></i> Grupos <span class="badge bg-secondary ms-1" id="ins_grupos_count">0</span></button>
             </li>
           </ul>
 
           <div class="tab-content">
-            {% if is_superuser and lista_clientes %}
-            <div class="row g-3 mb-3">
-              <div class="col-12">
-                <label for="ins_cod_cliente" class="form-label">* Cliente</label>
-                <select id="ins_cod_cliente" name="m_cod_cliente" class="form-select" required>
-                  <option value="">-- Selecione o cliente --</option>
-                  {% for c in lista_clientes %}
-                  <option value="{{ c.cod_cliente }}" {% if cod_cliente == c.cod_cliente %}selected{% endif %}>{{ c.cod_cliente }} – {{ c.razao|default:"" }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-            </div>
-            {% endif %}
-            <!-- TAB 1: DADOS -->
-            <div class="tab-pane fade show active" id="tab-ins-dados">
+            <div class="tab-pane fade show active" id="tab-ins-dados" role="tabpanel">
               <div class="row g-3">
                 <div class="col-md-6">
-                  <label class="form-label">Usuário</label>
-                  <input type="text" name="username" class="form-control" required>
+                  <label class="form-label">* Usuário (login)</label>
+                  <input type="text" name="username" class="form-control" placeholder="Ex: joao.silva" required autocomplete="username">
                 </div>
 
                 <div class="col-md-6">
-                  <label class="form-label">E-mail</label>
-                  <input type="email" name="email" class="form-control" required>
+                  <label class="form-label">* E-mail</label>
+                  <input type="email" name="email" class="form-control" placeholder="Ex: joao@empresa.com" required>
                 </div>
 
                 <div class="col-md-6">
                   <label class="form-label">Nome</label>
-                  <input type="text" name="first_name" class="form-control">
+                  <input type="text" name="first_name" class="form-control" placeholder="Nome">
                 </div>
 
                 <div class="col-md-6">
                   <label class="form-label">Sobrenome</label>
-                  <input type="text" name="last_name" class="form-control">
-                </div>
-                
-                <div class="col-md-6">
-                  <label class="form-label">Senha</label>
-                  <input type="password" name="password" class="form-control" required>
+                  <input type="text" name="last_name" class="form-control" placeholder="Sobrenome">
                 </div>
 
                 <div class="col-md-6">
-                  <label class="form-label">Confirma Senha</label>
-                  <input type="password" name="password_confirm" class="form-control" required>
+                  <label class="form-label">* Senha</label>
+                  <input type="password" name="password" class="form-control" placeholder="Mínimo 6 caracteres" required minlength="6" autocomplete="new-password">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">* Confirmar senha</label>
+                  <input type="password" name="password_confirm" class="form-control" placeholder="Repita a senha" required minlength="6" autocomplete="new-password">
                 </div>
               </div>
             </div>
 
-            <!-- TAB 2: EMPRESAS -->
-            <div class="tab-pane fade" id="tab-ins-empresas">
-              <div class="mb-3">
-                <label class="form-label">Selecionar Empresa</label>
-                <div class="input-group">
-                  <select id="ins_empresas_select" class="form-select">
-                    <option value="">-- Selecione uma empresa --</option>
-                  </select>
-                  <button type="button" class="btn btn-success" onclick="fn_adicionar_empresa_ins()">
-                    <i class="bi bi-plus-lg"></i> Adicionar
-                  </button>
-                </div>
-              </div>
-              
-              <!-- Tabela de Empresas Selecionadas -->
-              <div class="table-responsive">
-                <table class="table table-sm table-bordered">
-                  <thead class="table-light">
-                    <tr>
-                      <th>Empresa</th>
-                      <th class="text-center" style="width: 80px;">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody id="ins_empresas_tbody">
-                    <!-- Preenchido por JavaScript -->
-                  </tbody>
-                </table>
-              </div>
-              
-              <!-- Hidden input para enviar valores ao servidor -->
+            <div class="tab-pane fade" id="tab-ins-empresas" role="tabpanel">
+              <p class="text-muted small mb-3">Marque uma ou mais empresas do cliente para vincular ao usuário. <strong>Obrigatório ao menos uma.</strong></p>
+              <div id="ins_empresas_list" class="admin-checkbox-list" role="group" aria-label="Empresas"></div>
+              <p id="ins_empresas_empty" class="text-muted small mb-0 d-none">Nenhuma empresa disponível para este cliente. Selecione outro cliente ou cadastre empresas.</p>
               <input type="hidden" name="ls_empresas" id="ins_empresas_hidden" value="">
             </div>
 
-            <!-- TAB 3: GRUPOS -->
-            <div class="tab-pane fade" id="tab-ins-grupos">
-              <div class="mb-3">
-                <label class="form-label">Selecionar Grupo</label>
-                <div class="input-group">
-                  <select id="ins_grupos_select" class="form-select">
-                    <option value="">-- Selecione um grupo --</option>
-                  </select>
-                  <button type="button" class="btn btn-success" onclick="fn_adicionar_grupo_ins()">
-                    <i class="bi bi-plus-lg"></i> Adicionar
-                  </button>
-                </div>
-              </div>
-
-              <!-- Tabela de Grupos Selecionados -->
-              <div class="table-responsive">
-                <table class="table table-sm table-bordered">
-                  <thead class="table-light">
-                    <tr>
-                      <th>Grupo</th>
-                      <th class="text-center" style="width: 80px;">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody id="ins_grupos_tbody">
-                    <!-- Preenchido por JavaScript -->
-                  </tbody>
-                </table>
-              </div>
-
-              <!-- Hidden input para enviar valores ao servidor -->
+            <div class="tab-pane fade" id="tab-ins-grupos" role="tabpanel">
+              <p class="text-muted small mb-3">Marque um ou mais grupos de permissão. <strong>Obrigatório ao menos um.</strong></p>
+              <div id="ins_grupos_list" class="admin-checkbox-list" role="group" aria-label="Grupos"></div>
+              <p id="ins_grupos_empty" class="text-muted small mb-0 d-none">Nenhum grupo disponível. Entre em contato com o administrador.</p>
               <input type="hidden" name="ls_grupos" id="ins_grupos_hidden" value="">
             </div>
 
@@ -151,7 +98,7 @@
 
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-success">Salvar</button>
+          <button type="submit" class="btn btn-success"><i class="fas fa-check me-1"></i> Cadastrar</button>
         </div>
 
       </form>

@@ -546,7 +546,8 @@ class ClGdf:
                         "emissor": l_v_cert.proprietario,
                         "cpf_cnpj": l_v_cert.cpf_cnpj,
                         "cert_file": bool(l_v_cert.arquivo_cert),
-                        "status": ClGdf.calcular_status_certificado(l_v_cert.fim_validade)
+                        "status": ClGdf.calcular_status_certificado(l_v_cert.fim_validade),
+                        "tem_senha": bool(l_v_cert.senha_certificado),
                     }
 
                 lsl_dados_empresas.append({
@@ -786,7 +787,7 @@ class ClGdf:
 
 #--------------------------------------------------------------------------------
     """Atualizar certificado digital"""
-    def upd_certificado(self, i_v_arquivo_cert=None, i_v_cod_empresa=None, i_v_emissor="", i_v_cpf_cnpj="", i_v_ini_validade="", i_v_fim_validade=""):
+    def upd_certificado(self, i_v_arquivo_cert=None, i_v_cod_empresa=None, i_v_emissor="", i_v_cpf_cnpj="", i_v_ini_validade="", i_v_fim_validade="", i_v_senha_certificado=None):
         
         try:
 
@@ -846,6 +847,10 @@ class ClGdf:
                     print(f"[OK] Data fim convertida: {dt_fim}")
                 except Exception as e:
                     print(f"[WARN] Data fim inválida: {i_v_fim_validade} - {str(e)}")
+            
+            # ✅ Senha do certificado (só atualiza se informada; não expor em logs)
+            if i_v_senha_certificado is not None:
+                l_v_defaults['senha_certificado'] = i_v_senha_certificado if i_v_senha_certificado else None
             
             # ✅ Atualizar APENAS o certificado existente da empresa
             certificado = empresa.cert
@@ -1041,22 +1046,23 @@ class ClGdf:
             if not i_v_cod_cliente:
                 raise ValueError("Cliente não identificado")
             
-            # ✅ Converter strings em listas se necessário
+            # ✅ Converter strings em listas se necessário (cod_empresa é CharField; manter string)
             if isinstance(i_lsl_empresas_ids, str):
-                i_lsl_empresas_ids = [int(e) for e in i_lsl_empresas_ids.split(',') if e.strip()]
-            
+                i_lsl_empresas_ids = [e.strip() for e in i_lsl_empresas_ids.split(',') if e.strip()]
+            i_lsl_empresas_ids = list(dict.fromkeys(i_lsl_empresas_ids))  # sem duplicatas
+
             if isinstance(i_lsl_grupos_ids, str):
-                i_lsl_grupos_ids = [int(g) for g in i_lsl_grupos_ids.split(',') if g.strip()]
-            
+                i_lsl_grupos_ids = [int(g.strip()) for g in i_lsl_grupos_ids.split(',') if g.strip()]
+
             if not i_lsl_empresas_ids or not i_lsl_grupos_ids:
                 raise ValueError("Nenhuma empresa ou grupo selecionado")
-            
+
             # ✅ Validar que todas as empresas pertencem ao cliente
             l_v_empresas_validas = Empresa.objects.filter(
                 cod_empresa__in=i_lsl_empresas_ids,
                 gdfcliente__cod_cliente=i_v_cod_cliente
             ).count()
-            
+
             if l_v_empresas_validas != len(i_lsl_empresas_ids):
                 raise ValueError("Uma ou mais empresas selecionadas não pertencem ao cliente")
             
@@ -1113,10 +1119,10 @@ class ClGdf:
         return self.Retorn
 
 #--------------------------------------------------------------------------------
-    """Atualiza usuário, suas empresas e grupos com transação atômica"""
-    def upd_usuario(self, i_v_user_id: int, i_v_first_name: str, i_v_last_name: str, i_v_email: str, 
-                    i_v_is_active: bool, i_lsl_empresa_ids: list[str], i_lsl_grupo_ids: list[int], 
-                    i_v_cod_cliente: str) -> dict:
+    """Atualiza usuário, suas empresas e grupos com transação atômica. i_v_new_password opcional."""
+    def upd_usuario(self, i_v_user_id: int, i_v_first_name: str, i_v_last_name: str, i_v_email: str,
+                    i_v_is_active: bool, i_lsl_empresa_ids: list[str], i_lsl_grupo_ids: list[int],
+                    i_v_cod_cliente: str, i_v_new_password: str = None) -> dict:
         self.Retorn = []
         try:
             # ✅ Validações
@@ -1157,13 +1163,19 @@ class ClGdf:
             with transaction.atomic():
                 # Buscar usuário
                 l_v_user = User.objects.select_for_update().get(id=i_v_user_id)
-                
+
                 # Atualizar campos
                 l_v_user.first_name = i_v_first_name
                 l_v_user.last_name = i_v_last_name
                 l_v_user.email = i_v_email
                 l_v_user.is_active = i_v_is_active
-                l_v_user.save(update_fields=['first_name', 'last_name', 'email', 'is_active'])
+
+                # Alterar senha se informada
+                if i_v_new_password:
+                    l_v_user.set_password(i_v_new_password)
+                    l_v_user.save()
+                else:
+                    l_v_user.save(update_fields=['first_name', 'last_name', 'email', 'is_active'])
                 
                 # Atualizar empresas (substituir todas)
                 UsuarioEmpresa.objects.filter(user=l_v_user).delete()

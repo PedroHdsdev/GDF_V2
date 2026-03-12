@@ -5,6 +5,7 @@
 
 {% block styles %}
 <link rel="stylesheet" href="{% static 'css/Style_Empresas.css' %}">
+<link rel="stylesheet" href="{% static 'css/Style_Admin.css' %}">
 {% endblock %}
 
 {% block titlepage %}Empresas{% endblock %}
@@ -32,14 +33,14 @@
       <div class="layout-card-head">
         <div>
           <h2 class="layout-card-title">Lista de empresas</h2>
-          <p class="layout-card-subtitle">Busque por razao, CNPJ ou codigo.</p>
+          <p class="layout-card-subtitle">Clique em uma linha para editar. Use a busca para filtrar por razão, CNPJ ou código.</p>
         </div>
         <div class="layout-search">
           <input
             type="text"
             id="searchBox"
             class="form-control"
-            placeholder="Pesquisar empresa, CNPJ ou código...">
+            placeholder="Buscar por razão, CNPJ ou código...">
         </div>
       </div>
 
@@ -50,6 +51,7 @@
               <th class="text-center">Status</th>
               <th>Código</th>
               <th class="text-center">Certificado</th>
+              <th class="text-center">Senha</th>
               <th>Empresa</th>
               <th>CNPJ</th>
               <th>Validade Cert.</th>
@@ -77,6 +79,13 @@
                   <img src="{% static 'img/icon_x.png' %}" alt="Sem certificado" width="20" height="20">
                 {% endif %}
               </td>
+              <td class="text-center text-muted">
+                {% if emp.cert_emp and emp.cert_emp.tem_senha %}
+                  ••••••
+                {% else %}
+                  —
+                {% endif %}
+              </td>
               <td>{{ emp.razao }}</td>
               <td>{{ emp.cnpj }}</td>
               <td>
@@ -87,8 +96,11 @@
                 {% endif %}
               </td>
             {% empty %}
-            <tr>
-              <td colspan="6" class="text-center text-muted">Nenhuma empresa cadastrada.</td>
+            <tr class="admin-empty-state">
+              <td colspan="7" class="text-center py-4">
+                <span class="d-block">Nenhuma empresa cadastrada.</span>
+                <span class="admin-empty-cta d-block">Clique em <strong>Cadastrar empresa</strong> para começar.</span>
+              </td>
             </tr>
             {% endfor %}
           </tbody>

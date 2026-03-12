@@ -5,6 +5,7 @@
 
 {% block styles %}
 <link rel="stylesheet" href="{% static 'css/Style_Empresas.css' %}">
+<link rel="stylesheet" href="{% static 'css/Style_Admin.css' %}">
 {% endblock %}
 
 {% block titlepage %}Filiais{% endblock %}
@@ -15,6 +16,7 @@
     <div class="layout-hero-content">
       <p class="layout-eyebrow">Cadastros</p>
       <h1 class="layout-title">Filiais</h1>
+      <p class="layout-subtitle">Filiais das empresas do cliente. Clique em uma linha para editar (se disponível).</p>
     </div>
     <div class="layout-hero-actions">
       <button
@@ -33,14 +35,14 @@
       <div class="layout-card-head">
         <div>
           <h2 class="layout-card-title">Lista de filiais</h2>
-          <p class="layout-card-subtitle">Filtradas pelo cliente da sessão. Busque por empresa, código ou nome da filial.</p>
+          <p class="layout-card-subtitle">Clique em uma linha para editar. Use a busca para filtrar por empresa, código ou nome da filial.</p>
         </div>
         <div class="layout-search">
           <input
             type="text"
             id="searchBox"
             class="form-control"
-            placeholder="Pesquisar empresa, filial, CNPJ...">
+            placeholder="Buscar por empresa, código ou nome da filial...">
         </div>
       </div>
 
@@ -75,8 +77,11 @@
               </td>
             </tr>
             {% empty %}
-            <tr>
-              <td colspan="5" class="text-center text-muted">Nenhuma filial cadastrada. Use o botão &quot;Cadastrar filial&quot; para incluir.</td>
+            <tr class="admin-empty-state">
+              <td colspan="5" class="text-center py-4">
+                <span class="d-block">Nenhuma filial cadastrada.</span>
+                <span class="admin-empty-cta d-block">Clique em <strong>Cadastrar filial</strong> para começar.</span>
+              </td>
             </tr>
             {% endfor %}
           </tbody>

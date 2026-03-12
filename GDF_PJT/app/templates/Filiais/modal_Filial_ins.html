@@ -1,17 +1,23 @@
-<div class="modal fade" id="modalFilialIns" tabindex="-1">
+<div class="modal fade admin-modal" id="modalFilialIns" tabindex="-1" aria-labelledby="modalFilialInsLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
 
-      <form method="post" action="{% url 'Filial_ins' %}" id="formFilialIns" onsubmit="return fn_validar_formulario_filial_ins(event)">
+      <form method="post" action="{{ url_prefix|default:'' }}{% url 'Filial_ins' %}" id="formFilialIns" onsubmit="return fn_validar_formulario_filial_ins(event)">
         {% csrf_token %}
 
         <div class="modal-header">
-          <h5 class="modal-title">Cadastrar Filial</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          <h5 class="modal-title" id="modalFilialInsLabel">
+            <span class="modal-title-icon"><i class="fas fa-sitemap"></i></span>
+            Cadastrar Filial
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
 
         <div class="modal-body">
-          <div id="modalFilialInsAlerts"></div>
+          <div id="modalFilialInsAlerts" class="admin-modal-alerts"></div>
+          <p class="admin-step-hint text-muted small mb-3">
+            <i class="fas fa-info-circle me-1"></i> Selecione a empresa e informe o código da filial. Nome e CNPJ são opcionais.
+          </p>
           <div class="row g-3">
             <div class="col-12">
               <label for="ins_filial_empresa" class="form-label">* Empresa</label>
@@ -70,7 +76,7 @@
 
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Cadastrar</button>
+          <button type="submit" class="btn btn-primary"><i class="fas fa-check me-1"></i> Cadastrar</button>
         </div>
       </form>
     </div>

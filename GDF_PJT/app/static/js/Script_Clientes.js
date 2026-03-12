@@ -300,15 +300,8 @@ function fn_init_cliente_upd() {
     }
 
     document.addEventListener("click", async (e) => {
-        console.log("🖱️ Clique geral detectado:", e.target);
-        
         const row = e.target.closest(".cliente-row");
-        if (!row) {
-            console.log("❌ Não é uma linha de cliente");
-            return;
-        }
-        
-        console.log("✅ Linha de cliente encontrada:", row);
+        if (!row) return;
         
         // ✅ Ignorar cliques em elementos interativos (exceto imagens)
         if (e.target.closest("a, button, input, label, .btn")) {
@@ -427,8 +420,11 @@ function fn_preencher_formulario(data) {
   var prefix = (typeof getUrlPrefix === 'function') ? getUrlPrefix() : '';
   var urlClienteUpd = (window.APP_URLS && window.APP_URLS.clienteUpd) ? window.APP_URLS.clienteUpd.replace('__ID__', encodeURIComponent(data.cod_cliente || '')) : (prefix || '') + '/cliente/' + (data.cod_cliente || '') + '/';
   var urlAcesso = (window.APP_URLS && window.APP_URLS.clienteAcesso) ? window.APP_URLS.clienteAcesso : (prefix || '') + '/cliente/Acesso/';
+  var urlGrupos = (window.APP_URLS && window.APP_URLS.clienteGrupos) ? window.APP_URLS.clienteGrupos : (prefix || '') + '/cliente/Grupos/';
   document.getElementById('formClienteUpd').action = urlClienteUpd;
   document.getElementById('formAcessoUpd').action = urlAcesso;
+  var formGruposEl = document.getElementById('formGruposUpd');
+  if (formGruposEl) formGruposEl.action = urlGrupos;
   
   // Dados do cliente
   document.getElementById('upd_cliente_id').value = data.cod_cliente || '';

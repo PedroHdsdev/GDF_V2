@@ -1,21 +1,26 @@
-<div class="modal fade" id="modalClienteIns" tabindex="-1">
+<div class="modal fade admin-modal" id="modalClienteIns" tabindex="-1" aria-labelledby="modalClienteInsLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
 
-      <form method="post" action="{% url 'Cliente_ins' %}" onsubmit="fn_validar_formulario_ins(event)">
+      <form method="post" action="{{ url_prefix|default:'' }}{% url 'Cliente_ins' %}" onsubmit="fn_validar_formulario_ins(event)">
         {% csrf_token %}
 
         <div class="modal-header">
-          <h5 class="modal-title">Cadastrar Cliente</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          <h5 class="modal-title" id="modalClienteInsLabel">
+            <span class="modal-title-icon"><i class="fas fa-handshake"></i></span>
+            Cadastrar Cliente
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
 
         <div class="modal-body">
-          <div id="modalClienteInsAlerts"></div>
+          <div id="modalClienteInsAlerts" class="admin-modal-alerts"></div>
+          <p class="admin-step-hint text-muted small mb-3">
+            <i class="fas fa-info-circle me-1"></i> Preencha código, CNPJ e razão social para cadastrar o cliente.
+          </p>
           <div class="row g-3">
-            
             <div class="col-md-6">
-              <label for="ins_codigo" class="form-label">Código do Cliente</label>
+              <label for="ins_codigo" class="form-label">* Código do Cliente</label>
               <input
                 type="text"
                 id="ins_codigo"
@@ -26,7 +31,7 @@
             </div>
 
             <div class="col-md-6">
-              <label for="ins_cnpj" class="form-label">CNPJ</label>
+              <label for="ins_cnpj" class="form-label">* CNPJ</label>
               <input
                 type="text"
                 id="ins_cnpj"
@@ -37,7 +42,7 @@
             </div>
 
             <div class="col-md-12">
-              <label for="ins_razao" class="form-label">Razão Social</label>
+              <label for="ins_razao" class="form-label">* Razão Social</label>
               <input
                 type="text"
                 id="ins_razao"
@@ -65,7 +70,7 @@
 
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-success">Cadastrar</button>
+          <button type="submit" class="btn btn-success"><i class="fas fa-check me-1"></i> Cadastrar</button>
         </div>
 
       </form>

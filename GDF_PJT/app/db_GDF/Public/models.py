@@ -20,6 +20,7 @@ class CertificadoDigital(models.Model):
     proprietario = models.CharField(max_length=100, blank=True, null=True)
     cpf_cnpj = models.CharField(max_length=14, blank=True, null=True)
     arquivo_cert = models.BinaryField(blank=True, null=True)
+    senha_certificado = models.CharField(max_length=255, blank=True, null=True)
 
     class Meta:
         managed = True
