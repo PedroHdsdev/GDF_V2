@@ -25,6 +25,7 @@ from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 from app.classes.CargaSped import CargaSped
 from app.classes.CargaXml import CargaXml
@@ -90,6 +91,7 @@ from app.db_GDF.reprocessamento.models import (
 )
 from app.security.decorators import validate_idor_empresa, validate_idor_usuario, validate_session_required
 from app.security.validators import InputValidator
+from app.security_logger import SecurityLogger
 from django.core.exceptions import ValidationError
 from app.utils.view_helpers import (
     COD_CLIENTE_PROJETO,
@@ -108,6 +110,7 @@ from app.utils.relatorio_params import (
     parse_date_safe,
 )
 
+@ensure_csrf_cookie
 def fn_view_login(request):
     if request.method == "POST":
         Username = request.POST.get('Username')
@@ -117,8 +120,10 @@ def fn_view_login(request):
         
         if user is not None:
             if not getattr(user, 'is_active', True):
+                SecurityLogger.log_login_attempt(request, False, reason='Usuário inativo')
                 return render(request, 'index_Login.html', {'error_message': 'Usuário inativo.'})
             login(request, user)
+            SecurityLogger.log_login_attempt(request, True)
             cl_gdf_instance = ClGdf()
             cl_gdf_instance.get_dados(request.user)
 
@@ -145,19 +150,45 @@ def fn_view_login(request):
                 # Primeira vez / sem cliente: superuser ou cliente PRCIT começam com cliente dono do projeto
                 if not cod_cliente and (getattr(user, 'is_superuser', False) or request.session.get('usuario_cliente_1000', False)):
                     cod_cliente = COD_CLIENTE_PROJETO
+                # Permitir login se tiver soluções OU se tiver ao menos cliente (empresas vinculadas), mesmo sem subsoluções nos grupos
                 if solucoes or getattr(user, 'is_superuser', False):
                     request.session['t_solucoes'] = solucoes or []
                     request.session['cod_cliente'] = cod_cliente
                     return redirect('Home')
-                return render(request, 'index_Login.html', {'error_message': 'Problema de Acesso.'})
+                if cod_cliente:
+                    # Usuário tem cliente/empresas mas grupos sem subsoluções liberadas: permite login com menu vazio
+                    request.session['t_solucoes'] = []
+                    request.session['cod_cliente'] = cod_cliente
+                    return redirect('Home')
+                SecurityLogger.log_login_attempt(request, False, reason='Problema de Acesso (sem empresa/subsoluções)')
+                return render(request, 'index_Login.html', {
+                    'error_message': 'Problema de Acesso. Vincule o usuário a ao menos uma empresa do cliente e configure subsoluções para os grupos no painel Admin (AcessoSubsolucaoGrupo).'
+                })
             # Redirecionamento sem solucoes (ex.: Retorn True): manter cliente dono do projeto (PRCIT) como padrão
             if not request.session.get('cod_cliente') and (getattr(user, 'is_superuser', False) or request.session.get('usuario_cliente_1000', False)):
                 request.session['cod_cliente'] = COD_CLIENTE_PROJETO
             return redirect('Home')
         else:
+            SecurityLogger.log_login_attempt(request, False, reason='Usuário ou senha inválidos')
             return render(request, 'index_Login.html', {'error_message': 'Usuário ou senha inválidos.'})
 
-    return render(request, 'index_Login.html')
+    # GET: exibir mensagem amigável se veio do redirecionamento por falha CSRF
+    context = {}
+    if request.GET.get('csrf_error'):
+        context['error_message'] = 'Token de segurança expirado. Recarregue a página e tente fazer login novamente.'
+    return render(request, 'index_Login.html', context)
+
+
+def fn_view_csrf_failure(request, reason=''):
+    """Redireciona para a tela de login com mensagem amigável quando o token CSRF falha (ex.: voltar após login)."""
+    from django.urls import reverse
+    login_url = reverse('Login')
+    if '?' in login_url:
+        login_url += '&csrf_error=1'
+    else:
+        login_url += '?csrf_error=1'
+    return redirect(login_url)
+
 
 def fn_view_obter_subsolucao(request, cod_sub): 
     if request.user.is_authenticated:
@@ -171,7 +202,7 @@ def fn_view_obter_subsolucao(request, cod_sub):
 
         return render(request, 'index_home.html')
 
-    return render(request, 'index_login.html')
+    return render(request, 'index_Login.html')
 
 @login_required(login_url='Login')
 def fn_view_home(request):

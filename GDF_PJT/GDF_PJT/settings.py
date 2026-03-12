@@ -221,11 +221,17 @@ SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=not DEBUG)
 SESSION_COOKIE_HTTPONLY = env.bool('SESSION_COOKIE_HTTPONLY', default=True)
 CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=not DEBUG)
 CSRF_COOKIE_SAMESITE = 'Lax'
+# Redireciona 403 CSRF para a tela de login com mensagem amigável (token expirado/voltar após login)
+CSRF_FAILURE_VIEW = 'app.views._views.fn_view_csrf_failure'
 SESSION_COOKIE_SAMESITE = 'Lax'
 
 # Upload de arquivos
 DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600
+
+# Criar diretório de logs antes de configurar handlers (evita falha ao abrir arquivo)
+_LOGS_DIR = os.path.join(BASE_DIR, 'logs')
+os.makedirs(_LOGS_DIR, exist_ok=True)
 
 # Logging - Security & Audit
 LOGGING = {
@@ -233,12 +239,15 @@ LOGGING = {
     'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'format': '[{asctime}] {levelname} {module} {message}',
             'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
         },
         'security': {
-            'format': '[{asctime}] {levelname} - User: {username} | IP: {ip} | Action: {action} | Details: {details}',
+            # Usa apenas campos padrão do LogRecord; a mensagem já traz user/IP etc. de security_logger
+            'format': '[{asctime}] {levelname} - {message}',
             'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
         },
         'gdf_request': {
             'format': '[{asctime}] {levelname} {message}',
@@ -250,7 +259,7 @@ LOGGING = {
         'gdf_file': {
             'level': 'DEBUG',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(BASE_DIR, 'logs', 'gdf.log'),
+            'filename': os.path.join(_LOGS_DIR, 'gdf.log'),
             'maxBytes': 1024 * 1024 * 10,
             'backupCount': 5,
             'formatter': 'gdf_request',
@@ -259,18 +268,20 @@ LOGGING = {
         'security_file': {
             'level': 'WARNING',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(BASE_DIR, 'logs', 'security.log'),
+            'filename': os.path.join(_LOGS_DIR, 'security.log'),
             'maxBytes': 1024 * 1024 * 10,  # 10 MB
             'backupCount': 5,
             'formatter': 'security',
+            'encoding': 'utf-8',
         },
         'audit_file': {
             'level': 'INFO',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(BASE_DIR, 'logs', 'audit.log'),
+            'filename': os.path.join(_LOGS_DIR, 'audit.log'),
             'maxBytes': 1024 * 1024 * 10,  # 10 MB
             'backupCount': 5,
             'formatter': 'verbose',
+            'encoding': 'utf-8',
         },
         'console': {
             'level': 'DEBUG',
@@ -301,10 +312,6 @@ LOGGING = {
         },
     },
 }
-
-# Criar diretório de logs se não existir
-import os
-os.makedirs(os.path.join(BASE_DIR, 'logs'), exist_ok=True)
 
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
