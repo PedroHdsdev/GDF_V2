@@ -2,7 +2,7 @@
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
 
-      <form method="post" action="{{ url_prefix|default:'' }}{% url 'Usuario_ins' %}" onsubmit="fn_validar_formulario_ins(event)">
+      <form method="post" action="{% if url_prefix %}{{ url_prefix }}/usuario/inserir/{% else %}/usuario/inserir/{% endif %}" onsubmit="fn_validar_formulario_ins(event)">
         {% csrf_token %}
 
         <div class="modal-header">

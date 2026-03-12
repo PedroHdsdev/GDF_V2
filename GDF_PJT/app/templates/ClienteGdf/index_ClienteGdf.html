@@ -35,7 +35,7 @@
           <h2 class="layout-card-title">Lista de clientes</h2>
           <p class="layout-card-subtitle">Clique em uma linha para editar. Use a busca para filtrar por código, razão ou CNPJ.</p>
         </div>
-        <form method="get" action="{% url 'Dm_Clientes' %}" class="layout-search d-flex gap-2">
+        <form method="get" action="{% if url_prefix %}{{ url_prefix }}/clientes/{% else %}/clientes/{% endif %}" class="layout-search d-flex gap-2">
           <input
             type="text"
             name="Buscar"
@@ -104,9 +104,10 @@
 {% block scripts %}
 <script>
   window.APP_URLS = window.APP_URLS || {};
-  window.APP_URLS.clienteUpd = "{% url 'Cliente_upd' cod_cliente='__ID__' %}";
-  window.APP_URLS.clienteAcesso = "{% url 'Cliente_acesso_upd' %}";
-  window.APP_URLS.clienteSap = "{% url 'Cliente_sap' cod_cliente='__ID__' %}";
+  window.APP_URLS.clienteUpd = "{% if url_prefix %}{{ url_prefix }}/cliente/__ID__/{% else %}/cliente/__ID__/{% endif %}";
+  window.APP_URLS.clienteAcesso = "{% if url_prefix %}{{ url_prefix }}/cliente/Acesso/{% else %}/cliente/Acesso/{% endif %}";
+  window.APP_URLS.clienteGrupos = "{% if url_prefix %}{{ url_prefix }}/cliente/Grupos/{% else %}/cliente/Grupos/{% endif %}";
+  window.APP_URLS.clienteSap = "{% if url_prefix %}{{ url_prefix }}/cliente/__ID__/sap/{% else %}/cliente/__ID__/sap/{% endif %}";
 </script>
 <script src="{% static 'js/Script_Clientes.js' %}"></script>
 {% endblock %}

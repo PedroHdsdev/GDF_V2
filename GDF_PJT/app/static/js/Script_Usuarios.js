@@ -52,9 +52,20 @@ function fn_validar_formulario_ins(event) {
     console.log("✅ Formulário validado com sucesso!");
     console.log("   Empresas:", empresas_hidden);
     console.log("   Grupos:", grupos_hidden);
-    
+
+    // Garantir action com prefixo (ex.: /gdf) para evitar 404 ao cadastrar
+    var form = event.target;
+    var prefix = (typeof getUrlPrefix === "function" ? getUrlPrefix() : "") || "";
+    var path = "/usuario/inserir/";
+    if (prefix) {
+      path = (prefix.charAt(prefix.length - 1) === "/" ? prefix : prefix + "/") + "usuario/inserir/";
+    } else {
+      path = "/usuario/inserir/";
+    }
+    form.action = path;
+
     // ✅ Se passou em todas validações, enviar formulário
-    event.target.submit();
+    form.submit();
 }
 
 /* ===============================

@@ -43,7 +43,7 @@
 
           <!-- TAB 1: DADOS DO CLIENTE -->
           <div class="tab-pane fade show active" id="tab-cliente" role="tabpanel">
-            <form method="post" id="formClienteUpd" action="{{ url_prefix|default:'' }}{% url 'Cliente_upd' cod_cliente='__ID__' %}" onsubmit="fn_validar_formulario_upd(event)">
+            <form method="post" id="formClienteUpd" action="{% if url_prefix %}{{ url_prefix }}/cliente/__ID__/{% else %}/cliente/__ID__/{% endif %}" onsubmit="fn_validar_formulario_upd(event)">
               {% csrf_token %}
               <input type="hidden" id="upd_cliente_id" name="upd_cliente_id" value="">
               <div class="row g-3">
@@ -108,7 +108,7 @@
 
           <!-- TAB 2: DIREITOS DE ACESSO -->
           <div class="tab-pane fade" id="tab-acesso" role="tabpanel">
-            <form method="post" id="formAcessoUpd" action="{{ url_prefix|default:'' }}{% url 'Cliente_acesso_upd' %}">
+            <form method="post" id="formAcessoUpd" action="{% if url_prefix %}{{ url_prefix }}/cliente/Acesso/{% else %}/cliente/Acesso/{% endif %}">
               {% csrf_token %}
               <input type="hidden" id="Acesso_cliente_id" name="Acesso_cliente_id" value="">
               <div class="mb-3">
@@ -155,7 +155,7 @@
 
           <!-- TAB 3: GRUPO DE USUÁRIOS -->
           <div class="tab-pane fade" id="tab-grupos" role="tabpanel">
-            <form method="post" id="formGruposUpd" action="{{ url_prefix|default:'' }}{% url 'Cliente_grupos_upd' %}">
+            <form method="post" id="formGruposUpd" action="{% if url_prefix %}{{ url_prefix }}/cliente/Grupos/{% else %}/cliente/Grupos/{% endif %}">
               {% csrf_token %}
               <input type="hidden" id="Grupos_cliente_id" name="Grupos_cliente_id" value="">
               <div class="mb-3">

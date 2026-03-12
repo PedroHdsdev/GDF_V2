@@ -45,7 +45,7 @@
           <h2>Bem-vindo</h2>
           <p>Use seu usuario e senha para continuar.</p>
         </div>
-        <form method="POST" action="{% url 'Login' %}" class="login-form" id="loginForm">
+        <form method="POST" action="{% if url_prefix %}{{ url_prefix }}/Login/{% else %}/Login/{% endif %}" class="login-form" id="loginForm">
           {% csrf_token %}
           <div class="mb-3">
             <label for="Username" class="form-label">Usuario</label>

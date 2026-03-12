@@ -127,8 +127,8 @@
 {% block scripts %}
 <script>
   window.APP_URLS = window.APP_URLS || {};
-  window.APP_URLS.empresaUpd = "{% url 'Empresa_upd' cod_empresa='__ID__' %}";
-  window.APP_URLS.empresaInserir = "{% url 'Empresa_ins' %}";
+  window.APP_URLS.empresaUpd = "{% if url_prefix %}{{ url_prefix }}/empresa/__ID__/{% else %}/empresa/__ID__/{% endif %}";
+  window.APP_URLS.empresaInserir = "{% if url_prefix %}{{ url_prefix }}/empresa/inserir/{% else %}/empresa/inserir/{% endif %}";
 </script>
 <script src="{% static 'js/Script_Empresas.js' %}"></script>
 {% endblock %}

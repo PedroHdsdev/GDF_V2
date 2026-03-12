@@ -199,7 +199,7 @@
 
           <!-- TAB 2: CERTIFICADO DIGITAL -->
           <div class="tab-pane fade" id="tab-certificado" role="tabpanel">
-            <form method="post" id="formCertUpd" action="{{ url_prefix|default:'' }}{% url 'Cert_upd' %}" enctype="multipart/form-data" onsubmit="fn_validar_certificado(event)">
+            <form method="post" id="formCertUpd" action="{% if url_prefix %}{{ url_prefix }}/empresa/Cert/{% else %}/empresa/Cert/{% endif %}" enctype="multipart/form-data" onsubmit="fn_validar_certificado(event)">
               {% csrf_token %}
               <input type="hidden" id="upd_cert_codempresa" name="m_codempresa">
 

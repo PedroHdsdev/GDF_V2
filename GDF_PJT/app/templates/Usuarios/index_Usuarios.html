@@ -35,7 +35,7 @@
           <h2 class="layout-card-title">Lista de usuários</h2>
           <p class="layout-card-subtitle">Clique em uma linha para editar. Use a busca para filtrar por nome, e-mail ou cliente.</p>
         </div>
-        <form method="get" action="{% url 'Dm_Usuarios' %}" class="layout-search d-flex gap-2">
+        <form method="get" action="{% if url_prefix %}{{ url_prefix }}/usuarios/{% else %}/usuarios/{% endif %}" class="layout-search d-flex gap-2">
           <input type="text" name="Buscar" class="form-control" placeholder="Buscar por nome, e-mail ou cliente..." value="{{ query }}">
           <button class="btn btn-primary" type="submit"><i class="fas fa-search me-1"></i> Buscar</button>
         </form>
@@ -102,8 +102,8 @@
 {% block scripts %}
 <script>
   window.APP_URLS = window.APP_URLS || {};
-  window.APP_URLS.usuarioUpd = "{% url 'Usuario_upd' user_id=999999 %}".replace('999999', '__ID__');
-  window.APP_URLS.usuarioInserir = "{% url 'Usuario_ins' %}";
+  window.APP_URLS.usuarioUpd = "{% if url_prefix %}{{ url_prefix }}/usuario/__ID__/{% else %}/usuario/__ID__/{% endif %}";
+  window.APP_URLS.usuarioInserir = "{% if url_prefix %}{{ url_prefix }}/usuario/inserir/{% else %}/usuario/inserir/{% endif %}";
 </script>
 <script src="{% static 'js/Script_Usuarios.js' %}"></script>
 {% endblock %}
