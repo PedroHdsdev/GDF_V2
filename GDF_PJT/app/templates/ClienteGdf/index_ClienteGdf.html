@@ -10,7 +10,7 @@
 {% block titlepage %}Clientes{% endblock %}
 
 {% block container %}
-<div class="layout-page">
+<div class="layout-page" data-url-prefix="{{ url_prefix|default:'' }}">
   <section class="layout-hero">
     <div class="layout-hero-content">
       <p class="layout-eyebrow">Cadastros</p>
@@ -101,6 +101,8 @@
 <script>
   window.APP_URLS = window.APP_URLS || {};
   window.APP_URLS.clienteUpd = "{% url 'Cliente_upd' cod_cliente='__ID__' %}";
+  window.APP_URLS.clienteAcesso = "{% url 'Cliente_acesso_upd' %}";
+  window.APP_URLS.clienteSap = "{% url 'Cliente_sap' cod_cliente='__ID__' %}";
 </script>
 <script src="{% static 'js/Script_Clientes.js' %}"></script>
 {% endblock %}

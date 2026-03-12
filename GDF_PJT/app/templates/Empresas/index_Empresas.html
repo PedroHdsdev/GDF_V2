@@ -10,7 +10,7 @@
 {% block titlepage %}Empresas{% endblock %}
 
 {% block container %}
-<div class="layout-page">
+<div class="layout-page" data-url-prefix="{{ url_prefix|default:'' }}">
   <section class="layout-hero">
     <div class="layout-hero-content">
       <p class="layout-eyebrow">Cadastros</p>
@@ -113,5 +113,10 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+  window.APP_URLS = window.APP_URLS || {};
+  window.APP_URLS.empresaUpd = "{% url 'Empresa_upd' cod_empresa='__ID__' %}";
+  window.APP_URLS.empresaInserir = "{% url 'Empresa_ins' %}";
+</script>
 <script src="{% static 'js/Script_Empresas.js' %}"></script>
 {% endblock %}

@@ -89,8 +89,10 @@ function obterCsrfToken() {
 
 /** Prefixo da aplicação (ex: '' ou '/gdf') para chamadas à API quando o app está em subpath. */
 function getApiBase() {
-    var el = document.querySelector('.layout-page[data-url-prefix]');
-    return (el && el.getAttribute('data-url-prefix')) || '';
+    var el = document.querySelector('.layout-page[data-url-prefix], [data-url-prefix]');
+    var prefix = (el && el.getAttribute('data-url-prefix')) || '';
+    if (!prefix && typeof getUrlPrefix === 'function') prefix = getUrlPrefix();
+    return prefix || '';
 }
 
 /* ===============================

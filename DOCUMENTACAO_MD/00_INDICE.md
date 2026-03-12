@@ -20,6 +20,7 @@ Esta documentação cobre **nomenclatura**, **arquitetura**, **funcionalidades**
 | **[MANUAL_USUARIO.md](MANUAL_USUARIO.md)** | Manual do usuário: acesso e login, menu e subsoluções, cadastros (usuários, empresas, clientes GDF, grupos, certificado, SAP), Carga XML (manual e agendada), Carga SPED, Relatório fiscal, Reprocessamento (confronto SPED x NFe, divergências, condições de pagamento, envio SAP), Manifesto e Dashboards, dicas e troubleshooting. |
 | **[DEPLOY.md](DEPLOY.md)** | Deploy em produção: requisitos (Python, PostgreSQL, Redis, servidor), variáveis de ambiente detalhadas, instalação passo a passo, Gunicorn e Nginx, Celery (worker e beat), agendador alternativo sem Redis, HTTPS e certificados, checklist completo e monitoramento. |
 | **[GLOSSARIO.md](GLOSSARIO.md)** | Glossário de termos: GDF, cliente GDF, cliente 1000, empresa, grupo de empresa, usuário, solução, subsolução, NFe/CTe/NFSe, SPED, carga XML/SPED, job, reprocessamento, divergência, condição de pagamento, SAP RFC, IDOR, schema, e outros. |
+| **[ANALISE_PROJETO_ENTREGA.md](ANALISE_PROJETO_ENTREGA.md)** | Análise completa do projeto: arquitetura, código limpo, performance, escalabilidade, segurança, banco de dados, framework, DevOps; problemas encontrados, melhorias recomendadas e justificativas técnicas. |
 
 ---
 
@@ -27,7 +28,7 @@ Esta documentação cobre **nomenclatura**, **arquitetura**, **funcionalidades**
 
 | Perfil | Ordem sugerida |
 |--------|----------------|
-| **Desenvolvedor (novo no projeto)** | 1. [WORKBOOK_NOMENCLATURA](WORKBOOK_NOMENCLATURA.md) → 2. [ARQUITETURA](ARQUITETURA.md) → 3. [DOCUMENTACAO_PROJETO_GDF](DOCUMENTACAO_PROJETO_GDF.md) |
+| **Desenvolvedor (novo no projeto)** | 1. [WORKBOOK_NOMENCLATURA](WORKBOOK_NOMENCLATURA.md) → 2. [ARQUITETURA](ARQUITETURA.md) → 3. [DOCUMENTACAO_PROJETO_GDF](DOCUMENTACAO_PROJETO_GDF.md) → 4. [ANALISE_PROJETO_ENTREGA](ANALISE_PROJETO_ENTREGA.md) (melhorias) |
 | **Usuário final / suporte** | [MANUAL_USUARIO](MANUAL_USUARIO.md) e [GLOSSARIO](GLOSSARIO.md) |
 | **DevOps / deploy** | [ARQUITETURA](ARQUITETURA.md) (seção de estrutura) → [DEPLOY](DEPLOY.md) |
 | **Consultas rápidas** | [GLOSSARIO](GLOSSARIO.md) para termos; [ARQUITETURA](ARQUITETURA.md) para URLs e fluxos. |

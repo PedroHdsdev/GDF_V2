@@ -525,10 +525,10 @@ class ClGdf:
             # -------------------------------------------------
             # Empresas do cliente COM OTIMIZAÇÃO
             # -------------------------------------------------
-            # ✅ OTIMIZAÇÃO: select_related evita N+1 queries (FK direto)
+            # select_related evita N+1 (cert, gdfcliente)
             l_v_queryset_empresas = Empresa.objects.filter(
                 gdfcliente_id=i_v_cod_cliente
-            ).select_related('cert').distinct()
+            ).select_related('cert', 'gdfcliente').distinct()
             
             l_v_data_atual = datetime.today().date()
             
@@ -895,7 +895,7 @@ class ClGdf:
 
             l_v_queryset_usuarios = User.objects.filter(
                 id__in=lsl_ids_usuarios
-            ).distinct()
+            ).only('id', 'username', 'first_name', 'last_name', 'email', 'is_active', 'date_joined').distinct()
 
             # -------------------------------------------------
             # Montagem da tabela de usuários

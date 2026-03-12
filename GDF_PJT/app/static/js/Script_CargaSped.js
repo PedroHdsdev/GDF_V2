@@ -13,10 +13,17 @@ function obterCsrfToken() {
     return t ? t.value : '';
 }
 
+function getApiBase() {
+    var el = document.querySelector('.layout-page[data-url-prefix], [data-url-prefix]');
+    var prefix = (el && el.getAttribute('data-url-prefix')) || '';
+    if (!prefix && typeof getUrlPrefix === 'function') prefix = getUrlPrefix();
+    return prefix || '';
+}
+
 var intervaloResumoSped = null;
 
 function carregarResumoCargaSped() {
-    fetch('/api/cargasped/resumo/', { method: 'GET', headers: { 'X-CSRFToken': obterCsrfToken() } })
+    fetch(getApiBase() + '/api/cargasped/resumo/', { method: 'GET', headers: { 'X-CSRFToken': obterCsrfToken() } })
         .then(function (r) { return r.json(); })
         .then(function (data) {
             if (!data.sucesso) return;
@@ -41,7 +48,7 @@ function carregarResumoCargaSped() {
 }
 
 function carregarAvisosCargaSped(preencherModal) {
-    fetch('/api/cargasped/avisos/', {
+    fetch(getApiBase() + '/api/cargasped/avisos/', {
         method: 'GET',
         headers: { 'X-CSRFToken': obterCsrfToken() },
     })
@@ -158,7 +165,7 @@ function preencherModalAvisosCargaSped(items) {
 function carregarParametrosPrincipais() {
     const tbody = document.querySelector('#tabela-parametros-main tbody');
     if (!tbody) return;
-    fetch('/api/cargasped/parametros/')
+    fetch(getApiBase() + '/api/cargasped/parametros/')
         .then(r => r.json())
         .then(data => {
             estadoSped.todos = (data.items || []).map(item => ({
@@ -229,7 +236,7 @@ function renderizarTabelaParametrosSped() {
 function carregarParametrosModal() {
     const tbody = document.querySelector('#tabela-parametros-sped tbody');
     if (!tbody) return;
-    fetch('/api/cargasped/parametros/')
+    fetch(getApiBase() + '/api/cargasped/parametros/')
         .then(r => r.json())
         .then(data => {
             const items = data.items || [];
@@ -265,7 +272,7 @@ function enviarArquivosManuais() {
     fd.append('csrfmiddlewaretoken', obterCsrfToken());
     const btn = document.getElementById('btn-enviar-sped');
     btn.disabled = true;
-    fetch('/api/processar-sped/', { method: 'POST', body: fd })
+    fetch(getApiBase() + '/api/processar-sped/', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(data => {
             btn.disabled = false;
@@ -358,7 +365,7 @@ document.addEventListener('DOMContentLoaded', function () {
             ativo: document.getElementById('param-sped-ativo').checked
         };
         if (!payload.horario || !payload.diretorio) { Notificacoes.modal('Preencha horário e diretório.', 'warning', 'modalCargaSpedAlerts'); return; }
-        fetch('/api/cargasped/parametros/', {
+        fetch(getApiBase() + '/api/cargasped/parametros/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': obterCsrfToken() },
             body: JSON.stringify(payload)
@@ -380,7 +387,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const fd = new FormData();
         fd.append('arquivo_zip', fileInput.files[0]);
         fd.append('csrfmiddlewaretoken', obterCsrfToken());
-        fetch(`/api/cargasped/parametros/${paramId}/upload-zip/`, { method: 'POST', body: fd })
+        fetch(getApiBase() + `/api/cargasped/parametros/${paramId}/upload-zip/`, { method: 'POST', body: fd })
             .then(r => r.json())
             .then(data => {
                 Notificacoes.modal(data.mensagem || (data.sucesso ? 'OK' : 'Erro'), data.sucesso ? 'success' : 'danger', 'modalUploadZipSpedAlerts');

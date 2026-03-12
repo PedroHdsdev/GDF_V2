@@ -25,6 +25,11 @@
         return '';
     }
 
+    function apiUrl(path) {
+        var prefix = (typeof getUrlPrefix === 'function') ? getUrlPrefix() : '';
+        return (prefix || '') + (path.charAt(0) === '/' ? path : '/' + path);
+    }
+
     function parametrosFiltros() {
         const params = new URLSearchParams();
         const empresa = document.getElementById('filtro-empresa');
@@ -81,7 +86,7 @@
         tbody.querySelectorAll('tr.dados-lote').forEach(el => el.remove());
 
         const qs = parametrosFiltros();
-        fetch('/api/reprocessamento/lotes/' + (qs ? '?' + qs : ''), { method: 'GET', credentials: 'same-origin' })
+        fetch(apiUrl('api/reprocessamento/lotes/') + (qs ? '?' + qs : ''), { method: 'GET', credentials: 'same-origin' })
             .then(res => res.json())
             .then(data => {
                 if (trCarregando) trCarregando.classList.add('d-none');
@@ -448,7 +453,7 @@
         }
 
         // Buscar detalhe completo via API
-        fetch('/api/reprocessamento/divergencias/' + d.id_divergencia + '/detalhe/', { method: 'GET', credentials: 'same-origin' })
+        fetch(apiUrl('api/reprocessamento/divergencias/' + d.id_divergencia + '/detalhe/'), { method: 'GET', credentials: 'same-origin' })
             .then(function (res) { return res.json(); })
             .then(function (data) {
                 if (data.sucesso && data.detalhe) {
@@ -538,7 +543,7 @@
         if (carregando) carregando.classList.remove('d-none');
         if (porTipo) porTipo.classList.add('d-none');
         if (vazio) vazio.classList.add('d-none');
-        fetch('/api/reprocessamento/lotes/' + idLote + '/divergencias/', { method: 'GET', credentials: 'same-origin' })
+        fetch(apiUrl('api/reprocessamento/lotes/' + idLote + '/divergencias/'), { method: 'GET', credentials: 'same-origin' })
             .then(res => res.json())
             .then(data => {
                 if (carregando) carregando.classList.add('d-none');
@@ -571,7 +576,7 @@
 
     function reprocessarDivergencia(idDiv) {
         const csrf = getCsrfToken();
-        fetch('/api/reprocessamento/divergencias/' + idDiv + '/reprocessar/', {
+        fetch(apiUrl('api/reprocessamento/divergencias/' + idDiv + '/reprocessar/'), {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
@@ -634,7 +639,7 @@
         const csrf = getCsrfToken();
         const btn = document.getElementById('btn-executar-confronto');
         if (btn) btn.disabled = true;
-        fetch('/api/reprocessamento/confronto/', {
+        fetch(apiUrl('api/reprocessamento/confronto/'), {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
@@ -696,7 +701,7 @@
         if (wrap) wrap.classList.add('d-none');
         if (tbody) tbody.innerHTML = '';
 
-        fetch('/api/reprocessamento/lotes/' + idLote + '/condicoes-pagamento/', { method: 'GET', credentials: 'same-origin' })
+        fetch(apiUrl('api/reprocessamento/lotes/' + idLote + '/condicoes-pagamento/'), { method: 'GET', credentials: 'same-origin' })
             .then(res => res.json())
             .then(data => {
                 if (carregando) carregando.classList.add('d-none');
@@ -751,7 +756,7 @@
         const btn = document.getElementById('btn-gerar-condicoes');
         if (btn) btn.disabled = true;
         const csrf = getCsrfToken();
-        fetch('/api/reprocessamento/lotes/' + idLote + '/condicoes-pagamento/gerar/', {
+        fetch(apiUrl('api/reprocessamento/lotes/' + idLote + '/condicoes-pagamento/gerar/'), {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
@@ -800,7 +805,7 @@
         if (wrap) wrap.classList.add('d-none');
         if (tbody) tbody.innerHTML = '';
 
-        fetch('/api/reprocessamento/condicao-param/', { method: 'GET', credentials: 'same-origin' })
+        fetch(apiUrl('api/reprocessamento/condicao-param/'), { method: 'GET', credentials: 'same-origin' })
             .then(res => res.json())
             .then(data => {
                 if (carregando) carregando.classList.add('d-none');
@@ -903,7 +908,7 @@
         const btn = document.getElementById('btn-salvar-condicao-param');
         if (btn) btn.disabled = true;
         const csrf = getCsrfToken();
-        fetch('/api/reprocessamento/condicao-param/atualizar/', {
+        fetch(apiUrl('api/reprocessamento/condicao-param/atualizar/'), {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
@@ -928,7 +933,7 @@
         const btn = document.getElementById('btn-enviar-sap');
         if (btn) btn.disabled = true;
         const csrf = getCsrfToken();
-        fetch('/api/reprocessamento/lotes/' + idLote + '/condicoes-pagamento/enviar-sap/', {
+        fetch(apiUrl('api/reprocessamento/lotes/' + idLote + '/condicoes-pagamento/enviar-sap/'), {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },

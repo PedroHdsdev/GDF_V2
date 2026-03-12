@@ -424,8 +424,11 @@ async function fn_carregar_cliente(clienteId) {
 ================================ */
 function fn_preencher_formulario(data) {
   // Atualizar action dos forms com o ID do cliente
-  document.getElementById('formClienteUpd').action = `/cliente/${data.cod_cliente}/`;
-  document.getElementById('formAcessoUpd').action = `/cliente/Acesso/`;
+  var prefix = (typeof getUrlPrefix === 'function') ? getUrlPrefix() : '';
+  var urlClienteUpd = (window.APP_URLS && window.APP_URLS.clienteUpd) ? window.APP_URLS.clienteUpd.replace('__ID__', encodeURIComponent(data.cod_cliente || '')) : (prefix || '') + '/cliente/' + (data.cod_cliente || '') + '/';
+  var urlAcesso = (window.APP_URLS && window.APP_URLS.clienteAcesso) ? window.APP_URLS.clienteAcesso : (prefix || '') + '/cliente/Acesso/';
+  document.getElementById('formClienteUpd').action = urlClienteUpd;
+  document.getElementById('formAcessoUpd').action = urlAcesso;
   
   // Dados do cliente
   document.getElementById('upd_cliente_id').value = data.cod_cliente || '';
@@ -481,7 +484,8 @@ function fn_preencher_formulario(data) {
   const codCliente = data.cod_cliente || '';
   document.getElementById('sap_cliente_id').value = codCliente;
   const formSap = document.getElementById('formSapUpd');
-  if (formSap) formSap.action = `/cliente/${codCliente}/sap/`;
+  var urlSap = (window.APP_URLS && window.APP_URLS.clienteSap) ? window.APP_URLS.clienteSap.replace('__ID__', encodeURIComponent(codCliente || '')) : (prefix || '') + '/cliente/' + (codCliente || '') + '/sap/';
+  if (formSap) formSap.action = urlSap;
   const semRegistro = document.getElementById('sap-sem-registro');
   const formContainer = document.getElementById('sap-form-container');
   if (data.sap_connection) {
@@ -758,7 +762,8 @@ async function fn_criar_sap_vazio() {
   formData.append('sap_lang', '');
   formData.append('sap_active', 'on');
   try {
-    const resp = await fetch(`/cliente/${codCliente}/sap/`, {
+    var urlSap = (window.APP_URLS && window.APP_URLS.clienteSap) ? window.APP_URLS.clienteSap.replace('__ID__', encodeURIComponent(codCliente || '')) : ((typeof getUrlPrefix === 'function' ? getUrlPrefix() : '') || '') + '/cliente/' + encodeURIComponent(codCliente) + '/sap/';
+    const resp = await fetch(urlSap, {
       method: 'POST',
       body: formData,
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -833,7 +838,8 @@ async function fn_testar_sap() {
   }
   try {
     const csrf = document.querySelector('#formSapUpd input[name="csrfmiddlewaretoken"]');
-    const resp = await fetch('/api/sap/testar-conexao/', {
+    var prefix = (typeof getUrlPrefix === 'function') ? getUrlPrefix() : '';
+    const resp = await fetch((prefix || '') + '/api/sap/testar-conexao/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

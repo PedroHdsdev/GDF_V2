@@ -10,7 +10,7 @@
 {% block titlepage %}Filiais{% endblock %}
 
 {% block container %}
-<div class="layout-page">
+<div class="layout-page" data-url-prefix="{{ url_prefix|default:'' }}">
   <section class="layout-hero">
     <div class="layout-hero-content">
       <p class="layout-eyebrow">Cadastros</p>

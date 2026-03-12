@@ -397,7 +397,8 @@ function fn_init_usuario_ins() {
                 return;
             }
             const qs = codClienteEl && codClienteEl.value ? '?cod_cliente=' + encodeURIComponent(codClienteEl.value) : '';
-            const resp = await fetch('/usuario/inserir/' + qs, {
+            var urlIns = (window.APP_URLS && window.APP_URLS.usuarioInserir) ? window.APP_URLS.usuarioInserir + (qs ? (qs.charAt(0) === '?' ? qs : '?' + qs) : '') : ((typeof getUrlPrefix === 'function' ? getUrlPrefix() : '') || '') + '/usuario/inserir/' + (qs || '');
+            const resp = await fetch(urlIns, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
             });
             if (resp.ok) {
@@ -420,7 +421,8 @@ function fn_init_usuario_ins() {
             const cod = codClienteSelect.value;
             if (!cod) return;
             try {
-                const resp = await fetch('/usuario/inserir/?cod_cliente=' + encodeURIComponent(cod), {
+                var urlIns = (window.APP_URLS && window.APP_URLS.usuarioInserir) ? window.APP_URLS.usuarioInserir + '?cod_cliente=' + encodeURIComponent(cod) : ((typeof getUrlPrefix === 'function' ? getUrlPrefix() : '') || '') + '/usuario/inserir/?cod_cliente=' + encodeURIComponent(cod);
+                const resp = await fetch(urlIns, {
                     headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
                 });
                 if (resp.ok) {
@@ -525,7 +527,8 @@ async function fn_carregar_usuario(userId) {
     try {
         console.log(`📥 Iniciando carregamento do usuário ${userId}...`);
         
-        const resp = await fetch(`/usuario/${userId}/`, {
+        var urlUpd = (window.APP_URLS && window.APP_URLS.usuarioUpd) ? window.APP_URLS.usuarioUpd.replace('__ID__', userId) : ((typeof getUrlPrefix === 'function' ? getUrlPrefix() : '') || '') + '/usuario/' + userId + '/';
+        const resp = await fetch(urlUpd, {
             headers: { 
                 "X-Requested-With": "XMLHttpRequest",
                 "Accept": "application/json"
@@ -571,7 +574,8 @@ function fn_preencher_modal_usuario(user) {
     // ✅ Atualizar action do formulário dinamicamente
     const form = document.getElementById("formUsuarioUpd");
     if (form) {
-        form.action = `/usuario/${user.id}/`;
+        var urlUpd = (window.APP_URLS && window.APP_URLS.usuarioUpd) ? window.APP_URLS.usuarioUpd.replace('__ID__', user.id) : ((typeof getUrlPrefix === 'function' ? getUrlPrefix() : '') || '') + '/usuario/' + user.id + '/';
+        form.action = urlUpd;
     }
 
     // ✅ Limpar e preencher empresas

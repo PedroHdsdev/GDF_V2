@@ -29,10 +29,14 @@ document.addEventListener('DOMContentLoaded', function () {
 /* ===============================
    CARREGAR DADOS
 ================================ */
+function apiUrl(path) {
+    var prefix = (typeof getUrlPrefix === 'function') ? getUrlPrefix() : '';
+    return (prefix || '') + (path.charAt(0) === '/' ? path : '/' + path);
+}
 function carregarDadosReprocessamento() {
     mostrarCarregando(true);
 
-    fetch('/api/reprocessamento/', {
+    fetch(apiUrl('api/reprocessamento/'), {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json'
@@ -254,7 +258,7 @@ function reprocessarItem(id) {
 
     mostrarCarregando(true);
 
-    fetch(`/api/reprocessamento/${id}/`, {
+    fetch(apiUrl('api/reprocessamento/' + id + '/'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -287,7 +291,7 @@ function deletarItem(id) {
 
     mostrarCarregando(true);
 
-    fetch(`/api/reprocessamento/${id}/`, {
+    fetch(apiUrl('api/reprocessamento/' + id + '/'), {
         method: 'DELETE',
         headers: {
             'Content-Type': 'application/json',
@@ -398,7 +402,7 @@ function executarReprocessamento() {
 
     const ids = estadoReprocessamento.dadosFiltrados.map(d => d.id);
 
-    fetch('/api/reprocessamento/batch/', {
+    fetch(apiUrl('api/reprocessamento/batch/'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

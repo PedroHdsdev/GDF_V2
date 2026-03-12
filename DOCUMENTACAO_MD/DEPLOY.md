@@ -28,30 +28,46 @@ pip install -r requirements.txt
 
 Configure as variáveis abaixo em **.env** (ou no ambiente do sistema / do processo), **sem commitar** o arquivo `.env` no repositório.
 
-### 2.1 Django e banco
+### 2.1 Django e banco (obrigatórias em produção)
+
+| Variável | Obrigatória | Descrição | Exemplo |
+|----------|-------------|-----------|---------|
+| **SECRET_KEY** | Sim (produção) | Chave secreta do Django; em produção **sempre** definir no .env | string longa e aleatória |
+| **DEBUG** | Sim | Em produção use **False** | False |
+| **ALLOWED_HOSTS** | Sim | Hosts permitidos (vírgula) | homo.processit.com.br,localhost |
+| **DB_ENGINE** | Sim | Engine do banco | django.db.backends.postgresql |
+| **DB_NAME** | Sim | Nome do banco | gdf_db |
+| **DB_USER** | Sim | Usuário | gdf_user |
+| **DB_PASSWORD** | Sim | Senha | *** |
+| **DB_HOST** | Sim | Host | localhost |
+| **DB_PORT** | Sim | Porta | 5432 |
+
+O `settings.py` usa `environ.Env.read_env(BASE_DIR / '.env')`. **Não commitar** o arquivo `.env`.
+
+### 2.2 Segurança e URL
 
 | Variável | Descrição | Exemplo |
 |----------|-----------|---------|
-| **SECRET_KEY** | Chave secreta do Django (sessões, assinaturas, etc.) | string longa e aleatória |
-| **DEBUG** | Modo debug; em produção use **False** | False |
-| **ALLOWED_HOSTS** | Hosts permitidos (separados por vírgula) | seu-dominio.com,www.seu-dominio.com |
-| **DATABASE** (ou DB_*) | Se o projeto usar variáveis separadas: ENGINE, NAME, USER, PASSWORD, HOST, PORT | postgresql, gdf_db, gdf_user, ***, localhost, 5432 |
+| **CSRF_TRUSTED_ORIGINS** | Origens HTTPS permitidas para CSRF (vírgula) | https://homo.processit.com.br |
+| **FORCE_SCRIPT_NAME** | Subpath da aplicação (vazio = raiz) | /gdf |
 
-No `settings.py` o banco é lido normalmente de `os.environ` ou de um arquivo `.env` carregado por lib como `python-dotenv` (se estiver no projeto).
-
-### 2.2 Celery (carga XML agendada)
+### 2.3 Celery e cache (produção)
 
 | Variável | Descrição | Exemplo |
 |----------|-----------|---------|
 | **CELERY_BROKER_URL** | URL do broker (Redis) | redis://localhost:6379/0 |
+| **CELERY_RESULT_BACKEND** | Backend de resultados | redis://localhost:6379/1 |
+| **CACHE_URL** ou **REDIS_URL** | Cache compartilhado entre workers (Redis) | redis://localhost:6379/2 |
 
-O `settings.py` deve definir `CELERY_BROKER_URL` e, se necessário, `CELERY_RESULT_BACKEND`. O agendamento (beat) usa `CELERY_BEAT_SCHEDULE` (ex.: `scan_cargaxml_params` a cada minuto).
+Se `CACHE_URL` ou `REDIS_URL` estiver definido com URL redis, o Django usa Redis para cache; caso contrário usa cache em memória (apenas um worker).
 
-### 2.3 SAP (opcional)
+O `settings.py` define `CELERY_BROKER_URL` e `CELERY_RESULT_BACKEND`. O agendamento (beat) usa `CELERY_BEAT_SCHEDULE` (ex.: `scan_cargaxml_params` a cada minuto).
+
+### 2.5 SAP (opcional)
 
 Se houver integração SAP, as credenciais costumam ficar no banco (modelo `ConexaoSap` por cliente). Variáveis de ambiente podem ser usadas para override ou para um usuário genérico; isso depende da implementação. Não armazene senhas SAP em arquivos versionados.
 
-### 2.4 Dashboard (Streamlit) e outras
+### 2.6 Dashboard (Streamlit) e outras
 
 Configure no **.env**:
 

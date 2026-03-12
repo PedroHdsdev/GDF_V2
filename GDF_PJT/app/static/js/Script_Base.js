@@ -1,15 +1,29 @@
+/** Prefixo da aplicação (ex: '' ou '/gdf') para URLs quando o app está em subpath. */
+function getUrlPrefix() {
+  var el = document.querySelector('.layout-page[data-url-prefix], [data-url-prefix]');
+  var prefix = (el && el.getAttribute('data-url-prefix')) || '';
+  if (!prefix && typeof window !== 'undefined' && window.location && window.location.pathname) {
+    var p = window.location.pathname;
+    if (p === '/gdf' || (p.length > 4 && p.indexOf('/gdf/') === 0)) return '/gdf';
+  }
+  return prefix || '';
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   const menuButton = document.querySelector(".btn_menu");
   const sidebar = document.getElementById("sidebar");
   const menuItems = document.querySelectorAll(".menu-item");
 
-  menuButton.addEventListener("click", function () {
-    sidebar.classList.toggle("hidden");
-    sidebar.classList.toggle("visible");
-  });
+  if (menuButton && sidebar) {
+    menuButton.addEventListener("click", function () {
+      sidebar.classList.toggle("hidden");
+      sidebar.classList.toggle("visible");
+    });
+  }
 
   // Gerenciar submenus
   menuItems.forEach((item) => {
+    if (!item) return;
     item.addEventListener("click", function (event) {
       event.preventDefault(); // Evita comportamento padrão de links
 

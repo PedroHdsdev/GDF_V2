@@ -122,6 +122,7 @@ class Divergencia(models.Model):
         db_table = '"reprocessamento"."divergencia"'
         indexes = [
             models.Index(fields=["lote", "tipo"]),
+            models.Index(fields=["lote", "tipo", "status"]),
             models.Index(fields=["chave_nfe"]),
             models.Index(fields=["status"]),
         ]

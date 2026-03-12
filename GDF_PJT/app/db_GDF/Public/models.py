@@ -281,7 +281,10 @@ class JobCargaXml(models.Model):
         db_table = 'job_carga_xml'
         verbose_name = 'Job carga XML'
         verbose_name_plural = 'Jobs carga XML'
-        indexes = [models.Index(fields=['gdfcliente', 'status'])]
+        indexes = [
+            models.Index(fields=['gdfcliente', 'status']),
+            models.Index(fields=['gdfcliente', 'started_at']),
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +356,10 @@ class JobCargaSped(models.Model):
         db_table = 'job_carga_sped'
         verbose_name = 'Job carga SPED'
         verbose_name_plural = 'Jobs carga SPED'
-        indexes = [models.Index(fields=['gdfcliente', 'status'])]
+        indexes = [
+            models.Index(fields=['gdfcliente', 'status']),
+            models.Index(fields=['gdfcliente', 'started_at']),
+        ]
 
 
 # ---------------------------------------------------------------------------

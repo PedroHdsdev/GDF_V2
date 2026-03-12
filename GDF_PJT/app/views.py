@@ -89,6 +89,8 @@ from app.db_GDF.reprocessamento.models import (
     ReprocessamentoLote,
 )
 from app.security.decorators import validate_idor_empresa, validate_idor_usuario, validate_session_required
+from app.security.validators import InputValidator
+from django.core.exceptions import ValidationError
 from app.utils.view_helpers import (
     COD_CLIENTE_PROJETO,
     TIPO_PAGAMENTO_DESC,
@@ -99,6 +101,11 @@ from app.utils.view_helpers import (
     superuser_acesso_total_painel,
     usuario_acesso_total_painel,
     usuario_vinculado_cliente_1000,
+)
+from app.utils.relatorio_params import (
+    parse_relatorio_params,
+    paginate_queryset,
+    parse_date_safe,
 )
 
 def fn_view_login(request):
@@ -2289,27 +2296,23 @@ def fn_view_CargaSped(request):
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfe(request):
     """Lista NFe nível cabeçalho com filtros empresa, grupo de empresa e período."""
-    empresas = relatorio_empresas_queryset(request)
-    cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_empresas and not cod_cliente:
+    try:
+        params = parse_relatorio_params(request, relatorio_empresas_queryset)
+    except ValidationError:
+        return JsonResponse({'erro': 'Parâmetro de busca inválido'}, status=400)
+    if not params.cod_empresas and not params.cod_cliente:
         return JsonResponse({'sucesso': True, 'items': []}, status=200)
-    empresa_id = request.GET.get('empresa_id', '').strip()
-    if empresa_id:
-        cod_empresas = [empresa_id] if empresa_id in cod_empresas else []
-    data_inicio = request.GET.get('data_inicio', '').strip()
-    data_fim = request.GET.get('data_fim', '').strip()
-    busca = request.GET.get('busca', '').strip()
+
     parcelas = request.GET.get('parcelas', '').strip()
     tipo_operacao = request.GET.get('tipo_operacao', '').strip()  # '0'=Entrada, '1'=Saída
-    tipo_pagamento = request.GET.get('tipo_pagamento', '').strip()  # código meio_pagamento (01, 02, 20, etc.)
+    tipo_pagamento = request.GET.get('tipo_pagamento', '').strip()
 
-    if empresa_id:
-        qs = NFe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    if params.empresa_id:
+        qs = NFe.objects.filter(empresa__cod_empresa__in=params.cod_empresas).select_related('identificacao', 'empresa')
     else:
         qs = NFe.objects.filter(
-            Q(empresa__cod_empresa__in=cod_empresas) |
-            Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
+            Q(empresa__cod_empresa__in=params.cod_empresas) |
+            Q(empresa__isnull=True, gdfcliente__cod_cliente=params.cod_cliente)
         ).select_related('identificacao', 'empresa')
     if tipo_operacao in ('0', '1'):
         qs = qs.filter(identificacao__tipo_operacao=tipo_operacao)
@@ -2322,44 +2325,22 @@ def fn_api_relatorio_nfe(request):
                 qs = qs.annotate(num_parcelas=Count('identificacao__cobranca__parcelas', distinct=True)).filter(num_parcelas=qtd)
         except ValueError:
             pass
-    if busca:
+    if params.busca:
         qs = qs.filter(
-            Q(identificacao__chave_acesso__icontains=busca) |
-            Q(identificacao__numero__icontains=busca) |
-            Q(identificacao__serie__icontains=busca) |
-            Q(status__icontains=busca) |
-            Q(identificacao__natureza_operacao__icontains=busca)
+            Q(identificacao__chave_acesso__icontains=params.busca) |
+            Q(identificacao__numero__icontains=params.busca) |
+            Q(identificacao__serie__icontains=params.busca) |
+            Q(status__icontains=params.busca) |
+            Q(identificacao__natureza_operacao__icontains=params.busca)
         )
-    if data_inicio:
-        try:
-            from django.utils.dateparse import parse_date
-            dt = parse_date(data_inicio)
-            if dt:
-                qs = qs.filter(identificacao__emissao__date__gte=dt)
-        except Exception:
-            pass
-    if data_fim:
-        try:
-            from django.utils.dateparse import parse_date
-            dt = parse_date(data_fim)
-            if dt:
-                qs = qs.filter(identificacao__emissao__date__lte=dt)
-        except Exception:
-            pass
+    dt_ini = parse_date_safe(params.data_inicio)
+    if dt_ini:
+        qs = qs.filter(identificacao__emissao__date__gte=dt_ini)
+    dt_fim = parse_date_safe(params.data_fim)
+    if dt_fim:
+        qs = qs.filter(identificacao__emissao__date__lte=dt_fim)
     qs = qs.order_by('-identificacao__emissao')
-    try:
-        page_size = min(max(int(request.GET.get('page_size', 50)), 1), 200)
-    except (TypeError, ValueError):
-        page_size = 50
-    try:
-        page = max(1, int(request.GET.get('page', 1)))
-    except (TypeError, ValueError):
-        page = 1
-    total = qs.count()
-    total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
-    page = min(page, total_pages)
-    start = (page - 1) * page_size
-    qs = qs[start:start + page_size]
+    total, total_pages, page, qs = paginate_queryset(qs, params.page, params.page_size)
     items = []
     for nfe in qs:
         id_ = nfe.identificacao
@@ -2379,7 +2360,7 @@ def fn_api_relatorio_nfe(request):
         'items': items,
         'total': total,
         'page': page,
-        'page_size': page_size,
+        'page_size': params.page_size,
         'total_pages': total_pages,
     }, status=200)
 
@@ -2388,61 +2369,34 @@ def fn_api_relatorio_nfe(request):
 @require_http_methods(["GET"])
 def fn_api_relatorio_cte(request):
     """Lista CTe nível cabeçalho com filtros empresa, grupo de empresa e período."""
-    empresas = relatorio_empresas_queryset(request)
-    cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_empresas and not cod_cliente:
+    try:
+        params = parse_relatorio_params(request, relatorio_empresas_queryset)
+    except ValidationError:
+        return JsonResponse({'erro': 'Parâmetro de busca inválido'}, status=400)
+    if not params.cod_empresas and not params.cod_cliente:
         return JsonResponse({'sucesso': True, 'items': []}, status=200)
-    empresa_id = request.GET.get('empresa_id', '').strip()
-    if empresa_id:
-        cod_empresas = [empresa_id] if empresa_id in cod_empresas else []
-    data_inicio = request.GET.get('data_inicio', '').strip()
-    data_fim = request.GET.get('data_fim', '').strip()
-    busca = request.GET.get('busca', '').strip()
 
-    if empresa_id:
-        qs = CTe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    if params.empresa_id:
+        qs = CTe.objects.filter(empresa__cod_empresa__in=params.cod_empresas).select_related('identificacao', 'empresa')
     else:
         qs = CTe.objects.filter(
-            Q(empresa__cod_empresa__in=cod_empresas) |
-            Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
+            Q(empresa__cod_empresa__in=params.cod_empresas) |
+            Q(empresa__isnull=True, gdfcliente__cod_cliente=params.cod_cliente)
         ).select_related('identificacao', 'empresa')
-    if busca:
+    if params.busca:
         qs = qs.filter(
-            Q(identificacao__chave_acesso__icontains=busca) |
-            Q(identificacao__numero__icontains=busca) |
-            Q(identificacao__serie__icontains=busca)
+            Q(identificacao__chave_acesso__icontains=params.busca) |
+            Q(identificacao__numero__icontains=params.busca) |
+            Q(identificacao__serie__icontains=params.busca)
         )
-    if data_inicio:
-        try:
-            from django.utils.dateparse import parse_date
-            dt = parse_date(data_inicio)
-            if dt:
-                qs = qs.filter(identificacao__emissao__date__gte=dt)
-        except Exception:
-            pass
-    if data_fim:
-        try:
-            from django.utils.dateparse import parse_date
-            dt = parse_date(data_fim)
-            if dt:
-                qs = qs.filter(identificacao__emissao__date__lte=dt)
-        except Exception:
-            pass
+    dt_ini = parse_date_safe(params.data_inicio)
+    if dt_ini:
+        qs = qs.filter(identificacao__emissao__date__gte=dt_ini)
+    dt_fim = parse_date_safe(params.data_fim)
+    if dt_fim:
+        qs = qs.filter(identificacao__emissao__date__lte=dt_fim)
     qs = qs.order_by('-identificacao__emissao')
-    try:
-        page_size = min(max(int(request.GET.get('page_size', 50)), 1), 200)
-    except (TypeError, ValueError):
-        page_size = 50
-    try:
-        page = max(1, int(request.GET.get('page', 1)))
-    except (TypeError, ValueError):
-        page = 1
-    total = qs.count()
-    total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
-    page = min(page, total_pages)
-    start = (page - 1) * page_size
-    qs = qs[start:start + page_size]
+    total, total_pages, page, qs = paginate_queryset(qs, params.page, params.page_size)
     items = []
     for cte in qs:
         id_ = cte.identificacao
@@ -2459,7 +2413,7 @@ def fn_api_relatorio_cte(request):
         'items': items,
         'total': total,
         'page': page,
-        'page_size': page_size,
+        'page_size': params.page_size,
         'total_pages': total_pages,
     }, status=200)
 
@@ -2468,60 +2422,33 @@ def fn_api_relatorio_cte(request):
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfse(request):
     """Lista NFSe nível cabeçalho com filtros empresa, grupo de empresa e período."""
-    empresas = relatorio_empresas_queryset(request)
-    cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_empresas and not cod_cliente:
+    try:
+        params = parse_relatorio_params(request, relatorio_empresas_queryset)
+    except ValidationError:
+        return JsonResponse({'erro': 'Parâmetro de busca inválido'}, status=400)
+    if not params.cod_empresas and not params.cod_cliente:
         return JsonResponse({'sucesso': True, 'items': []}, status=200)
-    empresa_id = request.GET.get('empresa_id', '').strip()
-    if empresa_id:
-        cod_empresas = [empresa_id] if empresa_id in cod_empresas else []
-    data_inicio = request.GET.get('data_inicio', '').strip()
-    data_fim = request.GET.get('data_fim', '').strip()
-    busca = request.GET.get('busca', '').strip()
 
-    if empresa_id:
-        qs = NFSe.objects.filter(empresa__cod_empresa__in=cod_empresas).select_related('identificacao', 'empresa')
+    if params.empresa_id:
+        qs = NFSe.objects.filter(empresa__cod_empresa__in=params.cod_empresas).select_related('identificacao', 'empresa')
     else:
         qs = NFSe.objects.filter(
-            Q(empresa__cod_empresa__in=cod_empresas) |
-            Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
+            Q(empresa__cod_empresa__in=params.cod_empresas) |
+            Q(empresa__isnull=True, gdfcliente__cod_cliente=params.cod_cliente)
         ).select_related('identificacao', 'empresa')
-    if busca:
+    if params.busca:
         qs = qs.filter(
-            Q(identificacao__chave__icontains=busca) |
-            Q(identificacao__numero__icontains=busca)
+            Q(identificacao__chave__icontains=params.busca) |
+            Q(identificacao__numero__icontains=params.busca)
         )
-    if data_inicio:
-        try:
-            from django.utils.dateparse import parse_date
-            dt = parse_date(data_inicio)
-            if dt:
-                qs = qs.filter(identificacao__emissao__date__gte=dt)
-        except Exception:
-            pass
-    if data_fim:
-        try:
-            from django.utils.dateparse import parse_date
-            dt = parse_date(data_fim)
-            if dt:
-                qs = qs.filter(identificacao__emissao__date__lte=dt)
-        except Exception:
-            pass
+    dt_ini = parse_date_safe(params.data_inicio)
+    if dt_ini:
+        qs = qs.filter(identificacao__emissao__date__gte=dt_ini)
+    dt_fim = parse_date_safe(params.data_fim)
+    if dt_fim:
+        qs = qs.filter(identificacao__emissao__date__lte=dt_fim)
     qs = qs.order_by('-identificacao__emissao')
-    try:
-        page_size = min(max(int(request.GET.get('page_size', 50)), 1), 200)
-    except (TypeError, ValueError):
-        page_size = 50
-    try:
-        page = max(1, int(request.GET.get('page', 1)))
-    except (TypeError, ValueError):
-        page = 1
-    total = qs.count()
-    total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
-    page = min(page, total_pages)
-    start = (page - 1) * page_size
-    qs = qs[start:start + page_size]
+    total, total_pages, page, qs = paginate_queryset(qs, params.page, params.page_size)
     items = []
     for nfse in qs:
         id_ = nfse.identificacao
@@ -2537,7 +2464,7 @@ def fn_api_relatorio_nfse(request):
         'items': items,
         'total': total,
         'page': page,
-        'page_size': page_size,
+        'page_size': params.page_size,
         'total_pages': total_pages,
     }, status=200)
 
@@ -2548,31 +2475,23 @@ def fn_api_relatorio_sped(request):
     """Lista SPED nível cabeçalho. tipo_sped: C=Contribuição, F=Fiscal. Busca em sped_fiscal e sped_contribuicao."""
     from app.db_GDF.sped_contribuicao.models import SpedContribuicaoArquivo
 
-    empresas = relatorio_empresas_queryset(request)
-    cod_cliente = request.session.get('cod_cliente', None)
-    cod_empresas = list(empresas.values_list('cod_empresa', flat=True))
-    empresa_id = request.GET.get('empresa_id', '').strip()
-    if empresa_id:
-        cod_empresas = [empresa_id] if empresa_id in cod_empresas else []
-    # Inclui arquivos por empresa OU arquivos sem empresa do cliente (alinhado a NFe/CTe)
+    try:
+        params = parse_relatorio_params(request, relatorio_empresas_queryset)
+    except ValidationError:
+        return JsonResponse({'erro': 'Parâmetro de busca inválido'}, status=400)
+    cod_empresas = params.cod_empresas
+    cod_cliente = params.cod_cliente
+    if not cod_empresas and not cod_cliente:
+        return JsonResponse({'sucesso': True, 'items': []}, status=200)
     q_sped_base = Q(empresa__cod_empresa__in=cod_empresas)
     if cod_cliente:
         q_sped_base |= Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
-    if not cod_empresas and not cod_cliente:
-        return JsonResponse({'sucesso': True, 'items': []}, status=200)
-    data_inicio = request.GET.get('data_inicio', '').strip()
-    data_fim = request.GET.get('data_fim', '').strip()
-    busca = request.GET.get('busca', '').strip()
     tipo_sped = request.GET.get('tipo_sped', '').strip().upper()  # F=Fiscal, C=Contribuição
-
-    try:
-        page_size = min(max(int(request.GET.get('page_size', 50)), 1), 200)
-    except (TypeError, ValueError):
-        page_size = 50
-    try:
-        page = max(1, int(request.GET.get('page', 1)))
-    except (TypeError, ValueError):
-        page = 1
+    busca = params.busca
+    page = params.page
+    page_size = params.page_size
+    data_inicio = params.data_inicio
+    data_fim = params.data_fim
 
     items = []
     if tipo_sped in ('F', 'C'):

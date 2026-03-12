@@ -38,13 +38,17 @@ from django.urls import reverse_lazy
 env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
-SECRET_KEY = env('SECRET_KEY', default='django-insecure-)+_kx-l8g8iu@t@k3y=mswm^+s#%)yu_d=kevi0vac+y#m0oc^')
+# Em produção (DEBUG=False) defina SECRET_KEY no .env; default só para desenvolvimento
+_SECRET_DEFAULT = 'django-insecure-)+_kx-l8g8iu@t@k3y=mswm^+s#%)yu_d=kevi0vac+y#m0oc^'
+SECRET_KEY = env('SECRET_KEY', default=_SECRET_DEFAULT)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool('DEBUG', default=True)
-                                            #localhost', '10.0.1.19', '0.0.0.0
-#ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
-ALLOWED_HOSTS = ["*"]
+if not DEBUG and SECRET_KEY == _SECRET_DEFAULT:
+    import warnings
+    warnings.warn('SECRET_KEY em produção deve ser definida no .env', UserWarning)
+# Em produção definir no .env: ALLOWED_HOSTS=homo.processit.com.br,localhost
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1', '0.0.0.0'])
 
 # HTTPS & Security Configuration
 SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=False)  # True em produção
@@ -139,13 +143,22 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'GDF_PJT.wsgi.application'
 
-# Cache - Local memory (development)
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'gdf-cache',
+# Cache - Redis em produção (CACHE_URL ou REDIS_URL) ou LocMem em desenvolvimento
+_cache_backend = env('CACHE_URL', default='') or env('REDIS_URL', default='')
+if _cache_backend and _cache_backend.startswith('redis'):
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': _cache_backend.split(',')[0].strip(),
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'gdf-cache',
+        }
+    }
 
 # Session - Django default database sessions
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
@@ -163,7 +176,7 @@ DATABASES = {
          'HOST': env('DB_HOST'),        
          'PORT': env('DB_PORT'), 
         'OPTIONS': {
-            'options': '-c search_path=public,"nfe","sped","reprocessamento"'
+            'options': '-c search_path=public,nfe,cte,nfse,sped_fiscal,sped_contribuicao,reprocessamento'
         }         
     },                          
 }
@@ -271,7 +284,7 @@ LOGGING = {
         },
         'gdf': {
             'handlers': ['gdf_file'],
-            'level': 'DEBUG',
+            'level': 'INFO' if not DEBUG else 'DEBUG',
             'propagate': False,
         },
         'django': {

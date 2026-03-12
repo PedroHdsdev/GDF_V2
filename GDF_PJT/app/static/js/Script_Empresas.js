@@ -266,7 +266,9 @@ function fn_init_empresa_ins() {
             return;
         }
         try {
-            const resp = await fetch('/empresa/inserir/' + qs, {
+            var prefix = (typeof getUrlPrefix === 'function') ? getUrlPrefix() : '';
+            var urlInserir = (window.APP_URLS && window.APP_URLS.empresaInserir) ? window.APP_URLS.empresaInserir + (qs ? (qs.charAt(0) === '?' ? qs : '?' + qs) : '') : (prefix || '') + '/empresa/inserir/' + (qs || '');
+            const resp = await fetch(urlInserir, {
                 method: 'GET',
                 headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
             });
@@ -369,7 +371,8 @@ async function fn_carregar_empresa(empresaId) {
     try {
         console.log(`📥 Iniciando carregamento da empresa ${empresaId}...`);
         
-        const resp = await fetch(`/empresa/${empresaId}/`, {
+        var urlUpd = (window.APP_URLS && window.APP_URLS.empresaUpd) ? window.APP_URLS.empresaUpd.replace('__ID__', encodeURIComponent(empresaId)) : ((typeof getUrlPrefix === 'function' ? getUrlPrefix() : '') || '') + '/empresa/' + encodeURIComponent(empresaId) + '/';
+        const resp = await fetch(urlUpd, {
             headers: { 
                 "X-Requested-With": "XMLHttpRequest",
                 "Accept": "application/json"
@@ -406,7 +409,8 @@ async function fn_carregar_empresa(empresaId) {
 ================================ */
 function fn_preencher_formulario(data) {
   // Atualizar action do form de empresa com o ID da empresa
-  document.getElementById('formEmpresaUpd').action = `/empresa/${data.cod_empresa}/`;
+  var urlUpd = (window.APP_URLS && window.APP_URLS.empresaUpd) ? window.APP_URLS.empresaUpd.replace('__ID__', encodeURIComponent(data.cod_empresa || '')) : ((typeof getUrlPrefix === 'function' ? getUrlPrefix() : '') || '') + '/empresa/' + (data.cod_empresa || '') + '/';
+  document.getElementById('formEmpresaUpd').action = urlUpd;
   // Certificado tem action estático no HTML: /empresa/Cert/
   document.getElementById('upd_empresa_id_hidden').value = data.cod_empresa || '';
   

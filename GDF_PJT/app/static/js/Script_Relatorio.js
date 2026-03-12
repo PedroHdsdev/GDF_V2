@@ -27,6 +27,10 @@ function relatorioParams() {
     return params;
 }
 
+function relatorioGetPrefix() {
+    var prefix = (typeof getUrlPrefix === 'function') ? getUrlPrefix() : '';
+    return prefix || '';
+}
 function relatorioBuildUrl(base, params) {
     var q = new URLSearchParams();
     if (params.empresa_id) q.set('empresa_id', params.empresa_id);
@@ -202,9 +206,10 @@ function abrirDetalhe(tipo, id, tipoSped) {
     var modalBs = new bootstrap.Modal(modal);
     modalBs.show();
 
+    var p = relatorioGetPrefix();
     var url = (tipo === 'sped' && tipoSped)
-        ? '/api/relatorio/sped/' + tipoSped + '/' + id + '/'
-        : '/api/relatorio/' + tipo.toLowerCase() + '/' + id + '/';
+        ? p + '/api/relatorio/sped/' + tipoSped + '/' + id + '/'
+        : p + '/api/relatorio/' + tipo.toLowerCase() + '/' + id + '/';
     fetch(url)
         .then(function (r) { return r.json(); })
         .then(function (data) {
@@ -592,7 +597,7 @@ function relatorioCarregarNFe() {
     var tbody = document.querySelector('#tabela-rel-nfe tbody');
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="8" class="text-center">Carregando...</td></tr>';
-    var url = relatorioBuildUrl('/api/relatorio/nfe/', relatorioParams());
+    var url = relatorioGetPrefix() + relatorioBuildUrl('/api/relatorio/nfe/', relatorioParams());
     fetch(url)
         .then(function (r) { return r.json(); })
         .then(function (data) {
@@ -624,7 +629,7 @@ function relatorioCarregarCTe() {
     var tbody = document.querySelector('#tabela-rel-cte tbody');
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="5" class="text-center">Carregando...</td></tr>';
-    var url = relatorioBuildUrl('/api/relatorio/cte/', relatorioParams());
+    var url = relatorioGetPrefix() + relatorioBuildUrl('/api/relatorio/cte/', relatorioParams());
     fetch(url)
         .then(function (r) { return r.json(); })
         .then(function (data) {
@@ -653,7 +658,7 @@ function relatorioCarregarNFSe() {
     var tbody = document.querySelector('#tabela-rel-nfse tbody');
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="4" class="text-center">Carregando...</td></tr>';
-    var url = relatorioBuildUrl('/api/relatorio/nfse/', relatorioParams());
+    var url = relatorioGetPrefix() + relatorioBuildUrl('/api/relatorio/nfse/', relatorioParams());
     fetch(url)
         .then(function (r) { return r.json(); })
         .then(function (data) {
@@ -682,7 +687,7 @@ function relatorioCarregarSped() {
     var tbody = document.querySelector('#tabela-rel-sped tbody');
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="5" class="text-center">Carregando...</td></tr>';
-    fetch(relatorioBuildUrl('/api/relatorio/sped/', relatorioParams()))
+    fetch(relatorioGetPrefix() + relatorioBuildUrl('/api/relatorio/sped/', relatorioParams()))
         .then(function (r) { return r.json(); })
         .then(function (data) {
             var items = data.items || [];

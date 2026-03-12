@@ -10,7 +10,7 @@
 {% block titlepage %}Usuários{% endblock %}
 
 {% block container %}
-<div class="layout-page">
+<div class="layout-page" data-url-prefix="{{ url_prefix|default:'' }}">
   <section class="layout-hero">
     <div class="layout-hero-content">
       <p class="layout-eyebrow">Cadastros</p>
@@ -102,5 +102,10 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+  window.APP_URLS = window.APP_URLS || {};
+  window.APP_URLS.usuarioUpd = "{% url 'Usuario_upd' user_id=999999 %}".replace('999999', '__ID__');
+  window.APP_URLS.usuarioInserir = "{% url 'Usuario_ins' %}";
+</script>
 <script src="{% static 'js/Script_Usuarios.js' %}"></script>
 {% endblock %}
