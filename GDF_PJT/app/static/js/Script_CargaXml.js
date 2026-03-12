@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', function () {
     inicializarEventosJobsRenderizados();
     carregarAvisosCargaXml();
     carregarResumoCargaXml();
+    carregarTodasAsCargas();
 
     var btnAtualizarResumo = document.getElementById('btn-atualizar-resumo-cargaxml');
     if (btnAtualizarResumo) btnAtualizarResumo.addEventListener('click', function () {
