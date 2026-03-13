@@ -89,7 +89,14 @@ from app.db_GDF.reprocessamento.models import (
     ReprocessamentoJob,
     ReprocessamentoLote,
 )
-from app.security.decorators import validate_idor_empresa, validate_idor_usuario, validate_session_required
+from app.security.decorators import (
+    validate_idor_empresa,
+    validate_idor_usuario,
+    validate_session_required,
+    requer_acesso_subsolucao,
+    requer_acesso_total_painel,
+    requer_superuser,
+)
 from app.security.validators import InputValidator
 from app.security_logger import SecurityLogger
 from django.core.exceptions import ValidationError
@@ -181,19 +188,19 @@ def fn_view_csrf_failure(request, reason=''):
     return redirect(reverse('Login'))
 
 
-def fn_view_obter_subsolucao(request, cod_sub): 
-    if request.user.is_authenticated:
-
-        solucoes = request.session.get('t_solucoes', [])
-
-        for sol in solucoes:
-            for sub in sol.get('sub_solucoes', []):
-                if str(sub.get('cod_subsolucao')) == str(cod_sub):
-                    return redirect(sub.get('cod_subsolucao'))
-
-        return render(request, 'index_home.html')
-
-    return render(request, 'index_Login.html')
+@login_required(login_url='Login')
+def fn_view_obter_subsolucao(request, cod_sub):
+    """Redireciona para a URL da subsolução apenas se o usuário tem acesso via grupo."""
+    # Valida acesso pela fonte de verdade (grupos), não apenas pela sessão
+    subsolucoes = get_subsolucoes_usuario(request.user)
+    if subsolucoes is not None and str(cod_sub) not in {str(c) for c in subsolucoes}:
+        return redirect('Home')
+    solucoes = request.session.get('t_solucoes', [])
+    for sol in solucoes:
+        for sub in sol.get('sub_solucoes', []):
+            if str(sub.get('cod_subsolucao')) == str(cod_sub):
+                return redirect(sub.get('cod_subsolucao'))
+    return render(request, 'index_home.html')
 
 @login_required(login_url='Login')
 def fn_view_home(request):
@@ -463,6 +470,7 @@ def fn_view_sair(request):
 #--------------------------------------------------------------------
 # Usuarios
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Usuarios')
 def fn_view_listar_usuarios(request):
     cod_cliente = request.session.get('cod_cliente', None)
     is_superuser = request.session.get('is_superuser', False)
@@ -486,6 +494,7 @@ def fn_view_listar_usuarios(request):
 
 # Empresas
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Empresas')
 def fn_view_listar_empresas(request):
     cod_cliente = request.session.get('cod_cliente', None)
     is_superuser = request.session.get('is_superuser', False)
@@ -508,6 +517,7 @@ def fn_view_listar_empresas(request):
 
 # Clientes
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Clientes')
 def fn_view_listar_clientes(request):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente and not usuario_acesso_total_painel(request):
@@ -522,6 +532,7 @@ def fn_view_listar_clientes(request):
 
 # Filiais (subsolução Administração)
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Filiais')
 def fn_view_listar_filiais(request):
     cod_cliente = request.session.get('cod_cliente', None)
     is_superuser = request.session.get('is_superuser', False)
@@ -552,6 +563,7 @@ def fn_view_listar_filiais(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Filiais')
 @require_http_methods(["POST"])
 def fn_view_inserir_filial(request):
     """Cadastrar nova filial (empresa do cliente na sessão)."""
@@ -593,6 +605,7 @@ def fn_view_inserir_filial(request):
 #       Modais Views
 #--------------------------------------------------------------------
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Usuarios')
 @require_http_methods(["GET", "POST"])
 def fn_view_inserir_usuario(request):
     """Inserir usuário. Superuser pode informar o cliente no formulário."""
@@ -660,6 +673,7 @@ def fn_view_inserir_usuario(request):
         return redirect('Dm_Usuarios')
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Usuarios')
 @require_http_methods(["GET", "POST"])
 def fn_view_atualizar_usuario(request, user_id):
     cod_cliente = request.session.get('cod_cliente', None)
@@ -764,6 +778,7 @@ def _streamlit_iframe_url(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Db_Vendas')
 def fn_view_dashboard_vendas(request):
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Vendas')
     if not token:
@@ -772,6 +787,7 @@ def fn_view_dashboard_vendas(request):
     return render(request, "Dashboard/index_Vendas.html", {"token": token, "streamlit_iframe_url": streamlit_url})
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Db_Compras')
 def fn_view_dashboard_compras(request):
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Compras')
     if not token:
@@ -783,6 +799,7 @@ def fn_view_dashboard_compras(request):
 #       Sub-soluções Views (Manifesto)
 #--------------------------------------------------------------------
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Mnf_Painel')
 def fn_view_manifesto_painel(request):
     manifesto_data = {
         "notas": [
@@ -872,6 +889,7 @@ def fn_view_manifesto_painel(request):
 #       Empresas - Modais
 #--------------------------------------------------------------------
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Empresas')
 @require_http_methods(["GET","POST"])
 def fn_view_inserir_empresa(request):
     """Inserir nova empresa. Superuser pode informar o cliente no formulário."""
@@ -948,6 +966,7 @@ def fn_view_inserir_empresa(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Empresas')
 @validate_idor_empresa
 @require_http_methods(["GET", "POST"])
 def fn_view_atualizar_empresa(request, cod_empresa):
@@ -1017,6 +1036,7 @@ def fn_view_atualizar_empresa(request, cod_empresa):
     return JsonResponse({"erro": "Método não permitido"}, status=405)
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Empresas')
 @require_http_methods(["POST"])
 def fn_view_atualizar_certificado(request):
     """Atualizar certificado digital da empresa"""
@@ -1078,6 +1098,7 @@ def fn_view_atualizar_certificado(request):
 #       Clientes - Modais
 #--------------------------------------------------------------------
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Clientes')
 @require_http_methods(["GET", "POST"])
 def fn_view_inserir_cliente(request):
     """Inserir novo cliente - seguindo padrão Usuario_ins"""
@@ -1122,6 +1143,7 @@ def fn_view_inserir_cliente(request):
     return JsonResponse({"erro": "Método não permitido"}, status=405)
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Clientes')
 @require_http_methods(["GET", "POST"])
 def fn_view_atualizar_cliente(request, cod_cliente):
     """Atualizar cliente existente - seguindo padrão Usuario_upd"""
@@ -1180,6 +1202,7 @@ def fn_view_atualizar_cliente(request, cod_cliente):
         return redirect('Dm_Clientes')
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Clientes')
 @require_http_methods(["POST"])
 def fn_view_atualizar_acesso_cliente(request):
     """Atualizar acessos do cliente existente"""
@@ -1232,6 +1255,7 @@ def fn_view_atualizar_acesso_cliente(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Clientes')
 @require_http_methods(["POST"])
 def fn_view_atualizar_grupos_cliente(request):
     """Atualiza grupos de usuários vinculados ao cliente."""
@@ -1261,6 +1285,7 @@ def fn_view_atualizar_grupos_cliente(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Clientes')
 @require_http_methods(["POST"])
 def fn_view_cliente_sap(request, cod_cliente):
     """Cria ou atualiza a conexão SAP do cliente (uma por cliente)."""
@@ -1333,6 +1358,7 @@ def fn_view_cliente_sap(request, cod_cliente):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaXml')
 @require_http_methods(["GET"])
 def fn_view_CargaXml(request):
     """View para carregamento de XML"""
@@ -1382,6 +1408,7 @@ def fn_view_CargaXml(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_processar_xml(request):
     """API para processar upload de XMLs em segundo plano (job)."""
@@ -1552,6 +1579,7 @@ def fn_api_processar_xml(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET", "POST"])
 def fn_api_cargaxml_parametros(request):
     cod_cliente = request.session.get('cod_cliente', None)
@@ -1645,6 +1673,7 @@ def fn_api_cargaxml_parametros(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET", "PUT"])
 def fn_api_cargaxml_parametro_detail(request, param_id):
     """Endpoint para obter ou atualizar um parâmetro específico (GET / PUT)."""
@@ -1719,6 +1748,7 @@ def fn_api_cargaxml_parametro_detail(request, param_id):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_cargaxml_upload_zip(request, param_id):
     """Envia um arquivo ZIP para a pasta do parâmetro; extrai apenas .xml para o diretório do job."""
@@ -1780,6 +1810,7 @@ def fn_api_cargaxml_upload_zip(request, param_id):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_cargaxml_relatorio(request):
     """Relatório de ajuste para parâmetros de carga (diretório existe, último job)."""
@@ -1818,6 +1849,7 @@ def fn_api_cargaxml_relatorio(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_cargaxml_param_toggle(request, param_id):
     cod_cliente = request.session.get('cod_cliente', None)
@@ -1853,11 +1885,10 @@ def fn_api_cargaxml_param_toggle(request, param_id):
 
 
 @login_required(login_url='Login')
+@requer_acesso_total_painel(redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_sessao_cliente(request):
-    """Define o cliente ativo na sessão. Superuser ou cliente PRCIT (dona do projeto)."""
-    if not usuario_acesso_total_painel(request):
-        return JsonResponse({'sucesso': False, 'erro': 'Acesso negado'}, status=403)
+    """Define o cliente ativo na sessão. Apenas superuser ou cliente PRCIT (dona do projeto)."""
     try:
         # Aceita FormData (request.POST) ou JSON (request.body) - ler apenas um para evitar RawPostDataException
         ct = (request.content_type or '').lower()
@@ -1877,9 +1908,10 @@ def fn_api_sessao_cliente(request):
 
 
 @login_required(login_url='Login')
+@requer_superuser(redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_debug_session(request):
-    """Debug endpoint para verificar sessão e cliente"""
+    """Debug endpoint para verificar sessão e cliente (apenas superuser)."""
     cod_cliente = request.session.get('cod_cliente', None)
     return JsonResponse({
         'usuario': request.user.username,
@@ -1889,6 +1921,7 @@ def fn_api_debug_session(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_cargaxml_avisos(request):
     """Retorna jobs de carga XML com status ERROR (para o botão Avisos e modal de logs)."""
@@ -1929,6 +1962,7 @@ def fn_api_cargaxml_avisos(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_cargaxml_jobs(request):
     """Lista todos os jobs de carga XML do cliente"""
@@ -1956,6 +1990,7 @@ def fn_api_cargaxml_jobs(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_cargaxml_resumo(request):
     """Retorna contagens para o painel: total de jobs, concluídos, com erros, em andamento."""
@@ -1977,6 +2012,7 @@ def fn_api_cargaxml_resumo(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_cargaxml_job_details(request, job_id):
     """Retorna detalhes e log de um job específico"""
@@ -2031,6 +2067,7 @@ def fn_api_cargaxml_job_details(request, job_id):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_processar_sped(request):
     """API para processar upload de arquivos SPED (.txt). Suporta lotes em um único job (job_id + ultimo_lote)."""
@@ -2155,6 +2192,7 @@ def fn_api_processar_sped(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
 @require_http_methods(["GET", "POST"])
 def fn_api_cargasped_parametros(request):
     cod_cliente = request.session.get('cod_cliente', None)
@@ -2227,6 +2265,7 @@ def fn_api_cargasped_parametros(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
 @require_http_methods(["GET", "PUT"])
 def fn_api_cargasped_parametro_detail(request, param_id):
     cod_cliente = request.session.get('cod_cliente', None)
@@ -2275,6 +2314,7 @@ def fn_api_cargasped_parametro_detail(request, param_id):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_cargasped_upload_zip(request, param_id):
     cod_cliente = request.session.get('cod_cliente', None)
@@ -2323,6 +2363,7 @@ def fn_api_cargasped_upload_zip(request, param_id):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_cargasped_param_toggle(request, param_id):
     cod_cliente = request.session.get('cod_cliente', None)
@@ -2340,6 +2381,7 @@ def fn_api_cargasped_param_toggle(request, param_id):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_cargasped_resumo(request):
     """Retorna contagens para o painel: total de jobs, concluídos, com erros, em andamento."""
@@ -2361,6 +2403,7 @@ def fn_api_cargasped_resumo(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_cargasped_avisos(request):
     """Retorna jobs de carga SPED com status ERROR (para o botão Avisos e modal de logs)."""
@@ -2391,6 +2434,7 @@ def fn_api_cargasped_avisos(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_cargasped_jobs(request):
     cod_cliente = request.session.get('cod_cliente', None)
@@ -2411,6 +2455,7 @@ def fn_api_cargasped_jobs(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_cargasped_job_details(request, job_id):
     cod_cliente = request.session.get('cod_cliente', None)
@@ -2446,6 +2491,7 @@ def fn_api_cargasped_job_details(request, job_id):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaSped')
 @require_http_methods(["GET"])
 def fn_view_CargaSped(request):
     """View para carregamento de arquivos SPED (mesma linha de raciocínio da Carga XML)."""
@@ -2493,6 +2539,7 @@ def fn_view_CargaSped(request):
 # ========== APIs Relatório Fiscal (NFe, CTe, NFS, SPED nível cabeçalho) ==========
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfe(request):
     """Lista NFe nível cabeçalho com filtros empresa, grupo de empresa e período."""
@@ -2566,6 +2613,7 @@ def fn_api_relatorio_nfe(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_cte(request):
     """Lista CTe nível cabeçalho com filtros empresa, grupo de empresa e período."""
@@ -2619,6 +2667,7 @@ def fn_api_relatorio_cte(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfse(request):
     """Lista NFSe nível cabeçalho com filtros empresa, grupo de empresa e período."""
@@ -2670,6 +2719,7 @@ def fn_api_relatorio_nfse(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_sped(request):
     """Lista SPED nível cabeçalho. tipo_sped: C=Contribuição, F=Fiscal. Busca em sped_fiscal e sped_contribuicao."""
@@ -2815,6 +2865,7 @@ def _serialize_model(inst, exclude=None):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfe_detalhe(request, id_nfe):
     """Detalhe completo da NFe para modal: cabeçalho, itens, total, cobrança/parcelas, pagamento, transporte, info adicionais."""
@@ -2903,6 +2954,7 @@ def fn_api_relatorio_nfe_detalhe(request, id_nfe):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_cte_detalhe(request, id_cte):
     """Detalhe completo do CTe para modal: cabeçalho, valor, transporte, carga, serviço, veículo, motorista, percurso, fiscal."""
@@ -2955,6 +3007,7 @@ def fn_api_relatorio_cte_detalhe(request, id_cte):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfse_detalhe(request, id_nfse):
     """Detalhe completo da NFSe para modal: cabeçalho, prestador, tomador, serviços, RPS, retenção, pagamento."""
@@ -3002,6 +3055,7 @@ def fn_api_relatorio_nfse_detalhe(request, id_nfse):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_sped_detalhe(request, tipo, id_arquivo):
     """Detalhe do arquivo SPED: cabeçalho e registros. tipo: F=Fiscal, C=Contribuição."""
@@ -3106,6 +3160,7 @@ def fn_api_relatorio_sped_detalhe(request, tipo, id_arquivo):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_Relatorio')
 @require_http_methods(["GET"])
 def fn_view_Relatorio_Fiscal(request):
     """Relatório com dados e filtros das tabelas carregadas: NFe, CTe, NFS e SPED (nível cabeçalho).
@@ -3144,12 +3199,14 @@ def fn_view_Relatorio_Fiscal(request):
 # Reprocessamento – Solução com subsolução Painel (confronto SPED x NFe)
 # -------------------------------------------------------------------------
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel')
 def fn_view_Reprocessamento(request):
     """Legado: redireciona para o Painel."""
     return redirect('Reproc_Painel')
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel')
 def fn_view_Reprocessamento_Painel(request):
     """Painel de Reprocessamento: confronto SPED x NFe por empresa, divergências e reprocessamento controlado."""
     cod_cliente = request.session.get('cod_cliente', None)
@@ -3168,6 +3225,7 @@ def fn_view_Reprocessamento_Painel(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_reprocessamento_lotes(request):
     """Lista lotes de reprocessamento do cliente (filtros: empresa, competência, status)."""
@@ -3242,6 +3300,7 @@ def fn_api_reprocessamento_lotes(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_reprocessamento_divergencias(request, id_lote):
     """Lista divergências de um lote."""
@@ -3284,6 +3343,7 @@ def fn_api_reprocessamento_divergencias(request, id_lote):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_confronto(request):
     """Dispara confronto SPED x NFe para uma empresa e competência (mês)."""
@@ -3359,6 +3419,7 @@ def fn_api_reprocessamento_confronto(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_reprocessamento_divergencia_detalhe(request, id_divergencia):
     """Retorna detalhe completo da divergência: resumo, cabeçalho NFe/SPED, itens, impostos e confrontos realizados."""
@@ -3548,6 +3609,7 @@ def fn_api_reprocessamento_divergencia_detalhe(request, id_divergencia):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_reprocessar_divergencia(request, id_divergencia):
     """Marca divergência como resolvida após reprocessamento."""
@@ -3567,6 +3629,7 @@ def fn_api_reprocessamento_reprocessar_divergencia(request, id_divergencia):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_condicoes_gerar(request, id_lote):
     """Gera/atualiza registros de condição de pagamento para o lote (chaves 44 + condição NFe)."""
@@ -3589,6 +3652,7 @@ def fn_api_reprocessamento_condicoes_gerar(request, id_lote):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_reprocessamento_condicoes_listar(request, id_lote):
     """Lista condições de pagamento do lote (chave, condição NFe, SAP, retorno SAP, status)."""
@@ -3618,6 +3682,7 @@ def fn_api_reprocessamento_condicoes_listar(request, id_lote):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_condicoes_atualizar_retorno(request, id_lote):
     """
@@ -3651,6 +3716,7 @@ def fn_api_reprocessamento_condicoes_atualizar_retorno(request, id_lote):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_condicoes_enviar_sap(request, id_lote):
     """
@@ -3700,6 +3766,7 @@ def fn_api_reprocessamento_condicoes_enviar_sap(request, id_lote):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_reprocessamento_condicao_param_listar(request):
     """Lista registros da tabela condicao_param (depara condição NFe → SAP) do cliente."""
@@ -3720,6 +3787,7 @@ def fn_api_reprocessamento_condicao_param_listar(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_condicao_param_atualizar(request):
     """
@@ -3745,6 +3813,7 @@ def fn_api_reprocessamento_condicao_param_atualizar(request):
 
 
 @login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Clientes', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_sap_testar_conexao(request):
     """

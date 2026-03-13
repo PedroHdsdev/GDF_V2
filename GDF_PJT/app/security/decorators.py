@@ -3,6 +3,7 @@ Decoradores de segurança para views
 """
 from functools import wraps
 from django.http import JsonResponse
+from django.shortcuts import redirect
 
 
 def validate_idor_empresa(view_func):
@@ -78,3 +79,80 @@ def validate_session_required(view_func):
         return view_func(request, *args, **kwargs)
 
     return wrapper
+
+
+def requer_acesso_subsolucao(cod_subsolucao, redirect_on_deny=True):
+    """
+    Decorador que valida se o usuário tem acesso à subsolução (via grupos).
+    Uso: @requer_acesso_subsolucao('Dm_Empresas')  para views de página (redireciona para Home se negado)
+         @requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)  para APIs (retorna 403 JSON)
+    """
+    from app.utils.view_helpers import get_subsolucoes_usuario
+
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapper(request, *args, **kwargs):
+            if not request.user.is_authenticated:
+                if redirect_on_deny:
+                    return redirect("Login")
+                return JsonResponse({"erro": "Não autenticado"}, status=403)
+            subsolucoes = get_subsolucoes_usuario(request.user)
+            # None = acesso total (superuser ou cliente 1000)
+            if subsolucoes is None:
+                return view_func(request, *args, **kwargs)
+            if cod_subsolucao not in subsolucoes:
+                if redirect_on_deny:
+                    return redirect("Home")
+                return JsonResponse({
+                    "erro": "Acesso negado: você não tem permissão para esta subsolução"
+                }, status=403)
+            return view_func(request, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def requer_acesso_total_painel(redirect_on_deny=True):
+    """
+    Decorador que exige usuário com acesso total ao painel (superuser ou cliente dono do projeto).
+    Uso em APIs: @requer_acesso_total_painel(redirect_on_deny=False)
+    """
+    from app.utils.view_helpers import usuario_acesso_total_painel
+
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapper(request, *args, **kwargs):
+            if not request.user.is_authenticated:
+                if redirect_on_deny:
+                    return redirect("Login")
+                return JsonResponse({"erro": "Não autenticado"}, status=403)
+            if not usuario_acesso_total_painel(request):
+                if redirect_on_deny:
+                    return redirect("Home")
+                return JsonResponse({
+                    "erro": "Acesso negado: apenas usuários com acesso total ao painel podem usar este recurso"
+                }, status=403)
+            return view_func(request, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def requer_superuser(redirect_on_deny=True):
+    """
+    Decorador que exige superuser. Uso em APIs de debug: @requer_superuser(redirect_on_deny=False)
+    """
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapper(request, *args, **kwargs):
+            if not request.user.is_authenticated:
+                if redirect_on_deny:
+                    return redirect("Login")
+                return JsonResponse({"erro": "Não autenticado"}, status=403)
+            if not getattr(request.user, "is_superuser", False):
+                if redirect_on_deny:
+                    return redirect("Home")
+                return JsonResponse({
+                    "erro": "Acesso negado: recurso restrito a superusuário"
+                }, status=403)
+            return view_func(request, *args, **kwargs)
+        return wrapper
+    return decorator

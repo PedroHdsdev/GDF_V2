@@ -78,11 +78,11 @@ class SegurancaTestCase(TestCase):
 
     # --- IDOR: acesso a recurso de outro cliente (empresa)
     def test_empresa_idor_cod_inexistente_ou_outro_cliente_403(self):
-        """GET /empresa/<cod>/ com cod_empresa que não pertence ao cliente da sessão deve retornar 403."""
+        """GET /empresa/<cod>/ sem acesso à subsolução ou com cod_empresa inválido deve retornar 403 ou 302."""
         self.client.force_login(self.user)
-        # Sem cod_cliente na sessão o decorador já retorna 403
+        # Sem Dm_Empresas no grupo → 302 (redirect Home); sem cod_cliente ou empresa de outro cliente → 403
         r = self.client.get('/empresa/COD_QUALQUER/')
-        self.assertEqual(r.status_code, 403)
+        self.assertIn(r.status_code, (403, 302), msg="Acesso negado: 403 (IDOR/sessão) ou 302 (sem subsolução)")
 
     # --- Validação de entrada: parâmetro busca com padrões perigosos
     def test_api_relatorio_nfe_busca_sql_injection_retorna_erro_ou_lista_vazia(self):

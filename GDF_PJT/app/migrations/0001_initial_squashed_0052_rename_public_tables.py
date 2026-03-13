@@ -58,6 +58,7 @@ def _noop(apps, schema_editor):
 class Migration(migrations.Migration):
 
     initial = True
+    replaces = [('app', '0001_initial')]
 
     dependencies = [
         ('auth', '0012_alter_user_first_name_max_length'),
@@ -626,15 +627,11 @@ class Migration(migrations.Migration):
             model_name='nfe',
             index=models.Index(fields=['empresa'], name='nfe_empresa_c3f6b4_idx'),
         ),
+        # RenameIndex nfe_empresa_idx -> nfe_empresa_c3f6b4_idx removido: na squashed o índice já é criado com o nome final
         migrations.AddField(
             model_name='nfe',
             name='origem_dados',
             field=models.CharField(choices=[('LOCAL', 'Maquina Local'), ('SAP', 'Importação SAP'), ('SPED', 'Importação SPED'), ('OUTROS', 'Outros')], default='LOCAL', max_length=8),
-        ),
-        migrations.RenameIndex(
-            model_name='nfe',
-            new_name='nfe_empresa_c3f6b4_idx',
-            old_name='nfe_empresa_idx',
         ),
         migrations.AddField(
             model_name='nfe',
@@ -775,26 +772,6 @@ class Migration(migrations.Migration):
             model_name='nfe_documentoitem',
             index=models.Index(fields=['nfe_produto'], name='nfe_documen_nfe_pro_094941_idx'),
         ),
-        migrations.RenameIndex(
-            model_name='nfe_documento',
-            new_name='nfe_documen_nfe_id_143e75_idx',
-            old_name='nfe_doc_nfe_3fb2bf_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='nfe_documento',
-            new_name='nfe_documen_numero__4c343f_idx',
-            old_name='nfe_doc_num_74c8be_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='nfe_documentoitem',
-            new_name='nfe_documen_documen_1bb136_idx',
-            old_name='nfe_docit_doc_32c9b7_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='nfe_documentoitem',
-            new_name='nfe_documen_nfe_pro_094941_idx',
-            old_name='nfe_docit_nfe_2e43d6_idx',
-        ),
         migrations.CreateModel(
             name='CargaXmlParam',
             fields=[
@@ -852,18 +829,8 @@ class Migration(migrations.Migration):
             name='empresa',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='app.empresas'),
         ),
-        migrations.RenameIndex(
-            model_name='cargaxmljob',
-            new_name='cargaxml_jo_cliente_763bcd_idx',
-            old_name='cargaxml_jo_cliente_5f0b4a_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='cargaxmlparam',
-            new_name='cargaxml_pa_cliente_ffd1f4_idx',
-            old_name='cargaxml_pa_cliente_33e08f_idx',
-        ),
         migrations.RunSQL(
-            sql='CREATE SCHEMA IF NOT EXISTS "nfe"; CREATE SCHEMA IF NOT EXISTS "cte"; CREATE SCHEMA IF NOT EXISTS "nfse";',
+            sql='CREATE SCHEMA IF NOT EXISTS "nfe"; CREATE SCHEMA IF NOT EXISTS "cte"; CREATE SCHEMA IF NOT EXISTS "nfse"; CREATE SCHEMA IF NOT EXISTS "sped";',
             reverse_sql='DROP SCHEMA IF EXISTS "nfse" CASCADE; DROP SCHEMA IF EXISTS "cte" CASCADE; DROP SCHEMA IF EXISTS "nfe" CASCADE;',
         ),
         migrations.CreateModel(
@@ -2129,16 +2096,6 @@ class Migration(migrations.Migration):
             model_name='nfse',
             name='nfse_cliente_idx',
         ),
-        migrations.RenameIndex(
-            model_name='nfe',
-            new_name='nfe_cod_cli_263006_idx',
-            old_name='nfe_cliente_idx',
-        ),
-        migrations.RenameIndex(
-            model_name='sped_arquivo',
-            new_name='sped_arquiv_cod_cli_961b5b_idx',
-            old_name='sped_arquiv_cliente_comp_idx',
-        ),
         migrations.AlterField(
             model_name='condicaopagamentolote',
             name='status',
@@ -2261,11 +2218,6 @@ class Migration(migrations.Migration):
         migrations.AlterModelOptions(
             name='condicaoparam',
             options={'managed': True, 'ordering': ['condicao_pagamento_nfe', 'tipo_pagamento'], 'verbose_name': 'Condição de pagamento', 'verbose_name_plural': 'Condições de pagamento'},
-        ),
-        migrations.RenameIndex(
-            model_name='condicaoparam',
-            new_name='condicao_pa_cod_cli_4ca465_idx',
-            old_name='condicao_pa_cli_nfe_tipo_idx',
         ),
         migrations.AddField(
             model_name='cte_evento',
@@ -2418,10 +2370,8 @@ class Migration(migrations.Migration):
             code=_noop,
             reverse_code=_noop,
         ),
-        migrations.RunSQL(
-            sql='DROP SCHEMA IF EXISTS "sped" CASCADE;',
-            reverse_sql='CREATE SCHEMA IF NOT EXISTS "sped";',
-        ),
+        # Schema "sped" mantido: modelos Django (Sped_Arquivo etc.) usam db_table "sped".*; dropar quebra migrações/testes.
+        migrations.RunPython(_noop, _noop),
         migrations.RunSQL(
             sql='\n            ALTER TABLE sped_contribuicao.sped_reg_c190\n                ADD COLUMN IF NOT EXISTS cod_item VARCHAR(60) NULL,\n                ADD COLUMN IF NOT EXISTS cst_pis VARCHAR(2) NULL,\n                ADD COLUMN IF NOT EXISTS vl_bc_pis NUMERIC(15,2) NULL,\n                ADD COLUMN IF NOT EXISTS vl_pis NUMERIC(15,2) NULL,\n                ADD COLUMN IF NOT EXISTS cst_cofins VARCHAR(2) NULL,\n                ADD COLUMN IF NOT EXISTS vl_bc_cofins NUMERIC(15,2) NULL,\n                ADD COLUMN IF NOT EXISTS vl_cofins NUMERIC(15,2) NULL;\n            CREATE INDEX IF NOT EXISTS idx_sc_c190_coditem ON sped_contribuicao.sped_reg_c190(cod_item);\n            ',
             reverse_sql='\n            DROP INDEX IF EXISTS sped_contribuicao.idx_sc_c190_coditem;\n            ALTER TABLE sped_contribuicao.sped_reg_c190\n                DROP COLUMN IF EXISTS cod_item,\n                DROP COLUMN IF EXISTS cst_pis,\n                DROP COLUMN IF EXISTS vl_bc_pis,\n                DROP COLUMN IF EXISTS vl_pis,\n                DROP COLUMN IF EXISTS cst_cofins,\n                DROP COLUMN IF EXISTS vl_bc_cofins,\n                DROP COLUMN IF EXISTS vl_cofins;\n            ',
