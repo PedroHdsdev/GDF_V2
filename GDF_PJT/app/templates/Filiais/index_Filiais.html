@@ -55,6 +55,7 @@
               <th>Nome</th>
               <th>CNPJ</th>
               <th class="text-center">Ativo</th>
+              <th class="text-center" style="width: 90px;">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -75,10 +76,15 @@
                   <span class="badge bg-secondary">Não</span>
                 {% endif %}
               </td>
+              <td class="text-center">
+                <button type="button" class="btn btn-sm btn-outline-primary btn-editar-filial" data-filial-id="{{ f.id }}" title="Editar filial">
+                  <i class="fas fa-edit"></i>
+                </button>
+              </td>
             </tr>
             {% empty %}
             <tr class="admin-empty-state">
-              <td colspan="5" class="text-center py-4">
+              <td colspan="6" class="text-center py-4">
                 <span class="d-block">Nenhuma filial cadastrada.</span>
                 <span class="admin-empty-cta d-block">Clique em <strong>Cadastrar filial</strong> para começar.</span>
               </td>
@@ -92,11 +98,14 @@
 </div>
 
 {% include 'Filiais/modal_Filial_ins.html' %}
+{% include 'Filiais/modal_Filial_editar.html' %}
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function () {
+  var urlPrefix = (document.querySelector('.layout-page') && document.querySelector('.layout-page').getAttribute('data-url-prefix')) || '';
+
   const searchBox = document.getElementById('searchBox');
   const rows = document.querySelectorAll('.filial-row');
   if (searchBox && rows.length) {
@@ -108,6 +117,69 @@
       });
     });
   }
+
+  function fn_abrir_editar_filial(filialId) {
+    var alertEl = document.getElementById('modalFilialEditarAlerts');
+    if (alertEl) alertEl.innerHTML = '';
+    var action = urlPrefix + '/filial/' + filialId + '/atualizar/';
+    document.getElementById('formFilialEditar').action = action;
+    document.getElementById('edt_filial_id').value = filialId;
+    fetch(action, { method: 'GET', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        document.getElementById('edt_filial_empresa_display').textContent = (data.empresa_cod || '') + ' – ' + (data.empresa_nome || '');
+        document.getElementById('edt_filial_cod').value = data.cod_filial || '';
+        document.getElementById('edt_filial_nome').value = data.nome || '';
+        document.getElementById('edt_filial_cnpj').value = data.cnpj || '';
+        document.getElementById('edt_filial_ativo').checked = !!data.ativo;
+        var modal = document.getElementById('modalFilialEditar');
+        if (modal && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+          var m = new bootstrap.Modal(modal);
+          m.show();
+        }
+      })
+      .catch(function () {
+        if (alertEl) alertEl.innerHTML = '<div class="alert alert-danger py-2">Erro ao carregar dados da filial.</div>';
+      });
+  }
+
+  function fn_submit_editar_filial(event) {
+    event.preventDefault();
+    var form = document.getElementById('formFilialEditar');
+    var alertEl = document.getElementById('modalFilialEditarAlerts');
+    var cod = document.getElementById('edt_filial_cod');
+    if (!cod || !cod.value.trim()) {
+      if (alertEl) alertEl.innerHTML = '<div class="alert alert-danger py-2">Código da filial é obrigatório.</div>';
+      return false;
+    }
+    var formData = new FormData(form);
+    fetch(form.action, {
+      method: 'POST',
+      body: formData,
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }).catch(function () { return { ok: r.ok, data: {} }; }); })
+    .then(function (result) {
+      if (result.ok && result.data.success) {
+        if (alertEl) alertEl.innerHTML = '<div class="alert alert-success py-2">' + (result.data.message || 'Filial atualizada.') + '</div>';
+        setTimeout(function () { window.location.reload(); }, 1000);
+      } else {
+        if (alertEl) alertEl.innerHTML = '<div class="alert alert-danger py-2">' + (result.data.erro || 'Erro ao atualizar.') + '</div>';
+      }
+    })
+    .catch(function () {
+      if (alertEl) alertEl.innerHTML = '<div class="alert alert-danger py-2">Erro de conexão.</div>';
+    });
+    return false;
+  }
+
+  document.querySelectorAll('.btn-editar-filial').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var id = this.getAttribute('data-filial-id');
+      if (id) fn_abrir_editar_filial(id);
+    });
+  });
 
   function fn_validar_formulario_filial_ins(event) {
     event.preventDefault();

@@ -612,6 +612,54 @@ def fn_view_inserir_filial(request):
     return JsonResponse({"success": True, "message": "Filial cadastrada com sucesso"})
 
 
+@login_required(login_url='Login')
+@requer_acesso_subsolucao('Dm_Filiais')
+@require_http_methods(["GET", "POST"])
+def fn_view_atualizar_filial(request, pk):
+    """Retorna dados da filial (GET) ou atualiza (POST). Filial deve pertencer ao cliente da sessão."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+    filial = (
+        Filial.objects.filter(
+            id=pk,
+            empresa__gdfcliente__cod_cliente=cod_cliente,
+        )
+        .select_related('empresa')
+        .first()
+    )
+    if not filial:
+        return JsonResponse({"erro": "Filial não encontrada ou sem permissão"}, status=404)
+
+    if request.method == "GET":
+        return JsonResponse({
+            "id": filial.id,
+            "cod_filial": filial.cod_filial,
+            "nome": filial.nome or "",
+            "cnpj": filial.cnpj or "",
+            "ativo": filial.ativo,
+            "empresa_cod": filial.empresa.cod_empresa,
+            "empresa_nome": filial.empresa.fantasia or filial.empresa.razao,
+        })
+
+    # POST: atualizar
+    cod_filial = request.POST.get("m_cod_filial", "").strip()
+    nome = request.POST.get("m_nome", "").strip()
+    cnpj = request.POST.get("m_cnpj", "").strip()
+    ativo = request.POST.get("m_ativo") in ("on", "true", "1")
+    if not cod_filial:
+        return JsonResponse({"erro": "Código da filial é obrigatório"}, status=400)
+    if Filial.objects.filter(empresa=filial.empresa, cod_filial=cod_filial).exclude(id=filial.id).exists():
+        return JsonResponse({"erro": f"Já existe outra filial com código '{cod_filial}' nesta empresa"}, status=400)
+    cnpj_limpo = (cnpj or "").replace(" ", "").replace(".", "").replace("/", "").replace("-", "").strip() or None
+    filial.cod_filial = cod_filial
+    filial.nome = nome or None
+    filial.cnpj = cnpj_limpo
+    filial.ativo = ativo
+    filial.save(update_fields=["cod_filial", "nome", "cnpj", "ativo"])
+    return JsonResponse({"success": True, "message": "Filial atualizada com sucesso"})
+
+
 #--------------------------------------------------------------------
 #       Modais Views
 #--------------------------------------------------------------------

@@ -16,9 +16,13 @@
         <div class="modal-body">
           <div id="modalFilialInsAlerts" class="admin-modal-alerts"></div>
           <p class="admin-step-hint text-muted small mb-3">
-            <i class="fas fa-info-circle me-1"></i> Selecione a empresa e informe o código da filial. Nome e CNPJ são opcionais.
+            <i class="fas fa-info-circle me-1"></i> Preencha a empresa e o código da filial (obrigatórios). Nome e CNPJ ajudam na identificação nas cargas fiscais.
           </p>
-          <div class="row g-3">
+
+          <div class="mb-3">
+            <span class="form-label-section small text-uppercase text-muted fw-semibold">Identificação</span>
+          </div>
+          <div class="row g-3 mb-3">
             <div class="col-12">
               <label for="ins_filial_empresa" class="form-label">* Empresa</label>
               <select id="ins_filial_empresa" name="m_empresa" class="form-select" required>

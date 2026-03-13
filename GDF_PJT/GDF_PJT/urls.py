@@ -96,6 +96,7 @@ urlpatterns = [
 
     # Filiais
     path('filial/inserir/', views.fn_view_inserir_filial, name='Filial_ins'),
+    path('filial/<int:pk>/atualizar/', views.fn_view_atualizar_filial, name='Filial_upd'),
 
     # Clientes
     path('cliente/inserir/', views.fn_view_inserir_cliente, name='Cliente_ins'),
