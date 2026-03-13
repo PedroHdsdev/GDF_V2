@@ -2,6 +2,13 @@
 """Django's command-line utility for administrative tasks."""
 import os
 import sys
+from pathlib import Path
+
+# SAP RFC SDK: definir antes de qualquer import que use pyrfc (o linker usa LD_LIBRARY_PATH)
+_nwrfcsdk_lib = Path(__file__).resolve().parent.parent / "nwrfcsdk" / "lib"
+if _nwrfcsdk_lib.exists():
+    prev = os.environ.get("LD_LIBRARY_PATH", "")
+    os.environ["LD_LIBRARY_PATH"] = f"{_nwrfcsdk_lib}{os.pathsep}{prev}".rstrip(os.pathsep)
 
 
 def main():

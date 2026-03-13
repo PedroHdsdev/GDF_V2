@@ -12,6 +12,12 @@ fi
 
 cd "$PROJECT_DIR"
 
+# SAP RFC SDK (PyRFC): nwrfcsdk na raiz do repositório (irmão de GDF_PJT)
+NWRFC_LIB="${PROJECT_DIR%/GDF_PJT}/nwrfcsdk/lib"
+if [ -d "$NWRFC_LIB" ]; then
+  export LD_LIBRARY_PATH="${NWRFC_LIB}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+
 # Coletar estáticos para WhiteNoise servir CSS/JS (obrigatório com Gunicorn)
 python manage.py collectstatic --noinput 2>/dev/null || true
 
