@@ -32,6 +32,96 @@ class DashboardData:
         return self.tipo_relatorio == "Compras"
 
 
+def apply_compras_filters(data: DashboardData, filter_values: dict) -> DashboardData:
+    """
+    Aplica filtros em memória ao DashboardData de Compras.
+    filter_values pode conter: fornecedores, produtos, ncms, ufs, filiais (listas de valores selecionados).
+    Retorna novo DashboardData com df_merged e df_produtos filtrados.
+    """
+    if not data.is_compras:
+        return data
+    df_m = data.df_merged
+    df_p = data.df_produtos
+
+    ids_keep = None
+
+    if filter_values.get("fornecedores"):
+        sel = [str(x).strip() for x in filter_values["fornecedores"] if x]
+        if sel:
+            mask = df_m["cnpj_fornecedor"].astype(str).isin(sel)
+            if ids_keep is not None:
+                ids_keep = ids_keep & mask
+            else:
+                ids_keep = mask
+
+    if filter_values.get("ufs"):
+        sel = [str(x).strip().upper() for x in filter_values["ufs"] if x]
+        if sel:
+            uf_col = df_m.get("uf_fornecedor")
+            if uf_col is not None:
+                mask = uf_col.fillna("").astype(str).str.upper().isin(sel)
+                if ids_keep is not None:
+                    ids_keep = ids_keep & mask
+                else:
+                    ids_keep = mask
+
+    if filter_values.get("filiais"):
+        sel = [str(x).strip() for x in filter_values["filiais"] if x]
+        if sel:
+            cod = df_m.get("cod_filial")
+            if cod is not None:
+                mask = cod.fillna("").astype(str).isin(sel)
+                if ids_keep is not None:
+                    ids_keep = ids_keep & mask
+                else:
+                    ids_keep = mask
+
+    if filter_values.get("produtos") or filter_values.get("ncms"):
+        ids_from_produtos = None
+        if filter_values.get("produtos"):
+            sel = [str(x).strip() for x in filter_values["produtos"] if x]
+            if sel and not df_p.empty and "descricao" in df_p.columns:
+                mask_p = df_p["descricao"].astype(str).str.strip().isin(sel)
+                ids_from_produtos = set(df_p.loc[mask_p, "id_identificacao"].dropna().unique())
+        if filter_values.get("ncms"):
+            sel = [str(x).strip() for x in filter_values["ncms"] if x]
+            if sel and not df_p.empty and "ncm" in df_p.columns:
+                df_p_ncm = df_p.copy()
+                df_p_ncm["ncm"] = df_p_ncm["ncm"].fillna("").astype(str).str.strip()
+                mask_ncm = df_p_ncm["ncm"].isin(sel)
+                ids_ncm = set(df_p.loc[mask_ncm, "id_identificacao"].dropna().unique())
+                ids_from_produtos = ids_ncm if ids_from_produtos is None else ids_from_produtos & ids_ncm
+        if ids_from_produtos is not None:
+            mask = df_m["id_identificacao"].isin(ids_from_produtos)
+            if ids_keep is not None:
+                ids_keep = ids_keep & mask
+            else:
+                ids_keep = mask
+
+    if ids_keep is not None:
+        id_list = df_m.loc[ids_keep, "id_identificacao"].dropna().unique()
+        df_m = df_m[df_m["id_identificacao"].isin(id_list)].copy()
+        if not df_p.empty:
+            df_p = df_p[df_p["id_identificacao"].isin(id_list)].copy()
+
+    id_list_final = df_m["id_identificacao"].dropna().unique()
+    df_parcelas = data.df_parcelas
+    df_pagamento = data.df_pagamento
+    if not data.df_parcelas.empty and "id_identificacao" in data.df_parcelas.columns:
+        df_parcelas = data.df_parcelas[data.df_parcelas["id_identificacao"].isin(id_list_final)].copy()
+    if not data.df_pagamento.empty and "id_identificacao" in data.df_pagamento.columns:
+        df_pagamento = data.df_pagamento[data.df_pagamento["id_identificacao"].isin(id_list_final)].copy()
+
+    return DashboardData(
+        df_merged=df_m,
+        df_produtos=df_p,
+        df_parcelas=df_parcelas,
+        df_pagamento=df_pagamento,
+        tipo_relatorio=data.tipo_relatorio,
+        g_q_nfe=data.g_q_nfe,
+    )
+
+
 class DataProcessor:
     """Processa dados NFe e gera DataFrames para os dashboards."""
 
@@ -93,11 +183,12 @@ class DataProcessor:
 
         df_produtos = pd.DataFrame.from_records(
             NFe_Produto.objects.filter(nfe_serie__in=g_q_nfe).values(
-                'nfe_serie_id', 'descricao', 'quantidade', 'valor_total', 'ncm', 'cfop'
+                'nfe_serie_id', 'descricao', 'quantidade', 'valor_total', 'valor_unitario', 'ncm', 'cfop'
             )
         )
         if not df_produtos.empty:
             df_produtos.rename(columns={'nfe_serie_id': 'id_identificacao'}, inplace=True)
+            df_produtos['valor_unitario'] = pd.to_numeric(df_produtos['valor_unitario'], errors='coerce').fillna(0)
         else:
             df_produtos = pd.DataFrame()
 
@@ -116,6 +207,15 @@ class DataProcessor:
             )
 
         self._ensure_contraparte_columns(df_merged)
+
+        if self.tipo_relatorio == "Compras":
+            df_filial = self._build_filial(g_q_nfe)
+            if not df_filial.empty:
+                df_merged = df_merged.merge(df_filial, on='id_identificacao', how='left')
+            if 'cod_filial' not in df_merged.columns:
+                df_merged['cod_filial'] = None
+            if 'nome_filial' not in df_merged.columns:
+                df_merged['nome_filial'] = None
 
         if not df_produtos.empty:
             df_prod_agg = df_produtos.groupby('id_identificacao').agg({
@@ -149,6 +249,7 @@ class DataProcessor:
                     'emitente__cnpj',
                     'emitente__razao_social',
                     'emitente__nome_fantasia',
+                    'emitente__endereco__uf',
                 )
             )
             if not df.empty:
@@ -157,11 +258,14 @@ class DataProcessor:
                     'emitente__cnpj': 'cnpj_fornecedor',
                     'emitente__razao_social': 'nome_fornecedor',
                     'emitente__nome_fantasia': 'nome_fantasia_fornecedor',
+                    'emitente__endereco__uf': 'uf_fornecedor',
                 }, inplace=True)
                 df['nome_cliente'] = df['nome_fornecedor'].fillna(df['nome_fantasia_fornecedor'])
                 df['cnpj_cliente'] = df['cnpj_fornecedor']
+                if 'uf_fornecedor' not in df.columns:
+                    df['uf_fornecedor'] = None
             else:
-                df = pd.DataFrame(columns=['id_identificacao', 'cnpj_fornecedor', 'nome_fornecedor', 'nome_cliente', 'cnpj_cliente'])
+                df = pd.DataFrame(columns=['id_identificacao', 'cnpj_fornecedor', 'nome_fornecedor', 'nome_cliente', 'cnpj_cliente', 'uf_fornecedor'])
         else:
             df = pd.DataFrame.from_records(
                 NFe.objects.filter(identificacao__in=g_q_nfe).values(
@@ -229,6 +333,27 @@ class DataProcessor:
                 df_merged['nome_fornecedor'] = None
             if 'cnpj_fornecedor' not in df_merged.columns:
                 df_merged['cnpj_fornecedor'] = None
+            if 'uf_fornecedor' not in df_merged.columns:
+                df_merged['uf_fornecedor'] = None
+
+    def _build_filial(self, g_q_nfe):
+        """Para Compras: retorna id_identificacao, cod_filial, nome_filial."""
+        from app.db_GDF.NFe.models import NFe
+
+        df = pd.DataFrame.from_records(
+            NFe.objects.filter(identificacao__in=g_q_nfe).values(
+                'identificacao_id',
+                'filial__cod_filial',
+                'filial__nome',
+            )
+        )
+        if not df.empty:
+            df.rename(columns={
+                'identificacao_id': 'id_identificacao',
+                'filial__cod_filial': 'cod_filial',
+                'filial__nome': 'nome_filial',
+            }, inplace=True)
+        return df
 
     def _add_metric_columns(self, df_merged):
         df_merged['emissao'] = pd.to_datetime(df_merged['emissao'])

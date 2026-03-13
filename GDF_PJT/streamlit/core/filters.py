@@ -112,3 +112,91 @@ class SidebarFilters:
             "data_inicio": data_inicio,
             "data_fim": data_fim,
         }
+
+
+def render_compras_extra_filters(data):
+    """
+    Renderiza filtros extras do dashboard de Compras (fornecedor, produto, NCM, UF, filial).
+    Recebe DashboardData já carregado (período + empresa) e retorna dict com listas selecionadas.
+    """
+    if not getattr(data, "is_compras", False) or data.df_merged.empty:
+        return {}
+
+    df_m = data.df_merged
+    df_p = data.df_produtos
+
+    st.sidebar.markdown("**🔍 Filtros do relatório**")
+    st.sidebar.caption("Refine os gráficos. Vazio = todos.")
+
+    opts_fornecedores = []
+    if "cnpj_fornecedor" in df_m.columns and "nome_fornecedor" in df_m.columns:
+        u = df_m[["cnpj_fornecedor", "nome_fornecedor"]].drop_duplicates()
+        u = u[u["cnpj_fornecedor"].notna() & (u["cnpj_fornecedor"].astype(str).str.strip() != "")]
+        opts_fornecedores = u["cnpj_fornecedor"].astype(str).str.strip().unique().tolist()
+
+    opts_produtos = []
+    if not df_p.empty and "descricao" in df_p.columns:
+        opts_produtos = df_p["descricao"].dropna().astype(str).str.strip().unique().tolist()
+        opts_produtos = sorted([p for p in opts_produtos if p])[:500]
+
+    opts_ncms = []
+    if not df_p.empty and "ncm" in df_p.columns:
+        opts_ncms = df_p["ncm"].fillna("").astype(str).str.strip().unique().tolist()
+        opts_ncms = sorted([n for n in opts_ncms if n])[:300]
+
+    opts_ufs = []
+    if "uf_fornecedor" in df_m.columns:
+        u = df_m["uf_fornecedor"].fillna("").astype(str).str.upper()
+        opts_ufs = sorted(u[u != ""].unique().tolist())
+
+    opts_filiais = []
+    if "cod_filial" in df_m.columns:
+        u = df_m[["cod_filial", "nome_filial"]].drop_duplicates()
+        u = u[u["cod_filial"].notna() & (u["cod_filial"].astype(str).str.strip() != "")]
+        opts_filiais = u["cod_filial"].astype(str).str.strip().unique().tolist()
+
+    fornecedores = st.sidebar.multiselect(
+        "Fornecedor",
+        options=opts_fornecedores,
+        default=[],
+        key="compras_filtro_fornecedor",
+        help="Deixe vazio para todos.",
+    )
+    produtos = st.sidebar.multiselect(
+        "Produto",
+        options=opts_produtos,
+        default=[],
+        key="compras_filtro_produto",
+        help="Deixe vazio para todos.",
+    )
+    ncms = st.sidebar.multiselect(
+        "Categoria / NCM",
+        options=opts_ncms,
+        default=[],
+        key="compras_filtro_ncm",
+        help="Deixe vazio para todos.",
+    )
+    ufs = st.sidebar.multiselect(
+        "UF (fornecedor)",
+        options=opts_ufs,
+        default=[],
+        key="compras_filtro_uf",
+        help="Deixe vazio para todos.",
+    )
+    filiais = st.sidebar.multiselect(
+        "Filial",
+        options=opts_filiais,
+        default=[],
+        key="compras_filtro_filial",
+        help="Deixe vazio para todas.",
+    )
+
+    st.sidebar.divider()
+
+    return {
+        "fornecedores": fornecedores,
+        "produtos": produtos,
+        "ncms": ncms,
+        "ufs": ufs,
+        "filiais": filiais,
+    }
