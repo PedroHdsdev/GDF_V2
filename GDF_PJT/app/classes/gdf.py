@@ -119,7 +119,16 @@ class ClGdf:
         except Exception as fn_e:
             print(f"[ERROR] JWT encode failed: {str(fn_e)}")
             return None
-        
+
+
+    @staticmethod
+    def formatar_numero(i_valor: int) -> str:
+        if i_valor >= 1_000_000:
+            return f"{i_valor/1_000_000:.1f}M"
+        elif i_valor >= 1_000:
+            return f"{i_valor/1_000:.1f}K"
+        return str(i_valor)    
+
 #********************************************************************************
 #--------------------------------------------------------------------------------
 #           GET - Dados iniciais

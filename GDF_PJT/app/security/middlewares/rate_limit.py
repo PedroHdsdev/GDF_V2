@@ -12,15 +12,35 @@ from django.utils.deprecation import MiddlewareMixin
 from app.security_logger import SecurityLogger
 
 
-def _is_login_path(request):
-    """True se o path for a tela de login (com ou sem subpath /gdf/)."""
+def _normalize_path(request):
+    """Path normalizado (sem prefixo SCRIPT_NAME) para comparação."""
     path = (request.path or "").rstrip("/")
     prefix = (getattr(settings, "FORCE_SCRIPT_NAME", None) or "").rstrip("/")
     if prefix and path.startswith(prefix):
         path = path[len(prefix) :].lstrip("/") or "/"
     else:
         path = path or "/"
+    return path
+
+
+def _is_login_path(request):
+    """True se o path for a tela de login (com ou sem subpath /gdf/)."""
+    path = _normalize_path(request)
     return path == "Login" or path.startswith("Login/")
+
+
+def _is_ratelimit_excluded_path(request):
+    """Paths de leitura/polling que não devem ser limitados (evita 429 na tela CargaXml)."""
+    path = _normalize_path(request)
+    if request.method != "GET":
+        return False
+    excluded_prefixes = (
+        "api/cargaxml/jobs",
+        "api/cargaxml/resumo",
+        "api/cargasped/jobs",
+        "api/cargasped/resumo",
+    )
+    return any(path == p or path.startswith(p + "/") for p in excluded_prefixes)
 
 
 def _get_int_setting(name, default):
@@ -41,6 +61,9 @@ class RateLimitMiddleware(MiddlewareMixin):
     def process_request(self, request):
         # Desativa rate limit se RATE_LIMIT_DISABLED=True (ex.: acesso externo/VPN)
         if getattr(settings, "RATE_LIMIT_DISABLED", False):
+            return None
+        # Endpoints de polling (jobs/resumo) não são limitados para evitar 429 na tela CargaXml
+        if _is_ratelimit_excluded_path(request):
             return None
         if request.user.is_authenticated:
             identifier = f"user_{request.user.id}"

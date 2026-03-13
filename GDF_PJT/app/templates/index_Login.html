@@ -22,18 +22,18 @@
       <div class="login-hero-content">
         <img src="{% static 'img/logo_Process.png' %}" class="login-logo" alt="Logo Process">
         <p class="login-eyebrow">Acesso seguro</p>
-        <h1>Central GDF para operacoes fiscais</h1>
+        <h1>Central GDF para operações fiscais</h1>
         <p class="login-subtitle">
-          Entre com suas credenciais para acompanhar alertas, manifestos e rotinas diarias.
+          Entre com suas credenciais para acompanhar alertas, manifestos e rotinas diárias.
         </p>
         <div class="login-points">
           <div>
-            <span class="login-point-title">Visao unificada</span>
+            <span class="login-point-title">Visão unificada</span>
             <span class="login-point-text">Resumo de notas, filas e dashboards.</span>
           </div>
           <div>
             <span class="login-point-title">Controle imediato</span>
-            <span class="login-point-text">Alertas priorizados para acao rapida.</span>
+            <span class="login-point-text">Alertas priorizados para ação rápida.</span>
           </div>
         </div>
       </div>
@@ -43,12 +43,12 @@
       <div class="login-card">
         <div class="login-card-head">
           <h2>Bem-vindo</h2>
-          <p>Use seu usuario e senha para continuar.</p>
+          <p>Use seu usuário e senha para continuar.</p>
         </div>
         <form method="POST" action="{% if url_prefix %}{{ url_prefix }}/Login/{% else %}/Login/{% endif %}" class="login-form" id="loginForm">
           {% csrf_token %}
           <div class="mb-3">
-            <label for="Username" class="form-label">Usuario</label>
+            <label for="Username" class="form-label">Usuário</label>
             <input type="text" class="form-control" id="Username" name="Username" placeholder="Informe seu usuario" required>
           </div>
 

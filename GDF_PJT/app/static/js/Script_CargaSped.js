@@ -6,7 +6,8 @@ const estadoSped = {
     filtros: { busca: '', mostrarAtivos: true, mostrarInativos: true },
     currentPage: 1,
     itemsPerPage: 10,
-    arquivosManuais: []
+    arquivosManuais: [],
+    avisosAtuaisIds: []
 };
 
 function obterCsrfToken() {
@@ -49,6 +50,32 @@ function carregarResumoCargaSped() {
         .catch(function () {});
 }
 
+/* Avisos CargaSped – badge só para avisos não vistos */
+var AVISOS_CARGASPED_VISTOS_KEY = 'gdf_cargasped_avisos_vistos';
+var AVISOS_CARGASPED_VISTOS_MAX = 500;
+
+function getAvisosCargaSpedVistos() {
+    try {
+        var raw = localStorage.getItem(AVISOS_CARGASPED_VISTOS_KEY);
+        var arr = raw ? JSON.parse(raw) : [];
+        return new Set((arr || []).map(Number).filter(Boolean));
+    } catch (e) { return new Set(); }
+}
+
+function marcarAvisosCargaSpedComoVistos(ids) {
+    if (!ids || ids.length === 0) return;
+    try {
+        var arr = [];
+        try {
+            var raw = localStorage.getItem(AVISOS_CARGASPED_VISTOS_KEY);
+            if (raw) arr = JSON.parse(raw);
+        } catch (e) {}
+        ids.forEach(function (id) { arr.push(Number(id)); });
+        arr = Array.from(new Set(arr)).slice(-AVISOS_CARGASPED_VISTOS_MAX);
+        localStorage.setItem(AVISOS_CARGASPED_VISTOS_KEY, JSON.stringify(arr));
+    } catch (e) {}
+}
+
 function carregarAvisosCargaSped(preencherModal) {
     fetch(getApiBase() + '/api/cargasped/avisos/', {
         method: 'GET',
@@ -56,21 +83,26 @@ function carregarAvisosCargaSped(preencherModal) {
     })
         .then(function (r) { return r.json(); })
         .then(function (data) {
-            var total = (data.sucesso && data.total_erros) ? data.total_erros : 0;
+            var items = (data.sucesso && data.items) ? data.items : [];
+            var vistos = getAvisosCargaSpedVistos();
+            var naoVistos = items.filter(function (j) { return !vistos.has(Number(j.id)); });
+            var totalNaoVistos = naoVistos.length;
+
             var badge = document.getElementById('avisos-badge-cargasped');
             if (badge) {
-                if (total > 0) {
-                    badge.textContent = total > 99 ? '99+' : total;
+                if (totalNaoVistos > 0) {
+                    badge.textContent = totalNaoVistos > 99 ? '99+' : totalNaoVistos;
                     badge.style.display = 'inline-block';
                 } else {
                     badge.style.display = 'none';
                 }
             }
             if (preencherModal) {
-                preencherModalAvisosCargaSped(data.items || []);
+                preencherModalAvisosCargaSped(items);
+                marcarAvisosCargaSpedComoVistos(items.map(function (j) { return j.id; }));
             }
-            if (data.items && data.items.length > 0) {
-                renderizarLogsResumoSped(data.items);
+            if (items.length > 0) {
+                renderizarLogsResumoSped(items);
             } else {
                 renderizarLogsResumoSped([]);
             }
@@ -85,10 +117,13 @@ function preencherModalAvisosCargaSped(items) {
     var emptyEl = document.getElementById('modal-avisos-cargasped-empty');
     var listEl = document.getElementById('modal-avisos-cargasped-list');
     if (!emptyEl || !listEl) return;
+    estadoSped.avisosAtuaisIds = items.map(function (j) { return j.id; });
     if (items.length === 0) {
         emptyEl.style.display = 'block';
         listEl.style.display = 'none';
         listEl.innerHTML = '';
+        var btnJaLido = document.getElementById('btn-avisos-ja-lido-sped');
+        if (btnJaLido) { btnJaLido.disabled = true; btnJaLido.style.visibility = 'hidden'; }
         return;
     }
     emptyEl.style.display = 'none';
@@ -148,6 +183,11 @@ function preencherModalAvisosCargaSped(items) {
         html += '</div>';
     });
     listEl.innerHTML = html;
+    var btnJaLido = document.getElementById('btn-avisos-ja-lido-sped');
+    if (btnJaLido) {
+        btnJaLido.disabled = false;
+        btnJaLido.style.visibility = 'visible';
+    }
     listEl.querySelectorAll('.aviso-item-header').forEach(function (header) {
         header.addEventListener('click', function () {
             var card = header.closest('.aviso-item');
@@ -584,6 +624,22 @@ document.addEventListener('DOMContentLoaded', function () {
     if (modalAvisos) {
         modalAvisos.addEventListener('show.bs.modal', function () {
             carregarAvisosCargaSped(true);
+        });
+    }
+    var btnAvisosJaLidoSped = document.getElementById('btn-avisos-ja-lido-sped');
+    if (btnAvisosJaLidoSped) {
+        btnAvisosJaLidoSped.addEventListener('click', function () {
+            var ids = estadoSped.avisosAtuaisIds || [];
+            if (ids.length === 0) return;
+            marcarAvisosCargaSpedComoVistos(ids);
+            var badge = document.getElementById('avisos-badge-cargasped');
+            if (badge) {
+                badge.style.display = 'none';
+                badge.textContent = '0';
+            }
+            if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                Notificacoes.pagina('Avisos marcados como lidos.', 'success');
+            }
         });
     }
 

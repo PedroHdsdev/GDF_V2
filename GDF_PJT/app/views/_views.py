@@ -263,36 +263,42 @@ def fn_view_home(request):
                     'url': 'Dm_Empresas',
                 })
 
-        # 2. Carga XML com erros (requer Pro_CargaXml)
+        # 2. Carga XML com erros (requer Pro_CargaXml) – ids para o cliente esconder se "já lido"
         if _tem_acesso('Pro_CargaXml'):
-            xml_erros = JobCargaXml.objects.filter(
+            xml_erros_qs = JobCargaXml.objects.filter(
                 gdfcliente__cod_cliente=cod_cliente,
                 status='ERROR',
                 finished_at__gte=desde_24h,
-            ).count()
-            if xml_erros > 0:
+            )
+            xml_erro_ids = list(xml_erros_qs.values_list('id', flat=True))
+            if xml_erro_ids:
                 context['alertas'].append({
                     'tipo': 'critical',
-                    'titulo': f'{xml_erros} carga(s) XML com erro nas últimas 24h',
+                    'titulo': f'{len(xml_erro_ids)} carga(s) XML com erro nas últimas 24h',
                     'meta': 'Processamento Fiscal',
                     'tag': 'Urgente',
                     'url': 'Pro_CargaXml',
+                    'ids': xml_erro_ids,
+                    'fonte': 'cargaxml',
                 })
 
-        # 3. Carga SPED com erros (requer Pro_CargaSped)
+        # 3. Carga SPED com erros (requer Pro_CargaSped) – ids para o cliente esconder se "já lido"
         if _tem_acesso('Pro_CargaSped'):
-            sped_erros = JobCargaSped.objects.filter(
+            sped_erros_qs = JobCargaSped.objects.filter(
                 gdfcliente__cod_cliente=cod_cliente,
                 status='ERROR',
                 finished_at__gte=desde_24h,
-            ).count()
-            if sped_erros > 0:
+            )
+            sped_erro_ids = list(sped_erros_qs.values_list('id', flat=True))
+            if sped_erro_ids:
                 context['alertas'].append({
                     'tipo': 'critical',
-                    'titulo': f'{sped_erros} carga(s) SPED com erro nas últimas 24h',
+                    'titulo': f'{len(sped_erro_ids)} carga(s) SPED com erro nas últimas 24h',
                     'meta': 'Processamento Fiscal',
                     'tag': 'Urgente',
                     'url': 'Pro_CargaSped',
+                    'ids': sped_erro_ids,
+                    'fonte': 'cargasped',
                 })
 
         # 4. Divergências abertas no reprocessamento (requer Reproc_Painel)
@@ -411,20 +417,25 @@ def fn_view_home(request):
             hoje = timezone.now()
             nfe_mes = NFe.objects.filter(
                 gdfcliente__cod_cliente=cod_cliente,
-                identificacao__emissao__year=hoje.year,
-                identificacao__emissao__month=hoje.month,
+            #    identificacao__emissao__year=hoje.year,
+            #    identificacao__emissao__month=hoje.month,
             ).count()
             cte_mes = CTe.objects.filter(
                 gdfcliente__cod_cliente=cod_cliente,
-                identificacao__emissao__year=hoje.year,
-                identificacao__emissao__month=hoje.month,
+            #    identificacao__emissao__year=hoje.year,
+            #    identificacao__emissao__month=hoje.month,
             ).count()
             nfse_mes = NFSe.objects.filter(
                 gdfcliente__cod_cliente=cod_cliente,
-                identificacao__emissao__year=hoje.year,
-                identificacao__emissao__month=hoje.month,
+            #    identificacao__emissao__year=hoje.year,
+            #    identificacao__emissao__month=hoje.month,
             ).count()
-            context['stats_docs'] = {'nfe': nfe_mes, 'cte': cte_mes, 'nfse': nfse_mes}
+            
+            nfe_mes_fmt  = ClGdf.formatar_numero(nfe_mes)
+            cte_mes_fmt  = ClGdf.formatar_numero(cte_mes)
+            nfse_mes_fmt = ClGdf.formatar_numero(nfse_mes)
+            
+            context['stats_docs'] = {'nfe': nfe_mes_fmt, 'cte': cte_mes_fmt, 'nfse': nfse_mes_fmt}
 
         # Última atividade: jobs recentes (XML + SPED)
         if _tem_acesso('Pro_CargaXml') or _tem_acesso('Pro_CargaSped'):

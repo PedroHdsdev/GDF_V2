@@ -40,7 +40,7 @@
                     <span class="home-welcome-stat-label">NFSe</span>
                 </div>
             </div>
-            <small class="home-welcome-stats-note">Documentos no mês</small>
+            <small class="home-welcome-stats-note">Documentos Totais</small> <!--Documentos no mês-->
         </div>
         {% endif %}
     </section>
@@ -55,7 +55,7 @@
             </div>
             <ul class="home-alert-list">
                 {% for a in alertas %}
-                <li class="home-alert is-{{ a.tipo }}">
+                <li class="home-alert is-{{ a.tipo }}" {% if a.ids %}data-job-ids="{% for id in a.ids %}{{ id }}{% if not forloop.last %},{% endif %}{% endfor %}" data-fonte="{{ a.fonte }}"{% endif %}>
                     <span class="home-alert-dot"></span>
                     <div>
                         <p class="home-alert-title">{{ a.titulo }}</p>

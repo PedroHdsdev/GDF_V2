@@ -16,7 +16,8 @@ const estadoCargaXml = {
     currentPage: 1,
     itemsPerPage: 10,
     modoDiretorio: false,
-    nomePasta: ''
+    nomePasta: '',
+    avisosAtuaisIds: []
 };
 
 // Estado para a tabela principal de parâmetros
@@ -62,6 +63,23 @@ document.addEventListener('DOMContentLoaded', function () {
             carregarAvisosCargaXml(true);
         });
     }
+    // Botão "Já lido" no modal de avisos: marca os avisos exibidos como lidos e esconde o badge
+    var btnAvisosJaLido = document.getElementById('btn-avisos-ja-lido');
+    if (btnAvisosJaLido) {
+        btnAvisosJaLido.addEventListener('click', function () {
+            var ids = estadoCargaXml.avisosAtuaisIds || [];
+            if (ids.length === 0) return;
+            marcarAvisosCargaXmlComoVistos(ids);
+            var badge = document.getElementById('avisos-badge-cargaxml');
+            if (badge) {
+                badge.style.display = 'none';
+                badge.textContent = '0';
+            }
+            if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                Notificacoes.pagina('Avisos marcados como lidos.', 'success');
+            }
+        });
+    }
 
     // a aba automática carrega parâmetros sempre que for mostrada
     const tabAutomatico = document.getElementById('tab-automatico');
@@ -101,8 +119,14 @@ function getApiBase() {
 ================================ */
 function carregarResumoCargaXml() {
     fetch(getApiBase() + '/api/cargaxml/resumo/', { method: 'GET', headers: { 'X-CSRFToken': obterCsrfToken() } })
-        .then(function (r) { return r.json(); })
+        .then(function (r) {
+            if (r.status === 429) return { _rateLimit: true };
+            return r.text().then(function (text) {
+                try { return JSON.parse(text); } catch (e) { return { sucesso: false }; }
+            });
+        })
         .then(function (data) {
+            if (data._rateLimit) return;
             if (!data.sucesso) return;
             var elTotal = document.getElementById('resumo-cargaxml-total');
             var elConcluidos = document.getElementById('resumo-cargaxml-concluidos');
@@ -126,8 +150,33 @@ function carregarResumoCargaXml() {
 }
 
 /* ===============================
-   AVISOS – LOGS DE CARGAS COM ERROS
+   AVISOS – LOGS DE CARGAS COM ERROS (badge só para avisos não vistos)
 ================================ */
+var AVISOS_CARGAXML_VISTOS_KEY = 'gdf_cargaxml_avisos_vistos';
+var AVISOS_CARGAXML_VISTOS_MAX = 500;
+
+function getAvisosCargaXmlVistos() {
+    try {
+        var raw = localStorage.getItem(AVISOS_CARGAXML_VISTOS_KEY);
+        var arr = raw ? JSON.parse(raw) : [];
+        return new Set((arr || []).map(Number).filter(Boolean));
+    } catch (e) { return new Set(); }
+}
+
+function marcarAvisosCargaXmlComoVistos(ids) {
+    if (!ids || ids.length === 0) return;
+    try {
+        var arr = [];
+        try {
+            var raw = localStorage.getItem(AVISOS_CARGAXML_VISTOS_KEY);
+            if (raw) arr = JSON.parse(raw);
+        } catch (e) {}
+        ids.forEach(function (id) { arr.push(Number(id)); });
+        arr = Array.from(new Set(arr)).slice(-AVISOS_CARGAXML_VISTOS_MAX);
+        localStorage.setItem(AVISOS_CARGAXML_VISTOS_KEY, JSON.stringify(arr));
+    } catch (e) {}
+}
+
 function carregarAvisosCargaXml(preencherModal) {
     fetch(getApiBase() + '/api/cargaxml/avisos/', {
         method: 'GET',
@@ -135,21 +184,26 @@ function carregarAvisosCargaXml(preencherModal) {
     })
         .then(function (r) { return r.json(); })
         .then(function (data) {
-            var total = (data.sucesso && data.total_erros) ? data.total_erros : 0;
+            var items = (data.sucesso && data.items) ? data.items : [];
+            var vistos = getAvisosCargaXmlVistos();
+            var naoVistos = items.filter(function (j) { return !vistos.has(Number(j.id)); });
+            var totalNaoVistos = naoVistos.length;
+
             var badge = document.getElementById('avisos-badge-cargaxml');
             if (badge) {
-                if (total > 0) {
-                    badge.textContent = total > 99 ? '99+' : total;
+                if (totalNaoVistos > 0) {
+                    badge.textContent = totalNaoVistos > 99 ? '99+' : totalNaoVistos;
                     badge.style.display = 'inline-block';
                 } else {
                     badge.style.display = 'none';
                 }
             }
             if (preencherModal) {
-                preencherModalAvisosCargaXml(data.items || []);
+                preencherModalAvisosCargaXml(items);
+                marcarAvisosCargaXmlComoVistos(items.map(function (j) { return j.id; }));
             }
-            if (data.items && data.items.length > 0) {
-                renderizarLogsResumo(data.items);
+            if (items.length > 0) {
+                renderizarLogsResumo(items);
             } else {
                 renderizarLogsResumo([]);
             }
@@ -164,10 +218,13 @@ function preencherModalAvisosCargaXml(items) {
     var emptyEl = document.getElementById('modal-avisos-cargaxml-empty');
     var listEl = document.getElementById('modal-avisos-cargaxml-list');
     if (!emptyEl || !listEl) return;
+    estadoCargaXml.avisosAtuaisIds = items.map(function (j) { return j.id; });
     if (items.length === 0) {
         emptyEl.style.display = 'block';
         listEl.style.display = 'none';
         listEl.innerHTML = '';
+        var btnJaLido = document.getElementById('btn-avisos-ja-lido');
+        if (btnJaLido) { btnJaLido.disabled = true; btnJaLido.style.visibility = 'hidden'; }
         return;
     }
     emptyEl.style.display = 'none';
@@ -237,6 +294,11 @@ function preencherModalAvisosCargaXml(items) {
         html += '</div>';
     });
     listEl.innerHTML = html;
+    var btnJaLido = document.getElementById('btn-avisos-ja-lido');
+    if (btnJaLido) {
+        btnJaLido.disabled = false;
+        btnJaLido.style.visibility = 'visible';
+    }
     listEl.querySelectorAll('.aviso-item-header').forEach(function (header) {
         header.addEventListener('click', function () {
             var card = header.closest('.aviso-item');
@@ -607,14 +669,22 @@ function abrirModalParametro(paramId) {
 ================================ */
 function carregarTodasAsCargas() {
     fetch(getApiBase() + '/api/cargaxml/jobs/')
-        .then(resp => {
-            console.log('API Response Status:', resp.status);
-            return resp.json().then(data => {
-                console.log('API Response Data:', data);
-                return { status: resp.status, data };
+        .then(function (resp) {
+            return resp.text().then(function (text) {
+                var data;
+                try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
+                return { status: resp.status, data: data };
             });
         })
-        .then(({ status, data }) => {
+        .then(function (result) {
+            var status = result.status;
+            var data = result.data;
+            if (status === 429) {
+                if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                    Notificacoes.pagina('Muitas requisições. Aguarde um minuto e atualize a página.', 'warning');
+                }
+                return;
+            }
             if (status === 403) {
                 console.error('Erro 403: Cliente não identificado');
                 Notificacoes.pagina('Erro ao carregar jobs: Cliente não identificado', 'error');
@@ -655,9 +725,9 @@ function carregarTodasAsCargas() {
             renderizarEmExecucao();
             renderizarJaExecutado();
         })
-        .catch(erro => {
+        .catch(function (erro) {
             console.error('Erro na requisição:', erro);
-            Notificacoes.pagina('Erro ao conectar na API: ' + erro.message, 'error');
+            Notificacoes.pagina('Erro ao conectar na API: ' + (erro.message || 'tente novamente'), 'error');
             estadoCargaXml.todasCargas = [];
             aplicarFiltrosCarga();
             renderizarEmExecucao();
