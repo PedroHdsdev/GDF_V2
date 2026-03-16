@@ -8,7 +8,7 @@ Estrutura de pastas, hierarquia de arquivos, schemas do banco, fluxos de dados e
 
 ```
 gdf_v2/
-├── DOCUMENTACAO_MD/              # Documentação (índice, workbook, arquitetura, manual, deploy, glossário)
+├── documentacao_md/              # Documentação (índice, workbook, arquitetura, manual, deploy, glossário, relatórios)
 ├── GDF_PJT/                      # Projeto Django
 │   ├── app/                      # Aplicação principal
 │   │   ├── api/                  # APIs JSON e jobs (CargaXml, CargaSped); tasks Celery

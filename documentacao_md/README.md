@@ -16,6 +16,14 @@ Esta pasta concentra **toda a documentação** do projeto **GDF_V2**: sistema mu
 | **MANUAL_USUARIO.md** | Manual do usuário: como usar cada tela (login, cadastros, carga XML/SPED, relatório, reprocessamento, manifesto, dashboards). |
 | **DEPLOY.md** | Guia de deploy em produção: requisitos, variáveis de ambiente, instalação, servidor, Celery, HTTPS, checklist. |
 | **GLOSSARIO.md** | Glossário de termos do domínio (GDF, cliente, empresa, subsolução, NFe, SPED, job, etc.). |
+| **CONDICAO_PAGAMENTO.md** | Condições de pagamento (mapeamento NFe → SAP). |
+| **RELATORIO_ESCALABILIDADE.md** | Relatório de escalabilidade (testes de carga). |
+| **RELATORIO_PERFORMANCE.md** | Relatório de performance. |
+| **RELATORIO_SEGURANCA.md** | Relatório de segurança. |
+| **README_views.md** | Views: estrutura e migração por domínio. |
+| **README_streamlit.md** | Streamlit: dashboards por solução. |
+| **README_security.md** | Security: decorators, middlewares. |
+| **README_api.md** | API: jobs, tasks Celery, endpoints. |
 
 ---
 

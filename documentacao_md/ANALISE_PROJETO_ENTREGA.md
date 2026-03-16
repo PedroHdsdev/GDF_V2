@@ -257,10 +257,10 @@ As seguintes alterações foram aplicadas ao executar este documento:
   - **`app/views/_views.py`** – contém toda a implementação atual (telas e APIs).
   - **`app/views/__init__.py`** – reexporta todas as funções para compatibilidade com `urls.py` e `app.api`.
 - Assim, `from app import views` passa a carregar o pacote; as URLs e o `app.api` continuam funcionando sem alteração.
-- **`app/views/README.md`** descreve a estrutura e como migrar, no futuro, as funções de `_views.py` para módulos por domínio (auth, cadastros, carga_xml, carga_sped, relatorio, reprocessamento, sap).
+- **`documentacao_md/README_views.md`** descreve a estrutura e como migrar, no futuro, as funções de `_views.py` para módulos por domínio (auth, cadastros, carga_xml, carga_sped, relatorio, reprocessamento, sap).
 
 **Pendente (opcional):**
-- Migrar funções de `_views.py` para os módulos auth, cadastros, etc., conforme `app/views/README.md`.
+- Migrar funções de `_views.py` para os módulos auth, cadastros, etc., conforme `documentacao_md/README_views.md`.
 - Migração dos novos índices: executar `python3 manage.py makemigrations app` e `python3 manage.py migrate`.
 
 Com isso, o projeto avança em código mais limpo, seguro e performático, com base documentada para as refatorações restantes.

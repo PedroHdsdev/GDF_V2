@@ -3877,7 +3877,7 @@ def fn_api_sap_testar_conexao(request):
         if not SapRfc.is_available():
             return JsonResponse({
                 'sucesso': False,
-                'mensagem': 'PyRFC não disponível. Instale o SAP NetWeaver RFC SDK e o pacote pyrfc. Ver DOCUMENTACAO_MD/SAP_RFC_SETUP.md',
+                'mensagem': 'PyRFC não disponível. Instale o SAP NetWeaver RFC SDK e o pacote pyrfc. Ver documentacao_md/',
             }, status=503)
         conn = SapRfc.get_connection(cod_cliente)
         if not conn:

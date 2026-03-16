@@ -21,6 +21,14 @@ Esta documentação cobre **nomenclatura**, **arquitetura**, **funcionalidades**
 | **[DEPLOY.md](DEPLOY.md)** | Deploy em produção: requisitos (Python, PostgreSQL, Redis, servidor), variáveis de ambiente detalhadas, instalação passo a passo, Gunicorn e Nginx, Celery (worker e beat), agendador alternativo sem Redis, HTTPS e certificados, checklist completo e monitoramento. |
 | **[GLOSSARIO.md](GLOSSARIO.md)** | Glossário de termos: GDF, cliente GDF, cliente 1000, empresa, grupo de empresa, usuário, solução, subsolução, NFe/CTe/NFSe, SPED, carga XML/SPED, job, reprocessamento, divergência, condição de pagamento, SAP RFC, IDOR, schema, e outros. |
 | **[ANALISE_PROJETO_ENTREGA.md](ANALISE_PROJETO_ENTREGA.md)** | Análise completa do projeto: arquitetura, código limpo, performance, escalabilidade, segurança, banco de dados, framework, DevOps; problemas encontrados, melhorias recomendadas e justificativas técnicas. |
+| **[CONDICAO_PAGAMENTO.md](CONDICAO_PAGAMENTO.md)** | Condições de pagamento: mapeamento NFe → SAP, parâmetros e fluxo no reprocessamento. |
+| **[RELATORIO_ESCALABILIDADE.md](RELATORIO_ESCALABILIDADE.md)** | Relatório de escalabilidade: testes de carga, usuários concorrentes, limites recomendados. |
+| **[RELATORIO_PERFORMANCE.md](RELATORIO_PERFORMANCE.md)** | Relatório de performance: tempos de resposta e métricas. |
+| **[RELATORIO_SEGURANCA.md](RELATORIO_SEGURANCA.md)** | Relatório de segurança: análise e recomendações. |
+| **[README_views.md](README_views.md)** | Estrutura do pacote de views e migração por domínio (auth, cadastros, carga_xml, etc.). |
+| **[README_streamlit.md](README_streamlit.md)** | Dashboards Streamlit: arquitetura, como adicionar novo dashboard, parâmetros da URL. |
+| **[README_security.md](README_security.md)** | Módulos de segurança: decorators, validadores, middlewares (rate limit, sessão, headers). |
+| **[README_api.md](README_api.md)** | API: jobs em thread, tasks Celery, lista de endpoints `fn_api_*`. |
 
 ---
 
