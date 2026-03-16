@@ -24,7 +24,7 @@ def render_evolucao_temporal(df_merged, grafico_mod, tipo_relatorio: str):
         metricas_opcoes.append(("Credito_Tributario_Total", "Créditos tributários (ICMS, PIS, COFINS)"))
 
     st.markdown("**O que você quer analisar?**")
-    st.caption("Evolução mês a mês ou total anual. Use zoom (arrastar no gráfico) e passe o mouse para ver valores. Ideal para tendências e sazonalidade.")
+    st.caption("Evolução mês a mês ou total anual. Passe o mouse sobre as linhas para ver os valores exatos. Use zoom (arrastar no gráfico) para detalhar um período. Ideal para tendências e sazonalidade.")
 
     col_filtro1, col_filtro2, col_filtro3 = st.columns([2, 2, 2])
 

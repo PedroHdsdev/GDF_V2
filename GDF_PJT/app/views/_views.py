@@ -1477,15 +1477,10 @@ def fn_api_processar_xml(request):
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     
     try:
-        # Processar upload de XML aqui
-        cl_xml = CargaXml()
-
-        lsl_Xml          = request.FILES.getlist('arquivo')
-        l_v_type_xml     = request.POST.get('type_xml', 'NFe')
-        l_v_origem_dados = request.POST.get('origem_dados', 'LOCAL')
-        l_v_empresa_id   = (request.POST.get('empresa_id') or '').strip()
-        job_id_existente = request.POST.get('job_id', '').strip()
-        ultimo_lote      = request.POST.get('ultimo_lote', '').strip().lower() in ('1', 'true', 's', 'sim', 'yes')
+        lsl_Xml = request.FILES.getlist('arquivo')
+        l_v_type_xml = (request.POST.get('type_xml') or 'NFe').strip() or 'NFe'
+        l_v_origem_dados = (request.POST.get('origem_dados') or 'LOCAL').strip() or 'LOCAL'
+        l_v_empresa_id = (request.POST.get('empresa_id') or '').strip()
 
         if not lsl_Xml:
             return JsonResponse({
@@ -1506,11 +1501,29 @@ def fn_api_processar_xml(request):
                 if f.size > MAX_SIZE:
                     return JsonResponse({'sucesso': False, 'mensagem': f'Arquivo ZIP muito grande: {f.name}'}, status=400)
                 try:
-                    with zipfile.ZipFile(f, 'r') as zf:
+                    if hasattr(f, 'seek'):
+                        f.seek(0)
+                    # ZIP: suporte a nomes no encoding do Windows (CP437) quando disponível (Python 3.11+)
+                    try:
+                        zf = zipfile.ZipFile(f, 'r', metadata_encoding='cp437')
+                    except TypeError:
+                        zf = zipfile.ZipFile(f, 'r')
+                    with zf:
+                        seen_basenames = {}
                         for member in zf.namelist():
-                            if member.endswith('/') or not member.lower().endswith('.xml'):
+                            # Normalizar caminho (ZIPs do Windows usam \)
+                            member_norm = member.replace('\\', '/').strip()
+                            # Só processar .xml; ignorar pastas, .html, .pdf, .txt, etc.
+                            if member_norm.endswith('/') or not member_norm.lower().endswith('.xml'):
                                 continue
-                            safe_name = os.path.basename(member)
+                            safe_name = os.path.basename(member_norm) or os.path.basename(member.replace('\\', '/')) or 'arquivo.xml'
+                            # Nomes únicos quando o ZIP tem pastas com arquivos de mesmo nome
+                            if safe_name in seen_basenames:
+                                seen_basenames[safe_name] += 1
+                                base, ext = os.path.splitext(safe_name)
+                                safe_name = f"{base}_{seen_basenames[safe_name]}{ext}"
+                            else:
+                                seen_basenames[safe_name] = 1
                             with zf.open(member, 'r') as src:
                                 xml_bytes = src.read()
                             if len(xml_bytes) > MAX_SIZE:
@@ -1527,6 +1540,19 @@ def fn_api_processar_xml(request):
                 'mensagem': 'Nenhum arquivo XML encontrado. Envie apenas arquivos .xml ou .zip que contenham .xml dentro (outros tipos são ignorados).'
             }, status=400)
 
+        max_arquivos_por_requisicao = getattr(settings, 'CARGAXML_MAX_ARCHIVOS_POR_REQUISICAO', 5000)
+        if len(expanded) > max_arquivos_por_requisicao:
+            return JsonResponse({
+                'sucesso': False,
+                'mensagem': f'Máximo de {max_arquivos_por_requisicao} arquivos por envio. Você enviou {len(expanded)}. Compacte em .zip ou envie em partes.'
+            }, status=400)
+
+        if l_v_type_xml not in ('NFe', 'CTe', 'NFSe'):
+            return JsonResponse({
+                'sucesso': False,
+                'mensagem': f'Tipo de documento inválido: {l_v_type_xml}. Use NFe, CTe ou NFSe.'
+            }, status=400)
+
         def _temp_dir_para_job(jid):
             base = getattr(settings, 'CARGAXML_TEMP_ROOT', None) or tempfile.gettempdir()
             return os.path.join(base, 'gdf_cargaxml', str(jid))
@@ -1534,62 +1560,34 @@ def fn_api_processar_xml(request):
         cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
         from app.api.jobs import processar_job_xml_background
 
-        if job_id_existente:
+        def _disparar_processamento_xml(job, temp_dir):
+            """Dispara processamento em Celery ou, se indisponível, em thread."""
             try:
-                job_id_int = int(job_id_existente)
-            except ValueError:
-                return JsonResponse({'sucesso': False, 'mensagem': 'job_id inválido.'}, status=400)
-            job = get_object_or_404(JobCargaXml, id=job_id_int, gdfcliente__cod_cliente=cod_cliente)
-            if job.status != 'PENDING':
-                return JsonResponse({'sucesso': False, 'mensagem': f'Job #{job.id} já foi finalizado ou está em execução (status={job.status}).'}, status=400)
-            temp_dir = _temp_dir_para_job(job.id)
-            if not os.path.isdir(temp_dir):
-                return JsonResponse({'sucesso': False, 'mensagem': f'Pasta do job #{job.id} não encontrada. Envie os lotes em sequência sem demora.'}, status=400)
-            offset = len([f for f in os.listdir(temp_dir) if os.path.isfile(os.path.join(temp_dir, f)) and f.lower().endswith('.xml')])
-            try:
-                for i, item in enumerate(expanded):
-                    xml_bytes = item.read() if hasattr(item, 'read') else item
-                    nome = getattr(item, 'name', f'{offset + i}.xml')
-                    safe_name = os.path.basename(nome).replace('..', '_') or f'{offset + i}.xml'
-                    dest = os.path.join(temp_dir, f'{offset + i}_{safe_name}')
-                    with open(dest, 'wb') as out:
-                        out.write(xml_bytes)
-            except Exception as e:
-                return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao salvar arquivos no job: {e}'}, status=500)
-            job.total_arquivos += len(expanded)
-            job.save(update_fields=['total_arquivos'])
-            if ultimo_lote:
-                job.status = 'RUNNING'
-                job.mensagem = f'Carga manual – em execução ({job.total_arquivos} arquivo(s))...'
-                job.started_at = timezone.localtime()
-                job.save(update_fields=['status', 'mensagem', 'started_at'])
-                t = threading.Thread(
-                    target=processar_job_xml_background,
-                    args=(job.id, temp_dir, l_v_type_xml, l_v_origem_dados, request.user.id, cod_cliente, l_v_empresa_id),
-                    daemon=True,
+                from app.api.tasks import processar_job_xml_manual
+                processar_job_xml_manual.delay(
+                    job.id, temp_dir, l_v_type_xml, l_v_origem_dados,
+                    request.user.id, cod_cliente, l_v_empresa_id or None,
                 )
-                t.start()
-                return JsonResponse({
-                    'sucesso': True,
-                    'mensagem': f'Job #{job.id} finalizado e em execução ({job.total_arquivos} arquivo(s)). Atualize o painel para acompanhar.',
-                    'job_id': job.id,
-                }, status=202)
-            return JsonResponse({
-                'sucesso': True,
-                'mensagem': f'Lote recebido. Job #{job.id} com {job.total_arquivos} arquivo(s). Envie o próximo lote com o mesmo job_id.',
-                'job_id': job.id,
-            }, status=200)
+                return
+            except Exception:
+                pass
+            t = threading.Thread(
+                target=processar_job_xml_background,
+                args=(job.id, temp_dir, l_v_type_xml, l_v_origem_dados, request.user.id, cod_cliente, l_v_empresa_id),
+                daemon=True,
+            )
+            t.start()
 
-        # Primeiro lote: criar job e pasta temp
+        # Um envio = um job: criar job, salvar arquivos na pasta temp e disparar processamento
         job = JobCargaXml.objects.create(
             gdfcliente=cliente,
             parametro=None,
-            status='PENDING',
+            status='RUNNING',
             total_arquivos=len(expanded),
             total_sucesso=0,
             total_erro=0,
-            mensagem='Aguardando lotes...',
-            started_at=None,
+            mensagem=f'Carga manual – em execução ({len(expanded)} arquivo(s))...',
+            started_at=timezone.localtime(),
             finished_at=None,
             usuario_execucao=request.user,
         )
@@ -1611,27 +1609,12 @@ def fn_api_processar_xml(request):
             job.delete()
             return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao salvar arquivos: {e}'}, status=500)
 
-        if ultimo_lote:
-            job.status = 'RUNNING'
-            job.mensagem = f'Carga manual – em execução ({job.total_arquivos} arquivo(s))...'
-            job.started_at = timezone.localtime()
-            job.save(update_fields=['status', 'mensagem', 'started_at'])
-            t = threading.Thread(
-                target=processar_job_xml_background,
-                args=(job.id, temp_dir, l_v_type_xml, l_v_origem_dados, request.user.id, cod_cliente, l_v_empresa_id),
-                daemon=True,
-            )
-            t.start()
-            return JsonResponse({
-                'sucesso': True,
-                'mensagem': f'Job #{job.id} criado e em execução em segundo plano. Atualize o painel para acompanhar.',
-                'job_id': job.id,
-            }, status=202)
+        _disparar_processamento_xml(job, temp_dir)
         return JsonResponse({
             'sucesso': True,
-            'mensagem': f'Job #{job.id} criado com {job.total_arquivos} arquivo(s). Envie o próximo lote com job_id={job.id} e ultimo_lote=1 no último.',
+            'mensagem': f'Job #{job.id} criado e em execução em segundo plano ({len(expanded)} arquivo(s)). Atualize o painel para acompanhar.',
             'job_id': job.id,
-        }, status=200)
+        }, status=202)
 
     except Exception as e:
         return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao processar: {str(e)}'}, status=500)
@@ -2024,15 +2007,12 @@ def fn_api_cargaxml_avisos(request):
 @requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_cargaxml_jobs(request):
-    """Lista todos os jobs de carga XML do cliente"""
-    import sys
+    """Lista todos os jobs de carga XML do cliente (inclui mensagem para monitoramento)."""
     cod_cliente = request.session.get('cod_cliente', None)
-    print(f"DEBUG: cod_cliente={cod_cliente}", file=sys.stderr)
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
 
     jobs = JobCargaXml.objects.filter(gdfcliente__cod_cliente=cod_cliente).order_by('-started_at')
-    print(f"DEBUG: Found {jobs.count()} jobs", file=sys.stderr)
     items = []
     for job in jobs:
         items.append({
@@ -2041,6 +2021,7 @@ def fn_api_cargaxml_jobs(request):
             'total_arquivos': job.total_arquivos,
             'total_sucesso': job.total_sucesso,
             'total_erro': job.total_erro,
+            'mensagem': (job.mensagem or '')[:500],
             'started_at': job.started_at.isoformat() if job.started_at else None,
             'finished_at': job.finished_at.isoformat() if job.finished_at else None,
             'parametro_id': job.parametro.id if job.parametro else None,

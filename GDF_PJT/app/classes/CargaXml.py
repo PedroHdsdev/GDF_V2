@@ -689,22 +689,30 @@ class CargaXml:
 
         for xml_file in I_LsXml:
             try:
-                xml_data = xml_file.read()
+                xml_data = xml_file.read() if hasattr(xml_file, 'read') else xml_file
+                nome_arquivo = getattr(xml_file, 'name', '')
+                if not xml_data or (isinstance(xml_data, bytes) and not xml_data.strip()):
+                    result['errors'].append({
+                        'file': nome_arquivo,
+                        'error': 'Arquivo vazio ou conteúdo inválido.',
+                        'type': 'ArquivoVazio'
+                    })
+                    continue
 
                 # Verificar se é XML de evento (procEventoNFe, procEventoCTe) - chave 44
                 if self._extrair_dados_evento(xml_data):
                     if self.set_evento(xml_data, I_origem_dados, i_usuario, i_cod_cliente):
-                        result['success'].append(xml_file.name)
+                        result['success'].append(nome_arquivo)
                     else:
                         result['errors'].append({
-                            'file': xml_file.name,
+                            'file': nome_arquivo,
                             'error': 'Chave do evento não encontrada em NFe, CTe ou NFSe.',
                             'type': 'ChaveNaoEncontrada'
                         })
                     continue
 
                 if i_type == 'NFe':
-                    self.set_nfe(xml_data, I_origem_dados, i_usuario, i_cod_cliente, nome_arquivo=xml_file.name)
+                    self.set_nfe(xml_data, I_origem_dados, i_usuario, i_cod_cliente, nome_arquivo=nome_arquivo)
                 
                 elif i_type == 'CTe':
                     self.set_cte(xml_data, I_origem_dados, i_usuario, i_cod_cliente)
@@ -712,18 +720,18 @@ class CargaXml:
                 elif i_type == 'NFSe':
                     self.set_nfse(xml_data, I_origem_dados, i_usuario, i_cod_cliente)
 
-                result['success'].append(xml_file.name)
+                result['success'].append(nome_arquivo)
                 result['avisos'].extend(getattr(self, '_avisos', []))
                 self._avisos = []
 
             except EmpresaNaoCadastradaError as e:
                 result['pendentes'].append({
-                    'file': xml_file.name,
+                    'file': getattr(xml_file, 'name', ''),
                     'motivo': str(e),
                 })
             except Exception as e:
                 result['errors'].append({
-                    'file': xml_file.name, 
+                    'file': getattr(xml_file, 'name', ''),
                     'error': str(e),
                     'type': type(e).__name__
                 })

@@ -17,7 +17,9 @@ const estadoCargaXml = {
     itemsPerPage: 10,
     modoDiretorio: false,
     nomePasta: '',
-    avisosAtuaisIds: []
+    avisosAtuaisIds: [],
+    modalJobPollInterval: null,
+    modalJobIdAberto: null
 };
 
 // Estado para a tabela principal de parâmetros
@@ -692,25 +694,28 @@ function carregarTodasAsCargas() {
                 renderizarEmExecucao();
                 renderizarJaExecutado();
             } else if (data.sucesso && data.items && data.items.length > 0) {
-                console.log('Jobs carregados:', data.items.length);
-                // mapear para formato compatível
+                // mapear para formato compatível (inclui mensagem de progresso para monitoramento)
                 estadoCargaXml.todasCargas = data.items.map(j => {
                     const totalArq = j.total_arquivos || 0;
                     const sucesso = j.total_sucesso || 0;
                     const erro = j.total_erro || 0;
-                    const resumo = totalArq > 0 ? `${sucesso}✓/${erro}✗` : '-';
-                    
+                    const emExecucao = (j.status || '').toUpperCase() === 'RUNNING' || (j.status || '').toUpperCase() === 'PENDING';
+                    const resumoNumeros = totalArq > 0 ? `${sucesso}✓/${erro}✗` : '-';
+                    const resumo = emExecucao && (j.mensagem || '').trim()
+                        ? (j.mensagem || '').trim().split('\n')[0]
+                        : `${totalArq} arquivo(s) - ${resumoNumeros}`;
+
                     return {
                         id: j.id,
                         arquivo: `Job #${j.id}`,
-                        resumo: `${totalArq} arquivo(s) - ${resumo}`,
+                        resumo: resumo,
                         tipo: j.parametro_id ? 'Automático' : 'Manual',
                         numero: '',
                         empresa: '',
                         data: j.started_at ? j.started_at.split('T')[0] : '',
                         hora: j.started_at ? j.started_at.split('T')[1]?.substring(0, 5) : '',
                         status: j.status,
-                        detalhes: j,
+                        detalhes: Object.assign({}, j, { mensagem: j.mensagem }),
                     };
                 });
             } else if (data.sucesso && (!data.items || data.items.length === 0)) {
@@ -875,7 +880,93 @@ function renderizarLogsResumo(items) {
 ================================ */
 
 
+function atualizarConteudoModalJob(data) {
+    if (!data || !data.sucesso || !data.job) return;
+    const job = data.job;
+    const param = data.parametro;
+    const log = data.log || [];
+    document.getElementById('modal-job-id').textContent = job.id;
+    document.getElementById('modal-job-status').textContent = job.status;
+    document.getElementById('modal-job-started').textContent = job.started_at || '-';
+    document.getElementById('modal-job-finished').textContent = job.finished_at || '-';
+    if (param) {
+        document.getElementById('modal-param-horario').value = param.horario || '';
+        document.getElementById('modal-param-origem').value = param.origem_dados || '';
+        document.getElementById('modal-param-diretorio').value = param.diretorio || '';
+        document.getElementById('modal-param-empresa').value = param.empresa_nome || param.empresa_id || '';
+    } else {
+        document.getElementById('modal-param-horario').value = '';
+        document.getElementById('modal-param-origem').value = '';
+        document.getElementById('modal-param-diretorio').value = '';
+        document.getElementById('modal-param-empresa').value = '';
+    }
+    const tbodyLog = document.querySelector('#tabela-log tbody');
+    if (tbodyLog) {
+        tbodyLog.innerHTML = '';
+        if (log.length === 0) {
+            tbodyLog.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Sem registros (aguardando...)</td></tr>';
+        } else {
+            var logOrdenado = log.slice();
+            logOrdenado.sort(function (a, b) {
+                var pa = (function (line) {
+                    var t = (line || '').trim();
+                    if (t.indexOf('ERRO:') === 0) return 0;
+                    if (t.indexOf('PENDENTES') === 0) return 1;
+                    if (t.indexOf('OK:') === 0) return 2;
+                    return 3;
+                })(a);
+                var pb = (function (line) {
+                    var t = (line || '').trim();
+                    if (t.indexOf('ERRO:') === 0) return 0;
+                    if (t.indexOf('PENDENTES') === 0) return 1;
+                    if (t.indexOf('OK:') === 0) return 2;
+                    return 3;
+                })(b);
+                return pa - pb;
+            });
+            logOrdenado.forEach(function (line, idx) {
+                var tr = document.createElement('tr');
+                var t = (line || '').trim();
+                var rowClass = '';
+                if (t.indexOf('ERRO:') === 0) rowClass = 'aviso-log-erro';
+                else if (t.indexOf('PENDENTES') === 0) rowClass = 'aviso-log-pendente';
+                else if (t.indexOf('OK:') === 0) rowClass = 'aviso-log-ok';
+                if (rowClass) tr.className = rowClass;
+                var text = (line || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                tr.innerHTML = '<td>' + (idx + 1) + '</td><td>' + text + '</td>';
+                tbodyLog.appendChild(tr);
+            });
+        }
+    }
+}
+
 function abrirModalJob(jobId) {
+    if (estadoCargaXml.modalJobPollInterval) {
+        clearInterval(estadoCargaXml.modalJobPollInterval);
+        estadoCargaXml.modalJobPollInterval = null;
+    }
+    estadoCargaXml.modalJobIdAberto = jobId;
+
+    function pollJobDetails() {
+        if (estadoCargaXml.modalJobIdAberto !== jobId) return;
+        fetch(getApiBase() + `/api/cargaxml/jobs/${jobId}/`)
+            .then(resp => resp.json())
+            .then(data => {
+                atualizarConteudoModalJob(data);
+                var status = (data.job && data.job.status) ? data.job.status.toUpperCase() : '';
+                if (status === 'SUCCESS' || status === 'ERROR') {
+                    if (estadoCargaXml.modalJobPollInterval) {
+                        clearInterval(estadoCargaXml.modalJobPollInterval);
+                        estadoCargaXml.modalJobPollInterval = null;
+                    }
+                    estadoCargaXml.modalJobIdAberto = null;
+                    carregarTodasAsCargas();
+                    carregarResumoCargaXml();
+                }
+            })
+            .catch(function () {});
+    }
+
     fetch(getApiBase() + `/api/cargaxml/jobs/${jobId}/`)
         .then(resp => resp.json())
         .then(data => {
@@ -883,62 +974,24 @@ function abrirModalJob(jobId) {
                 Notificacoes.pagina('❌ Não foi possível carregar detalhes do job', 'error');
                 return;
             }
-            const job = data.job;
-            const param = data.parametro;
-            const log = data.log || [];
-            document.getElementById('modal-job-id').textContent = job.id;
-            document.getElementById('modal-job-status').textContent = job.status;
-            document.getElementById('modal-job-started').textContent = job.started_at || '-';
-            document.getElementById('modal-job-finished').textContent = job.finished_at || '-';
-            if (param) {
-                document.getElementById('modal-param-horario').value = param.horario || '';
-                document.getElementById('modal-param-origem').value = param.origem_dados || '';
-                document.getElementById('modal-param-diretorio').value = param.diretorio || '';
-                document.getElementById('modal-param-empresa').value = param.empresa_nome || param.empresa_id || '';
-            } else {
-                document.getElementById('modal-param-horario').value = '';
-                document.getElementById('modal-param-origem').value = '';
-                document.getElementById('modal-param-diretorio').value = '';
-                document.getElementById('modal-param-empresa').value = '';
-            }
-            const tbodyLog = document.querySelector('#tabela-log tbody');
-            tbodyLog.innerHTML = '';
-            if (log.length === 0) {
-                tbodyLog.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Sem registros</td></tr>';
-            } else {
-                var logOrdenado = log.slice();
-                logOrdenado.sort(function (a, b) {
-                    var pa = (function (line) {
-                        var t = (line || '').trim();
-                        if (t.indexOf('ERRO:') === 0) return 0;
-                        if (t.indexOf('PENDENTES') === 0) return 1;
-                        if (t.indexOf('OK:') === 0) return 2;
-                        return 3;
-                    })(a);
-                    var pb = (function (line) {
-                        var t = (line || '').trim();
-                        if (t.indexOf('ERRO:') === 0) return 0;
-                        if (t.indexOf('PENDENTES') === 0) return 1;
-                        if (t.indexOf('OK:') === 0) return 2;
-                        return 3;
-                    })(b);
-                    return pa - pb;
-                });
-                logOrdenado.forEach(function (line, idx) {
-                    var tr = document.createElement('tr');
-                    var t = (line || '').trim();
-                    var rowClass = '';
-                    if (t.indexOf('ERRO:') === 0) rowClass = 'aviso-log-erro';
-                    else if (t.indexOf('PENDENTES') === 0) rowClass = 'aviso-log-pendente';
-                    else if (t.indexOf('OK:') === 0) rowClass = 'aviso-log-ok';
-                    if (rowClass) tr.className = rowClass;
-                    var text = (line || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    tr.innerHTML = '<td>' + (idx + 1) + '</td><td>' + text + '</td>';
-                    tbodyLog.appendChild(tr);
-                });
-            }
-            var modal = new bootstrap.Modal(document.getElementById('modalJobDetails'));
+            atualizarConteudoModalJob(data);
+            var modalEl = document.getElementById('modalJobDetails');
+            var modal = new bootstrap.Modal(modalEl);
             modal.show();
+
+            var status = (data.job && data.job.status) ? data.job.status.toUpperCase() : '';
+            if (status === 'RUNNING' || status === 'PENDING') {
+                estadoCargaXml.modalJobPollInterval = setInterval(pollJobDetails, 2500);
+            }
+
+            modalEl.addEventListener('hidden.bs.modal', function onHidden() {
+                if (estadoCargaXml.modalJobPollInterval) {
+                    clearInterval(estadoCargaXml.modalJobPollInterval);
+                    estadoCargaXml.modalJobPollInterval = null;
+                }
+                estadoCargaXml.modalJobIdAberto = null;
+                modalEl.removeEventListener('hidden.bs.modal', onHidden);
+            }, { once: true });
         })
         .catch(() => {
             Notificacoes.pagina('❌ Falha ao carregar detalhes do job', 'error');
@@ -1434,18 +1487,13 @@ function iniciarUpload() {
 }
 
 /* ===============================
-   UPLOAD EM LOTE
-   Com muitos arquivos (ex.: pasta): envia em lotes de 50 para evitar 400 e ERR_CONTENT_LENGTH_MISMATCH.
+   UPLOAD (envio único: todos os arquivos em uma requisição)
 ================================ */
-var TAMANHO_LOTE_CARGA_XML = 100;
-
-function enviarUmLoteXml(arquivosLote, tipoDocumento, origemDados, apiUrl, csrfToken, jobId, ultimoLote) {
+function enviarXmlUnico(arquivos, tipoDocumento, origemDados, apiUrl, csrfToken) {
     var formData = new FormData();
-    arquivosLote.forEach(function (f) { formData.append('arquivo', f); });
+    arquivos.forEach(function (f) { formData.append('arquivo', f); });
     formData.append('type_xml', tipoDocumento);
     formData.append('origem_dados', origemDados);
-    if (jobId) formData.append('job_id', String(jobId));
-    if (ultimoLote) formData.append('ultimo_lote', '1');
     return fetch(apiUrl, {
         method: 'POST',
         headers: { 'X-CSRFToken': csrfToken },
@@ -1481,66 +1529,10 @@ function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
     var apiUrl = (document.querySelector('.layout-page') && document.querySelector('.layout-page').getAttribute('data-api-processar-xml')) || '/api/processar-xml/';
     var csrfToken = (document.querySelector('[name=csrfmiddlewaretoken]') && document.querySelector('[name=csrfmiddlewaretoken]').value) || (typeof window.getCsrfToken === 'function' ? window.getCsrfToken() : '');
     var total = arquivos.length;
-    var usarLotes = total > TAMANHO_LOTE_CARGA_XML;
 
-    atualizarStatusUpload(0, 'processing', usarLotes ? 'Enviando em lotes (evita erro de rede)...' : 'Enviando arquivos...');
+    atualizarStatusUpload(0, 'processing', 'Enviando arquivos...');
 
-    if (usarLotes) {
-        var lotes = [];
-        for (var i = 0; i < total; i += TAMANHO_LOTE_CARGA_XML) {
-            lotes.push(arquivos.slice(i, i + TAMANHO_LOTE_CARGA_XML));
-        }
-        var numLotes = lotes.length;
-        var loteAtual = 0;
-        var jobIdUnico = null;
-        function enviarProximoLote() {
-            if (loteAtual >= numLotes) {
-                fecharModalCargaXml();
-                if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
-                    Notificacoes.pagina('Job #' + (jobIdUnico || '') + ' criado com ' + total + ' arquivo(s). Atualize o painel para acompanhar.', 'success');
-                } else { alert('Job criado. Atualize o painel.'); }
-                carregarResumoCargaXml();
-                carregarTodasAsCargas();
-                finalizarUploadCargaXml();
-                return;
-            }
-            var ehUltimoLote = (loteAtual === numLotes - 1);
-            atualizarStatusUpload(0, 'processing', 'Enviando lote ' + (loteAtual + 1) + '/' + numLotes + ' (' + lotes[loteAtual].length + ' arquivos)...');
-            enviarUmLoteXml(lotes[loteAtual], tipoDocumento, origemDados, apiUrl, csrfToken, jobIdUnico || null, ehUltimoLote)
-                .then(function (result) {
-                    if (result.status === 413) {
-                        finalizarUploadCargaXml(result.data.mensagem || 'Erro 413.');
-                        return;
-                    }
-                    if (result.status === 400) {
-                        finalizarUploadCargaXml((result.data && result.data.mensagem) ? result.data.mensagem : 'Erro 400 no lote ' + (loteAtual + 1) + '.');
-                        return;
-                    }
-                    if (result.status !== 200 && result.status !== 202) {
-                        finalizarUploadCargaXml((result.data && result.data.mensagem) ? result.data.mensagem : 'Erro no lote ' + (loteAtual + 1) + '.');
-                        return;
-                    }
-                    if (result.data && result.data.job_id) jobIdUnico = result.data.job_id;
-                    loteAtual++;
-                    if (result.status === 202) {
-                        enviarProximoLote();
-                    } else {
-                        enviarProximoLote();
-                    }
-                })
-                .catch(function (err) {
-                    var msg = 'Erro ao enviar lote ' + (loteAtual + 1) + ': ' + (err.message || 'Falha na rede. Tente novamente ou envie um ZIP.');
-                    if (err.message && (err.message.indexOf('fetch') !== -1 || err.message.indexOf('Failed') !== -1)) {
-                        msg = 'Conexão interrompida (rede/proxy). Tente de novo ou envie a pasta em um .zip.';
-                    }
-                    finalizarUploadCargaXml(msg);
-                });
-        }
-        enviarProximoLote();
-        return;
-    }
-
-    enviarUmLoteXml(arquivos, tipoDocumento, origemDados, apiUrl, csrfToken)
+    enviarXmlUnico(arquivos, tipoDocumento, origemDados, apiUrl, csrfToken)
         .then(function (result) {
             var status = result.status;
             var data = result.data;
@@ -1566,6 +1558,7 @@ function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
                 carregarResumoCargaXml();
                 carregarTodasAsCargas();
                 finalizarUploadCargaXml();
+                if (data && data.job_id) setTimeout(function () { abrirModalJob(data.job_id); }, 400);
                 return;
             }
             if (data.sucesso) {
@@ -1605,7 +1598,7 @@ function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
             console.error('Erro ao fazer upload:', error);
             var msg = 'Erro ao enviar arquivos: ' + (error.message || 'Erro de conexão');
             if (error.message && (String(error.message).indexOf('fetch') !== -1 || String(error.message).indexOf('Failed') !== -1)) {
-                msg = 'Conexão falhou (rede ou proxy cortou a requisição). Se escolheu uma pasta com muitos arquivos, tente: (1) enviar de novo – o envio em lotes já está ativo para pastas grandes – ou (2) compactar em .zip e enviar o ZIP.';
+                msg = 'Conexão falhou (rede ou proxy). Tente novamente ou compacte em .zip e envie o ZIP.';
             }
             fecharModalCargaXml();
             if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {

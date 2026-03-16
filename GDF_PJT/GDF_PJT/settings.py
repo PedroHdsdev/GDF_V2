@@ -353,6 +353,11 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+# Carga XML manual – máximo de arquivos por requisição (um envio = um job)
+CARGAXML_MAX_ARCHIVOS_POR_REQUISICAO = env.int('CARGAXML_MAX_ARCHIVOS_POR_REQUISICAO', default=5000)
+# Tamanho do chunk no processamento em background (arquivos por vez; menor = menos memória, mais updates).
+CARGAXML_CHUNK_SIZE = env.int('CARGAXML_CHUNK_SIZE', default=50)
+
 CONTENT_SECURITY_POLICY = {
     "DIRECTIVES": {
         "default-src": ("'self'",),

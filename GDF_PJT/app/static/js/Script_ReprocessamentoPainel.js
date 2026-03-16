@@ -681,6 +681,8 @@
         const titulo = document.getElementById('modal-condicoes-lote-id');
         if (titulo) titulo.textContent = '#' + idLote;
         if (modal) modal.style.display = 'block';
+        var btnEnviar = document.getElementById('btn-enviar-sap');
+        if (btnEnviar) { btnEnviar.disabled = false; btnEnviar.title = 'Chamar RFC e enviar condições ao SAP'; }
         carregarCondicoes(idLote);
     }
 
@@ -744,6 +746,16 @@
                         '<td class="text-center">' + statusBadge(c.status) + '</td>';
                     tbody.appendChild(tr);
                 });
+                // Bloquear botão "Enviar ao SAP" quando todos os status forem U ou I (tudo ok)
+                var tudoOk = data.condicoes.length > 0 && data.condicoes.every(function (c) {
+                    var s = (c.status || '').trim().toUpperCase().charAt(0);
+                    return s === 'U' || s === 'I';
+                });
+                var btnEnviar = document.getElementById('btn-enviar-sap');
+                if (btnEnviar) {
+                    btnEnviar.disabled = !!tudoOk;
+                    btnEnviar.title = tudoOk ? 'Tudo OK – todos os registros já estão atualizados (U/I).' : 'Chamar RFC e enviar condições ao SAP';
+                }
             })
             .catch(function () {
                 if (carregando) carregando.classList.add('d-none');

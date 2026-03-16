@@ -253,3 +253,27 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
         param.save(update_fields=["ultima_execucao"])
 
     return {"success": success, "errors": errors, "total": len(xml_files)}
+
+
+@shared_task
+def processar_job_xml_manual(
+    job_id: int,
+    temp_dir: str,
+    type_xml: str,
+    origem_dados: str,
+    user_id: int,
+    cod_cliente: str,
+    empresa_id: str | None = None,
+) -> None:
+    """
+    Processa em worker Celery a carga manual de XML (job criado pela API).
+    Evita que o job fique eternamente 'em andamento' quando o processo web é reciclado.
+    """
+    from app.api.jobs import processar_job_xml_background
+    empresa_id = (empresa_id or "").strip() or None
+    cod_cliente = (cod_cliente or "").strip() or None
+    processar_job_xml_background(
+        job_id, temp_dir, type_xml, origem_dados, user_id, cod_cliente, empresa_id
+    )
+
+

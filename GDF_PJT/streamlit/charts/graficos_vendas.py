@@ -217,16 +217,28 @@ class Grafico_linha(GraficoBase):
                 .mark_line(point=alt.OverlayMarkDef(size=90, filled=True), strokeWidth=2.5)
                 .encode(
                     x=alt.X(f'{coluna_data}:N', title='Mês', sort=x_sort),
-                    y=alt.Y('Valor_plot:Q', title='Valor', scale=alt.Scale(padding=0.1)),
-                    color=alt.Color('Métrica:N', legend=alt.Legend(title='Métrica'), scale=alt.Scale(range=CHART_PALETTE)),
-                    strokeDash=alt.StrokeDash(f'{coluna_ano}:N', legend=alt.Legend(title='Ano')),
+                    y=alt.Y(
+                        'Valor_plot:Q',
+                        title=None,
+                        scale=alt.Scale(padding=0.1),
+                        axis=alt.Axis(labels=False),
+                    ),
+                    color=alt.Color(
+                        'Métrica:N',
+                        legend=alt.Legend(title='Métrica', orient='left', titleFontSize=12, labelFontSize=11),
+                        scale=alt.Scale(range=CHART_PALETTE),
+                    ),
+                    strokeDash=alt.StrokeDash(
+                        f'{coluna_ano}:N',
+                        legend=alt.Legend(title='Ano', orient='left', titleFontSize=12, labelFontSize=11),
+                    ),
                     tooltip=[
                         alt.Tooltip(f'{coluna_ano}:N', title='Ano'),
                         alt.Tooltip(f'{coluna_data}:N', title='Mês'),
                         alt.Tooltip('Métrica:N', title='Métrica'),
                         alt.Tooltip('Valor:Q', title='Valor', format=',.2f'),
-                        alt.Tooltip('label:N', title='Exibição')
-                    ]
+                        alt.Tooltip('label:N', title='Exibição'),
+                    ],
                 )
                 .properties(height=420, title=titulo)
             )
@@ -240,14 +252,23 @@ class Grafico_linha(GraficoBase):
                 .mark_bar(cornerRadius=6, size=50)
                 .encode(
                     x=alt.X(f'{coluna_data}:N', title='Ano'),
-                    y=alt.Y('Valor_plot:Q', title='Valor', scale=alt.Scale(padding=0.1)),
-                    color=alt.Color('Métrica:N', legend=alt.Legend(title='Métrica'), scale=alt.Scale(range=CHART_PALETTE)),
+                    y=alt.Y(
+                        'Valor_plot:Q',
+                        title=None,
+                        scale=alt.Scale(padding=0.1),
+                        axis=alt.Axis(labels=False),
+                    ),
+                    color=alt.Color(
+                        'Métrica:N',
+                        legend=alt.Legend(title='Métrica', orient='left', titleFontSize=12, labelFontSize=11),
+                        scale=alt.Scale(range=CHART_PALETTE),
+                    ),
                     tooltip=[
                         alt.Tooltip(f'{coluna_ano}:N', title='Ano'),
                         alt.Tooltip('Métrica:N', title='Métrica'),
                         alt.Tooltip('Valor:Q', title='Valor', format=',.2f'),
-                        alt.Tooltip('label:N', title='Exibição')
-                    ]
+                        alt.Tooltip('label:N', title='Exibição'),
+                    ],
                 )
                 .properties(height=400, title=titulo)
             )

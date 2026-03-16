@@ -4,6 +4,7 @@ import pandas as pd
 import altair as alt
 
 from .base import BaseDashboard
+from .widgets.charts import render_por_tipo_pagamento, render_condicoes_pagamento
 from core.filters import SidebarFilters, render_compras_extra_filters
 from core.data_processor import DataProcessor, apply_compras_filters
 
@@ -92,6 +93,17 @@ class DashboardCompras(BaseDashboard):
         # 9. Comparação entre filiais
         st.subheader("🏢 9. Comparação entre filiais")
         self._render_comparacao_filiais(df)
+
+        # 10. Pagamentos
+        st.subheader("💰 10. Pagamentos")
+        tab_cond_pag, tab_tipo_pag = st.tabs([
+            "📋 Condições de pagamento mais usadas",
+            "💳 Por tipo de pagamento",
+        ])
+        with tab_cond_pag:
+            render_condicoes_pagamento(self.data.df_parcelas, self.data.df_merged)
+        with tab_tipo_pag:
+            render_por_tipo_pagamento(self.data.df_pagamento)
 
     def _render_kpis(self, df: pd.DataFrame):
         total = df["Faturamento"].fillna(0).sum()
