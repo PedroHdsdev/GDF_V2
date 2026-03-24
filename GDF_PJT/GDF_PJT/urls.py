@@ -30,6 +30,7 @@ urlpatterns = [
     #Dashboard
     path('dashboard/vendas/', views.fn_view_dashboard_vendas, name='Db_Vendas'),
     path('dashboard/compras/', views.fn_view_dashboard_compras, name='Db_Compras'),
+    path('dashboard/custo/', views.fn_view_dashboard_custo, name='Db_Custo'),
 
     #Manifesto
     path('manifesto/painel/', views.fn_view_manifesto_painel, name='Mnf_Painel'),
@@ -80,6 +81,9 @@ urlpatterns = [
     path('api/reprocessamento/condicao-param/', views.fn_api_reprocessamento_condicao_param_listar, name='API_ReprocessamentoCondicaoParamListar'),
     path('api/reprocessamento/condicao-param/atualizar/', views.fn_api_reprocessamento_condicao_param_atualizar, name='API_ReprocessamentoCondicaoParamAtualizar'),
     path('api/sap/testar-conexao/', views.fn_api_sap_testar_conexao, name='API_SapTestarConexao'),
+    path('api/sap/relatorio-custo/', views.fn_api_sap_relatorio_custo_receber, name='API_SapRelatorioCustoReceber'),
+    path('integracao/rfc/', views.fn_view_Integracao_Rfc, name='Int_Rfc'),
+    path('api/rfc/executar/', views.fn_api_rfc_executar, name='API_RfcExecutar'),
     
         
 #--------------------------------------------------------------------

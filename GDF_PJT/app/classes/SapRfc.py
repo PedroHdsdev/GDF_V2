@@ -32,6 +32,7 @@ class SapRfc:
       - Chamar SapRfc.call(cod_cliente, nome_rfc, **params) [abre conexão, chama RFC, fecha].
       - Ou SapRfc.with_connection(cod_cliente, lambda sap: sap.call(...)) para várias chamadas.
     """
+    _last_connect_error = ""
 
     # -------------------------------------------------------------------------
     # Conexão e chamada genérica (use estes dentro dos métodos de funcionalidade)
@@ -105,8 +106,31 @@ class SapRfc:
             print(f"[SapRfc] connect: conexão SAP aberta com sucesso (conn id={getattr(conn, 'id', '?')})")
             return sap
         except Exception as e:
+            err_msg = str(e)
+            SapRfc._last_connect_error = err_msg
             print(f"[SapRfc] connect: ERRO ao conectar SAP (conn id={getattr(conn, 'id', conn)}): {e}")
             return None
+
+    @staticmethod
+    def _mensagem_erro_com_vpn(erro: str) -> str:
+        """
+        Enriquece mensagem de erro com dica de VPN quando parecer falha de conectividade.
+        A conexão RFC é feita pelo SERVIDOR (Django), não pelo navegador.
+        """
+        if not erro:
+            return erro
+        erro_lower = str(erro).lower()
+        indicadores_rede = (
+            'connection refused', 'connection timed out', 'timeout', 'host unreachable',
+            'no route to host', 'network is unreachable', 'connection reset',
+            'errno 111', 'errno 110', 'errno 113', 'errno 101',
+        )
+        if any(ind in erro_lower for ind in indicadores_rede):
+            return (
+                f"{erro} "
+                "Se o SAP exige VPN, o servidor onde o Django roda deve estar conectado à VPN corporativa."
+            )
+        return erro
 
     @staticmethod
     def _resolve_conn(cod_cliente_or_conn):
@@ -150,13 +174,14 @@ class SapRfc:
             sap = SapRfc.connect(conn)
             if sap is None:
                 print("[SapRfc] call: falha ao abrir conexão SAP")
-                return False, "Falha ao abrir conexão SAP."
+                err = getattr(SapRfc, '_last_connect_error', '') or "Falha ao abrir conexão SAP."
+                return False, SapRfc._mensagem_erro_com_vpn(err)
             result = sap.call(rfc_name, **params)
             print(f"[SapRfc] call: RFC '{rfc_name}' executado com sucesso (result type={type(result).__name__})")
             return True, result
         except Exception as e:
             print(f"[SapRfc] call: EXCEÇÃO ao chamar RFC '{rfc_name}': {e}")
-            return False, str(e)
+            return False, SapRfc._mensagem_erro_com_vpn(str(e))
         finally:
             if sap is not None:
                 try:
@@ -289,6 +314,207 @@ class SapRfc:
         )
         print(f"[SapRfc] importar_custo_cliente: resultado success={ok} result_type={type(res).__name__}")
         return ok, res
+
+    @staticmethod
+    def importar_relatorio_custo(cod_cliente, bukrs, branch, psdat_ini, psdat_fim, empresa=None, filial=None, persistir=True):
+        """
+        Chama a RFC /BRGMN/CUSTR_IMP_CUSTO para importar dados de custo do SAP e,
+        se persistir=True, grava na tabela sap.relatorio_custo (RelatorioCusto),
+        vinculando à Empresa e Filial do GDF.
+
+        Args:
+            cod_cliente: Código do cliente GDF (para conexão SAP).
+            bukrs: Código da empresa no SAP (string ou objeto com atributo .bukrs).
+            branch: Filial/ramo no SAP (string).
+            psdat_ini: Data inicial do período (string ou date, formato aceito pelo SAP).
+            psdat_fim: Data final do período (string ou date).
+            empresa: Opcional. Instância de Empresa (GDF) para vincular aos registros.
+                     Se None, tenta resolver por cod_empresa=bukrs.
+            filial: Opcional. Instância de Filial (GDF) para vincular.
+                    Se None e empresa informada, tenta Filial com cod_filial=branch.
+            persistir: Se True, grava o retorno da RFC na tabela sap.relatorio_custo.
+
+        Returns:
+            dict: {
+                'sucesso': bool,
+                'mensagem': str,
+                'total_linhas': int (linhas retornadas pela RFC),
+                'total_gravados': int (registros inseridos/atualizados, se persistir=True),
+                'resultado_rfc': result bruto da RFC (se sucesso),
+            }
+        """
+        from decimal import Decimal, InvalidOperation
+        from datetime import datetime
+        from app.db_GDF.Public.models import Empresa, Filial
+        from app.db_GDF.Sap.models import RelatorioCusto
+
+        # Normalizar bukrs (aceitar objeto com .bukrs ou string)
+        _bukrs = getattr(bukrs, 'bukrs', bukrs)
+        if _bukrs is None:
+            _bukrs = ''
+        _bukrs = str(_bukrs).strip()
+
+        print(f"[SapRfc] importar_relatorio_custo: cod_cliente={cod_cliente!r} bukrs={_bukrs} branch={branch} psdat_ini={psdat_ini} psdat_fim={psdat_fim} persistir={persistir}")
+
+        if not SapRfc.is_available():
+            return {
+                'sucesso': False,
+                'mensagem': 'PyRFC não disponível. SAP desativado.',
+                'total_linhas': 0,
+                'total_gravados': 0,
+                'resultado_rfc': None,
+            }
+
+        ok, result = SapRfc.call(
+            cod_cliente,
+            "/BRGMN/CUSTR_IMP_CUSTO",
+            I_V_BUKRS=_bukrs,
+            I_V_BRANCH=branch or '',
+            I_V_PSDAT_INI=psdat_ini,
+            I_V_PSDAT_FIM=psdat_fim,
+        )
+
+        if not ok:
+            return {
+                'sucesso': False,
+                'mensagem': result or 'Erro ao chamar RFC /BRGMN/CUSTR_IMP_CUSTO.',
+                'total_linhas': 0,
+                'total_gravados': 0,
+                'resultado_rfc': None,
+            }
+
+        # Tabela de retorno da RFC /BRGMN/CUSTR_IMP_CUSTO
+        table_data = result.get("T_RELAT003", []) if result and isinstance(result, dict) else []
+        linhas = table_data if isinstance(table_data, list) else (list(table_data) if table_data else [])
+
+        total_linhas = len(linhas)
+        print(f"[SapRfc] importar_relatorio_custo: RFC retornou {total_linhas} linha(s)")
+
+        if not persistir or total_linhas == 0:
+            return {
+                'sucesso': True,
+                'mensagem': f'RFC executada. {total_linhas} linha(s) retornada(s).',
+                'total_linhas': total_linhas,
+                'total_gravados': 0,
+                'resultado_rfc': result,
+            }
+
+        # Resolver Empresa e Filial para vincular
+        if empresa is None and _bukrs:
+            empresa = Empresa.objects.filter(cod_empresa=_bukrs).first()
+        if filial is None and empresa and branch:
+            filial = Filial.objects.filter(empresa=empresa, cod_filial=str(branch).strip()).first()
+
+        # Mapeamento: nome da coluna no retorno SAP (uppercase) -> campo do modelo RelatorioCusto
+        MAPEAMENTO_SAP = {
+            'DOCNUM': 'docnum', 'MJAHR': 'mjahr', 'MBLNR': 'mblnr', 'MATNR': 'matnr', 'NFENUM': 'nfenum',
+            'SERIES': 'series', 'DOCSTA': 'docsta', 'KUNNR': 'kunnr', 'NAME1': 'name1', 'ORT01': 'ort01',
+            'CHAVE_ACESSO': 'chave_acesso', 'ITMNUM': 'itmnum', 'PSTDAT': 'pstdat', 'WERKS': 'werks',
+            'NAME': 'name', 'STCD1': 'stcd1', 'UF_ORIGEM': 'uf_origem', 'UF_DESTINO': 'uf_destino',
+            'CANCEL': 'cancel', 'MAKTX': 'maktx', 'MTART': 'mtart', 'MATKL': 'matkl', 'WGBEZ': 'wgbez',
+            'CFOP': 'cfop', 'QTD_PROD': 'qtd_prod', 'UNID_MEDIDA': 'unid_medida', 'MEINS': 'meins',
+            'UMREZ': 'umrez', 'MENGE_UMB': 'menge_umb', 'PRC_UNITARIO': 'prc_unitario',
+            'PRC_UNIT_CST_LIQ': 'prc_unit_cst_liq', 'PRC_UNIT_CST_ADM': 'prc_unit_cst_adm',
+            'BC_ICMS': 'bc_icms', 'PCT_ICMS': 'pct_icms', 'VLR_ICMS': 'vlr_icms',
+            'BC_ICMS_ST': 'bc_icms_st', 'ALQ_ST': 'alq_st', 'VLR_ST': 'vlr_st',
+            'BC_IPI': 'bc_ipi', 'PCT_IPI': 'pct_ipi', 'VLR_IPI': 'vlr_ipi',
+            'BC_PIS': 'bc_pis', 'PCT_PIS': 'pct_pis', 'VLR_PIS': 'vlr_pis',
+            'BC_COF': 'bc_cof', 'PCT_COF': 'pct_cof', 'VLR_COF': 'vlr_cof',
+            'TP_DOC': 'tp_doc', 'TOTAL_IMPOSTOS': 'total_impostos', 'VLR_DESCONTO': 'vlr_desconto',
+            'VLR_FRETE': 'vlr_frete', 'VLR_LIQUIDO': 'vlr_liquido', 'VLR_TOT_DOC': 'vlr_tot_doc',
+            'CMV': 'cmv', 'LUCRO_0': 'lucro_0', 'MARGEM_0': 'margem_0', 'MARGEM_CONTRIB': 'margem_contrib',
+            'CMV_GERENCIAL': 'cmv_gerencial', 'LUCRO_0_GERENCIAL': 'lucro_0_gerencial',
+            'MARGEM_REAL': 'margem_real', 'LUCRO_REAL': 'lucro_real', 'MARGEM_CONTRIB_GER': 'margem_contrib_ger',
+            'CMV_MEDIA': 'cmv_media', 'PER_TAXA_ADM': 'per_taxa_adm', 'VLR_TAXA_ADM': 'vlr_taxa_adm',
+            'PER_TAXA_FRT': 'per_taxa_frt', 'VLR_TAXA_FRT': 'vlr_taxa_frt', 'CMV_UE': 'cmv_ue',
+        }
+
+        def _to_decimal(val):
+            if val is None or val == '':
+                return None
+            if isinstance(val, Decimal):
+                return val
+            try:
+                return Decimal(str(val).replace(',', '.'))
+            except (InvalidOperation, TypeError):
+                return None
+
+        def _to_date(val):
+            if val is None or val == '':
+                return None
+            if hasattr(val, 'date'):
+                return val.date() if hasattr(val, 'date') else val
+            if isinstance(val, str):
+                for fmt in ('%Y-%m-%d', '%d.%m.%Y', '%d/%m/%Y'):
+                    try:
+                        return datetime.strptime(val[:10], fmt).date()
+                    except (ValueError, TypeError):
+                        continue
+            return None
+
+        gravados = 0
+        for row in linhas:
+            if not isinstance(row, dict):
+                row = dict(row) if hasattr(row, 'keys') else {}
+            row_upper = {str(k).strip().upper(): v for k, v in row.items()}
+            kwargs = {'empresa': empresa, 'filial': filial}
+            for sap_key, model_field in MAPEAMENTO_SAP.items():
+                val = row_upper.get(sap_key) or row_upper.get(model_field.upper())
+                if val is None:
+                    continue
+                if model_field == 'pstdat':
+                    kwargs[model_field] = _to_date(val)
+                elif model_field in (
+                    'qtd_prod', 'umrez', 'menge_umb', 'prc_unitario', 'prc_unit_cst_liq', 'prc_unit_cst_adm',
+                    'bc_icms', 'pct_icms', 'vlr_icms', 'bc_icms_st', 'alq_st', 'vlr_st',
+                    'bc_ipi', 'pct_ipi', 'vlr_ipi', 'bc_pis', 'pct_pis', 'vlr_pis', 'bc_cof', 'pct_cof', 'vlr_cof',
+                    'total_impostos', 'vlr_desconto', 'vlr_frete', 'vlr_liquido', 'vlr_tot_doc',
+                    'cmv', 'lucro_0', 'margem_0', 'margem_contrib', 'cmv_gerencial', 'lucro_0_gerencial',
+                    'margem_real', 'lucro_real', 'margem_contrib_ger', 'cmv_media',
+                    'per_taxa_adm', 'vlr_taxa_adm', 'per_taxa_frt', 'vlr_taxa_frt', 'cmv_ue',
+                ):
+                    kwargs[model_field] = _to_decimal(val)
+                else:
+                    kwargs[model_field] = str(val).strip()
+
+            docnum = (kwargs.get('docnum') or '').strip()
+            mjahr = (kwargs.get('mjahr') or '').strip() or None
+            mblnr = (kwargs.get('mblnr') or '').strip() or None
+            if not docnum:
+                continue
+            kwargs.setdefault('docsta', ' ')
+            key_fields = ('empresa', 'docnum', 'mjahr', 'mblnr')
+            defaults = {}
+            for k, v in kwargs.items():
+                if k in key_fields or v is None:
+                    continue
+                try:
+                    f = RelatorioCusto._meta.get_field(k)
+                    if hasattr(f, 'max_length') and f.max_length and isinstance(v, str) and len(v) > f.max_length:
+                        v = v[: f.max_length]
+                except Exception:
+                    pass
+                defaults[k] = v
+            try:
+                RelatorioCusto.objects.update_or_create(
+                    empresa=empresa,
+                    docnum=docnum,
+                    mjahr=mjahr,
+                    mblnr=mblnr,
+                    defaults=defaults,
+                )
+                gravados += 1
+            except Exception as e:
+                print(f"[SapRfc] importar_relatorio_custo: erro ao gravar linha docnum={docnum}: {e}")
+
+        print(f"[SapRfc] importar_relatorio_custo: {gravados} registro(s) gravado(s) em sap.relatorio_custo")
+        return {
+            'sucesso': True,
+            'mensagem': f'RFC executada. {total_linhas} linha(s) retornada(s), {gravados} gravado(s) em sap.relatorio_custo.',
+            'total_linhas': total_linhas,
+            'total_gravados': gravados,
+            'resultado_rfc': result,
+        }
 
 
 def enviar_condicoes_pagamento_sap(id_lote, cod_cliente, condicoes_lista):

@@ -406,3 +406,8 @@ CONTENT_SECURITY_POLICY = {
     }
 }
 
+# API SAP – Relatório de Custo (POST do SAP para alimentar PostgreSQL)
+# Chave para autenticar requisições do SAP. Header: X-API-Key ou Authorization: Bearer <chave>
+# Defina no .env: SAP_RELATORIO_CUSTO_API_KEY=chave_secreta
+SAP_RELATORIO_CUSTO_API_KEY = env('SAP_RELATORIO_CUSTO_API_KEY', default='')
+

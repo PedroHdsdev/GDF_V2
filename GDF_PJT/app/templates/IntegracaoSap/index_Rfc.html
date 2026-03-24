@@ -1,0 +1,175 @@
+{% extends 'index_Base.html' %}
+{% load static %}
+
+{% block title %}Integração SAP – RFC{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/Style_Home.css' %}">
+<link rel="stylesheet" href="{% static 'css/Style_IntegracaoRfc.css' %}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+
+{% block titlepage %}Integração SAP – RFC{% endblock %}
+
+{% block container %}
+{{ filiais_por_empresa|json_script:"filiais-por-empresa-data" }}
+<div class="home-page rfc-page layout-page" data-api-rfc-executar="{% url 'API_RfcExecutar' %}">
+    {% csrf_token %}
+
+    <section class="home-welcome">
+        <div class="home-welcome-main">
+            <h2 class="home-welcome-title">Integração SAP via RFC</h2>
+            <p class="home-welcome-meta">
+                Execute RFCs para alimentar as tabelas do schema <code>sap</code>.
+                Configure a conexão SAP em Clientes → Conexão SAP.
+                <br><small class="opacity-75">Se o SAP exige VPN, o servidor deve estar conectado à VPN (não o seu navegador).</small>
+            </p>
+        </div>
+    </section>
+
+    <section class="home-grid rfc-grid">
+        {% for rfc in rfc_handlers %}
+        <article class="home-card rfc-card" data-cod-rfc="{{ rfc.codigo }}">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">{{ rfc.tabela_sap }}</p>
+                    <h3>{{ rfc.nome }}</h3>
+                </div>
+            </div>
+            <p class="text-muted small mb-3">{{ rfc.descricao }}</p>
+
+            <form class="rfc-form" data-cod-rfc="{{ rfc.codigo }}">
+                {% for p in rfc.params %}
+                <div class="mb-2">
+                    <label class="form-label small">{{ p.label }}{% if p.required %} *{% endif %}</label>
+                    {% if p.param_type == "string" %}
+                        {% if p.key == "bukrs" and empresas %}
+                        <select name="{{ p.key }}" class="form-select form-select-sm" {% if p.required %}required{% endif %}>
+                            <option value="">-- Selecione --</option>
+                            {% for emp in empresas %}
+                            <option value="{{ emp.cod_empresa }}">{{ emp.cod_empresa }} – {{ emp.fantasia|default:emp.razao|truncatechars:30 }}</option>
+                            {% endfor %}
+                        </select>
+                        {% elif p.key == "branch" and empresas %}
+                        <select name="{{ p.key }}" class="form-select form-select-sm rfc-branch-select" {% if p.required %}required{% endif %}>
+                            <option value="">Todas as filiais</option>
+                        </select>
+                        {% else %}
+                        <input type="text" name="{{ p.key }}" class="form-control form-control-sm" placeholder="{{ p.help_text|default:'' }}" {% if p.required %}required{% endif %} value="{{ p.default|default:'' }}">
+                        {% endif %}
+                    {% elif p.param_type == "date" %}
+                    <input type="date" name="{{ p.key }}" class="form-control form-control-sm" {% if p.required %}required{% endif %} value="{{ p.default|default:'' }}">
+                    {% elif p.param_type == "boolean" %}
+                    <div class="form-check">
+                        <input type="checkbox" name="{{ p.key }}" class="form-check-input" value="1" {% if p.default %}checked{% endif %}>
+                        <label class="form-check-label small">{{ p.help_text|default:"Sim" }}</label>
+                    </div>
+                    {% else %}
+                    <input type="text" name="{{ p.key }}" class="form-control form-control-sm" {% if p.required %}required{% endif %} value="{{ p.default|default:'' }}">
+                    {% endif %}
+                    {% if p.help_text and p.param_type != "boolean" %}<small class="text-muted">{{ p.help_text }}</small>{% endif %}
+                </div>
+                {% endfor %}
+                <button type="submit" class="btn btn-primary btn-sm mt-2">
+                    <i class="fas fa-play"></i> Executar RFC
+                </button>
+            </form>
+            <div class="rfc-result mt-3" style="display:none;"></div>
+        </article>
+        {% empty %}
+        <article class="home-card rfc-card" style="grid-column: 1 / -1;">
+            <div class="home-card-head">
+                <h3>Nenhum RFC registrado</h3>
+            </div>
+            <p class="text-muted">Registre handlers em <code>app/integracao_sap/handlers.py</code>.</p>
+        </article>
+        {% endfor %}
+    </section>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var pageEl = document.querySelector('[data-api-rfc-executar]');
+  var apiUrl = pageEl ? (pageEl.getAttribute('data-api-rfc-executar') || pageEl.dataset.apiRfcExecutar) : '';
+  if (!apiUrl) return;
+
+  var csrfEl = document.querySelector('[name=csrfmiddlewaretoken]');
+  var getCsrf = function() { return csrfEl ? csrfEl.value : ''; };
+
+  document.querySelectorAll('.rfc-form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var codRfc = form.getAttribute('data-cod-rfc') || form.dataset.codRfc || '';
+      var params = {};
+      form.querySelectorAll('input, select').forEach(function(el) {
+        if (!el.name) return;
+        if (el.type === 'checkbox') {
+          params[el.name] = el.checked;
+        } else {
+          var v = (el.value || '').trim();
+          if (v) params[el.name] = v;
+        }
+      });
+      var card = form.closest('.rfc-card');
+      var resultEl = card ? card.querySelector('.rfc-result') : null;
+      var btn = form.querySelector('button[type="submit"]');
+      if (!resultEl) return;
+      if (btn) btn.disabled = true;
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin"></i> Executando...</span>';
+
+      fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCsrf(),
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ cod_rfc: codRfc, params: params }),
+        credentials: 'same-origin'
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.sucesso) {
+          var msg = (data.mensagem || 'OK');
+          if (data.total_linhas !== undefined) msg += ' Linhas: ' + data.total_linhas;
+          if (data.total_gravados !== undefined) msg += ' | Gravados: ' + data.total_gravados;
+          resultEl.innerHTML = '<div class="alert alert-success small mb-0">' + msg + '</div>';
+        } else {
+          resultEl.innerHTML = '<div class="alert alert-danger small mb-0">' + (data.mensagem || 'Erro') + '</div>';
+        }
+      })
+      .catch(function(err) {
+        resultEl.innerHTML = '<div class="alert alert-danger small mb-0">Erro na requisição: ' + (err.message || '') + '</div>';
+      })
+      .finally(function() {
+        if (btn) btn.disabled = false;
+      });
+    });
+  });
+
+  var filiaisEl = document.getElementById('filiais-por-empresa-data');
+  var filiaisData = {};
+  try {
+    if (filiaisEl && filiaisEl.textContent) filiaisData = JSON.parse(filiaisEl.textContent);
+  } catch (e) {}
+  document.querySelectorAll('select[name=bukrs]').forEach(function(selEmp) {
+    var card = selEmp.closest('.rfc-card');
+    var selFilial = card ? card.querySelector('select[name=branch].rfc-branch-select') : null;
+    if (!selFilial) return;
+    selEmp.addEventListener('change', function() {
+      var cod = this.value;
+      selFilial.innerHTML = '<option value="">Todas as filiais</option>';
+      if (cod && filiaisData[cod]) {
+        filiaisData[cod].forEach(function(f) {
+          var opt = document.createElement('option');
+          opt.value = f.cod_filial;
+          opt.textContent = f.cod_filial + (f.nome ? ' – ' + f.nome : '');
+          selFilial.appendChild(opt);
+        });
+      }
+    });
+  });
+});
+</script>
+{% endblock %}

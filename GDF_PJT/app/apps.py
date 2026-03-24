@@ -19,6 +19,7 @@ class AppConfig(AppConfig):
             import app.db_GDF.sped_fiscal.models  # noqa: F401
             import app.db_GDF.sped_contribuicao.models  # noqa: F401
             import app.db_GDF.reprocessamento.models  # noqa: F401
+            import app.db_GDF.Sap.models  # noqa: F401
         except ImportError:
             # during early development the modules may not exist yet
             pass

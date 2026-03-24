@@ -25,7 +25,7 @@ from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 
 from app.classes.CargaSped import CargaSped
 from app.classes.CargaXml import CargaXml
@@ -387,6 +387,7 @@ def fn_view_home(request):
         ('Pro_CargaXml', 'Importar XML', 'Carga diária'),
         ('Pro_CargaSped', 'Carga SPED', 'Arquivos SPED'),
         ('Pro_Relatorio', 'Relatório Fiscal', 'NFe, CTe, NFS, SPED'),
+        ('Int_Rfc', 'RFC SAP', 'Integração schema sap'),
         ('Dm_Empresas', 'Empresas', 'Cadastros'),
         ('Dm_Filiais', 'Filiais', 'Cadastros'),
         ('Dm_Usuarios', 'Usuários', 'Acessos'),
@@ -853,6 +854,17 @@ def fn_view_dashboard_compras(request):
         return render(request, 'index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
     streamlit_url = _streamlit_iframe_url(request)
     return render(request, "Dashboard/index_Compras.html", {"token": token, "streamlit_iframe_url": streamlit_url})
+
+
+@login_required(login_url='Login')
+@requer_acesso_subsolucao('Db_Custo')
+def fn_view_dashboard_custo(request):
+    token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Custo')
+    if not token:
+        return render(request, 'index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
+    streamlit_url = _streamlit_iframe_url(request)
+    return render(request, "Dashboard/index_Custo.html", {"token": token, "streamlit_iframe_url": streamlit_url})
+
 
 #--------------------------------------------------------------------
 #       Sub-soluções Views (Manifesto)
@@ -3900,3 +3912,170 @@ def fn_api_sap_testar_conexao(request):
         }, status=502)
     except Exception as e:
         return JsonResponse({'sucesso': False, 'mensagem': str(e)[:500]}, status=500)
+
+
+# -------------------------------------------------------------------------
+# Integração SAP – RFC (subsolução Int_Rfc)
+# -------------------------------------------------------------------------
+@login_required(login_url='Login')
+@requer_acesso_subsolucao('Int_Rfc')
+@require_http_methods(["GET"])
+def fn_view_Integracao_Rfc(request):
+    """View da subsolução Int_Rfc: executa RFCs que alimentam tabelas do schema sap."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
+
+    from app.integracao_sap import get_rfc_registry
+    registry = get_rfc_registry()
+    rfc_handlers = registry.list_all()
+
+    empresas = list(
+        Empresa.objects.filter(
+            gdfcliente__cod_cliente=cod_cliente,
+            usuarioempresa__user=request.user,
+        ).values('cod_empresa', 'fantasia', 'razao').distinct()
+    ) if cod_cliente else []
+    if usuario_acesso_total_painel(request):
+        empresas = list(
+            Empresa.objects.filter(gdfcliente__cod_cliente=cod_cliente)
+            .values('cod_empresa', 'fantasia', 'razao').distinct()
+        ) if cod_cliente else []
+
+    filiais_por_empresa = {}
+    for emp in empresas:
+        cod_emp = emp.get('cod_empresa')
+        filiais = list(
+            Filial.objects.filter(empresa__cod_empresa=cod_emp)
+            .values('cod_filial', 'nome')
+        )
+        filiais_por_empresa[cod_emp] = filiais
+
+    context = {
+        'cod_cliente': cod_cliente,
+        'rfc_handlers': [
+            {
+                'codigo': h.codigo,
+                'nome': h.nome,
+                'descricao': h.descricao,
+                'tabela_sap': h.tabela_sap,
+                'params': [
+                    {
+                        'key': p.key,
+                        'label': p.label,
+                        'param_type': p.param_type.value,
+                        'required': p.required,
+                        'default': p.default,
+                        'help_text': p.help_text,
+                    }
+                    for p in h.params
+                ],
+            }
+            for h in rfc_handlers
+        ],
+        'empresas': empresas,
+        'filiais_por_empresa': filiais_por_empresa,
+    }
+    return render(request, 'IntegracaoSap/index_Rfc.html', context)
+
+
+@login_required(login_url='Login')
+@requer_acesso_subsolucao('Int_Rfc', redirect_on_deny=False)
+@require_http_methods(["POST"])
+def fn_api_rfc_executar(request):
+    """
+    Executa um RFC registrado.
+    Body (JSON): { "cod_rfc": "RFC_RELATORIO_CUSTO", "params": { "bukrs": "...", "branch": "...", ... } }
+    """
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'sucesso': False, 'mensagem': 'JSON inválido'}, status=400)
+
+    cod_rfc = (data.get('cod_rfc') or '').strip()
+    params = data.get('params') or {}
+    if not cod_rfc:
+        return JsonResponse({'sucesso': False, 'mensagem': 'cod_rfc é obrigatório'}, status=400)
+
+    from app.integracao_sap import get_rfc_registry
+    registry = get_rfc_registry()
+    result = registry.execute(cod_rfc, cod_cliente, **params)
+    return JsonResponse(result)
+
+
+# -------------------------------------------------------------------------
+# API SAP – Receber Relatório de Custo (POST do SAP → PostgreSQL)
+# -------------------------------------------------------------------------
+@csrf_exempt
+@require_http_methods(["POST"])
+def fn_api_sap_relatorio_custo_receber(request):
+    """
+    Recebe dados de Relatório de Custo enviados pelo SAP via POST e persiste em sap.relatorio_custo.
+
+    Autenticação: Header X-API-Key ou Authorization: Bearer <chave>
+    Chave configurada em SAP_RELATORIO_CUSTO_API_KEY (.env).
+
+    Body (JSON):
+      {
+        "cod_empresa": "1000",      // obrigatório
+        "cod_filial": "001",        // opcional
+        "registros": [
+          { "DOCNUM": "...", "MJAHR": "...", "MBLNR": "...", "PSTDAT": "2025-01-15", ... },
+          ...
+        ]
+      }
+    """
+    api_key = settings.SAP_RELATORIO_CUSTO_API_KEY
+    if not api_key:
+        return JsonResponse({
+            'sucesso': False,
+            'mensagem': 'API não configurada. Defina SAP_RELATORIO_CUSTO_API_KEY no .env.',
+        }, status=503)
+
+    # Validar API key
+    auth_header = request.headers.get('Authorization', '')
+    key_from_header = request.headers.get('X-API-Key', '').strip()
+    if not key_from_header and auth_header.startswith('Bearer '):
+        key_from_header = auth_header[7:].strip()
+    if key_from_header != api_key:
+        return JsonResponse({
+            'sucesso': False,
+            'mensagem': 'API key inválida ou não informada. Use header X-API-Key ou Authorization: Bearer.',
+        }, status=401)
+
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError as e:
+        return JsonResponse({
+            'sucesso': False,
+            'mensagem': f'JSON inválido: {e}',
+        }, status=400)
+
+    cod_empresa = (data.get('cod_empresa') or '').strip()
+    cod_filial = (data.get('cod_filial') or '').strip() or None
+    registros = data.get('registros')
+
+    if registros is None:
+        return JsonResponse({
+            'sucesso': False,
+            'mensagem': 'Campo "registros" é obrigatório (array de objetos).',
+        }, status=400)
+
+    if not isinstance(registros, list):
+        return JsonResponse({
+            'sucesso': False,
+            'mensagem': '"registros" deve ser um array.',
+        }, status=400)
+
+    from app.integracao_sap.relatorio_custo_receiver import persistir_relatorio_custo
+    result = persistir_relatorio_custo(
+        cod_empresa=cod_empresa,
+        registros=registros,
+        cod_filial=cod_filial,
+    )
+    status_code = 200 if result.get('sucesso') else 400
+    return JsonResponse(result, status=status_code)

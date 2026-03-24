@@ -4,7 +4,11 @@ Centraliza a construção de DataFrames e queries.
 """
 import pandas as pd
 
-from config.constants import descricao_tipo_pagamento
+from config.constants import (
+    CUSTO_DASHBOARD_DETAIL_LIMIT,
+    descricao_tipo_pagamento,
+    RELATORIO_CUSTO_CFOP_LIST,
+)
 
 
 class DashboardData:
@@ -12,16 +16,40 @@ class DashboardData:
 
     __slots__ = (
         "df_merged", "df_produtos", "df_parcelas", "df_pagamento",
-        "tipo_relatorio", "g_q_nfe"
+        "tipo_relatorio", "g_q_nfe", "df_custo_linhas",
+        "df_custo_rank_cliente", "df_custo_rank_cidade",
+        "custo_detail_limit", "custo_detail_truncated",
     )
 
-    def __init__(self, df_merged, df_produtos, df_parcelas, df_pagamento, tipo_relatorio, g_q_nfe):
+    def __init__(
+        self,
+        df_merged,
+        df_produtos,
+        df_parcelas,
+        df_pagamento,
+        tipo_relatorio,
+        g_q_nfe,
+        df_custo_linhas=None,
+        df_custo_rank_cliente=None,
+        df_custo_rank_cidade=None,
+        custo_detail_limit: int = 0,
+        custo_detail_truncated: bool = False,
+    ):
         self.df_merged = df_merged
         self.df_produtos = df_produtos
         self.df_parcelas = df_parcelas
         self.df_pagamento = df_pagamento
         self.tipo_relatorio = tipo_relatorio
         self.g_q_nfe = g_q_nfe
+        self.df_custo_linhas = df_custo_linhas if df_custo_linhas is not None else pd.DataFrame()
+        self.df_custo_rank_cliente = (
+            df_custo_rank_cliente if df_custo_rank_cliente is not None else pd.DataFrame()
+        )
+        self.df_custo_rank_cidade = (
+            df_custo_rank_cidade if df_custo_rank_cidade is not None else pd.DataFrame()
+        )
+        self.custo_detail_limit = custo_detail_limit
+        self.custo_detail_truncated = custo_detail_truncated
 
     @property
     def is_vendas(self):
@@ -30,6 +58,10 @@ class DashboardData:
     @property
     def is_compras(self):
         return self.tipo_relatorio == "Compras"
+
+    @property
+    def is_custo(self):
+        return self.tipo_relatorio == "Custo"
 
 
 def apply_compras_filters(data: DashboardData, filter_values: dict) -> DashboardData:
@@ -119,7 +151,15 @@ def apply_compras_filters(data: DashboardData, filter_values: dict) -> Dashboard
         df_pagamento=df_pagamento,
         tipo_relatorio=data.tipo_relatorio,
         g_q_nfe=data.g_q_nfe,
+        df_custo_linhas=data.df_custo_linhas,
+        df_custo_rank_cliente=data.df_custo_rank_cliente,
+        df_custo_rank_cidade=data.df_custo_rank_cidade,
+        custo_detail_limit=data.custo_detail_limit,
+        custo_detail_truncated=data.custo_detail_truncated,
     )
+
+
+_MESES_NOMES_CUSTO = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
 
 class DataProcessor:
@@ -141,6 +181,15 @@ class DataProcessor:
         Processa os dados conforme filtros e retorna DashboardData.
         Retorna None se não houver dados.
         """
+        if self.tipo_relatorio == "Custo":
+            return self._process_custo(
+                empresas_queryset=empresas_queryset,
+                empresa_selecionada=empresa_selecionada,
+                usar_periodo=usar_periodo,
+                data_inicio=data_inicio,
+                data_fim=data_fim,
+            )
+
         from app.db_GDF.Public.models import Empresa
         from app.db_GDF.NFe.models import (
             NFe_Identificacao, NFe_Total, NFe_Produto, NFe_Destinatario, NFe,
@@ -237,6 +286,249 @@ class DataProcessor:
             df_pagamento=df_pagamento,
             tipo_relatorio=self.tipo_relatorio,
             g_q_nfe=g_q_nfe,
+            df_custo_linhas=pd.DataFrame(),
+            df_custo_rank_cliente=pd.DataFrame(),
+            df_custo_rank_cidade=pd.DataFrame(),
+            custo_detail_limit=0,
+            custo_detail_truncated=False,
+        )
+
+    def _process_custo(
+        self,
+        empresas_queryset,
+        empresa_selecionada: str,
+        usar_periodo: bool,
+        data_inicio,
+        data_fim,
+    ) -> DashboardData | None:
+        """
+        Relatório de custo: agregações no PostgreSQL (sem carregar milhões de linhas).
+        CFOP já normalizado (strip) na carga; índice parcial (migration 0069) alinha com o filtro.
+        """
+        from decimal import Decimal
+
+        from django.db.models import DecimalField, Sum, Value
+        from django.db.models.functions import Coalesce, ExtractMonth, ExtractYear
+
+        from app.db_GDF.Sap.models import RelatorioCusto
+
+        lsl_cod_empresa = list(empresas_queryset.values_list('cod_empresa', flat=True))
+        if empresa_selecionada and empresa_selecionada not in ("Todas", "Todas as empresas"):
+            cod_empresa = empresa_selecionada.split(" - ")[0].strip()
+            lsl_cod_empresa = [cod_empresa]
+
+        q = (
+            RelatorioCusto.objects.filter(
+                empresa__cod_empresa__in=lsl_cod_empresa,
+                cfop__in=RELATORIO_CUSTO_CFOP_LIST,
+            )
+            .select_related('empresa')
+        )
+        if usar_periodo and data_inicio and data_fim:
+            q = q.filter(pstdat__range=(data_inicio, data_fim))
+
+        z18 = Value(Decimal('0'), output_field=DecimalField(max_digits=18, decimal_places=2))
+        z16 = Value(Decimal('0'), output_field=DecimalField(max_digits=16, decimal_places=3))
+        z10 = Value(Decimal('0'), output_field=DecimalField(max_digits=10, decimal_places=2))
+
+        qd = q.exclude(pstdat__isnull=True)
+
+        def _sum18(field):
+            return Coalesce(Sum(field), z18)
+
+        def _sum16(field):
+            return Coalesce(Sum(field), z16)
+
+        def _sum10(field):
+            return Coalesce(Sum(field), z10)
+
+        # --- Série mensal por empresa (para gráficos) ---
+        mrows = list(
+            qd.annotate(ano=ExtractYear('pstdat'), mes=ExtractMonth('pstdat'))
+            .values('empresa__cod_empresa', 'empresa__fantasia', 'empresa__razao', 'ano', 'mes')
+            .annotate(
+                vlr_tot_doc=_sum18('vlr_tot_doc'),
+                total_impostos=_sum10('total_impostos'),
+                margem_contrib_ger=_sum18('margem_contrib_ger'),
+                cmv_gerencial=_sum18('cmv_gerencial'),
+                qtd_prod=_sum16('qtd_prod'),
+                vlr_liquido=_sum18('vlr_liquido'),
+            )
+        )
+        if not mrows:
+            return None
+
+        df_merged = pd.DataFrame.from_records(mrows)
+        df_merged['empresa'] = (
+            df_merged['empresa__fantasia']
+            .fillna(df_merged['empresa__razao'])
+            .fillna(df_merged['empresa__cod_empresa'])
+            .astype(str)
+            .str.strip()
+        )
+        bad_empresa = df_merged['empresa'].isin(('', 'nan'))
+        if bad_empresa.any():
+            df_merged.loc[bad_empresa, 'empresa'] = df_merged.loc[bad_empresa, 'empresa__cod_empresa'].astype(str)
+        df_merged = df_merged.rename(columns={
+            'vlr_tot_doc': 'Faturamento',
+            'total_impostos': 'Total Impostos',
+            'margem_contrib_ger': 'Margem Contrib. Gerencial',
+            'cmv_gerencial': 'CMV Gerencial',
+            'qtd_prod': 'Quantidade Total',
+            'vlr_liquido': 'Valor Líquido',
+        })
+        for col in (
+            'Faturamento', 'Total Impostos', 'Margem Contrib. Gerencial',
+            'CMV Gerencial', 'Quantidade Total', 'Valor Líquido',
+        ):
+            if col in df_merged.columns:
+                df_merged[col] = pd.to_numeric(df_merged[col], errors='coerce').fillna(0)
+        df_merged['mes_nome'] = df_merged['mes'].map(
+            lambda m: _MESES_NOMES_CUSTO[int(m) - 1] if m and 1 <= int(m) <= 12 else ''
+        )
+
+        # --- Grupo de mercadorias (agregado no banco) ---
+        grows = list(
+            qd.values('wgbez', 'matkl').annotate(
+                valor_total=_sum18('vlr_tot_doc'),
+                quantidade=_sum16('qtd_prod'),
+                total_impostos=_sum10('total_impostos'),
+                cmv_ger=_sum18('cmv_gerencial'),
+                margem_ger=_sum18('margem_contrib_ger'),
+            )
+        )
+        df_gr = pd.DataFrame.from_records(grows) if grows else pd.DataFrame()
+        if not df_gr.empty:
+            wg = df_gr['wgbez'].fillna('').astype(str).str.strip()
+            mk = df_gr['matkl'].fillna('').astype(str).str.strip()
+            df_gr['descricao'] = wg.where(wg != '', mk)
+            df_gr['descricao'] = df_gr['descricao'].mask(df_gr['descricao'] == '', 'Sem grupo')
+            df_produtos = pd.DataFrame({
+                'descricao': df_gr['descricao'],
+                'valor_total': pd.to_numeric(df_gr['valor_total'], errors='coerce').fillna(0),
+                'quantidade': pd.to_numeric(df_gr['quantidade'], errors='coerce').fillna(0),
+                'total_impostos': pd.to_numeric(df_gr['total_impostos'], errors='coerce').fillna(0),
+                'CMV Gerencial': pd.to_numeric(df_gr['cmv_ger'], errors='coerce').fillna(0),
+                'Margem Contrib. Gerencial': pd.to_numeric(df_gr['margem_ger'], errors='coerce').fillna(0),
+            })
+        else:
+            df_produtos = pd.DataFrame()
+
+        # --- Ranking: um registro por cliente / por cidade (pré-agregado) ---
+        crows = list(
+            qd.exclude(stcd1__isnull=True)
+            .exclude(stcd1='')
+            .values('stcd1', 'name1')
+            .annotate(
+                Faturamento=_sum18('vlr_tot_doc'),
+                sum_qtd=_sum16('qtd_prod'),
+                sum_imp=_sum10('total_impostos'),
+                sum_vlr_liq=_sum18('vlr_liquido'),
+                sum_margem=_sum18('margem_contrib_ger'),
+                sum_cmv=_sum18('cmv_gerencial'),
+            )
+        )
+        df_rc = pd.DataFrame.from_records(crows) if crows else pd.DataFrame()
+        if not df_rc.empty:
+            df_rc = df_rc.rename(columns={
+                'stcd1': 'cnpj_cliente',
+                'name1': 'nome_cliente',
+                'sum_qtd': 'Quantidade Total',
+                'sum_imp': 'Total Impostos',
+                'sum_vlr_liq': 'Valor Líquido',
+                'sum_margem': 'Margem Contrib. Gerencial',
+                'sum_cmv': 'CMV Gerencial',
+            })
+            for col in (
+                'Faturamento', 'Quantidade Total', 'Total Impostos', 'Valor Líquido',
+                'Margem Contrib. Gerencial', 'CMV Gerencial',
+            ):
+                if col in df_rc.columns:
+                    df_rc[col] = pd.to_numeric(df_rc[col], errors='coerce').fillna(0)
+
+        city_rows = list(
+            qd.exclude(ort01__isnull=True)
+            .exclude(ort01='')
+            .values('ort01')
+            .annotate(
+                Faturamento=_sum18('vlr_tot_doc'),
+                sum_qtd=_sum16('qtd_prod'),
+                sum_imp=_sum10('total_impostos'),
+                sum_vlr_liq=_sum18('vlr_liquido'),
+                sum_margem=_sum18('margem_contrib_ger'),
+                sum_cmv=_sum18('cmv_gerencial'),
+            )
+        )
+        df_rct = pd.DataFrame.from_records(city_rows) if city_rows else pd.DataFrame()
+        if not df_rct.empty:
+            df_rct = df_rct.rename(columns={
+                'ort01': 'cidade',
+                'sum_qtd': 'Quantidade Total',
+                'sum_imp': 'Total Impostos',
+                'sum_vlr_liq': 'Valor Líquido',
+                'sum_margem': 'Margem Contrib. Gerencial',
+                'sum_cmv': 'CMV Gerencial',
+            })
+            for col in (
+                'Faturamento', 'Quantidade Total', 'Total Impostos', 'Valor Líquido',
+                'Margem Contrib. Gerencial', 'CMV Gerencial',
+            ):
+                if col in df_rct.columns:
+                    df_rct[col] = pd.to_numeric(df_rct[col], errors='coerce').fillna(0)
+
+        # --- Amostra da tabela detalhada (LIMIT) ---
+        limit = CUSTO_DASHBOARD_DETAIL_LIMIT
+        detail_cols = (
+            'pstdat', 'docnum', 'matnr', 'maktx', 'matkl', 'wgbez', 'cfop',
+            'stcd1', 'name1', 'ort01',
+            'vlr_tot_doc', 'total_impostos', 'margem_contrib_ger',
+            'cmv_gerencial', 'qtd_prod', 'vlr_liquido',
+            'empresa__cod_empresa', 'empresa__fantasia', 'empresa__razao',
+        )
+        detail_qs = qd.order_by('-pstdat', 'docnum', 'matnr')[:limit]
+        dlines = list(detail_qs.values(*detail_cols))
+        truncated = len(dlines) >= limit
+
+        df_custo = pd.DataFrame.from_records(dlines) if dlines else pd.DataFrame()
+        if not df_custo.empty:
+            df_custo['pstdat'] = pd.to_datetime(df_custo['pstdat'], errors='coerce')
+            df_custo['empresa'] = (
+                df_custo['empresa__fantasia']
+                .fillna(df_custo['empresa__razao'])
+                .fillna(df_custo['empresa__cod_empresa'])
+                .astype(str)
+                .str.strip()
+            )
+            bad = df_custo['empresa'].isin(('', 'nan'))
+            if bad.any():
+                df_custo.loc[bad, 'empresa'] = df_custo.loc[bad, 'empresa__cod_empresa'].astype(str)
+            for col in (
+                'vlr_tot_doc', 'total_impostos', 'margem_contrib_ger', 'cmv_gerencial',
+                'qtd_prod', 'vlr_liquido',
+            ):
+                df_custo[col] = pd.to_numeric(df_custo[col], errors='coerce').fillna(0)
+            df_custo['cnpj_cliente'] = df_custo['stcd1'].fillna('').astype(str).str.strip()
+            df_custo['nome_cliente'] = df_custo['name1'].fillna('').astype(str).str.strip()
+            df_custo['cidade'] = df_custo['ort01'].fillna('').astype(str).str.strip()
+            df_custo['Faturamento'] = df_custo['vlr_tot_doc']
+            df_custo['Quantidade Total'] = df_custo['qtd_prod']
+            df_custo['Total Impostos'] = df_custo['total_impostos']
+            df_custo['Valor Líquido'] = df_custo['vlr_liquido']
+            df_custo['Margem Contrib. Gerencial'] = df_custo['margem_contrib_ger']
+            df_custo['CMV Gerencial'] = df_custo['cmv_gerencial']
+
+        return DashboardData(
+            df_merged=df_merged,
+            df_produtos=df_produtos,
+            df_parcelas=pd.DataFrame(),
+            df_pagamento=pd.DataFrame(),
+            tipo_relatorio='Custo',
+            g_q_nfe=RelatorioCusto.objects.none(),
+            df_custo_linhas=df_custo,
+            df_custo_rank_cliente=df_rc,
+            df_custo_rank_cidade=df_rct,
+            custo_detail_limit=limit,
+            custo_detail_truncated=truncated,
         )
 
     def _build_contraparte(self, g_q_nfe):

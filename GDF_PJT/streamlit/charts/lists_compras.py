@@ -1,5 +1,7 @@
 """Listas e constantes para gráficos de Compras."""
 
+NOME_METRICA_MARGEM = "Margem Contrib. Gerencial"
+
 # Métricas que usam escala em milhares (k) no format_valor
 Metrica_valores_k = [
     "Faturamento",
@@ -11,7 +13,9 @@ Metrica_valores_k = [
     "Credito_Tributario_Total",
 ]
 
-# Métricas em percentual
+# Métricas em percentual (após conversão margem/faturamento*100 em G_multiplas_metricas)
 Metrica_valores_p = [
-    "M. Contribuição"
+    NOME_METRICA_MARGEM,
 ]
+
+METRICAS_MARGEM_PCT = (NOME_METRICA_MARGEM,)

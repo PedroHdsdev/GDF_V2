@@ -18,6 +18,7 @@ from app.views._views import (
     fn_view_atualizar_usuario,
     fn_view_dashboard_vendas,
     fn_view_dashboard_compras,
+    fn_view_dashboard_custo,
     fn_view_manifesto_painel,
     fn_view_inserir_empresa,
     fn_view_atualizar_empresa,
@@ -73,6 +74,9 @@ from app.views._views import (
     fn_api_reprocessamento_condicao_param_listar,
     fn_api_reprocessamento_condicao_param_atualizar,
     fn_api_sap_testar_conexao,
+    fn_api_sap_relatorio_custo_receber,
+    fn_view_Integracao_Rfc,
+    fn_api_rfc_executar,
 )
 
 __all__ = [
@@ -90,6 +94,7 @@ __all__ = [
     'fn_view_atualizar_usuario',
     'fn_view_dashboard_vendas',
     'fn_view_dashboard_compras',
+    'fn_view_dashboard_custo',
     'fn_view_manifesto_painel',
     'fn_view_inserir_empresa',
     'fn_view_atualizar_empresa',
@@ -145,4 +150,7 @@ __all__ = [
     'fn_api_reprocessamento_condicao_param_listar',
     'fn_api_reprocessamento_condicao_param_atualizar',
     'fn_api_sap_testar_conexao',
+    'fn_api_sap_relatorio_custo_receber',
+    'fn_view_Integracao_Rfc',
+    'fn_api_rfc_executar',
 ]

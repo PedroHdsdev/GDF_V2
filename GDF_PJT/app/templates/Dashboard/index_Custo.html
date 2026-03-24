@@ -1,0 +1,20 @@
+{% extends 'index_Base.html' %}
+{% load static %}
+
+{% block title %}Dashboard Custo{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/Style_Dashboard.css' %}">
+{% endblock %}
+
+{% block titlepage %}Dashboard Custo{% endblock %}
+
+{% block container %}
+<div id="iframeWrapper" class="iframe-container">
+    <iframe src="{{ streamlit_iframe_url }}/?token={{ token }}" title="Dashboard Custo"></iframe>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/Script_Dashboard.js' %}"></script>
+{% endblock %}

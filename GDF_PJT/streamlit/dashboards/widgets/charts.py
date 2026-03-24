@@ -9,11 +9,17 @@ except ImportError:
     CHART_PALETTE = ["#0ea5e9", "#f97316", "#8b5cf6", "#ec4899", "#14b8a6"]
     CHART_COLORS = {"primary": "#0ea5e9", "secondary": "#f97316", "success": "#10b981"}
 
+try:
+    from charts.lists_custo import NOME_METRICA_MARGEM as _MARGEM_COL
+except ImportError:
+    _MARGEM_COL = "Margem Contrib. Gerencial"
+
 _MESES_NOMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
 
 def render_evolucao_temporal(df_merged, grafico_mod, tipo_relatorio: str):
-    """Tab: Evolução temporal - Como as métricas evoluem ao longo do tempo."""
+    """Tab: Evolução temporal - Layout como na imagem: painel esquerdo + gráfico à direita."""
+    custo_modo = tipo_relatorio == "Custo"
     metricas_opcoes = [
         ("Faturamento", "Valor total das NF-e"),
         ("Total Impostos", "Soma de impostos (ICMS, PIS, COFINS, IPI)"),
@@ -22,117 +28,214 @@ def render_evolucao_temporal(df_merged, grafico_mod, tipo_relatorio: str):
     ]
     if tipo_relatorio == "Compras":
         metricas_opcoes.append(("Credito_Tributario_Total", "Créditos tributários (ICMS, PIS, COFINS)"))
+    if tipo_relatorio == "Custo":
+        metricas_opcoes = [
+            ("Faturamento", "Valor total do documento (vlr_tot_doc)"),
+            ("Valor Líquido", "Valor líquido"),
+            ("Total Impostos", "Total de impostos"),
+            (_MARGEM_COL, "Margem contribuição gerencial"),
+            ("CMV Gerencial", "CMV gerencial"),
+            ("Quantidade Total", "Quantidade de produto"),
+        ]
 
-    st.markdown("**O que você quer analisar?**")
-    st.caption("Evolução mês a mês ou total anual. Passe o mouse sobre as linhas para ver os valores exatos. Use zoom (arrastar no gráfico) para detalhar um período. Ideal para tendências e sazonalidade.")
+    tem_empresa = "empresa" in df_merged.columns and df_merged["empresa"].notna().any()
+    empresas_disponiveis = sorted(df_merged["empresa"].dropna().unique().tolist()) if tem_empresa else []
 
-    col_filtro1, col_filtro2, col_filtro3 = st.columns([2, 2, 2])
+    # Layout: painel esquerdo (filtros) + área direita (gráfico) — como na imagem
+    col_esq, col_chart = st.columns([1, 3])
 
-    metricas_labels = [m[0] for m in metricas_opcoes]
-
-    with col_filtro1:
-        metricas_selecionadas = st.multiselect(
-            "Métricas a acompanhar",
-            options=metricas_labels,
-            default=["Faturamento"],
-            key="tab1_metricas",
-            help="Selecione uma ou mais. Cada métrica aparece como uma linha no gráfico.",
+    with col_esq:
+        metricas_labels = [m[0] for m in metricas_opcoes]
+        # Bloco único: rótulo + tags com cor + multiselect (chips do Streamlit ocultos)
+        st.markdown(
+            '<style>#metricas-um-so [data-baseweb="tag"]{display:none !important;}'
+            '#metricas-um-so [data-testid="stMultiSelect"] > div > div:first-child{display:none !important;}</style>',
+            unsafe_allow_html=True,
         )
+        st.markdown('<div id="metricas-um-so">', unsafe_allow_html=True)
+        st.markdown("**Métricas**")
+        metricas_selecionadas = st.multiselect(
+            "Métricas",
+            options=metricas_labels,
+            default=metricas_labels[:4],
+            key="tab1_metricas",
+            help="Cada métrica aparece como linha no gráfico; a cor corresponde ao quadrado em cada tag.",
+            label_visibility="collapsed",
+        )
+        if metricas_selecionadas:
+            tags_html = "".join(
+                f'<span style="display:inline-flex;align-items:center;gap:6px;'
+                f'background:var(--background-secondary, #31333F);padding:4px 10px;border-radius:6px;'
+                f'margin:2px 4px 2px 0;font-size:0.9em;">'
+                f'<span style="width:10px;height:10px;min-width:10px;min-height:10px;background:{CHART_PALETTE[i % len(CHART_PALETTE)]};'
+                f'border-radius:2px;flex-shrink:0;"></span>'
+                f'<span>{nome}</span></span>'
+                for i, nome in enumerate(metricas_selecionadas)
+            )
+            st.markdown(
+                f'<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-bottom:6px;">{tags_html}</div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    with col_filtro2:
-        anos_disponiveis = sorted(df_merged['ano'].unique())
+        anos_disponiveis = sorted(df_merged["ano"].unique())
         default_anos = anos_disponiveis[-2:] if len(anos_disponiveis) >= 2 else anos_disponiveis
         anos_selecionados = st.multiselect(
             "Anos",
             options=anos_disponiveis,
             default=default_anos,
             key="tab1_anos",
-            help="Compare a evolução em um ou mais anos. Múltiplos anos = uma linha por ano.",
+            help="Anos a comparar.",
         )
 
-    with col_filtro3:
+        if custo_modo:
+            filiais_selecionadas = None
+        elif tem_empresa and empresas_disponiveis:
+            filiais_selecionadas = st.multiselect(
+                "Filiais",
+                options=empresas_disponiveis,
+                default=empresas_disponiveis,
+                key="tab1_filiais",
+                help="Empresas/filiais a exibir (uma linha por empresa e ano).",
+            )
+        else:
+            filiais_selecionadas = None
+
         periodo_value = st.radio(
             "Visão",
             options=["Mensal", "Anual"],
             format_func=lambda x: "Mês a mês" if x == "Mensal" else "Total por ano",
             horizontal=True,
             key="tab1_periodo",
-            help="Mensal: linha do tempo. Anual: barras com total de cada ano.",
         )
 
-    filtro_meses = None
-    if periodo_value == "Mensal" and anos_selecionados:
-        meses_no_df = sorted(df_merged[df_merged['ano'].isin(anos_selecionados)]['mes'].unique())
-        if meses_no_df:
-            meses_sel = st.multiselect(
-                "Filtrar meses (opcional)",
-                options=meses_no_df,
-                default=meses_no_df,
-                format_func=lambda x: _MESES_NOMES[x - 1],
-                key="tab1_meses",
-                help="Deixe todos para ver o ano completo, ou escolha meses específicos.",
-            )
-            if meses_sel:
-                filtro_meses = sorted(meses_sel)
+    with col_chart:
+        # Tags de contexto (anos e filiais ativos) acima do gráfico
+        tags_parts = []
+        if anos_selecionados:
+            tags_parts.append("Anos: " + ", ".join(str(a) for a in anos_selecionados))
+        if filiais_selecionadas and not custo_modo:
+            tags_parts.append("Filiais: " + ", ".join(filiais_selecionadas))
+        if tags_parts:
+            st.caption(" | ".join(tags_parts))
 
-    if metricas_selecionadas and anos_selecionados:
+        # Filtrar meses (opcional) — acima do gráfico de linha
+        filtro_meses = None
+        if periodo_value == "Mensal" and anos_selecionados:
+            meses_no_df = sorted(df_merged[df_merged["ano"].isin(anos_selecionados)]["mes"].unique())
+            if meses_no_df:
+                meses_sel = st.multiselect(
+                    "Filtrar meses (opcional)",
+                    options=meses_no_df,
+                    default=meses_no_df,
+                    format_func=lambda x: _MESES_NOMES[x - 1],
+                    key="tab1_meses",
+                )
+                if meses_sel:
+                    filtro_meses = sorted(meses_sel)
+
+        if not metricas_selecionadas or not anos_selecionados:
+            st.info("👆 Selecione pelo menos uma métrica e um ano no painel à esquerda.")
+            return
+
         try:
-            g_linha = grafico_mod.Grafico_linha(df_merged)
-            g_linha.G_multiplas_metricas(
-                coluna_data='mes_nome',
-                coluna_ano='ano',
-                metricas=metricas_selecionadas,
-                filtro_anos=anos_selecionados,
-                filtro_meses=filtro_meses,
-                periodo=periodo_value,
-                titulo=f"Evolução {periodo_value} - {', '.join(metricas_selecionadas)}"
+            usar_evolucao_por_filial = (
+                tem_empresa
+                and not custo_modo
+                and (filiais_selecionadas is None or len(filiais_selecionadas) > 0)
             )
+            if usar_evolucao_por_filial:
+                # Uma linha por (Empresa, Ano), tooltip com todas as métricas (como na imagem)
+                df_filtrado = df_merged.copy()
+                if filiais_selecionadas:
+                    df_filtrado = df_filtrado[df_filtrado["empresa"].isin(filiais_selecionadas)]
+                g_linha = grafico_mod.Grafico_linha(df_filtrado)
+                g_linha.G_evolucao_por_filial(
+                    metricas=metricas_selecionadas,
+                    filtro_empresas=filiais_selecionadas,
+                    filtro_anos=anos_selecionados,
+                    filtro_meses=filtro_meses,
+                    periodo=periodo_value,
+                    titulo=f"Evolução {'Mensal' if periodo_value == 'Mensal' else 'Anual'} - " + ", ".join(metricas_selecionadas),
+                )
+            else:
+                # Sem breakdown por empresa: agregar por ano/mês se houver coluna empresa
+                df_plot = df_merged
+                if "empresa" in df_merged.columns:
+                    agg_cols = [c for c in df_merged.columns if c not in ("empresa",) and c in df_merged.columns]
+                    numeric = [c for c in agg_cols if c in metricas_selecionadas or c in ("ano", "mes", "mes_nome")]
+                    if not numeric:
+                        numeric = [c for c in ["ano", "mes", "mes_nome"] + metricas_selecionadas if c in df_merged.columns]
+                    df_plot = df_merged.groupby(["ano", "mes", "mes_nome"], as_index=False).agg(
+                        {c: "sum" for c in metricas_selecionadas if c in df_merged.columns}
+                    )
+                    if "mes_nome" not in df_plot.columns and "mes" in df_plot.columns:
+                        df_plot["mes_nome"] = df_plot["mes"].map(lambda m: _MESES_NOMES[m - 1] if 1 <= m <= 12 else "")
+                g_linha = grafico_mod.Grafico_linha(df_plot)
+                g_linha.G_multiplas_metricas(
+                    coluna_data="mes_nome",
+                    coluna_ano="ano",
+                    metricas=metricas_selecionadas,
+                    filtro_anos=anos_selecionados,
+                    filtro_meses=filtro_meses,
+                    periodo=periodo_value,
+                    titulo=f"Evolução {periodo_value} - " + ", ".join(metricas_selecionadas),
+                )
         except Exception as err_graph:
             st.error(f"❌ Erro ao gerar gráfico: {str(err_graph)}")
-    else:
-        st.info("👆 Selecione pelo menos uma métrica e um ano para ver o gráfico.")
 
 
 def render_comparativo(df_merged, grafico_mod, tipo_relatorio: str = "Vendas"):
-    """Tab: Comparativo - Compare períodos lado a lado."""
+    """Tab: Comparativo — filtros à esquerda; uma linha por ano (cor) ao longo dos meses."""
     metricas_base = ["Faturamento", "Total Impostos", "Valor Líquido", "Quantidade Total"]
     if tipo_relatorio == "Compras":
         metricas_base = metricas_base + ["Credito_Tributario_Total"]
+    if tipo_relatorio == "Custo":
+        metricas_base = [
+            "Faturamento", "Total Impostos", "Valor Líquido",
+            _MARGEM_COL, "CMV Gerencial", "Quantidade Total",
+        ]
 
-    st.markdown("**O que você quer comparar?**")
-    st.caption("Compare meses no mesmo ano ou o mesmo mês em anos diferentes. Clique na legenda (se houver) e use o tooltip para detalhes.")
+    opcoes_metricas = [m for m in metricas_base if m in df_merged.columns]
+    if not opcoes_metricas:
+        opcoes_metricas = metricas_base
 
-    col_metrica, col_filtros = st.columns([1, 2])
+    col_esq, col_chart = st.columns([1, 3])
 
-    with col_metrica:
+    with col_esq:
+        st.markdown("**Comparar períodos**")
+        st.caption("Uma linha por ano (cores distintas) ao longo dos meses. Com **um mês** só, usa barras por ano.")
         metrica_comp = st.selectbox(
             "Métrica",
-            options=metricas_base,
+            options=opcoes_metricas,
             key="metrica_comp",
-            help="Valor a ser comparado.",
+            help="Valor agregado por mês e ano.",
         )
-
-    with col_filtros:
-        anos_disponiveis = sorted(df_merged['ano'].unique())
-        meses_disponiveis = sorted(df_merged['mes'].unique())
-
+        anos_disponiveis = sorted(df_merged["ano"].unique())
+        default_anos = anos_disponiveis[-2:] if len(anos_disponiveis) >= 2 else anos_disponiveis
         anos_select = st.multiselect(
             "Anos",
             options=anos_disponiveis,
-            default=anos_disponiveis[-1:] if anos_disponiveis else [],
+            default=default_anos,
             key="comp_anos",
-            help="1 ano ou vários anos.",
+            help="Cada ano vira uma série no gráfico.",
         )
+        meses_disponiveis = sorted(df_merged["mes"].unique())
         mes_select = st.multiselect(
             "Meses",
             options=meses_disponiveis,
-            default=meses_disponiveis[:3] if len(meses_disponiveis) >= 3 else meses_disponiveis,
+            default=meses_disponiveis,
             format_func=lambda x: _MESES_NOMES[x - 1],
             key="comp_meses",
-            help="1 mês ou vários meses.",
+            help="Meses no eixo horizontal (ordem do calendário).",
         )
 
-    if metrica_comp:
+    with col_chart:
+        if not anos_select or not mes_select:
+            st.info("👆 Selecione ao menos **um ano** e **um mês** à esquerda.")
+            return
+        if anos_select:
+            st.caption("Anos: " + ", ".join(str(a) for a in sorted(anos_select)))
         try:
             g_comp = grafico_mod.Grafico_comparacao(df_merged)
             g_comp.G_comparacao_unificado(
@@ -142,15 +245,22 @@ def render_comparativo(df_merged, grafico_mod, tipo_relatorio: str = "Vendas"):
             )
         except Exception as err_comp:
             st.error(f"❌ Erro ao gerar comparativo: {str(err_comp)}")
-    else:
-        st.info("👆 Selecione uma métrica para ver o comparativo.")
 
 
-def render_ranking(df_merged, tipo_relatorio: str):
-    """Tab: Ranking por Clientes, Cidades ou Fornecedores."""
+def render_ranking(
+    df_merged,
+    tipo_relatorio: str,
+    df_custo_rank_cliente: pd.DataFrame | None = None,
+    df_custo_rank_cidade: pd.DataFrame | None = None,
+):
+    """Tab: Ranking por Clientes, Cidades ou Fornecedores (Custo: agregados no banco)."""
     st.caption("Maiores por faturamento, quantidade ou impostos.")
 
     col_rank1, col_rank2, col_rank3 = st.columns([2, 2, 1])
+
+    metricas_padrao = ["Faturamento", "Quantidade Total", "Total Impostos", "Valor Líquido"]
+    if tipo_relatorio == "Custo":
+        metricas_padrao = metricas_padrao + [_MARGEM_COL, "CMV Gerencial"]
 
     with col_rank1:
         if tipo_relatorio == "Compras":
@@ -166,7 +276,7 @@ def render_ranking(df_merged, tipo_relatorio: str):
     with col_rank2:
         metrica_rank = st.selectbox(
             "Ordenar por",
-            options=["Faturamento", "Quantidade Total", "Total Impostos", "Valor Líquido"],
+            options=metricas_padrao,
             key="rank_metrica",
             help="Métrica para ordenar o ranking.",
         )
@@ -175,22 +285,69 @@ def render_ranking(df_merged, tipo_relatorio: str):
         top_n = st.slider("Top N", min_value=5, max_value=30, value=10, key="rank_top")
 
     try:
-        df_rank_src = df_merged.copy()
+        pre_agg_custo = False
+        if tipo_relatorio == "Custo":
+            if dimensao_rank == "Clientes":
+                if df_custo_rank_cliente is None or df_custo_rank_cliente.empty:
+                    st.info("ℹ️ Sem dados agregados por cliente (período, CFOP ou CNPJ vazio).")
+                    return
+                df_rank_src = df_custo_rank_cliente.copy()
+                pre_agg_custo = True
+            else:
+                if df_custo_rank_cidade is None or df_custo_rank_cidade.empty:
+                    st.info("ℹ️ Sem dados agregados por cidade (período ou cidade vazia).")
+                    return
+                df_rank_src = df_custo_rank_cidade.copy()
+                pre_agg_custo = True
+        else:
+            df_rank_src = df_merged.copy()
+
         df_rank_src['Faturamento'] = pd.to_numeric(df_rank_src['Faturamento'], errors='coerce').fillna(0)
         df_rank_src['Quantidade Total'] = pd.to_numeric(df_rank_src['Quantidade Total'], errors='coerce').fillna(0)
         df_rank_src['Total Impostos'] = pd.to_numeric(df_rank_src['Total Impostos'], errors='coerce').fillna(0)
-        df_rank_src['Valor Líquido'] = df_rank_src['Faturamento'] - df_rank_src['Total Impostos']
+        if tipo_relatorio == "Custo" and 'Valor Líquido' in df_rank_src.columns:
+            df_rank_src['Valor Líquido'] = pd.to_numeric(df_rank_src['Valor Líquido'], errors='coerce').fillna(0)
+        else:
+            df_rank_src['Valor Líquido'] = df_rank_src['Faturamento'] - df_rank_src['Total Impostos']
+        if _MARGEM_COL in df_rank_src.columns:
+            df_rank_src[_MARGEM_COL] = pd.to_numeric(
+                df_rank_src[_MARGEM_COL], errors="coerce"
+            ).fillna(0)
+        if "CMV Gerencial" in df_rank_src.columns:
+            df_rank_src["CMV Gerencial"] = pd.to_numeric(df_rank_src["CMV Gerencial"], errors="coerce").fillna(0)
 
         col_sort = metrica_rank
 
-        if tipo_relatorio == "Compras" or dimensao_rank == "Fornecedores":
+        agg_pessoa = {
+            'Faturamento': 'sum',
+            'Quantidade Total': 'sum',
+            'Total Impostos': 'sum',
+        }
+        if 'Valor Líquido' in df_rank_src.columns:
+            agg_pessoa['Valor Líquido'] = 'sum'
+        if _MARGEM_COL in df_rank_src.columns:
+            agg_pessoa[_MARGEM_COL] = 'sum'
+        if 'CMV Gerencial' in df_rank_src.columns:
+            agg_pessoa['CMV Gerencial'] = 'sum'
+
+        if tipo_relatorio == "Compras" or dimensao_rank in ("Fornecedores", "Clientes"):
             key_cnpj = 'cnpj_fornecedor' if tipo_relatorio == "Compras" else 'cnpj_cliente'
             key_nome = 'nome_fornecedor' if tipo_relatorio == "Compras" else 'nome_cliente'
-            df_rank = df_rank_src.dropna(subset=[key_cnpj]).groupby([key_cnpj, key_nome]).agg({
-                'Faturamento': 'sum', 'Quantidade Total': 'sum', 'Total Impostos': 'sum', 'Valor Líquido': 'sum'
-            }).reset_index()
-            df_rank['label'] = df_rank[key_nome].fillna('S/N').str[:40] + ' (' + df_rank[key_cnpj].astype(str).str[-8:] + ')'
-            df_rank = df_rank.nlargest(top_n, col_sort)
+            rs = df_rank_src.copy()
+            rs[key_cnpj] = rs[key_cnpj].fillna('').astype(str).str.strip()
+            rs = rs[rs[key_cnpj] != '']
+            if pre_agg_custo:
+                df_rank = rs.copy()
+                df_rank['label'] = (
+                    df_rank[key_nome].fillna('S/N').str[:40] + ' (' + df_rank[key_cnpj].astype(str).str[-8:] + ')'
+                )
+                df_rank = df_rank.nlargest(top_n, col_sort)
+            else:
+                df_rank = rs.groupby([key_cnpj, key_nome], as_index=False).agg(agg_pessoa)
+                df_rank['label'] = (
+                    df_rank[key_nome].fillna('S/N').str[:40] + ' (' + df_rank[key_cnpj].astype(str).str[-8:] + ')'
+                )
+                df_rank = df_rank.nlargest(top_n, col_sort)
             total_geral = df_rank_src[col_sort].sum()
             df_rank['pct_total'] = (df_rank[col_sort] / total_geral * 100).round(1) if total_geral else 0
 
@@ -212,11 +369,27 @@ def render_ranking(df_merged, tipo_relatorio: str):
             st.altair_chart(chart_rank, use_container_width=True)
 
         elif dimensao_rank == "Cidades":
-            df_rank = df_rank_src.dropna(subset=['cidade']).groupby('cidade').agg({
-                'Faturamento': 'sum', 'Quantidade Total': 'sum', 'Total Impostos': 'sum'
-            }).reset_index()
-            df_rank['Valor Líquido'] = df_rank['Faturamento'] - df_rank['Total Impostos']
-            df_rank = df_rank.nlargest(top_n, col_sort)
+            agg_cidade = {
+                'Faturamento': 'sum',
+                'Quantidade Total': 'sum',
+                'Total Impostos': 'sum',
+            }
+            if 'Valor Líquido' in df_rank_src.columns:
+                agg_cidade['Valor Líquido'] = 'sum'
+            if _MARGEM_COL in df_rank_src.columns:
+                agg_cidade[_MARGEM_COL] = 'sum'
+            if 'CMV Gerencial' in df_rank_src.columns:
+                agg_cidade['CMV Gerencial'] = 'sum'
+            rs = df_rank_src.copy()
+            rs['cidade'] = rs['cidade'].fillna('').astype(str).str.strip()
+            rs = rs[rs['cidade'] != '']
+            if pre_agg_custo:
+                df_rank = rs.nlargest(top_n, col_sort)
+            else:
+                df_rank = rs.groupby('cidade', as_index=False).agg(agg_cidade)
+                if 'Valor Líquido' not in agg_cidade:
+                    df_rank['Valor Líquido'] = df_rank['Faturamento'] - df_rank['Total Impostos']
+                df_rank = df_rank.nlargest(top_n, col_sort)
             total_geral = df_rank_src[col_sort].sum()
             df_rank['pct_total'] = (df_rank[col_sort] / total_geral * 100).round(1) if total_geral else 0
 
@@ -238,43 +411,81 @@ def render_ranking(df_merged, tipo_relatorio: str):
         st.error(f"❌ Erro ao gerar ranking: {str(err_rank)}")
 
 
-def render_grupo_mercadorias(df_produtos):
-    """Tab: Grupo de mercadorias."""
+def render_grupo_mercadorias(df_produtos, tipo_relatorio: str = "Vendas"):
+    """Tab: Grupo de mercadorias (Vendas: produtos; Custo: grupo SAP wgbez/matkl)."""
     col_grp1, col_grp2 = st.columns(2)
+
+    if tipo_relatorio == "Custo":
+        opcoes_metrica = [
+            "Faturamento", "Quantidade Total", "Total Impostos",
+            "CMV Gerencial", _MARGEM_COL,
+        ]
+        titulo_entidade = "grupos de mercadoria"
+    else:
+        opcoes_metrica = ["Faturamento", "Quantidade Total", "Total Impostos"]
+        titulo_entidade = "produtos"
 
     with col_grp1:
         metrica_grp = st.selectbox(
             "Métrica",
-            options=["Faturamento", "Quantidade Total", "Total Impostos"],
-            key="grp_metrica"
+            options=opcoes_metrica,
+            key="grp_metrica",
         )
 
     with col_grp2:
-        top_n = st.slider("Top N produtos", min_value=5, max_value=50, value=10, key="grp_top")
+        top_n = st.slider(f"Top N {titulo_entidade}", min_value=5, max_value=50, value=10, key="grp_top")
 
     try:
+        if df_produtos.empty or 'descricao' not in df_produtos.columns:
+            st.info("ℹ️ Nenhum dado para grupo de mercadorias.")
+            return
+
         df_grp = df_produtos.copy()
         df_grp['valor_total'] = pd.to_numeric(df_grp['valor_total'], errors='coerce').fillna(0)
         df_grp['quantidade'] = pd.to_numeric(df_grp['quantidade'], errors='coerce').fillna(0)
 
-        df_grp = df_grp.groupby('descricao').agg({
-            'valor_total': 'sum',
-            'quantidade': 'sum'
-        }).reset_index()
-        df_grp.columns = ['Descrição', 'Faturamento', 'Quantidade Total']
-        df_grp['Total Impostos'] = df_grp['Faturamento'] * 0.15
+        if tipo_relatorio == "Custo" and 'total_impostos' in df_grp.columns:
+            df_grp['total_impostos'] = pd.to_numeric(df_grp['total_impostos'], errors='coerce').fillna(0)
+            df_grp['CMV Gerencial'] = pd.to_numeric(df_grp['CMV Gerencial'], errors='coerce').fillna(0)
+            df_grp[_MARGEM_COL] = pd.to_numeric(
+                df_grp[_MARGEM_COL], errors='coerce'
+            ).fillna(0)
+            df_grp = df_grp.groupby('descricao', as_index=False).agg({
+                'valor_total': 'sum',
+                'quantidade': 'sum',
+                'total_impostos': 'sum',
+                'CMV Gerencial': 'sum',
+                _MARGEM_COL: 'sum',
+            })
+            df_grp = df_grp.rename(columns={
+                'descricao': 'Descrição',
+                'valor_total': 'Faturamento',
+                'quantidade': 'Quantidade Total',
+                'total_impostos': 'Total Impostos',
+            })
+        else:
+            df_grp = df_grp.groupby('descricao', as_index=False).agg({
+                'valor_total': 'sum',
+                'quantidade': 'sum',
+            })
+            df_grp.columns = ['Descrição', 'Faturamento', 'Quantidade Total']
+            df_grp['Total Impostos'] = df_grp['Faturamento'] * 0.15
 
         df_grp = df_grp.nlargest(top_n, metrica_grp)
 
+        fmt_grp = ',.0f' if metrica_grp == 'Quantidade Total' else ',.2f'
         chart_grp = alt.Chart(df_grp).mark_bar().encode(
             y=alt.Y('Descrição:N', sort=alt.EncodingSortField(field=metrica_grp, order='descending')),
             x=alt.X(f'{metrica_grp}:Q', title=metrica_grp),
             color=alt.value('#1f77d4'),
             tooltip=[
-                alt.Tooltip('Descrição:N', title='Produto'),
-                alt.Tooltip(f'{metrica_grp}:Q', title=metrica_grp, format=',.2f' if metrica_grp != 'Quantidade Total' else ',.0f'),
+                alt.Tooltip('Descrição:N', title='Grupo' if tipo_relatorio == 'Custo' else 'Produto'),
+                alt.Tooltip(f'{metrica_grp}:Q', title=metrica_grp, format=fmt_grp),
             ]
-        ).properties(height=max(300, len(df_grp) * 25), title=f"Top {top_n} Produtos por {metrica_grp}")
+        ).properties(
+            height=max(300, len(df_grp) * 25),
+            title=f"Top {top_n} {'grupos de mercadoria' if tipo_relatorio == 'Custo' else 'produtos'} por {metrica_grp}",
+        )
         st.altair_chart(chart_grp, use_container_width=True)
     except Exception as err_grp:
         st.error(f"❌ Erro ao gerar grupo de mercadorias: {str(err_grp)}")

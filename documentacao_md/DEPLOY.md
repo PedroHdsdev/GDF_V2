@@ -12,7 +12,7 @@ Requisitos, variáveis de ambiente, instalação, execução do servidor, Celery
 - **PostgreSQL:** versão compatível com Django 6 e psycopg2; o projeto usa um único banco com múltiplos schemas (public, nfe, cte, nfse, sped_fiscal, sped_contribuicao, reprocessamento). O usuário do banco deve ter permissão para criar e alterar schemas e tabelas.
 - **Redis:** recomendado como broker do Celery quando houver carga XML agendada. Sem Redis, é possível usar o script `run_carga_scheduler.py` como agendador alternativo (ver seção 5).
 - **Servidor:** Linux recomendado para produção. A aplicação Django é servida via **Gunicorn** (ou outro WSGI); na frente, use **Nginx** (ou Apache) como proxy reverso e para servir arquivos estáticos e SSL.
-- **SAP (opcional):** integração SAP via PyRFC exige **SAP NetWeaver RFC SDK** instalado no servidor e configurado (bibliotecas nativas). Consulte documentação do PyRFC e do SAP.
+- **SAP (opcional):** integração SAP via PyRFC exige **SAP NetWeaver RFC SDK** instalado no servidor e configurado (bibliotecas nativas). Se o SAP exige VPN, o **servidor** deve estar conectado à VPN (não o navegador do usuário). Ver **[SAP_VPN.md](SAP_VPN.md)**.
 
 ### 1.2 Dependências Python
 
@@ -66,6 +66,8 @@ O `settings.py` define `CELERY_BROKER_URL` e `CELERY_RESULT_BACKEND`. O agendame
 ### 2.5 SAP (opcional)
 
 Se houver integração SAP, as credenciais costumam ficar no banco (modelo `ConexaoSap` por cliente). Variáveis de ambiente podem ser usadas para override ou para um usuário genérico; isso depende da implementação. Não armazene senhas SAP em arquivos versionados.
+
+**VPN:** Se o SAP só é acessível via VPN, o servidor onde o Django roda deve estar conectado à VPN corporativa. Ver **[SAP_VPN.md](SAP_VPN.md)**.
 
 ### 2.6 Dashboard (Streamlit) e outras
 

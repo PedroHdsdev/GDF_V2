@@ -126,8 +126,8 @@ class Grafico_barra(GraficoBase):
 
 
 class Grafico_linha(GraficoBase):
-    def __init__(self, df):
-        super().__init__(df, tl)
+    def __init__(self, df, lists_module=None):
+        super().__init__(df, lists_module if lists_module is not None else tl)
 
     def G_multiplas_metricas(self, coluna_data='mes_nome', coluna_ano='ano',
                              metricas=None, filtro_anos=None, filtro_meses=None,
@@ -154,7 +154,7 @@ class Grafico_linha(GraficoBase):
         if periodo == "Mensal":
             agg_dict = {}
             for m in metricas:
-                if m in tl.Metrica_valores_p:
+                if m in self.tl.Metrica_valores_p:
                     agg_dict[m] = 'sum'
                 else:
                     agg_dict[m] = 'sum'
@@ -164,12 +164,12 @@ class Grafico_linha(GraficoBase):
                 as_index=False
             ).agg(agg_dict)
 
-            if 'M. Contribuição' in df_grouped.columns:
-                df_grouped['M. Contribuição'] = np.where(
-                    df_grouped['Faturamento'] != 0,
-                    (df_grouped['M. Contribuição'] / df_grouped['Faturamento']) * 100,
-                    0
-                )
+            if 'Faturamento' in df_grouped.columns:
+                fat = pd.to_numeric(df_grouped['Faturamento'], errors='coerce').fillna(0)
+                for _col_m in getattr(self.tl, 'METRICAS_MARGEM_PCT', ()):
+                    if _col_m in df_grouped.columns:
+                        mg = pd.to_numeric(df_grouped[_col_m], errors='coerce').fillna(0)
+                        df_grouped[_col_m] = np.where(fat != 0, (mg / fat) * 100, 0)
 
             df_long = df_grouped.melt(
                 id_vars=[coluna_ano, 'mes', coluna_data],
@@ -186,19 +186,19 @@ class Grafico_linha(GraficoBase):
         else:
             agg_dict = {}
             for m in metricas:
-                if m in tl.Metrica_valores_p:
+                if m in self.tl.Metrica_valores_p:
                     agg_dict[m] = 'sum'
                 else:
                     agg_dict[m] = 'sum'
 
             df_grouped = df_valid.groupby([coluna_ano], as_index=False).agg(agg_dict)
 
-            if 'M. Contribuição' in df_grouped.columns:
-                df_grouped['M. Contribuição'] = np.where(
-                    df_grouped['Faturamento'] != 0,
-                    (df_grouped['M. Contribuição'] / df_grouped['Faturamento']) * 100,
-                    0
-                )
+            if 'Faturamento' in df_grouped.columns:
+                fat = pd.to_numeric(df_grouped['Faturamento'], errors='coerce').fillna(0)
+                for _col_m in getattr(self.tl, 'METRICAS_MARGEM_PCT', ()):
+                    if _col_m in df_grouped.columns:
+                        mg = pd.to_numeric(df_grouped[_col_m], errors='coerce').fillna(0)
+                        df_grouped[_col_m] = np.where(fat != 0, (mg / fat) * 100, 0)
 
             df_grouped[coluna_data] = df_grouped[coluna_ano].astype(str)
             df_long = df_grouped.melt(
@@ -262,24 +262,20 @@ _MESES_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out
 
 
 class Grafico_comparacao(GraficoBase):
-    def __init__(self, df):
-        super().__init__(df, tl)
+    def __init__(self, df, lists_module=None):
+        super().__init__(df, lists_module if lists_module is not None else tl)
 
     def G_comparacao_unificado(self, metrica="Faturamento", anos_select=None, mes_select=None):
-        """Comparativo unificado: vários meses+1 ano OU 1 mês+vários anos OU vários de ambos."""
+        """Comparativo: eixo X = meses escolhidos; uma linha por ano (cor). Um único mês → barras por ano."""
         df = self.df.copy()
         if metrica not in df.columns:
             st.error(f"Métrica '{metrica}' não existe.")
             return
         df[metrica] = pd.to_numeric(df[metrica], errors='coerce').fillna(0)
 
-        fmt_tooltip = ',.0f' if metrica == "Quantidade Total" else ',.2f'
-        fmt_text = ',.0f' if metrica == "Quantidade Total" else ',.2f'
-
-        n_anos = len(anos_select or [])
-        n_meses = len(mes_select or [])
-
-        if n_anos < 1 or n_meses < 1:
+        anos_select = list(anos_select or [])
+        mes_select = list(mes_select or [])
+        if not anos_select or not mes_select:
             st.warning("Selecione pelo menos 1 ano e 1 mês.")
             return
 
@@ -288,94 +284,113 @@ class Grafico_comparacao(GraficoBase):
             st.warning("Nenhum dado encontrado para a combinação selecionada.")
             return
 
-        # Modo 1: 1 ano + vários meses → barras por mês
-        if n_anos == 1 and n_meses >= 2:
-            df_agg = df_comp.groupby('mes', as_index=False)[metrica].sum()
-            df_agg = df_agg.sort_values('mes')
-            df_agg['label'] = df_agg['mes'].apply(lambda x: _MESES_PT[x - 1])
-            x_sort = df_agg['label'].tolist()
-            titulo = f"Comparativo de meses ({anos_select[0]}) - {metrica}"
-
-            media_val = df_agg[metrica].mean()
-            df_agg['media'] = media_val
-            chart = (
-                alt.Chart(df_agg)
-                .mark_bar(cornerRadius=8)
-                .encode(
-                    x=alt.X('label:N', title='Mês', sort=x_sort),
-                    y=alt.Y(f'{metrica}:Q', title=metrica),
-                    color=alt.Color('label:N', scale=alt.Scale(range=CHART_PALETTE), legend=None),
-                    tooltip=[
-                        alt.Tooltip('label:N', title='Mês'),
-                        alt.Tooltip(f'{metrica}:Q', title=metrica, format=fmt_tooltip),
-                        alt.Tooltip('media:Q', title='Média período', format=fmt_tooltip),
-                    ]
-                )
-                .properties(height=400, title=titulo)
+        margem_como_pct = metrica in getattr(self.tl, 'METRICAS_MARGEM_PCT', ())
+        if margem_como_pct and 'Faturamento' in df_comp.columns:
+            df_comp['Faturamento'] = pd.to_numeric(df_comp['Faturamento'], errors='coerce').fillna(0)
+            df_comp[metrica] = pd.to_numeric(df_comp[metrica], errors='coerce').fillna(0)
+            g = df_comp.groupby(['ano', 'mes'], as_index=False).agg(
+                {metrica: 'sum', 'Faturamento': 'sum'}
             )
-            rule = alt.Chart(pd.DataFrame({'y': [media_val]})).mark_rule(color=CHART_COLORS.get('secondary', '#f97316'), strokeDash=[4, 2]).encode(y='y:Q')
-            text = chart.mark_text(align='center', baseline='bottom', dy=-5).encode(text=alt.Text(f'{metrica}:Q', format=fmt_text))
-            st.altair_chart((chart + rule + text), use_container_width=True)
-            return
+            fat = g['Faturamento'].to_numpy(dtype=float)
+            mg = pd.to_numeric(g[metrica], errors='coerce').fillna(0).to_numpy(dtype=float)
+            g[metrica] = np.where(fat != 0, (mg / fat) * 100, 0.0)
+            df_agg = g[['ano', 'mes', metrica]]
+            y_title = f"{metrica} (% s/ faturamento)"
+            fmt_tooltip = ',.2f'
+            fmt_text = '.1f'
+        else:
+            df_agg = df_comp.groupby(['ano', 'mes'], as_index=False)[metrica].sum()
+            y_title = metrica
+            fmt_tooltip = ',.0f' if metrica == "Quantidade Total" else ',.2f'
+            fmt_text = ',.0f' if metrica == "Quantidade Total" else ',.2f'
+            if margem_como_pct:
+                st.caption("Margem como soma em R$ (sem coluna Faturamento para calcular %).")
 
-        # Modo 2: vários anos + 1 mês → barras por ano
-        if n_anos >= 2 and n_meses == 1:
-            mes_nome = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-                        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][mes_select[0] - 1]
-            df_agg = df_comp.groupby('ano', as_index=False)[metrica].sum()
-            df_agg = df_agg.sort_values('ano')
-            df_agg['label'] = df_agg['ano'].astype(str)
-            anos_sort = df_agg['label'].tolist()
-            titulo = f"{mes_nome} - Comparação entre anos - {metrica}"
-            media_val = df_agg[metrica].mean()
-            df_agg['media'] = media_val
-            chart = (
-                alt.Chart(df_agg)
-                .mark_bar(cornerRadius=8)
-                .encode(
-                    x=alt.X('label:N', title='Ano', sort=anos_sort),
-                    y=alt.Y(f'{metrica}:Q', title=metrica),
-                    color=alt.Color('label:N', scale=alt.Scale(range=CHART_PALETTE), legend=None),
-                    tooltip=[
-                        alt.Tooltip('label:N', title='Ano'),
-                        alt.Tooltip(f'{metrica}:Q', title=metrica, format=fmt_tooltip),
-                        alt.Tooltip('media:Q', title='Média', format=fmt_tooltip),
-                    ]
-                )
-                .properties(height=400, title=titulo)
-            )
-            rule = alt.Chart(pd.DataFrame({'y': [media_val]})).mark_rule(color=CHART_COLORS.get('secondary', '#f97316'), strokeDash=[4, 2]).encode(y='y:Q')
-            text = chart.mark_text(align='center', baseline='bottom', dy=-5).encode(text=alt.Text(f'{metrica}:Q', format=fmt_text))
-            st.altair_chart((chart + rule + text), use_container_width=True)
-            return
+        def _mes_label(m):
+            try:
+                mi = int(m)
+                if 1 <= mi <= 12:
+                    return _MESES_PT[mi - 1]
+            except (TypeError, ValueError):
+                pass
+            return ''
 
-        # Modo 3: vários anos + vários meses → barras por (mês, ano), mesmos meses lado a lado
-        df_agg = df_comp.groupby(['ano', 'mes'], as_index=False)[metrica].sum()
-        df_agg['mes_nome'] = df_agg['mes'].apply(lambda x: _MESES_PT[x - 1])
-        df_agg['label'] = df_agg['mes_nome'] + '/' + df_agg['ano'].astype(str)
-        df_agg = df_agg.sort_values(['mes', 'ano'])  # Jan/21, Jan/22, Fev/21, Fev/22...
-        x_sort = df_agg['label'].tolist()
-        titulo = f"Comparativo - {metrica}"
-        media_val = df_agg[metrica].mean()
-        df_agg['media'] = media_val
-        chart = (
-            alt.Chart(df_agg)
-            .mark_bar(cornerRadius=8)
-            .encode(
-                x=alt.X('label:N', title='Período', sort=x_sort),
-                y=alt.Y(f'{metrica}:Q', title=metrica),
-                color=alt.Color('label:N', scale=alt.Scale(range=CHART_PALETTE), legend=None),
-                tooltip=[
-                    alt.Tooltip('label:N', title='Período'),
-                    alt.Tooltip(f'{metrica}:Q', title=metrica, format=fmt_tooltip),
-                    alt.Tooltip('media:Q', title='Média', format=fmt_tooltip),
-                ]
-            )
-            .properties(height=400, title=titulo)
+        df_agg['mes_nome'] = df_agg['mes'].map(_mes_label)
+        df_agg['ano_str'] = df_agg['ano'].astype(str)
+        meses_ord = sorted(int(m) for m in mes_select)
+        x_sort = [_MESES_PT[m - 1] for m in meses_ord]
+
+        anos_ord = sorted(int(a) for a in anos_select)
+        ano_domain = [str(a) for a in anos_ord]
+        pal = list(CHART_PALETTE)
+        while len(pal) < len(ano_domain):
+            pal.extend(CHART_PALETTE)
+        pal = pal[: len(ano_domain)]
+        color_scale = alt.Color(
+            'ano_str:N',
+            title='Ano',
+            scale=alt.Scale(domain=ano_domain, range=pal),
+            legend=alt.Legend(orient='top', direction='horizontal'),
         )
-        rule = alt.Chart(pd.DataFrame({'y': [media_val]})).mark_rule(color=CHART_COLORS.get('secondary', '#f97316'), strokeDash=[4, 2]).encode(y='y:Q')
-        text = chart.mark_text(align='center', baseline='bottom', dy=-5).encode(text=alt.Text(f'{metrica}:Q', format=fmt_text))
-        st.altair_chart((chart + rule + text), use_container_width=True)
+
+        _pt_line = alt.OverlayMarkDef(size=72, filled=True)
+        _ln = dict(point=_pt_line, strokeWidth=2.5)
+
+        if len(meses_ord) >= 2:
+            df_plot = df_agg[df_agg['mes'].isin(meses_ord)].copy()
+            titulo = f"Comparativo por mês — {y_title}"
+            media_val = df_plot[metrica].mean()
+            chart = (
+                alt.Chart(df_plot)
+                .mark_line(**_ln)
+                .encode(
+                    x=alt.X('mes_nome:N', title='Mês', sort=x_sort),
+                    y=alt.Y(f'{metrica}:Q', title=y_title),
+                    color=color_scale,
+                    tooltip=[
+                        alt.Tooltip('ano_str:N', title='Ano'),
+                        alt.Tooltip('mes_nome:N', title='Mês'),
+                        alt.Tooltip(f'{metrica}:Q', title=metrica, format=fmt_tooltip),
+                    ],
+                )
+                .properties(height=420, title=titulo)
+            )
+            rule = (
+                alt.Chart(pd.DataFrame({'y': [media_val]}))
+                .mark_rule(color=CHART_COLORS.get('secondary', '#f97316'), strokeDash=[4, 2])
+                .encode(y='y:Q')
+            )
+            text = chart.mark_text(align='center', baseline='bottom', dy=-6, fontSize=10).encode(
+                text=alt.Text(f'{metrica}:Q', format=fmt_text)
+            )
+            st.altair_chart((chart + rule + text).interactive(), use_container_width=True)
+            return
+
+        m = meses_ord[0]
+        df_one = df_agg[df_agg['mes'] == m].copy()
+        if df_one.empty:
+            st.warning("Nenhum dado para o mês selecionado.")
+            return
+        df_one = df_one.sort_values('ano')
+        titulo = f"{_MESES_PT[m - 1]} — por ano — {y_title}"
+        chart = (
+            alt.Chart(df_one)
+            .mark_bar(cornerRadius=6, size=40)
+            .encode(
+                x=alt.X('ano_str:N', title='Ano', sort=ano_domain),
+                y=alt.Y(f'{metrica}:Q', title=y_title),
+                color=color_scale,
+                tooltip=[
+                    alt.Tooltip('ano_str:N', title='Ano'),
+                    alt.Tooltip(f'{metrica}:Q', title=metrica, format=fmt_tooltip),
+                ],
+            )
+            .properties(height=420, title=titulo)
+        )
+        text = chart.mark_text(align='center', baseline='bottom', dy=-4, fontSize=10).encode(
+            text=alt.Text(f'{metrica}:Q', format=fmt_text)
+        )
+        st.altair_chart((chart + text).interactive(), use_container_width=True)
 
     def G_comparacao_anos_meses(self, tipo_comparacao="Mês vs Mês", metrica="Faturamento",
                                 anos_select=None, mes_select=None, titulo=None):
