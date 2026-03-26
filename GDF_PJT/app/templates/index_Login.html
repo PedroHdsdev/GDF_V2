@@ -54,7 +54,23 @@
 
           <div class="mb-3">
             <label for="password" class="form-label">Senha</label>
-            <input type="password" class="form-control" id="password" name="password" placeholder="Informe sua senha" required>
+            <div class="input-group login-password-group">
+              <input type="password" class="form-control" id="password" name="password" placeholder="Informe sua senha" required autocomplete="current-password">
+              <button class="btn btn-outline-secondary login-password-toggle" type="button" id="togglePassword" aria-label="Mostrar senha" aria-pressed="false" title="Mostrar senha">
+                <span class="login-password-toggle-icons" aria-hidden="true">
+                  <svg id="togglePasswordIconShow" class="login-password-svg" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                  <svg id="togglePasswordIconHide" class="login-password-svg d-none" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                    <path d="M10.733 5.076a10.744 10.744 0 0 1 11.327 0"/>
+                    <path d="M14.121 14.121a3 3 0 1 1-4.242-4.242"/>
+                    <path d="M17.58 17.58a13.38 13.38 0 0 1-5.58 1.42c-7 0-10-7-10-7a13.38 13.38 0 0 1 5.4-3.4"/>
+                    <path d="M2 2l20 20"/>
+                  </svg>
+                </span>
+              </button>
+            </div>
           </div>
 
           {% if error_message %}
@@ -75,6 +91,24 @@
         window.location.reload();
       }
     });
+
+    (function () {
+      var input = document.getElementById('password');
+      var btn = document.getElementById('togglePassword');
+      var iconShow = document.getElementById('togglePasswordIconShow');
+      var iconHide = document.getElementById('togglePasswordIconHide');
+      if (!input || !btn || !iconShow || !iconHide) return;
+
+      btn.addEventListener('click', function () {
+        var reveal = input.type === 'password';
+        input.type = reveal ? 'text' : 'password';
+        iconShow.classList.toggle('d-none', reveal);
+        iconHide.classList.toggle('d-none', !reveal);
+        btn.setAttribute('aria-pressed', reveal ? 'true' : 'false');
+        btn.setAttribute('aria-label', reveal ? 'Ocultar senha' : 'Mostrar senha');
+        btn.setAttribute('title', reveal ? 'Ocultar senha' : 'Mostrar senha');
+      });
+    })();
   </script>
 </body>
 </html>

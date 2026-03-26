@@ -136,6 +136,58 @@ body {
   color: #f8fafc;
 }
 
+.login-form .login-password-group .form-control {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.login-form .login-password-group .btn {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-color: rgba(148, 163, 184, 0.3);
+  color: rgba(248, 250, 252, 0.85);
+  background: rgba(15, 23, 42, 0.65);
+}
+
+.login-form .login-password-group .btn:hover,
+.login-form .login-password-group .btn:focus {
+  color: #f8fafc;
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+.login-form .login-password-group .form-control:focus + .btn {
+  border-color: rgba(56, 189, 248, 0.7);
+}
+
+.login-password-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.85rem;
+  padding-left: 0.65rem;
+  padding-right: 0.65rem;
+}
+
+.login-password-toggle-icons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.login-password-svg {
+  width: 1.35rem;
+  height: 1.35rem;
+  flex-shrink: 0;
+  opacity: 0.92;
+}
+
+.login-password-toggle:hover .login-password-svg,
+.login-password-toggle:focus-visible .login-password-svg {
+  opacity: 1;
+}
+
 .login-error {
   background: rgba(248, 113, 113, 0.15);
   color: #fecaca;

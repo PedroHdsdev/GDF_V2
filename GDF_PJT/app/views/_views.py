@@ -115,6 +115,8 @@ from app.utils.relatorio_params import (
     parse_relatorio_params,
     paginate_queryset,
     parse_date_safe,
+    parse_filial_id,
+    parse_relatorio_order,
 )
 
 @ensure_csrf_cookie
@@ -2607,12 +2609,15 @@ def fn_api_relatorio_nfe(request):
     tipo_pagamento = request.GET.get('tipo_pagamento', '').strip()
 
     if params.empresa_id:
-        qs = NFe.objects.filter(empresa__cod_empresa__in=params.cod_empresas).select_related('identificacao', 'empresa')
+        qs = NFe.objects.filter(empresa__cod_empresa__in=params.cod_empresas).select_related('identificacao', 'empresa', 'filial')
     else:
         qs = NFe.objects.filter(
             Q(empresa__cod_empresa__in=params.cod_empresas) |
             Q(empresa__isnull=True, gdfcliente__cod_cliente=params.cod_cliente)
-        ).select_related('identificacao', 'empresa')
+        ).select_related('identificacao', 'empresa', 'filial')
+    filial_id = parse_filial_id(request, params.cod_empresas)
+    if filial_id:
+        qs = qs.filter(filial_id=filial_id)
     if tipo_operacao in ('0', '1'):
         qs = qs.filter(identificacao__tipo_operacao=tipo_operacao)
     if tipo_pagamento:
@@ -2638,7 +2643,18 @@ def fn_api_relatorio_nfe(request):
     dt_fim = parse_date_safe(params.data_fim)
     if dt_fim:
         qs = qs.filter(identificacao__emissao__date__lte=dt_fim)
-    qs = qs.order_by('-identificacao__emissao')
+    order_nfe = {
+        'numero': 'identificacao__numero',
+        'serie': 'identificacao__serie',
+        'chave': 'identificacao__chave_acesso',
+        'emissao': 'identificacao__emissao',
+        'tipo_operacao': 'identificacao__tipo_operacao',
+        'status': 'status',
+        'empresa': 'empresa__cod_empresa',
+        'natureza': 'identificacao__natureza_operacao',
+        'filial': 'filial__cod_filial',
+    }
+    qs = qs.order_by(parse_relatorio_order(request, order_nfe, '-identificacao__emissao'))
     total, total_pages, page, qs = paginate_queryset(qs, params.page, params.page_size)
     items = []
     for nfe in qs:
@@ -2653,6 +2669,8 @@ def fn_api_relatorio_nfe(request):
             'status': nfe.status,
             'empresa': nfe.empresa.cod_empresa if nfe.empresa else None,
             'natureza': id_.natureza_operacao,
+            'filial': nfe.filial.cod_filial if nfe.filial else None,
+            'filial_nome': (nfe.filial.nome or '') if nfe.filial else '',
         })
     return JsonResponse({
         'sucesso': True,
@@ -2677,12 +2695,15 @@ def fn_api_relatorio_cte(request):
         return JsonResponse({'sucesso': True, 'items': []}, status=200)
 
     if params.empresa_id:
-        qs = CTe.objects.filter(empresa__cod_empresa__in=params.cod_empresas).select_related('identificacao', 'empresa')
+        qs = CTe.objects.filter(empresa__cod_empresa__in=params.cod_empresas).select_related('identificacao', 'empresa', 'filial')
     else:
         qs = CTe.objects.filter(
             Q(empresa__cod_empresa__in=params.cod_empresas) |
             Q(empresa__isnull=True, gdfcliente__cod_cliente=params.cod_cliente)
-        ).select_related('identificacao', 'empresa')
+        ).select_related('identificacao', 'empresa', 'filial')
+    filial_id = parse_filial_id(request, params.cod_empresas)
+    if filial_id:
+        qs = qs.filter(filial_id=filial_id)
     if params.busca:
         qs = qs.filter(
             Q(identificacao__chave_acesso__icontains=params.busca) |
@@ -2695,7 +2716,15 @@ def fn_api_relatorio_cte(request):
     dt_fim = parse_date_safe(params.data_fim)
     if dt_fim:
         qs = qs.filter(identificacao__emissao__date__lte=dt_fim)
-    qs = qs.order_by('-identificacao__emissao')
+    order_cte = {
+        'numero': 'identificacao__numero',
+        'serie': 'identificacao__serie',
+        'chave': 'identificacao__chave_acesso',
+        'emissao': 'identificacao__emissao',
+        'empresa': 'empresa__cod_empresa',
+        'filial': 'filial__cod_filial',
+    }
+    qs = qs.order_by(parse_relatorio_order(request, order_cte, '-identificacao__emissao'))
     total, total_pages, page, qs = paginate_queryset(qs, params.page, params.page_size)
     items = []
     for cte in qs:
@@ -2707,6 +2736,8 @@ def fn_api_relatorio_cte(request):
             'chave': id_.chave_acesso,
             'emissao': id_.emissao.isoformat() if id_.emissao else None,
             'empresa': cte.empresa.cod_empresa if cte.empresa else None,
+            'filial': cte.filial.cod_filial if cte.filial else None,
+            'filial_nome': (cte.filial.nome or '') if cte.filial else '',
         })
     return JsonResponse({
         'sucesso': True,
@@ -2731,12 +2762,15 @@ def fn_api_relatorio_nfse(request):
         return JsonResponse({'sucesso': True, 'items': []}, status=200)
 
     if params.empresa_id:
-        qs = NFSe.objects.filter(empresa__cod_empresa__in=params.cod_empresas).select_related('identificacao', 'empresa')
+        qs = NFSe.objects.filter(empresa__cod_empresa__in=params.cod_empresas).select_related('identificacao', 'empresa', 'filial')
     else:
         qs = NFSe.objects.filter(
             Q(empresa__cod_empresa__in=params.cod_empresas) |
             Q(empresa__isnull=True, gdfcliente__cod_cliente=params.cod_cliente)
-        ).select_related('identificacao', 'empresa')
+        ).select_related('identificacao', 'empresa', 'filial')
+    filial_id = parse_filial_id(request, params.cod_empresas)
+    if filial_id:
+        qs = qs.filter(filial_id=filial_id)
     if params.busca:
         qs = qs.filter(
             Q(identificacao__chave__icontains=params.busca) |
@@ -2748,7 +2782,14 @@ def fn_api_relatorio_nfse(request):
     dt_fim = parse_date_safe(params.data_fim)
     if dt_fim:
         qs = qs.filter(identificacao__emissao__date__lte=dt_fim)
-    qs = qs.order_by('-identificacao__emissao')
+    order_nfse = {
+        'numero': 'identificacao__numero',
+        'chave': 'identificacao__chave',
+        'emissao': 'identificacao__emissao',
+        'empresa': 'empresa__cod_empresa',
+        'filial': 'filial__cod_filial',
+    }
+    qs = qs.order_by(parse_relatorio_order(request, order_nfse, '-identificacao__emissao'))
     total, total_pages, page, qs = paginate_queryset(qs, params.page, params.page_size)
     items = []
     for nfse in qs:
@@ -2759,6 +2800,8 @@ def fn_api_relatorio_nfse(request):
             'chave': id_.chave,
             'emissao': id_.emissao.isoformat() if id_.emissao else None,
             'empresa': nfse.empresa.cod_empresa if nfse.empresa else None,
+            'filial': nfse.filial.cod_filial if nfse.filial else None,
+            'filial_nome': (nfse.filial.nome or '') if nfse.filial else '',
         })
     return JsonResponse({
         'sucesso': True,
@@ -2817,7 +2860,14 @@ def fn_api_relatorio_sped(request):
                     qs = qs.filter(competencia__lte=dt)
             except Exception:
                 pass
-        qs = qs.order_by('-data_carga')
+        order_sped = {
+            'competencia': 'competencia',
+            'nome_arquivo': 'nome_arquivo',
+            'data_carga': 'data_carga',
+            'empresa': 'empresa__cod_empresa',
+            'tipo': 'id_arquivo',
+        }
+        qs = qs.order_by(parse_relatorio_order(request, order_sped, '-data_carga'))
         total = qs.count()
         total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
         page = min(page, total_pages)
@@ -2883,6 +2933,21 @@ def fn_api_relatorio_sped(request):
                 continue
             filtered.append(it)
         items = filtered
+
+    order_key_sped = (request.GET.get('order') or '').strip()
+    dir_sped = (request.GET.get('dir') or 'desc').strip().lower()
+    if dir_sped not in ('asc', 'desc'):
+        dir_sped = 'desc'
+    _sped_sort_keys = {
+        'tipo': lambda it: (it.get('tipo_display') or '').lower(),
+        'competencia': lambda it: it.get('competencia') or '',
+        'nome_arquivo': lambda it: (it.get('nome_arquivo') or '').lower(),
+        'data_carga': lambda it: it.get('data_carga') or '',
+        'empresa': lambda it: str(it.get('empresa') or ''),
+    }
+    if order_key_sped in _sped_sort_keys:
+        items.sort(key=_sped_sort_keys[order_key_sped], reverse=(dir_sped == 'desc'))
+
     total = len(items)
     total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
     page = min(page, total_pages)
@@ -3238,9 +3303,15 @@ def fn_view_Relatorio_Fiscal(request):
         )
     except Exception:
         meio_pagamento_choices = []
+    filiais_usuario = (
+        Filial.objects.filter(empresa__in=empresas_usuario)
+        .select_related('empresa')
+        .order_by('empresa__fantasia', 'empresa__razao', 'empresa__cod_empresa', 'cod_filial')
+    )
     context = {
         'cod_cliente': cod_cliente,
         'empresas_usuario': empresas_usuario,
+        'filiais_usuario': filiais_usuario,
         'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC,
         'meio_pagamento_choices': meio_pagamento_choices,
     }

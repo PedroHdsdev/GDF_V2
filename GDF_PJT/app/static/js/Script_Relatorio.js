@@ -7,9 +7,18 @@ function relatorioTabAtivo() {
 
 var relatorioPaginaAtual = 1;
 
+/** Ordenação por aba (coluna + direção enviadas à API). */
+var relatorioSortState = {
+    'rel-nfe': { field: 'emissao', dir: 'desc' },
+    'rel-cte': { field: 'emissao', dir: 'desc' },
+    'rel-nfse': { field: 'emissao', dir: 'desc' },
+    'rel-sped': { field: 'data_carga', dir: 'desc' }
+};
+
 function relatorioParams() {
     var params = {
         empresa_id: (document.getElementById('relatorio-empresa') && document.getElementById('relatorio-empresa').value.trim()) || '',
+        filial_id: (document.getElementById('relatorio-filial') && document.getElementById('relatorio-filial').value.trim()) || '',
         data_inicio: (document.getElementById('relatorio-data-inicio') && document.getElementById('relatorio-data-inicio').value.trim()) || '',
         data_fim: (document.getElementById('relatorio-data-fim') && document.getElementById('relatorio-data-fim').value.trim()) || '',
         busca: (document.getElementById('relatorio-busca') && document.getElementById('relatorio-busca').value.trim()) || '',
@@ -24,6 +33,11 @@ function relatorioParams() {
     } else if (tab === 'rel-sped') {
         params.tipo_sped = (document.getElementById('relatorio-tipo-sped') && document.getElementById('relatorio-tipo-sped').value.trim()) || '';
     }
+    var sort = relatorioSortState[tab];
+    if (sort && sort.field) {
+        params.order = sort.field;
+        params.dir = sort.dir || 'desc';
+    }
     return params;
 }
 
@@ -34,6 +48,7 @@ function relatorioGetPrefix() {
 function relatorioBuildUrl(base, params) {
     var q = new URLSearchParams();
     if (params.empresa_id) q.set('empresa_id', params.empresa_id);
+    if (params.filial_id) q.set('filial_id', params.filial_id);
     if (params.data_inicio) q.set('data_inicio', params.data_inicio);
     if (params.data_fim) q.set('data_fim', params.data_fim);
     if (params.busca) q.set('busca', params.busca);
@@ -41,10 +56,77 @@ function relatorioBuildUrl(base, params) {
     if (params.tipo_operacao) q.set('tipo_operacao', params.tipo_operacao);
     if (params.tipo_pagamento) q.set('tipo_pagamento', params.tipo_pagamento);
     if (params.tipo_sped) q.set('tipo_sped', params.tipo_sped);
+    if (params.order) q.set('order', params.order);
+    if (params.dir) q.set('dir', params.dir);
     if (params.page) q.set('page', String(params.page));
     if (params.page_size) q.set('page_size', String(params.page_size));
     var s = q.toString();
     return s ? base + '?' + s : base;
+}
+
+function relatorioFiltrarFilialPorEmpresa() {
+    var emp = document.getElementById('relatorio-empresa');
+    var sel = document.getElementById('relatorio-filial');
+    if (!emp || !sel) return;
+    var cod = emp.value.trim();
+    var cur = sel.value;
+    Array.from(sel.options).forEach(function (opt, i) {
+        if (i === 0) {
+            opt.disabled = false;
+            return;
+        }
+        var oe = opt.getAttribute('data-cod-empresa') || '';
+        opt.disabled = !!(cod && oe !== cod);
+    });
+    if (cur) {
+        var idx = sel.selectedIndex;
+        var selected = sel.options[idx];
+        if (selected && selected.disabled) sel.value = '';
+    }
+}
+
+function relatorioAtualizarIndicadoresSort() {
+    ['rel-nfe', 'rel-cte', 'rel-nfse', 'rel-sped'].forEach(function (tid) {
+        var pane = document.getElementById(tid);
+        if (!pane) return;
+        var st = relatorioSortState[tid] || { field: '', dir: 'desc' };
+        pane.querySelectorAll('th.relatorio-th-sort').forEach(function (th) {
+            th.classList.remove('is-sorted-asc', 'is-sorted-desc');
+            var f = th.getAttribute('data-sort');
+            if (f && st.field === f) {
+                th.classList.add(st.dir === 'asc' ? 'is-sorted-asc' : 'is-sorted-desc');
+            }
+        });
+    });
+}
+
+function relatorioOrdenarColuna(tabPaneId, field) {
+    var st = relatorioSortState[tabPaneId];
+    if (!st || !field) return;
+    if (st.field === field) {
+        st.dir = st.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+        st.field = field;
+        st.dir = 'desc';
+    }
+    relatorioPaginaAtual = 1;
+    relatorioAtualizarIndicadoresSort();
+    relatorioAplicar(false);
+}
+
+function relatorioRegistrarSortHeaders() {
+    document.addEventListener('click', function (e) {
+        var th = e.target && e.target.closest && e.target.closest('th.relatorio-th-sort');
+        if (!th) return;
+        var tbl = th.closest('table');
+        if (!tbl || !tbl.id || tbl.id.indexOf('tabela-rel-') !== 0) return;
+        e.preventDefault();
+        var pane = th.closest('.tab-pane');
+        if (!pane || !pane.id) return;
+        var field = th.getAttribute('data-sort');
+        if (!field) return;
+        relatorioOrdenarColuna(pane.id, field);
+    });
 }
 
 function relatorioMostrarFiltrosTab() {
@@ -133,6 +215,11 @@ function escapeHtml(s) {
     var div = document.createElement('div');
     div.textContent = s;
     return div.innerHTML;
+}
+
+function relatorioFmtFilialCelula(x) {
+    if (!x || !x.filial) return '—';
+    return escapeHtml(String(x.filial));
 }
 
 function fmtNum(v) {
@@ -596,7 +683,7 @@ function relatorioRenderizarPaginacao(paginacao) {
 function relatorioCarregarNFe() {
     var tbody = document.querySelector('#tabela-rel-nfe tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center">Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center">Carregando...</td></tr>';
     var url = relatorioGetPrefix() + relatorioBuildUrl('/api/relatorio/nfe/', relatorioParams());
     fetch(url)
         .then(function (r) { return r.json(); })
@@ -606,7 +693,7 @@ function relatorioCarregarNFe() {
             relatorioAtualizarContador('nfe', pag.total, pag);
             relatorioRenderizarPaginacao(pag);
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Nenhum registro</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Nenhum registro</td></tr>';
                 return;
             }
             tbody.innerHTML = items.map(function (x) {
@@ -616,19 +703,21 @@ function relatorioCarregarNFe() {
                     '<td>' + (x.emissao ? x.emissao.slice(0, 10) : '-') + '</td>' +
                     '<td>' + (x.tipo_operacao === '1' ? 'Saída' : 'Entrada') + '</td><td>' + (x.status || '-') + '</td>' +
                     '<td>' + (x.empresa || '-') + '</td>' +
+                    '<td class="text-truncate" style="max-width:140px">' + relatorioFmtFilialCelula(x) + '</td>' +
                     '<td class="text-truncate" style="max-width:150px" title="' + (x.natureza || '').replace(/"/g, '&quot;') + '">' + (x.natureza || '-') + '</td></tr>';
             }).join('');
             tbody.querySelectorAll('tr[data-id]').forEach(function (tr) {
                 tr.addEventListener('click', function () { abrirDetalhe(tr.getAttribute('data-tipo'), tr.getAttribute('data-id')); });
             });
+            relatorioAtualizarIndicadoresSort();
         })
-        .catch(function () { tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('nfe', 0); relatorioRenderizarPaginacao(null); });
+        .catch(function () { tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('nfe', 0); relatorioRenderizarPaginacao(null); });
 }
 
 function relatorioCarregarCTe() {
     var tbody = document.querySelector('#tabela-rel-cte tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center">Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
     var url = relatorioGetPrefix() + relatorioBuildUrl('/api/relatorio/cte/', relatorioParams());
     fetch(url)
         .then(function (r) { return r.json(); })
@@ -638,26 +727,28 @@ function relatorioCarregarCTe() {
             relatorioAtualizarContador('cte', pag.total, pag);
             relatorioRenderizarPaginacao(pag);
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum registro</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum registro</td></tr>';
                 return;
             }
             tbody.innerHTML = items.map(function (x) {
                 return '<tr class="tr-relatorio-click" data-tipo="cte" data-id="' + (x.id_cte || '') + '">' +
                     '<td>' + (x.numero || '-') + '</td><td>' + (x.serie || '-') + '</td>' +
                     '<td class="small text-truncate" style="max-width:120px">' + (x.chave || '-') + '</td>' +
-                    '<td>' + (x.emissao ? x.emissao.slice(0, 10) : '-') + '</td><td>' + (x.empresa || '-') + '</td></tr>';
+                    '<td>' + (x.emissao ? x.emissao.slice(0, 10) : '-') + '</td><td>' + (x.empresa || '-') + '</td>' +
+                    '<td class="text-truncate" style="max-width:140px">' + relatorioFmtFilialCelula(x) + '</td></tr>';
             }).join('');
             tbody.querySelectorAll('tr[data-id]').forEach(function (tr) {
                 tr.addEventListener('click', function () { abrirDetalhe(tr.getAttribute('data-tipo'), tr.getAttribute('data-id')); });
             });
+            relatorioAtualizarIndicadoresSort();
         })
-        .catch(function () { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('cte', 0); relatorioRenderizarPaginacao(null); });
+        .catch(function () { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('cte', 0); relatorioRenderizarPaginacao(null); });
 }
 
 function relatorioCarregarNFSe() {
     var tbody = document.querySelector('#tabela-rel-nfse tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center">Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center">Carregando...</td></tr>';
     var url = relatorioGetPrefix() + relatorioBuildUrl('/api/relatorio/nfse/', relatorioParams());
     fetch(url)
         .then(function (r) { return r.json(); })
@@ -667,20 +758,22 @@ function relatorioCarregarNFSe() {
             relatorioAtualizarContador('nfse', pag.total, pag);
             relatorioRenderizarPaginacao(pag);
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Nenhum registro</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum registro</td></tr>';
                 return;
             }
             tbody.innerHTML = items.map(function (x) {
                 return '<tr class="tr-relatorio-click" data-tipo="nfse" data-id="' + (x.id_nfse || '') + '">' +
                     '<td>' + (x.numero || '-') + '</td>' +
                     '<td class="small text-truncate" style="max-width:120px">' + (x.chave || '-') + '</td>' +
-                    '<td>' + (x.emissao ? x.emissao.slice(0, 10) : '-') + '</td><td>' + (x.empresa || '-') + '</td></tr>';
+                    '<td>' + (x.emissao ? x.emissao.slice(0, 10) : '-') + '</td><td>' + (x.empresa || '-') + '</td>' +
+                    '<td class="text-truncate" style="max-width:140px">' + relatorioFmtFilialCelula(x) + '</td></tr>';
             }).join('');
             tbody.querySelectorAll('tr[data-id]').forEach(function (tr) {
                 tr.addEventListener('click', function () { abrirDetalhe(tr.getAttribute('data-tipo'), tr.getAttribute('data-id')); });
             });
+            relatorioAtualizarIndicadoresSort();
         })
-        .catch(function () { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('nfse', 0); relatorioRenderizarPaginacao(null); });
+        .catch(function () { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('nfse', 0); relatorioRenderizarPaginacao(null); });
 }
 
 function relatorioCarregarSped() {
@@ -711,6 +804,7 @@ function relatorioCarregarSped() {
                 var tipoSped = tr.getAttribute('data-tipo-sped');
                 tr.addEventListener('click', function () { abrirDetalhe(t, id, tipoSped); });
             });
+            relatorioAtualizarIndicadoresSort();
         })
         .catch(function () { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('sped', 0); relatorioRenderizarPaginacao(null); });
 }
@@ -728,7 +822,15 @@ function relatorioAplicar(resetarPagina) {
 document.addEventListener('DOMContentLoaded', function () {
     relatorioInicializarDatasMes();
     relatorioMostrarFiltrosTab();
-    document.getElementById('relatorio-btn-aplicar').addEventListener('click', relatorioAplicar);
+    relatorioRegistrarSortHeaders();
+    relatorioAtualizarIndicadoresSort();
+    var empSel = document.getElementById('relatorio-empresa');
+    if (empSel) {
+        empSel.addEventListener('change', relatorioFiltrarFilialPorEmpresa);
+        relatorioFiltrarFilialPorEmpresa();
+    }
+    var btnAplicar = document.getElementById('relatorio-btn-aplicar');
+    if (btnAplicar) btnAplicar.addEventListener('click', relatorioAplicar);
     document.querySelectorAll('#tab-rel-nfe, #tab-rel-cte, #tab-rel-nfse, #tab-rel-sped').forEach(function (btn) {
         btn.addEventListener('shown.bs.tab', function () {
             relatorioMostrarFiltrosTab();

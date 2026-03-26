@@ -48,6 +48,17 @@
 #modalRelatorioDetalhe .relatorio-sped-0000 { margin-top: 1rem; border-left: 3px solid #0d6efd; }
 #modalRelatorioDetalhe .relatorio-sped-0000 h6 { color: #0d6efd; }
 #modalRelatorioDetalhe .font-monospace { font-family: ui-monospace, monospace; font-size: 0.8rem; }
+/* Relatório: filtros e ordenação */
+.relatorio-filtros-wrap { border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 16px; padding: 1.25rem 1.35rem; background: #fff; }
+.relatorio-filtros-wrap .form-label { font-size: 0.8125rem; font-weight: 600; color: #334155; margin-bottom: 0.35rem; }
+.relatorio-filtros-extras { padding-top: 0.5rem; margin-top: 0.5rem; border-top: 1px dashed rgba(15, 23, 42, 0.1); }
+.relatorio-th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+.relatorio-th-sort:hover { background-color: #e9ecef !important; }
+.relatorio-th-sort .sort-ind { display: inline-block; margin-left: 0.2rem; opacity: 0.35; font-size: 0.65rem; vertical-align: middle; }
+.relatorio-th-sort.is-sorted-asc .sort-ind { opacity: 1; }
+.relatorio-th-sort.is-sorted-asc .sort-ind::after { content: '▲'; }
+.relatorio-th-sort.is-sorted-desc .sort-ind { opacity: 1; }
+.relatorio-th-sort.is-sorted-desc .sort-ind::after { content: '▼'; }
 </style>
 {% endblock %}
 
@@ -65,11 +76,11 @@
 
     <section class="layout-panel">
         <div class="layout-card">
-            <div class="layout-subcard mb-3">
+            <div class="layout-subcard mb-3 relatorio-filtros-wrap">
                 <h6 class="fw-600 mb-3">Filtros</h6>
-                <div class="row g-3">
-                    <div class="col-md-2">
-                        <label class="form-label">Empresa</label>
+                <div class="row g-3 align-items-end">
+                    <div class="col-12 col-xl-4">
+                        <label class="form-label" for="relatorio-empresa">Empresa</label>
                         <select id="relatorio-empresa" class="form-select">
                             <option value="">Todas</option>
                             {% for emp in empresas_usuario %}
@@ -77,29 +88,50 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Data início</label>
+                    <div class="col-12 col-xl-4">
+                        <label class="form-label" for="relatorio-filial">Filial</label>
+                        <select id="relatorio-filial" class="form-select">
+                            <option value="">Todas as filiais</option>
+                            {% for f in filiais_usuario %}
+                            <option value="{{ f.id }}" data-cod-empresa="{{ f.empresa.cod_empresa }}">{{ f.empresa.cod_empresa }} — {{ f.cod_filial }}{% if f.nome %}: {{ f.nome }}{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="text-muted small mb-0 mt-1">NFe, CTe e NFS. SPED não possui filial no cadastro.</p>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl-2">
+                        <label class="form-label" for="relatorio-data-inicio">Data início</label>
                         <input type="date" id="relatorio-data-inicio" class="form-control">
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Data fim</label>
+                    <div class="col-6 col-md-4 col-xl-2">
+                        <label class="form-label" for="relatorio-data-fim">Data fim</label>
                         <input type="date" id="relatorio-data-fim" class="form-control">
                     </div>
-                    <div id="relatorio-filtros-nfe" class="col-md-3 filtros-por-tab">
-                        <label class="form-label">Filtros NFe</label>
-                        <div class="d-flex gap-2 flex-wrap">
-                            <select id="relatorio-tipo-operacao" class="form-select" style="min-width:100px">
+                    <div class="col-12 col-md-8 col-xl-8">
+                        <label class="form-label" for="relatorio-busca">Buscar</label>
+                        <input type="text" id="relatorio-busca" class="form-control" placeholder="Chave, número, nome de arquivo...">
+                    </div>
+                    <div class="col-12 col-md-4 col-xl-4 d-grid d-md-flex align-items-end">
+                        <button type="button" class="btn btn-primary w-100" id="relatorio-btn-aplicar">
+                            <i class="fas fa-search"></i> Aplicar filtros
+                        </button>
+                    </div>
+                </div>
+                <div class="relatorio-filtros-extras">
+                    <div id="relatorio-filtros-nfe" class="filtros-por-tab">
+                        <label class="form-label">Filtros específicos — NFe</label>
+                        <div class="d-flex gap-2 flex-wrap align-items-center">
+                            <select id="relatorio-tipo-operacao" class="form-select" style="min-width:120px;max-width:200px">
                                 <option value="">Tipo operação</option>
                                 <option value="0">Entrada</option>
                                 <option value="1">Saída</option>
                             </select>
-                            <select id="relatorio-tipo-pagamento" class="form-select" style="min-width:140px">
+                            <select id="relatorio-tipo-pagamento" class="form-select" style="min-width:160px;max-width:240px">
                                 <option value="">Tipo pagamento</option>
                                 {% for codigo, descricao in meio_pagamento_choices %}
                                 <option value="{{ codigo }}">{{ descricao }}</option>
                                 {% endfor %}
                             </select>
-                            <select id="relatorio-parcelas" class="form-select" style="min-width:110px">
+                            <select id="relatorio-parcelas" class="form-select" style="min-width:130px;max-width:200px">
                                 <option value="">Parcelas</option>
                                 <option value="0">À vista</option>
                                 <option value="1">1 parcela</option>
@@ -112,22 +144,13 @@
                             </select>
                         </div>
                     </div>
-                    <div id="relatorio-filtros-sped" class="col-md-2 filtros-por-tab d-none">
-                        <label class="form-label">Tipo SPED</label>
-                        <select id="relatorio-tipo-sped" class="form-select">
+                    <div id="relatorio-filtros-sped" class="filtros-por-tab d-none mt-2">
+                        <label class="form-label" for="relatorio-tipo-sped">Tipo SPED</label>
+                        <select id="relatorio-tipo-sped" class="form-select" style="max-width:320px">
                             <option value="">Todos</option>
                             <option value="F">Fiscal (ICMS/IPI)</option>
                             <option value="C">Contribuição</option>
                         </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Buscar</label>
-                        <input type="text" id="relatorio-busca" class="form-control" placeholder="Chave, número, arquivo...">
-                    </div>
-                    <div class="col-md-1 d-flex align-items-end">
-                        <button type="button" class="btn btn-primary" id="relatorio-btn-aplicar">
-                            <i class="fas fa-search"></i> Aplicar
-                        </button>
                     </div>
                 </div>
             </div>
@@ -149,11 +172,19 @@
                         <table class="table table-hover layout-table" id="tabela-rel-nfe">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Número</th><th>Série</th><th>Chave</th><th>Emissão</th><th>Tipo</th><th>Status</th><th>Empresa</th><th>Natureza</th>
+                                    <th class="relatorio-th-sort" data-sort="numero" scope="col" title="Ordenar">Número<span class="sort-ind" aria-hidden="true"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="serie" scope="col" title="Ordenar">Série<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="chave" scope="col" title="Ordenar">Chave<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="emissao" scope="col" title="Ordenar">Emissão<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="tipo_operacao" scope="col" title="Ordenar">Tipo<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="status" scope="col" title="Ordenar">Status<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="empresa" scope="col" title="Ordenar">Empresa<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="filial" scope="col" title="Ordenar">Filial<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="natureza" scope="col" title="Ordenar">Natureza<span class="sort-ind"></span></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="8" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
+                                <tr><td colspan="9" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -163,11 +194,16 @@
                         <table class="table table-hover layout-table" id="tabela-rel-cte">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Número</th><th>Série</th><th>Chave</th><th>Emissão</th><th>Empresa</th>
+                                    <th class="relatorio-th-sort" data-sort="numero" scope="col" title="Ordenar">Número<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="serie" scope="col" title="Ordenar">Série<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="chave" scope="col" title="Ordenar">Chave<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="emissao" scope="col" title="Ordenar">Emissão<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="empresa" scope="col" title="Ordenar">Empresa<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="filial" scope="col" title="Ordenar">Filial<span class="sort-ind"></span></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="5" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
+                                <tr><td colspan="6" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -177,11 +213,15 @@
                         <table class="table table-hover layout-table" id="tabela-rel-nfse">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Número</th><th>Chave</th><th>Emissão</th><th>Empresa</th>
+                                    <th class="relatorio-th-sort" data-sort="numero" scope="col" title="Ordenar">Número<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="chave" scope="col" title="Ordenar">Chave<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="emissao" scope="col" title="Ordenar">Emissão<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="empresa" scope="col" title="Ordenar">Empresa<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="filial" scope="col" title="Ordenar">Filial<span class="sort-ind"></span></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="4" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
+                                <tr><td colspan="5" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -191,7 +231,11 @@
                         <table class="table table-hover layout-table" id="tabela-rel-sped">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Tipo</th><th>Competência</th><th>Arquivo</th><th>Data carga</th><th>Empresa</th>
+                                    <th class="relatorio-th-sort" data-sort="tipo" scope="col" title="Ordenar">Tipo<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="competencia" scope="col" title="Ordenar">Competência<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="nome_arquivo" scope="col" title="Ordenar">Arquivo<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="data_carga" scope="col" title="Ordenar">Data carga<span class="sort-ind"></span></th>
+                                    <th class="relatorio-th-sort" data-sort="empresa" scope="col" title="Ordenar">Empresa<span class="sort-ind"></span></th>
                                 </tr>
                             </thead>
                             <tbody>

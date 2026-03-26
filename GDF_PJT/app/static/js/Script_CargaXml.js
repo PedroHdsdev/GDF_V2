@@ -1507,16 +1507,25 @@ function enviarXmlUnico(arquivos, tipoDocumento, origemDados, apiUrl, csrfToken)
             var data;
             try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
             if (!data.mensagem && data.sucesso === undefined) data = { sucesso: false, mensagem: 'Resposta inválida (status ' + status + ')' };
+            if (status >= 400) {
+                var corpo = (text && String(text).length > 500) ? String(text).substring(0, 500) + '…' : (text || '');
+                console.error('[GDF Carga XML] processar-xml HTTP ' + status + ':', data.mensagem || '(resposta sem campo mensagem)', corpo ? '| resposta bruta: ' + corpo : '');
+            }
             return { status: status, data: data };
         });
     });
 }
 
-function finalizarUploadCargaXml(erroMsg) {
+function finalizarUploadCargaXml(erroMsg, opts) {
+    opts = opts || {};
     estadoCargaXml.uploadEmProgresso = false;
     var btn = document.getElementById('btn-enviar-xml');
     if (btn) btn.disabled = false;
-    finalizarCargas();
+    if (opts.skipResumoModal) {
+        carregarTodasAsCargas();
+    } else {
+        finalizarCargas();
+    }
     if (erroMsg) {
         fecharModalCargaXml();
         if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
@@ -1538,16 +1547,13 @@ function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
             var data = result.data;
 
             if (status === 413) {
-                finalizarUploadCargaXml(data.mensagem || 'Erro 413: arquivo(s) muito grande.');
+                finalizarUploadCargaXml(data.mensagem || 'Erro 413: arquivo(s) muito grande.', { skipResumoModal: true });
                 return;
             }
             if (status === 400) {
                 var msg = (data && data.mensagem) ? data.mensagem : 'Requisição inválida (400). Envie apenas .xml ou .zip.';
-                if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
-                    Notificacoes.pagina(msg, 'danger');
-                } else { alert(msg); }
                 arquivos.forEach(function (file, index) { atualizarStatusUpload(index, 'error', '✗ ' + (data.mensagem || 'Erro 400')); });
-                finalizarUploadCargaXml();
+                finalizarUploadCargaXml(msg, { skipResumoModal: true });
                 return;
             }
             if (status === 202) {
@@ -1605,7 +1611,7 @@ function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
                 Notificacoes.pagina(msg, 'danger');
             } else { alert(msg); }
             arquivos.forEach(function (file, index) { atualizarStatusUpload(index, 'error', '✗ Erro de conexão'); });
-            finalizarUploadCargaXml();
+            finalizarUploadCargaXml(null, { skipResumoModal: true });
         });
 }
 

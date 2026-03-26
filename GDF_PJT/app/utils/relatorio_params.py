@@ -7,6 +7,7 @@ from typing import List, Optional
 
 from django.http import HttpRequest
 
+from app.db_GDF.Public.models import Filial
 from app.security.validators import InputValidator
 from django.core.exceptions import ValidationError
 
@@ -89,3 +90,41 @@ def paginate_queryset(qs, page: int, page_size: int):
     page = min(page, total_pages)
     start = (page - 1) * page_size
     return total, total_pages, page, qs[start : start + page_size]
+
+
+def parse_filial_id(request: HttpRequest, cod_empresas: List[str]):
+    """
+    Valida filial_id do GET contra filiais das empresas permitidas.
+    Retorna int pk ou None.
+    """
+    if not cod_empresas:
+        return None
+    raw = (request.GET.get('filial_id') or '').strip()
+    if not raw:
+        return None
+    try:
+        fid = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if not Filial.objects.filter(pk=fid, empresa__cod_empresa__in=cod_empresas).exists():
+        return None
+    return fid
+
+
+def parse_relatorio_order(request: HttpRequest, field_to_orm: dict, default_order_expr: str) -> str:
+    """
+    Monta um único argumento para order_by() a partir de order + dir no GET.
+    field_to_orm: chave da API (ex.: 'emissao') -> caminho ORM (ex.: 'identificacao__emissao').
+    default_order_expr: ex.: '-identificacao__emissao' quando order inválido ou omitido.
+    """
+    order_key = (request.GET.get('order') or '').strip()
+    direction = (request.GET.get('dir') or '').strip().lower()
+    if direction not in ('asc', 'desc'):
+        direction = 'desc'
+    orm_field = field_to_orm.get(order_key)
+    if not orm_field:
+        return default_order_expr
+    want_desc = direction == 'desc'
+    default_desc = default_order_expr.lstrip().startswith('-')
+    prefix = '-' if want_desc else ''
+    return prefix + orm_field

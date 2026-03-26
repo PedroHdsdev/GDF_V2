@@ -1,4 +1,47 @@
 /* ==========================
+   Botão abrir sidebar (navbar)
+   ========================== */
+.sidebar-toggle-btn {
+    position: relative;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    line-height: 1;
+    transition:
+        background-color 0.2s ease,
+        border-color 0.2s ease,
+        transform 0.15s ease,
+        box-shadow 0.2s ease;
+}
+
+.sidebar-toggle-btn:hover {
+    background-color: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.75);
+    transform: scale(1.05);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.sidebar-toggle-btn:active {
+    transform: scale(0.98);
+}
+
+.sidebar-toggle-btn:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar-toggle-btn {
+        transition: none;
+    }
+
+    .sidebar-toggle-btn:hover,
+    .sidebar-toggle-btn:active {
+        transform: none;
+    }
+}
+
+/* ==========================
    Sidebar Geral
    ========================== */
 .sidebar {
@@ -56,16 +99,24 @@
     color: #0d6efd;
 }
 
-/* Badge de seta */
-.sidebar-badge {
-    font-size: 0.8rem;
-    transition: transform 0.3s ease;
+.sidebar-link:focus-visible {
+    outline: 2px solid #0d6efd;
+    outline-offset: -2px;
+    background-color: #f1f5f9;
 }
 
-/* Girar a seta ao abrir o submenu */
-.collapse.show ~ .sidebar-badge,
-.sidebar-submenu.show + .sidebar-link .sidebar-badge {
+/* Chevron ao lado de itens com submenus */
+.sidebar-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.65rem;
+    opacity: 0.75;
+    transition: transform 0.25s ease;
+}
+
+.sidebar-item--expandable:has(.sidebar-submenu.collapse.show) .sidebar-badge {
     transform: rotate(180deg);
+    opacity: 1;
 }
 
 /* Submenu */
@@ -95,6 +146,12 @@
 .sidebar-sublink:hover {
     background-color: #e9ecef;
     color: #0d6efd;
+}
+
+.sidebar-sublink:focus-visible {
+    outline: 2px solid #0d6efd;
+    outline-offset: -2px;
+    background-color: #e9ecef;
 }
 
 /* Mensagens do Django ajustadas para sidebar */

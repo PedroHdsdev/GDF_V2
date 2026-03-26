@@ -51,4 +51,143 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
   });
+
+  initSidebarHoverAndSubmenus();
 });
+
+/**
+ * Sidebar (offcanvas): abre ao passar o mouse no botão hambúrguer; fecha ao sair do botão/painel.
+ * Itens com submenus abrem ao passar o mouse na linha; clique continua funcionando (toque/teclado).
+ */
+function initSidebarHoverAndSubmenus() {
+  if (typeof bootstrap === "undefined") return;
+
+  var sidebarEl = document.getElementById("sidebar");
+  var toggleBtn = document.querySelector(".sidebar-toggle-btn");
+  if (!sidebarEl || !toggleBtn) return;
+
+  var offcanvas = bootstrap.Offcanvas.getOrCreateInstance(sidebarEl);
+  var closeSidebarTimer = null;
+  var closeSubTimer = null;
+  var hoverSidebarDelay = 220;
+  var hoverSubDelay = 180;
+  var prefersHover =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+  function cancelSidebarClose() {
+    if (closeSidebarTimer) {
+      clearTimeout(closeSidebarTimer);
+      closeSidebarTimer = null;
+    }
+  }
+
+  function scheduleSidebarClose() {
+    cancelSidebarClose();
+    closeSidebarTimer = setTimeout(function () {
+      offcanvas.hide();
+    }, hoverSidebarDelay);
+  }
+
+  function openSidebar() {
+    cancelSidebarClose();
+    offcanvas.show();
+  }
+
+  toggleBtn.addEventListener("click", function () {
+    offcanvas.toggle();
+  });
+
+  if (prefersHover) {
+    toggleBtn.addEventListener("mouseenter", openSidebar);
+    toggleBtn.addEventListener("mouseleave", function (ev) {
+      var to = ev.relatedTarget;
+      if (to && (sidebarEl.contains(to) || toggleBtn.contains(to))) return;
+      scheduleSidebarClose();
+    });
+    sidebarEl.addEventListener("mouseenter", cancelSidebarClose);
+    sidebarEl.addEventListener("mouseleave", function (ev) {
+      var to = ev.relatedTarget;
+      if (to && (sidebarEl.contains(to) || toggleBtn.contains(to))) return;
+      scheduleSidebarClose();
+    });
+  }
+
+  function resetSubmenus() {
+    if (closeSubTimer) {
+      clearTimeout(closeSubTimer);
+      closeSubTimer = null;
+    }
+    document.querySelectorAll(".sidebar-item--expandable .sidebar-submenu.collapse").forEach(function (el) {
+      if (!el.classList.contains("show")) return;
+      try {
+        bootstrap.Collapse.getOrCreateInstance(el, { toggle: false }).hide();
+      } catch (e) {}
+    });
+    document.querySelectorAll(".sidebar-item--expandable .sidebar-link[aria-expanded]").forEach(function (t) {
+      t.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  sidebarEl.addEventListener("hide.bs.offcanvas", resetSubmenus);
+
+  var expandableItems = document.querySelectorAll(".sidebar-item--expandable");
+  expandableItems.forEach(function (li) {
+    var collapseEl = li.querySelector(".sidebar-submenu.collapse");
+    var trigger = li.querySelector(".sidebar-link");
+    if (!collapseEl || !trigger) return;
+
+    var col = bootstrap.Collapse.getOrCreateInstance(collapseEl, { toggle: false });
+
+    function hideOthers() {
+      expandableItems.forEach(function (other) {
+        if (other === li) return;
+        var ce = other.querySelector(".sidebar-submenu.collapse");
+        var tr = other.querySelector(".sidebar-link");
+        if (ce && ce.classList.contains("show")) {
+          try {
+            bootstrap.Collapse.getOrCreateInstance(ce, { toggle: false }).hide();
+          } catch (e) {}
+        }
+        if (tr) tr.setAttribute("aria-expanded", "false");
+      });
+    }
+
+    function showSubmenu() {
+      if (closeSubTimer) {
+        clearTimeout(closeSubTimer);
+        closeSubTimer = null;
+      }
+      hideOthers();
+      col.show();
+      trigger.setAttribute("aria-expanded", "true");
+    }
+
+    function scheduleHideSubmenu() {
+      if (closeSubTimer) clearTimeout(closeSubTimer);
+      closeSubTimer = setTimeout(function () {
+        col.hide();
+        trigger.setAttribute("aria-expanded", "false");
+      }, hoverSubDelay);
+    }
+
+    if (prefersHover) {
+      li.addEventListener("mouseenter", showSubmenu);
+      li.addEventListener("mouseleave", function (ev) {
+        var to = ev.relatedTarget;
+        if (to && li.contains(to)) return;
+        scheduleHideSubmenu();
+      });
+    }
+
+    trigger.addEventListener("click", function (e) {
+      e.preventDefault();
+      if (collapseEl.classList.contains("show")) {
+        col.hide();
+        trigger.setAttribute("aria-expanded", "false");
+      } else {
+        showSubmenu();
+      }
+    });
+  });
+}
