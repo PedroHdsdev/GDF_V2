@@ -355,6 +355,8 @@ CELERY_BEAT_SCHEDULE = {
 
 # Carga XML manual – máximo de arquivos por requisição (um envio = um job)
 CARGAXML_MAX_ARCHIVOS_POR_REQUISICAO = env.int('CARGAXML_MAX_ARCHIVOS_POR_REQUISICAO', default=5000)
+# Cada parte arquivo no multipart conta no limite do Django (padrão 100 → 400 HTML antes da view).
+DATA_UPLOAD_MAX_NUMBER_FILES = CARGAXML_MAX_ARCHIVOS_POR_REQUISICAO
 # Tamanho do chunk no processamento em background (arquivos por vez; menor = menos memória, mais updates).
 CARGAXML_CHUNK_SIZE = env.int('CARGAXML_CHUNK_SIZE', default=50)
 

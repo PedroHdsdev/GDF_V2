@@ -1,8 +1,17 @@
+from django.conf import settings
 from django.contrib import admin
 from django.urls import path
+from django.views.generic import RedirectView
+
 from app import views
 
 urlpatterns = [
+    # Ícone: navegadores pedem /gdf/favicon.ico quando a app está em subpath (evita 502 no proxy)
+    path(
+        'favicon.ico',
+        RedirectView.as_view(url=f'{settings.STATIC_URL}img/logo.png', permanent=False),
+        name='favicon',
+    ),
     # Admin site
     path('admin/', admin.site.urls),
 

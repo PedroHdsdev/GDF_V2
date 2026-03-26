@@ -10,7 +10,7 @@ from app.db_GDF.NFe.models          import (
     NFe_Cobranca, NFe_Parcela, NFe_Pagamento, NFe_Informacoes_Adicionais, NFe_Evento
 )
 from app.db_GDF.CTe.models          import (
-    CTe, CTe_Identificacao, CTe_Emitente, CTe_Destinatario, CTe_Transporte, CTe_Valor,
+    CTe, CTe_Identificacao, CTe_Emitente, CTe_Destinatario, CTe_Endereco, CTe_Transporte, CTe_Valor,
     CTe_Carga, CTe_Servico, CTe_Veiculo, CTe_Motorista, CTe_Percurso, CTe_Fiscal, CTe_Evento
 )
 from app.db_GDF.NFSe.models         import (
@@ -207,9 +207,142 @@ class CargaXml:
             emitente_cnpj, destinatario_cnpj, cod_cliente, contexto="NFe"
         )
 
+    def _determinar_tipo_cte_e_empresa(
+        self,
+        emit_cnpj_14: Optional[str],
+        dest_cnpj_14: Optional[str],
+        rem_cnpj_14: Optional[str],
+        cod_cliente: Optional[str],
+    ) -> Tuple[Any, Any, str]:
+        """
+        CT-e: mesma ideia da NF-e (emit = saída, dest = entrada) + remetente como terceira tentativa.
+        Ordem: transportador (emit) → destinatário da carga → remetente.
+        rem com empresa nossa trata como SAÍDA (remetente da mercadoria).
+        """
+        tuplas = (
+            (emit_cnpj_14, TIPO_SAIDA),
+            (dest_cnpj_14, TIPO_ENTRADA),
+            (rem_cnpj_14, TIPO_SAIDA),
+        )
+        for cnpj, tipo_op in tuplas:
+            if not cnpj:
+                continue
+            resolved = self._try_resolver_empresa_filial_por_cnpj(cnpj, cod_cliente)
+            if resolved is not None:
+                empresa, filial = resolved
+                return (empresa, filial, tipo_op)
+        partes = []
+        if emit_cnpj_14:
+            partes.append(f"emitente {emit_cnpj_14}")
+        if dest_cnpj_14:
+            partes.append(f"destinatário {dest_cnpj_14}")
+        if rem_cnpj_14:
+            partes.append(f"remetente {rem_cnpj_14}")
+        raise EmpresaNaoCadastradaError(
+            "Nenhum CNPJ do CT-e (emitente, destinatário ou remetente) pertence a empresa ou "
+            f"filial cadastrada no GDF. {', '.join(partes)}."
+        )
+
     def _parse_xml_safe(self, xml_data: bytes):
         """Faz parse do XML de forma segura (defusedxml quando disponível)."""
         return _xml_fromstring(xml_data)
+
+    @staticmethod
+    def _xml_local_tag(element):
+        if element is None:
+            return ''
+        tag = element.tag
+        return tag.split('}')[-1] if '}' in tag else tag
+
+    def _find_inf_cte(self, root):
+        """Localiza infCte com ou sem namespace (xmlns padrão no root)."""
+        if root is None:
+            return None
+        for el in root.iter():
+            if self._xml_local_tag(el) == 'infCte':
+                return el
+        return root.find('.//cte:infCte', self.ns) or root.find('.//infCte')
+
+    def _find_inf_nfe(self, root):
+        """Localiza infNFe em nfeProc/NFe com xmlns padrão ou com prefixo nfe:."""
+        if root is None:
+            return None
+        for el in root.iter():
+            if self._xml_local_tag(el) == 'infNFe':
+                return el
+        return root.find('.//nfe:infNFe', self.ns) or root.find('.//infNFe')
+
+    def _find_nfe_child(self, parent, local_name):
+        """Filho direto (layout NF-e) ou primeiro descendente com nome local (ignora xmlns)."""
+        if parent is None or not local_name:
+            return None
+        for child in parent:
+            if self._xml_local_tag(child) == local_name:
+                return child
+        for el in parent.iter():
+            if el is parent:
+                continue
+            if self._xml_local_tag(el) == local_name:
+                return el
+        return None
+
+    def _findall_nfe_local(self, parent, local_name):
+        """Lista elementos com nome local sob parent (ex.: det, dup, detPag)."""
+        if parent is None or not local_name:
+            return []
+        out = []
+        for el in parent.iter():
+            if el is parent:
+                continue
+            if self._xml_local_tag(el) == local_name:
+                out.append(el)
+        return out
+
+    def _cte_parties_direct(self, infCte):
+        """Filhos diretos comuns do infCte (emit, rem, dest, ...) por nome local."""
+        out = {}
+        if infCte is None:
+            return out
+        for el in infCte:
+            loc = self._xml_local_tag(el)
+            if loc not in out:
+                out[loc] = el
+        return out
+
+    @staticmethod
+    def _cnpj_14_digits(value):
+        if not value:
+            return None
+        d = ''.join(c for c in str(value) if c.isdigit())
+        return d if len(d) == 14 else None
+
+    def _processar_endereco_cte(self, party_element, ender_tag):
+        """
+        Endereço para tabelas cte.* (CTe_Endereco). CT-e usa enderEmit, enderReme, enderDest, etc.
+        """
+        if party_element is None or not ender_tag:
+            return None
+        endereco_node = None
+        for el in party_element.iter():
+            if self._xml_local_tag(el) == ender_tag:
+                endereco_node = el
+                break
+        if endereco_node is None:
+            return None
+        return CTe_Endereco.objects.create(
+            logradouro=self._get_text(endereco_node, 'xLgr'),
+            numero=self._get_text(endereco_node, 'nro'),
+            complemento=self._get_text(endereco_node, 'xCpl'),
+            bairro=self._get_text(endereco_node, 'xBairro'),
+            codigo_municipio=self._get_text(endereco_node, 'cMun'),
+            uf=self._get_text(endereco_node, 'UF'),
+            cep=self._get_text(endereco_node, 'CEP'),
+            pais=self._get_text(endereco_node, 'cPais', '1058'),
+            nome_municipio=self._get_text(endereco_node, 'xMun'),
+            nome_pais=self._get_text(endereco_node, 'xPais', 'Brasil'),
+            telefone=self._get_text(endereco_node, 'fone'),
+            data_criacao=timezone.now(),
+        )
 
     def _processar_endereco(self, element, is_emitente=True):
         """Processa endereço do emitente ou destinatário"""
@@ -218,10 +351,14 @@ class CargaXml:
         
         tag_endereco = 'enderEmit' if is_emitente else 'enderDest'
         endereco_node = element.find(f'.//nfe:{tag_endereco}', self.ns) or element.find(f'.//{tag_endereco}')
-        
+        if endereco_node is None:
+            for el in element.iter():
+                if self._xml_local_tag(el) == tag_endereco:
+                    endereco_node = el
+                    break
         if endereco_node is None:
             return None
-        
+
         return NFe_Endereco.objects.create(
             logradouro=self._get_text(endereco_node, 'xLgr'),
             numero=self._get_text(endereco_node, 'nro'),
@@ -240,10 +377,12 @@ class CargaXml:
     def _processar_produtos(self, infNFe, identificacao):
         """Processa todos os produtos da NFe"""
         det_nodes = infNFe.findall('.//nfe:det', self.ns) or infNFe.findall('.//det')
-        
+        if not det_nodes:
+            det_nodes = self._findall_nfe_local(infNFe, 'det')
+
         for det in det_nodes:
             # Dados do produto
-            prod = det.find('.//nfe:prod', self.ns) or det.find('.//prod')
+            prod = det.find('.//nfe:prod', self.ns) or det.find('.//prod') or self._find_nfe_child(det, 'prod')
             if prod is None:
                 continue
             
@@ -269,7 +408,7 @@ class CargaXml:
             )
             
             # Processar impostos
-            imposto = det.find('.//nfe:imposto', self.ns) or det.find('.//imposto')
+            imposto = det.find('.//nfe:imposto', self.ns) or det.find('.//imposto') or self._find_nfe_child(det, 'imposto')
             if imposto:
                 self._processar_impostos(imposto, produto)
     
@@ -277,6 +416,8 @@ class CargaXml:
         """Processa todos os impostos de um produto (ICMS, IPI, PIS, COFINS) — todos os tipos."""
         # ICMS
         icms_node = imposto_node.find('.//nfe:ICMS', self.ns) or imposto_node.find('.//ICMS')
+        if icms_node is None:
+            icms_node = self._find_nfe_child(imposto_node, 'ICMS')
         if icms_node:
             icms_tipo = None
             for child in icms_node:
@@ -297,9 +438,11 @@ class CargaXml:
                 )
         # IPI
         ipi_node = imposto_node.find('.//nfe:IPI', self.ns) or imposto_node.find('.//IPI')
+        if ipi_node is None:
+            ipi_node = self._find_nfe_child(imposto_node, 'IPI')
         if ipi_node:
-            ipi_trib = ipi_node.find('.//nfe:IPITrib', self.ns) or ipi_node.find('.//IPITrib')
-            ipi_nt = ipi_node.find('.//nfe:IPINT', self.ns) or ipi_node.find('.//IPINT')
+            ipi_trib = ipi_node.find('.//nfe:IPITrib', self.ns) or ipi_node.find('.//IPITrib') or self._find_nfe_child(ipi_node, 'IPITrib')
+            ipi_nt = ipi_node.find('.//nfe:IPINT', self.ns) or ipi_node.find('.//IPINT') or self._find_nfe_child(ipi_node, 'IPINT')
             if ipi_trib is not None:
                 NFe_IPI.objects.create(
                     produto=produto,
@@ -318,6 +461,8 @@ class CargaXml:
                 )
         # PIS — PISAliq, PISQtde, PISOutr, PISNT, PISST
         pis_node = imposto_node.find('.//nfe:PIS', self.ns) or imposto_node.find('.//PIS')
+        if pis_node is None:
+            pis_node = self._find_nfe_child(imposto_node, 'PIS')
         if pis_node:
             pis_el = _find_first_child(pis_node, ['PISAliq', 'PISQtde', 'PISOutr', 'PISNT', 'PISST'], self.ns)
             if pis_el is not None:
@@ -338,6 +483,8 @@ class CargaXml:
                 )
         # COFINS — COFINSAliq, COFINSQtde, COFINSOutr, COFINSNT, COFINSST
         cofins_node = imposto_node.find('.//nfe:COFINS', self.ns) or imposto_node.find('.//COFINS')
+        if cofins_node is None:
+            cofins_node = self._find_nfe_child(imposto_node, 'COFINS')
         if cofins_node:
             cofins_el = _find_first_child(cofins_node, ['COFINSAliq', 'COFINSQtde', 'COFINSOutr', 'COFINSNT', 'COFINSST'], self.ns)
             if cofins_el is not None:
@@ -359,11 +506,15 @@ class CargaXml:
     
     def _processar_total(self, infNFe, identificacao):
         """Processa totais da NFe"""
-        total_node = infNFe.find('.//nfe:total', self.ns) or infNFe.find('.//total')
+        total_node = infNFe.find('.//nfe:total', self.ns) or infNFe.find('.//total') or self._find_nfe_child(infNFe, 'total')
         if total_node is None:
             return None
-        
-        icms_tot = total_node.find('.//nfe:ICMSTot', self.ns) or total_node.find('.//ICMSTot')
+
+        icms_tot = (
+            total_node.find('.//nfe:ICMSTot', self.ns)
+            or total_node.find('.//ICMSTot')
+            or self._find_nfe_child(total_node, 'ICMSTot')
+        )
         if icms_tot is None:
             return None
         
@@ -390,10 +541,10 @@ class CargaXml:
     
     def _processar_cobranca(self, infNFe, identificacao):
         """Processa cobrança e parcelas da NFe"""
-        cobr_node = infNFe.find('.//nfe:cobr', self.ns) or infNFe.find('.//cobr')
+        cobr_node = infNFe.find('.//nfe:cobr', self.ns) or infNFe.find('.//cobr') or self._find_nfe_child(infNFe, 'cobr')
         if cobr_node is None:
             return None
-        
+
         # Criar ou atualizar cobrança
         cobranca, _ = NFe_Cobranca.objects.update_or_create(
             nfe_identificacao=identificacao,
@@ -409,6 +560,8 @@ class CargaXml:
         
         # Processar parcelas (duplicatas)
         dup_nodes = cobr_node.findall('.//nfe:dup', self.ns) or cobr_node.findall('.//dup')
+        if not dup_nodes:
+            dup_nodes = self._findall_nfe_local(cobr_node, 'dup')
         
         # Remover parcelas antigas desta cobrança
         NFe_Parcela.objects.filter(nfe_cobranca=cobranca).delete()
@@ -438,10 +591,12 @@ class CargaXml:
         Processa o bloco pag/detPag da NFe e grava em NFe_Pagamento.
         Usa o primeiro detPag como meio_pagamento e soma todos os vPag em valor_pago.
         """
-        pag_node = infNFe.find('.//nfe:pag', self.ns) or infNFe.find('.//pag')
+        pag_node = infNFe.find('.//nfe:pag', self.ns) or infNFe.find('.//pag') or self._find_nfe_child(infNFe, 'pag')
         if pag_node is None:
             return None
         det_list = pag_node.findall('.//nfe:detPag', self.ns) or pag_node.findall('.//detPag')
+        if not det_list:
+            det_list = self._findall_nfe_local(pag_node, 'detPag')
         if not det_list:
             return None
         valor_total = Decimal('0')
@@ -515,7 +670,7 @@ class CargaXml:
         Tags: infCpl (informações complementares), infAdFisco (informações de interesse do fisco),
         xPed (número do pedido de compra - pode estar em infAdic, compra ou em qualquer nó sob infNFe).
         """
-        inf_adic = infNFe.find('.//nfe:infAdic', self.ns) or infNFe.find('.//infAdic')
+        inf_adic = infNFe.find('.//nfe:infAdic', self.ns) or infNFe.find('.//infAdic') or self._find_nfe_child(infNFe, 'infAdic')
         inf_cpl = None
         inf_ad_fisco = None
         xped = None
@@ -524,11 +679,16 @@ class CargaXml:
             inf_ad_fisco = self._get_text(inf_adic, 'infAdFisco', '').strip() or None
             xped = self._get_text(inf_adic, 'xPed', '').strip() or None
         if xped is None:
-            compra = infNFe.find('.//nfe:compra', self.ns) or infNFe.find('.//compra')
+            compra = infNFe.find('.//nfe:compra', self.ns) or infNFe.find('.//compra') or self._find_nfe_child(infNFe, 'compra')
             if compra is not None:
                 xped = self._get_text(compra, 'xPed', '').strip() or None
         if xped is None:
             elem = infNFe.find('.//nfe:xPed', self.ns) or infNFe.find('.//xPed')
+            if elem is None:
+                for el in infNFe.iter():
+                    if self._xml_local_tag(el) == 'xPed' and el.text and el.text.strip():
+                        elem = el
+                        break
             if elem is not None and elem.text:
                 xped = elem.text.strip() or None
         if inf_cpl is None and inf_ad_fisco is None and xped is None:
@@ -553,6 +713,21 @@ class CargaXml:
                 return child
         return None
 
+    def _chave_em_inf_evento(self, inf_evento, tag_chave: str) -> str:
+        """Lê chNFe/chCTe no infEvento com xmlns padrão (filho direto ou descendente)."""
+        if inf_evento is None:
+            return ''
+        for el in list(inf_evento):
+            loc = self._xml_local_tag(el)
+            if loc == tag_chave and (el.text or '').strip():
+                return (el.text or '').strip()
+        for el in inf_evento.iter():
+            if el is inf_evento:
+                continue
+            if self._xml_local_tag(el) == tag_chave and (el.text or '').strip():
+                return (el.text or '').strip()
+        return (self._get_text(inf_evento, tag_chave, '') or '').strip()
+
     def _extrair_dados_evento(self, xml_data: bytes) -> Optional[Dict]:
         """
         Detecta se o XML é de evento (procEventoNFe, procEventoCTe) e extrai chave, tipo, justificativa.
@@ -568,12 +743,19 @@ class CargaXml:
             tipo_doc = 'NFe' if 'NFe' in tag_root else 'CTe'
             tag_chave = 'chNFe' if tipo_doc == 'NFe' else 'chCTe'
 
-            inf_evento = self._find_local(root, 'infEvento')
-            if inf_evento is None:
-                return None
-
-            chave = self._get_text(inf_evento, tag_chave, '').strip()
-            if not chave or len(chave) != 44 or not chave.isdigit():
+            # Vários infEvento (evento + retEvento): usar o que tiver chave válida de 44 dígitos
+            inf_evento = None
+            chave = ''
+            for el in root.iter():
+                if self._xml_local_tag(el) != 'infEvento':
+                    continue
+                raw = self._chave_em_inf_evento(el, tag_chave)
+                digits = ''.join(c for c in raw if c.isdigit())
+                if len(digits) == 44:
+                    inf_evento = el
+                    chave = digits
+                    break
+            if not inf_evento or not chave:
                 return None
 
             tp_evento = self._get_text(inf_evento, 'tpEvento', '').strip()
@@ -600,12 +782,19 @@ class CargaXml:
         except Exception:
             return None
 
-    def set_evento(self, xml_data: bytes, origem_dados: str, usuario: str, cod_cliente: str = None) -> bool:
+    def set_evento(
+        self,
+        xml_data: bytes,
+        origem_dados: str,
+        usuario: str,
+        cod_cliente: str = None,
+        dados_evento: Optional[Dict] = None,
+    ) -> bool:
         """
         Processa XML de evento: busca a chave (44) em NFe, CTe e NFSe, salva evento e justificativa.
         Retorna True se processou com sucesso, False se não for evento ou chave não encontrada.
         """
-        dados = self._extrair_dados_evento(xml_data)
+        dados = dados_evento if dados_evento is not None else self._extrair_dados_evento(xml_data)
         if not dados:
             return False
 
@@ -700,14 +889,27 @@ class CargaXml:
                     continue
 
                 # Verificar se é XML de evento (procEventoNFe, procEventoCTe) - chave 44
-                if self._extrair_dados_evento(xml_data):
-                    if self.set_evento(xml_data, I_origem_dados, i_usuario, i_cod_cliente):
+                dados_evento = self._extrair_dados_evento(xml_data)
+                if dados_evento:
+                    if self.set_evento(
+                        xml_data,
+                        I_origem_dados,
+                        i_usuario,
+                        i_cod_cliente,
+                        dados_evento=dados_evento,
+                    ):
                         result['success'].append(nome_arquivo)
                     else:
+                        chv = dados_evento.get('chave', '')
+                        tp_ev = dados_evento.get('tp_evento', '')
                         result['errors'].append({
                             'file': nome_arquivo,
-                            'error': 'Chave do evento não encontrada em NFe, CTe ou NFSe.',
-                            'type': 'ChaveNaoEncontrada'
+                            'error': (
+                                f"Evento (tp {tp_ev}): chave {chv} não existe no GDF. "
+                                "Carregue antes o XML da nota autorizada (NF-e / CT-e / NFS-e) com essa chave; "
+                                "depois envie novamente este evento (ex.: 110111 = cancelamento)."
+                            ),
+                            'type': 'EventoSemDocumentoBase',
                         })
                     continue
 
@@ -751,30 +953,40 @@ class CargaXml:
             # Parse seguro do XML (defusedxml quando disponível)
             root = self._parse_xml_safe(xml_data)
 
-            # Extrair dados básicos da NFe
-            infNFe = root.find('.//nfe:infNFe', self.ns) or root.find('.//infNFe')
+            # Extrair dados básicos da NFe (xmlns padrão sem prefixo: iter por nome local)
+            infNFe = self._find_inf_nfe(root)
             if infNFe is None:
                 raise ValueError("Estrutura de NFe inválida: infNFe não encontrado")
 
             # ========== EMITENTE E DESTINATÁRIO (CNPJs para determinar tipo da nota) ==========
-            emit = infNFe.find('.//nfe:emit', self.ns) or infNFe.find('.//emit')
-            dest = infNFe.find('.//nfe:dest', self.ns) or infNFe.find('.//dest')
-            emitente_cnpj = (self._get_text(emit, 'CNPJ') or '').strip() if emit is not None else None
+            emit = infNFe.find('.//nfe:emit', self.ns) or infNFe.find('.//emit') or self._find_nfe_child(infNFe, 'emit')
+            dest = infNFe.find('.//nfe:dest', self.ns) or infNFe.find('.//dest') or self._find_nfe_child(infNFe, 'dest')
+            emit_doc = None
+            if emit is not None:
+                emit_doc = (
+                    (self._get_text(emit, 'CNPJ') or '').strip()
+                    or (self._get_text(emit, 'CPF') or '').strip()
+                ) or None
             destinatario_cnpj = None
             if dest is not None:
                 # Só consideramos CNPJ para "nosso" destinatário (CPF não é empresa/filial)
                 destinatario_cnpj = (self._get_text(dest, 'CNPJ') or '').strip() or None
 
-            if not emitente_cnpj:
-                raise ValueError("CNPJ do emitente é obrigatório")
+            if not emit_doc:
+                raise ValueError("CNPJ ou CPF do emitente é obrigatório")
 
-            # Tipo da nota pelo nosso critério: emitente nosso = SAÍDA, destinatário nosso = ENTRADA
+            emit_so_digitos = ''.join(c for c in emit_doc if c.isdigit())
+            if len(emit_so_digitos) not in (11, 14):
+                raise ValueError("CNPJ ou CPF do emitente deve ter 11 ou 14 dígitos.")
+            # Só CNPJ (14) resolve emit como "nossa empresa"; PF tenta só pelo dest
+            emit_para_empresa = emit_doc if len(emit_so_digitos) == 14 else None
+
             empresa, filial, tipo_operacao = self._determinar_tipo_nota_e_empresa_nfe(
-                emitente_cnpj, destinatario_cnpj, cod_cliente
+                emit_para_empresa, destinatario_cnpj, cod_cliente
             )
 
             # ========== IDENTIFICAÇÃO ==========
-            ide = infNFe.find('.//nfe:ide', self.ns) or infNFe.find('.//ide')
+            ide = infNFe.find('.//nfe:ide', self.ns) or infNFe.find('.//ide') or self._find_nfe_child(infNFe, 'ide')
             if ide is None:
                 raise ValueError("Seção ide não encontrada")
 
@@ -792,9 +1004,9 @@ class CargaXml:
             # Processar endereço do emitente
             endereco_emit = self._processar_endereco(emit, is_emitente=True)
 
-            # Criar/atualizar emitente completo
+            # Criar/atualizar emitente (documento: CNPJ 14 ou CPF 11 no mesmo campo)
             emitente, _ = NFe_Emitente.objects.update_or_create(
-                cnpj=emitente_cnpj,
+                cnpj=emit_so_digitos,
                 defaults={
                     'razao_social': self._get_text(emit, 'xNome', 'S/N'),
                     'nome_fantasia': self._get_text(emit, 'xFant'),
@@ -920,46 +1132,54 @@ class CargaXml:
         """
         try:
             root = self._parse_xml_safe(xml_data)
-            infCte = root.find('.//cte:infCte', self.ns) or root.find('.//infCte')
-            
+            infCte = self._find_inf_cte(root)
+
             if infCte is None:
                 raise ValueError("Estrutura de CTe inválida: infCte não encontrado")
-            
-            # Identificação
-            ide = infCte.find('.//cte:ide', self.ns) or infCte.find('.//ide')
+
+            parties = self._cte_parties_direct(infCte)
+            emit_el = parties.get('emit')
+            rem_el = parties.get('rem')
+            dest = parties.get('dest')
+            if dest is None:
+                dest = infCte.find('.//cte:dest', self.ns) or infCte.find('.//dest')
+
+            # Identificação (xmlns padrão)
+            ide = infCte.find('.//cte:ide', self.ns) or infCte.find('.//ide') or self._find_nfe_child(infCte, 'ide')
             numero = self._get_text(ide, 'nCT') or self._get_text(ide, 'nNF') or ''
             serie = self._get_text(ide, 'serie')
-            chave = (infCte.get('Id') or '').replace('CTe', '')
+            chave = (infCte.get('Id') or '').replace('CTe', '').strip()
             data_emissao = self._to_datetime(self._get_text(ide, 'dhEmi') or self._get_text(ide, 'dEmi'), '%Y-%m-%dT%H:%M:%S') or self._to_datetime(self._get_text(ide, 'dEmi'))
 
-            # Emitente / Remetente
-            rem = (infCte.find('.//cte:rem', self.ns) or infCte.find('.//rem') or
-                   infCte.find('.//cte:emit', self.ns) or infCte.find('.//emit'))
-            emitente_cnpj = self._get_text(rem, 'CNPJ') or self._get_text(rem, 'CPF') if rem is not None else None
-            endereco_emit = self._processar_endereco(rem, is_emitente=True) if rem is not None else None
+            # Emitente do CT-e (tabela + vínculo): priorizar <emit>; senão <rem> (layouts raros)
+            emit_party = emit_el or rem_el
+            ender_tag = 'enderEmit' if emit_el is not None else 'enderReme'
+            emitente_cnpj = None
+            endereco_emit = None
+            if emit_party is not None:
+                emitente_cnpj = self._get_text(emit_party, 'CNPJ') or self._get_text(emit_party, 'CPF')
+                endereco_emit = self._processar_endereco_cte(emit_party, ender_tag)
             emitente = None
             if emitente_cnpj:
                 emitente, _ = CTe_Emitente.objects.update_or_create(
                     cnpj=emitente_cnpj,
                     defaults={
-                        'razao_social': self._get_text(rem, 'xNome', 'S/N'),
-                        'nome_fantasia': self._get_text(rem, 'xFant'),
-                        'ie': self._get_text(rem, 'IE'),
+                        'razao_social': self._get_text(emit_party, 'xNome', 'S/N'),
+                        'nome_fantasia': self._get_text(emit_party, 'xFant'),
+                        'ie': self._get_text(emit_party, 'IE'),
                         'endereco': endereco_emit,
                         'data_atualizacao': timezone.now()
                     }
                 )
 
-            # Destinatario / Tomador
-            dest = infCte.find('.//cte:dest', self.ns) or infCte.find('.//dest')
+            # Destinatário (endereço em cte.cte_endereco, não NFe)
             destinatario = None
-            destinatario_cnpj = None
-            dest_cnpj_14 = None  # só CNPJ (14 dígitos) para determinação de tipo
+            dest_cnpj_14 = None
             if dest is not None:
                 destinatario_cnpj = self._get_text(dest, 'CNPJ') or self._get_text(dest, 'CPF')
-                dest_cnpj_14 = (self._get_text(dest, 'CNPJ') or '').strip() or None
+                dest_cnpj_14 = self._cnpj_14_digits(self._get_text(dest, 'CNPJ'))
                 if destinatario_cnpj:
-                    endereco_dest = self._processar_endereco(dest, is_emitente=False)
+                    endereco_dest = self._processar_endereco_cte(dest, 'enderDest')
                     destinatario, _ = CTe_Destinatario.objects.update_or_create(
                         documento=destinatario_cnpj,
                         defaults={
@@ -970,14 +1190,12 @@ class CargaXml:
                         }
                     )
 
-            # Emitente: só considerar CNPJ (14 dígitos) para determinação de tipo
-            emit_cnpj_14 = None
-            if emitente_cnpj and len(''.join(c for c in emitente_cnpj if c.isdigit())) == 14:
-                emit_cnpj_14 = emitente_cnpj.strip() if isinstance(emitente_cnpj, str) else emitente_cnpj
+            # Empresa GDF: emit (transportador) → dest → rem (mesma lógica da NF-e + remetente)
+            emit_cnpj_14 = self._cnpj_14_digits(self._get_text(emit_el, 'CNPJ')) if emit_el else None
+            rem_cnpj_14 = self._cnpj_14_digits(self._get_text(rem_el, 'CNPJ')) if rem_el else None
 
-            # Tipo e empresa pelo nosso critério: emitente nosso = SAÍDA, destinatário nosso = ENTRADA
-            empresa, filial, _ = self._determinar_tipo_nota_e_empresa_por_emit_dest(
-                emit_cnpj_14, dest_cnpj_14, cod_cliente, contexto="CT-e"
+            empresa, filial, _ = self._determinar_tipo_cte_e_empresa(
+                emit_cnpj_14, dest_cnpj_14, rem_cnpj_14, cod_cliente
             )
 
             # Cliente: obrigatório
@@ -1032,44 +1250,84 @@ class CargaXml:
                     }
                 )
 
+            # vPrest (valor do serviço) — comum no modelo 57
+            vprest_el = None
+            veiculo = None
+            mot = None
+            for el in infCte.iter():
+                loc = self._xml_local_tag(el)
+                if loc == 'vPrest' and vprest_el is None:
+                    vprest_el = el
+                elif loc == 'veiculo' and veiculo is None:
+                    veiculo = el
+                elif loc == 'mot' and mot is None:
+                    mot = el
+
+            if vprest_el is not None:
+                vt = self._to_decimal(self._get_text(vprest_el, 'vTPrest'))
+                CTe_Valor.objects.update_or_create(
+                    cte_identificacao=identificacao,
+                    defaults={'valor_total': vt},
+                )
+
+            tp_modal = self._get_text(ide, 'modal')
+            if tp_modal or veiculo is not None:
+                CTe_Transporte.objects.update_or_create(
+                    cte_identificacao=identificacao,
+                    defaults={
+                        'modal': tp_modal or None,
+                        'placa': self._get_text(veiculo, 'placa') if veiculo is not None else None,
+                        'uf_placa': self._get_text(veiculo, 'UF') if veiculo is not None else None,
+                    },
+                )
+
             # === EXTRAÇÃO DE SERVIÇO ===
             serv = infCte.find('.//cte:infServ', self.ns) or infCte.find('.//infServ')
+            serv_defaults = {
+                'valor_padrao_servico': self._to_decimal(self._get_text(serv, 'vTPrest')) if serv is not None else Decimal('0'),
+                'valor_vale_pedagio': self._to_decimal(self._get_text(serv, 'vVpd')) if serv is not None else Decimal('0'),
+                'valor_gris': self._to_decimal(self._get_text(serv, 'vGRIS')) if serv is not None else Decimal('0'),
+                'valor_seguro': self._to_decimal(self._get_text(serv, 'vValorCobrado')) if serv is not None else Decimal('0'),
+                'taxa_adicional': self._to_decimal(self._get_text(serv, 'vOutrasDesp')) if serv is not None else Decimal('0'),
+                'data_criacao': timezone.now()
+            }
             if serv is not None:
                 cte_servico, _ = CTe_Servico.objects.update_or_create(
                     cte_identificacao=identificacao,
+                    defaults=serv_defaults
+                )
+            elif vprest_el is not None:
+                cte_servico, _ = CTe_Servico.objects.update_or_create(
+                    cte_identificacao=identificacao,
                     defaults={
-                        'valor_padrao_servico': self._to_decimal(self._get_text(serv, 'vTPrest')),
-                        'valor_vale_pedagio': self._to_decimal(self._get_text(serv, 'vVpd')),
-                        'valor_gris': self._to_decimal(self._get_text(serv, 'vGRIS')),
-                        'valor_seguro': self._to_decimal(self._get_text(serv, 'vValorCobrado')),
-                        'taxa_adicional': self._to_decimal(self._get_text(serv, 'vOutrasDesp')),
+                        'valor_padrao_servico': self._to_decimal(self._get_text(vprest_el, 'vTPrest')),
+                        'valor_vale_pedagio': Decimal('0'),
+                        'valor_gris': Decimal('0'),
+                        'valor_seguro': Decimal('0'),
+                        'taxa_adicional': Decimal('0'),
                         'data_criacao': timezone.now()
                     }
                 )
 
-            # === EXTRAÇÃO DE VEÍCULO ===
-            infModal = infCte.find('.//cte:infCteCarregamento', self.ns) or infCte.find('.//infCteCarregamento')
-            if infModal is not None:
-                veiculo = infModal.find('.//cte:veiculo', self.ns) or infModal.find('.//veiculo')
-                if veiculo is not None:
-                    cte_veiculo, _ = CTe_Veiculo.objects.update_or_create(
-                        cte_identificacao=identificacao,
-                        defaults={
-                            'tipo_veiculo': self._get_text(veiculo, 'tpVeic'),
-                            'placa': self._get_text(veiculo, 'placa'),
-                            'uf_placa': self._get_text(veiculo, 'UF', 'SP'),
-                            'tara': int(self._to_decimal(self._get_text(veiculo, 'tara', '0'))) or 0,
-                            'capacidade_maxima': int(self._to_decimal(self._get_text(veiculo, 'capKg', '0'))) or 0,
-                            'modelo': self._get_text(veiculo, 'modelo'),
-                            'ano_fabricacao': int(self._get_text(veiculo, 'anoFab', '2000')) or 2000,
-                            'eixos': int(self._get_text(veiculo, 'nEixos', '0')) or 0,
-                            'combustivel': self._get_text(veiculo, 'tComb'),
-                            'data_criacao': timezone.now()
-                        }
-                    )
+            # === EXTRAÇÃO DE VEÍCULO (detalhe) ===
+            if veiculo is not None:
+                cte_veiculo, _ = CTe_Veiculo.objects.update_or_create(
+                    cte_identificacao=identificacao,
+                    defaults={
+                        'tipo_veiculo': self._get_text(veiculo, 'tpVeic'),
+                        'placa': self._get_text(veiculo, 'placa'),
+                        'uf_placa': self._get_text(veiculo, 'UF', 'SP'),
+                        'tara': int(self._to_decimal(self._get_text(veiculo, 'tara', '0'))) or 0,
+                        'capacidade_maxima': int(self._to_decimal(self._get_text(veiculo, 'capKg', '0'))) or 0,
+                        'modelo': self._get_text(veiculo, 'modelo'),
+                        'ano_fabricacao': int(self._get_text(veiculo, 'anoFab', '2000')) or 2000,
+                        'eixos': int(self._get_text(veiculo, 'nEixos', '0')) or 0,
+                        'combustivel': self._get_text(veiculo, 'tComb'),
+                        'data_criacao': timezone.now()
+                    }
+                )
 
             # === EXTRAÇÃO DE MOTORISTA ===
-            mot = infModal.find('.//cte:mot', self.ns) or infModal.find('.//mot') if infModal is not None else None
             if mot is not None:
                 cpf_mot = self._get_text(mot, 'CPF')
                 if cpf_mot:
