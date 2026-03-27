@@ -88,3 +88,7 @@ secrets/
 
 # mypy
 .mypy_cache/
+
+# Empresas XMLs pasta
+empresas_xmls/
+Empresas_XML/
