@@ -218,7 +218,7 @@ class ClGdf:
             for l_v_solucao in l_v_queryset_solucoes:
                 l_v_queryset_subsolucoes = Subsolucao.objects.filter(
                     solucao=l_v_solucao,
-                    cod_subsolucao__in=lsl_ids_subsolucoes
+                    cod_subsolucao__in=lsl_ids_subsolucoes,
                 ).values(
                     'cod_subsolucao',
                     'descricao'

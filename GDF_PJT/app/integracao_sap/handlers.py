@@ -44,7 +44,7 @@ def _handler_relatorio_custo_impl(cod_cliente: str, **params) -> Dict[str, Any]:
     if not SapRfc.is_available():
         return {
             "sucesso": False,
-            "mensagem": "PyRFC não disponível. SAP desativado.",
+            "mensagem": SapRfc.pyrfc_mensagem_indisponivel(),
         }
 
     result = SapRfc.importar_relatorio_custo(

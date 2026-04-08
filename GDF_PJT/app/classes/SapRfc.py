@@ -7,14 +7,282 @@ Padrão de uso para cada função SAP via RFC:
   3. Chame a função RFC passando os parâmetros.
   4. A comunicação é fechada ao final (SapRfc.call já abre, chama e fecha).
 
-Exemplo: ver método importar_custo_cliente abaixo.
+Exemplo: ver importar_custo_cliente, importar_relatorio_custo, consultar_balanco_financeiro (ZF_ECF01).
 """
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
+from typing import Any, Dict, List, Optional, Tuple
+
+PYRFC_IMPORT_ERROR: str = ""
+
 try:
     from pyrfc import Connection as PyRfcConnection
+
     PYRFC_AVAILABLE = True
-except ImportError:
+except Exception as _pyrfc_exc:
     PyRfcConnection = None
     PYRFC_AVAILABLE = False
+    PYRFC_IMPORT_ERROR = str(_pyrfc_exc).strip() or repr(_pyrfc_exc)
+
+_RFC_BALANCO_FINANCEIRO = "ZF_ECF01"
+
+# T_BALANCE (ZF_ECF01): estrutura ABAP documentada — ordem fixa para API/UI.
+_T_BALANCE_CAMPOS_CABECALHO: Tuple[str, ...] = (
+    "TP_IMP",
+    "SAKNR",
+    "DESC",
+    "TIPO",
+    "IND_DC",
+)
+_T_BALANCE_CAMPOS_SALDO_MES: Tuple[str, ...] = tuple(f"UM{i:02d}O" for i in range(1, 13))
+_T_BALANCE_CAMPOS_FIM: Tuple[str, ...] = ("SORT",)
+T_BALANCE_COLUNAS_PROCESSADAS: Tuple[str, ...] = (
+    *_T_BALANCE_CAMPOS_CABECALHO,
+    *_T_BALANCE_CAMPOS_SALDO_MES,
+    *_T_BALANCE_CAMPOS_FIM,
+)
+# Colunas adicionais: ano e intervalo I_MONTH_B / I_MONTH_V enviados à RFC + soma do exercício
+T_BALANCE_COLUNAS_RESPOSTA: Tuple[str, ...] = (
+    "ano_referencia",
+    "mes_referencia_b",
+    "mes_referencia_v",
+    *T_BALANCE_COLUNAS_PROCESSADAS,
+    "total_saldo_exercicio",
+    "saldos_mensais",
+)
+
+# Limite dos números em I_MONTH_B / I_MONTH_V e largura máxima do intervalo (inclusive).
+_ZF_ECF01_MAX_NUMERO_PERIODO: int = 99
+_ZF_ECF01_MAX_INTERVALO_PERIODOS: int = 120
+
+
+def _zf_ecf01_valor_json(v: Any) -> Any:
+    if v is None:
+        return None
+    if isinstance(v, Decimal):
+        return str(v)
+    if isinstance(v, datetime):
+        return v.isoformat()
+    if isinstance(v, date):
+        return v.isoformat()
+    if isinstance(v, bytes):
+        return v.decode("utf-8", errors="replace")
+    if isinstance(v, (bool, int, float, str)):
+        return v
+    return str(v)
+
+
+def _zf_ecf01_buscar_chave_dict(d: Dict[str, Any], *nomes: str) -> Any:
+    for nome in nomes:
+        if nome in d:
+            return d[nome]
+    lower_map = {str(k).upper(): k for k in d}
+    for nome in nomes:
+        k = lower_map.get(nome.upper())
+        if k is not None:
+            return d[k]
+    return None
+
+
+def _zf_ecf01_extrair_t_balance_e_return(result: Optional[Dict[str, Any]]) -> tuple:
+    if not result or not isinstance(result, dict):
+        return [], ""
+    raw_tb = _zf_ecf01_buscar_chave_dict(result, "T_BALANCE", "ET_BALANCE")
+    if raw_tb is None:
+        linhas = []
+    elif isinstance(raw_tb, list):
+        linhas = raw_tb
+    else:
+        linhas = list(raw_tb)
+    r_ret = _zf_ecf01_buscar_chave_dict(result, "R_RETURN", "E_RETURN", "EV_RETURN")
+    if r_ret is None:
+        msg = ""
+    else:
+        msg = str(r_ret).strip()
+    return linhas, msg
+
+
+def _zf_ecf01_campo_str(linha: Dict[str, Any], nome_abap: str) -> str:
+    v = _zf_ecf01_buscar_chave_dict(linha, nome_abap)
+    if v is None:
+        return ""
+    if isinstance(v, bytes):
+        return v.decode("utf-8", errors="replace").strip()
+    return str(v).strip()
+
+
+def _zf_ecf01_para_decimal_saldo(v: Any) -> Optional[Decimal]:
+    """Interpreta CURR/quantidade vinda do PyRFC como Decimal."""
+    if v is None:
+        return None
+    if isinstance(v, Decimal):
+        return v
+    if isinstance(v, (int, float)):
+        return Decimal(str(v))
+    s = str(v).strip().replace(" ", "")
+    if not s:
+        return None
+    s = s.replace(",", ".")
+    try:
+        return Decimal(s)
+    except InvalidOperation:
+        return None
+
+
+def _zf_ecf01_multiplicador_ind_dc(ind_dc: Any) -> Decimal:
+    """
+    Fator aplicado aos saldos UM01O–UM12O conforme indicador débito/crédito (ZECFED_INDICADOR_D_C).
+
+    Convenção: valores no SAP seguem o lado da conta; para exibição analítica unificada,
+    crédito (Haben) inverte o sinal. Ajuste o mapeamento se o domínio no SAP for outro.
+
+    S, D, 1 → +1 (Soll / débito)
+    H, C, 2 → -1 (Haben / crédito)
+    """
+    s = (str(ind_dc).strip()[:1] if ind_dc is not None else "") or ""
+    if not s:
+        return Decimal("1")
+    u = s.upper()
+    if u in ("H", "C", "2"):
+        return Decimal("-1")
+    if u in ("S", "D", "1"):
+        return Decimal("1")
+    return Decimal("1")
+
+
+def _zf_ecf01_processar_linha_t_balance(linha: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Mapeia uma linha bruta de T_BALANCE para o layout documentado, com saldos mensais
+    já multiplicados por IND_DC (sinal analítico).
+    """
+    if not linha:
+        return {}
+
+    ind_dc_raw = _zf_ecf01_buscar_chave_dict(linha, "IND_DC")
+    mult = _zf_ecf01_multiplicador_ind_dc(ind_dc_raw)
+
+    out: Dict[str, Any] = {}
+    for nome in _T_BALANCE_CAMPOS_CABECALHO:
+        out[nome] = _zf_ecf01_campo_str(linha, nome)
+
+    total_parcial = Decimal("0")
+    for key in _T_BALANCE_CAMPOS_SALDO_MES:
+        bruto = _zf_ecf01_para_decimal_saldo(_zf_ecf01_buscar_chave_dict(linha, key))
+        if bruto is None:
+            out[key] = None
+        else:
+            assinado = (bruto * mult).quantize(Decimal("0.01"))
+            out[key] = str(assinado)
+            total_parcial += assinado
+
+    out["SORT"] = _zf_ecf01_campo_str(linha, "SORT")
+    out["total_saldo_exercicio"] = str(total_parcial.quantize(Decimal("0.01")))
+
+    # Lista Jan–Dez (mesmo sinal que as colunas UMxxO) — útil para gráficos sem reparsing
+    out["saldos_mensais"] = [out[k] for k in _T_BALANCE_CAMPOS_SALDO_MES]
+
+    return out
+
+
+def _zf_ecf01_montar_parametros(
+    i_bukrs: str, i_month_b: int, i_month_v: int, i_year: int, i_ktopl: str, i_versn: str
+) -> Dict[str, str]:
+    """Parâmetros de importação ZF_ECF01: I_MONTH_B (inicial), I_MONTH_V (final), 2 dígitos."""
+    return {
+        "I_BUKRS": str(i_bukrs).strip(),
+        "I_MONTH_B": f"{int(i_month_b):02d}",
+        "I_MONTH_V": f"{int(i_month_v):02d}",
+        "I_YEAR": str(int(i_year)),
+        "I_KTOPL": str(i_ktopl).strip(),
+        "I_VERSN": str(i_versn).strip(),
+    }
+
+
+def _zf_ecf01_resolver_intervalo_meses(
+    params: Dict[str, Any],
+) -> Tuple[Optional[Tuple[int, int, int]], Optional[str]]:
+    """
+    Resolve (ano, mês/período inicial, mês/período final) para uma única chamada RFC.
+
+    Aceita i_month_b / i_month_v (ou I_MONTH_B / I_MONTH_V), ou i_month_ini / i_month_fim
+    como alias; período único: i_month + i_year (define B = V = i_month).
+    Números podem ultrapassar 12 (ex.: 1–16).
+    """
+    mb = params.get("i_month_b")
+    if mb is None:
+        mb = params.get("I_MONTH_B")
+    mv = params.get("i_month_v")
+    if mv is None:
+        mv = params.get("I_MONTH_V")
+
+    if mb is None and mv is None:
+        mi = params.get("i_month_ini")
+        if mi is None:
+            mi = params.get("I_MONTH_INI")
+        mf = params.get("i_month_fim")
+        if mf is None:
+            mf = params.get("I_MONTH_FIM")
+        mb, mv = mi, mf
+
+    if (mb is not None) ^ (mv is not None):
+        return None, (
+            "Informe ambos i_month_b e i_month_v (período inicial e final na RFC), "
+            "ou i_month_ini e i_month_fim, ou i_month com i_year."
+        )
+
+    if mb is not None and mv is not None:
+        y_raw = params.get("i_year")
+        if y_raw is None:
+            y_raw = params.get("I_YEAR")
+        if y_raw is None:
+            return None, "Informe i_year junto com o intervalo de períodos."
+        try:
+            y = int(y_raw)
+            a, b = int(mb), int(mv)
+        except (TypeError, ValueError):
+            return None, "Ano ou número de período inválido."
+        if y < 1900 or y > 9999:
+            return None, "Ano fora do intervalo permitido."
+        if a < 1 or a > _ZF_ECF01_MAX_NUMERO_PERIODO or b < 1 or b > _ZF_ECF01_MAX_NUMERO_PERIODO:
+            return None, (
+                f"Período deve estar entre 1 e {_ZF_ECF01_MAX_NUMERO_PERIODO} "
+                "(valores enviados a I_MONTH_B e I_MONTH_V)."
+            )
+        if a > b:
+            a, b = b, a
+        qtd = b - a + 1
+        if qtd > _ZF_ECF01_MAX_INTERVALO_PERIODOS:
+            return None, (
+                f"Intervalo excede {_ZF_ECF01_MAX_INTERVALO_PERIODOS} períodos. "
+                "Reduza a diferença entre inicial e final."
+            )
+        return (y, a, b), None
+
+    ms = params.get("i_month")
+    if ms is None:
+        ms = params.get("I_MONTH")
+    if ms is not None:
+        y_raw = params.get("i_year")
+        if y_raw is None:
+            y_raw = params.get("I_YEAR")
+        if y_raw is None:
+            return None, "Informe i_year junto com i_month."
+        try:
+            y = int(y_raw)
+            m = int(ms)
+        except (TypeError, ValueError):
+            return None, "Período ou ano inválido."
+        if m < 1 or m > _ZF_ECF01_MAX_NUMERO_PERIODO:
+            return None, (
+                f"i_month (período) deve estar entre 1 e {_ZF_ECF01_MAX_NUMERO_PERIODO}."
+            )
+        if y < 1900 or y > 9999:
+            return None, "Ano fora do intervalo permitido."
+        return (y, m, m), None
+
+    return None, (
+        "Informe i_month_b e i_month_v (ou i_month_ini e i_month_fim) e i_year, ou i_month e i_year."
+    )
 
 
 def _get_sap_connection_model():
@@ -42,6 +310,51 @@ class SapRfc:
     def is_available():
         """Retorna True se o PyRFC está instalado."""
         return PYRFC_AVAILABLE
+
+    @staticmethod
+    def pyrfc_mensagem_indisponivel() -> str:
+        """
+        Mensagem para API/UI quando o PyRFC não carrega (pacote ausente, SDK ou LD_LIBRARY_PATH).
+        """
+        det_full = (PYRFC_IMPORT_ERROR or "").strip()
+        det = det_full[:240] + ("..." if len(det_full) > 240 else "") if det_full else ""
+
+        # Pacote Python não instalado no mesmo interpretador do Gunicorn/Streamlit/Celery
+        if "no module named" in det_full.lower() and "pyrfc" in det_full.lower():
+            return (
+                "Integração SAP inativa: o pacote Python **pyrfc** não está instalado neste ambiente. "
+                "Ative o mesmo venv do servidor (ex.: GDF_PJT/venv) e execute: `pip install pyrfc`. "
+                "Em seguida instale o SAP NetWeaver RFC SDK em `<raiz-do-repositório>/nwrfcsdk`, "
+                "configure SAPNWRFC_HOME e LD_LIBRARY_PATH (nwrfcsdk/lib) e reinicie os processos."
+                + (f" (detalhe: {det})" if det else "")
+            )
+
+        # SDK / biblioteca nativa ausente ou loader não encontra libsapnwrfc.so
+        if any(
+            x in det_full.lower()
+            for x in (
+                "libsapnwrfc",
+                "cannot open shared object",
+                "connection",
+                "importerror",
+                "_cyrfc",
+            )
+        ):
+            msg = (
+                "Integração SAP inativa: o PyRFC não carregou a biblioteca nativa do SAP. "
+                "Instale o SAP NetWeaver RFC SDK, coloque em `<raiz-do-repositório>/nwrfcsdk` "
+                "(com `lib/libsapnwrfc.so`), defina SAPNWRFC_HOME e inclua `nwrfcsdk/lib` em "
+                "LD_LIBRARY_PATH antes de subir Django ou Streamlit, e reinicie."
+            )
+            return f"{msg} (detalhe: {det})" if det else msg
+
+        msg = (
+            "Integração SAP inativa: falha ao importar o PyRFC. "
+            "1) No venv do projeto: `pip install pyrfc`. "
+            "2) Instale o SAP NW RFC SDK em `nwrfcsdk`, com SAPNWRFC_HOME e LD_LIBRARY_PATH. "
+            "3) Reinicie Django/Streamlit."
+        )
+        return f"{msg} (detalhe: {det})" if det else msg
 
     @staticmethod
     def get_connection(cod_cliente):
@@ -162,7 +475,7 @@ class SapRfc:
         """
         if not PYRFC_AVAILABLE:
             print("[SapRfc] call: PyRFC não disponível")
-            return False, "PyRFC não disponível. SAP desativado."
+            return False, SapRfc.pyrfc_mensagem_indisponivel()
         conn = SapRfc._resolve_conn(cod_cliente_or_conn)
         if conn is None:
             cod = cod_cliente_or_conn if isinstance(cod_cliente_or_conn, str) else getattr(cod_cliente_or_conn, 'gdfcliente_id', '?')
@@ -206,7 +519,7 @@ class SapRfc:
         """
         if not PYRFC_AVAILABLE:
             print("[SapRfc] with_connection: PyRFC não disponível")
-            return False, "PyRFC não disponível. SAP desativado."
+            return False, SapRfc.pyrfc_mensagem_indisponivel()
         conn = SapRfc._resolve_conn(cod_cliente_or_conn)
         if conn is None:
             cod = cod_cliente_or_conn if isinstance(cod_cliente_or_conn, str) else getattr(cod_cliente_or_conn, 'gdfcliente_id', '?')
@@ -359,7 +672,7 @@ class SapRfc:
         if not SapRfc.is_available():
             return {
                 'sucesso': False,
-                'mensagem': 'PyRFC não disponível. SAP desativado.',
+                'mensagem': SapRfc.pyrfc_mensagem_indisponivel(),
                 'total_linhas': 0,
                 'total_gravados': 0,
                 'resultado_rfc': None,
@@ -516,6 +829,133 @@ class SapRfc:
             'resultado_rfc': result,
         }
 
+    @staticmethod
+    def consultar_balanco_financeiro(cod_cliente, **params):
+        """
+        RFC ZF_ECF01 — balanço financeiro (T_BALANCE, R_RETURN).
+
+        Parâmetros em params (API/UI), alinhados à RFC:
+          I_BUKRS, I_MONTH_B, I_MONTH_V, I_YEAR, I_KTOPL, I_VERSN — na API: i_bukrs, i_month_b,
+          i_month_v, i_year, i_ktopl, i_versn (aceita também I_*). Aliases: i_month_ini / i_month_fim
+          no lugar de i_month_b / i_month_v. Período único: i_month + i_year (envia B = V).
+
+        Uma única chamada RFC; cada linha traz ano_referencia, mes_referencia_b e mes_referencia_v.
+
+        Retorno: dict com sucesso, mensagem, r_return, t_balance, total_linhas, colunas.
+        """
+        i_bukrs = str(params.get("i_bukrs") or params.get("I_BUKRS") or "").strip()
+        intervalo, err_intervalo = _zf_ecf01_resolver_intervalo_meses(params)
+        if err_intervalo or not intervalo:
+            return {
+                "sucesso": False,
+                "mensagem": err_intervalo or "Não foi possível determinar o período.",
+                "r_return": "",
+                "t_balance": [],
+                "total_linhas": 0,
+                "colunas": [],
+            }
+        ref_year, month_b, month_v = intervalo
+        i_ktopl = str(params.get("i_ktopl") or params.get("I_KTOPL") or "").strip()
+        i_versn = str(params.get("i_versn") or params.get("I_VERSN") or "").strip()
+
+        if not i_bukrs:
+            return {
+                "sucesso": False,
+                "mensagem": "Empresa (I_BUKRS) é obrigatória.",
+                "r_return": "",
+                "t_balance": [],
+                "total_linhas": 0,
+                "colunas": [],
+            }
+        if not i_ktopl or not i_versn:
+            return {
+                "sucesso": False,
+                "mensagem": "Plano de contas (I_KTOPL) e versão (I_VERSN) são obrigatórios.",
+                "r_return": "",
+                "t_balance": [],
+                "total_linhas": 0,
+                "colunas": [],
+            }
+
+        if not SapRfc.is_available():
+            return {
+                "sucesso": False,
+                "mensagem": SapRfc.pyrfc_mensagem_indisponivel(),
+                "r_return": "",
+                "t_balance": [],
+                "total_linhas": 0,
+                "colunas": [],
+            }
+
+        rfc_params = _zf_ecf01_montar_parametros(
+            i_bukrs, month_b, month_v, ref_year, i_ktopl, i_versn
+        )
+        print(
+            f"[SapRfc] consultar_balanco_financeiro: cod_cliente={cod_cliente!r} "
+            f"I_BUKRS={rfc_params['I_BUKRS']} I_MONTH_B={rfc_params['I_MONTH_B']} "
+            f"I_MONTH_V={rfc_params['I_MONTH_V']} I_YEAR={rfc_params['I_YEAR']}"
+        )
+        ok, result = SapRfc.call(cod_cliente, _RFC_BALANCO_FINANCEIRO, **rfc_params)
+
+        if not ok:
+            err = str(result or f"Erro ao chamar RFC {_RFC_BALANCO_FINANCEIRO}.")
+            return {
+                "sucesso": False,
+                "mensagem": err,
+                "r_return": "",
+                "t_balance": [],
+                "total_linhas": 0,
+                "colunas": [],
+            }
+
+        linhas_brutas, r_return = _zf_ecf01_extrair_t_balance_e_return(
+            result if isinstance(result, dict) else None
+        )
+        linhas_proc = [
+            _zf_ecf01_processar_linha_t_balance(row) for row in linhas_brutas if isinstance(row, dict)
+        ]
+        if not linhas_proc and r_return:
+            return {
+                "sucesso": False,
+                "mensagem": r_return,
+                "r_return": r_return,
+                "t_balance": [],
+                "total_linhas": 0,
+                "colunas": [],
+            }
+
+        t_balance: List[Dict[str, Any]] = []
+        for proc in linhas_proc:
+            linha = {
+                "ano_referencia": ref_year,
+                "mes_referencia_b": month_b,
+                "mes_referencia_v": month_v,
+                **proc,
+            }
+            t_balance.append(linha)
+
+        colunas: List[str] = list(T_BALANCE_COLUNAS_RESPOSTA) if t_balance else []
+        label_periodo = f"{ref_year}: I_MONTH_B={month_b} … I_MONTH_V={month_v}"
+        if month_b == month_v:
+            msg_ok = (
+                "Dados obtidos com sucesso." if t_balance else "Nenhuma linha retornada para os filtros informados."
+            )
+        else:
+            msg_ok = (
+                f"Dados obtidos com sucesso ({label_periodo})."
+                if t_balance
+                else f"Nenhuma linha retornada ({label_periodo})."
+            )
+        print(f"[SapRfc] consultar_balanco_financeiro: {len(t_balance)} linha(s) em T_BALANCE")
+        return {
+            "sucesso": True,
+            "mensagem": msg_ok,
+            "r_return": r_return or "",
+            "t_balance": t_balance,
+            "total_linhas": len(t_balance),
+            "colunas": colunas,
+        }
+
 
 def enviar_condicoes_pagamento_sap(id_lote, cod_cliente, condicoes_lista):
     """
@@ -549,7 +989,7 @@ def enviar_condicoes_pagamento_sap(id_lote, cod_cliente, condicoes_lista):
         ]
         return {
             'sucesso': False,
-            'mensagem': 'PyRFC não disponível. SAP desativado.',
+            'mensagem': SapRfc.pyrfc_mensagem_indisponivel(),
             'retornos': retornos,
         }
 

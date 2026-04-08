@@ -12,7 +12,7 @@
 {% block titlepage %}Carga SPED{% endblock %}
 
 {% block container %}
-<div class="cargaxml-page layout-page" data-url-prefix="{{ url_prefix|default:'' }}">
+<div class="cargaxml-page layout-page" data-url-prefix="{{ url_prefix|default:'' }}" data-pode-carga-automatica="{% if pode_gerenciar_carga_automatica %}1{% else %}0{% endif %}">
     {% csrf_token %}
 
     <!-- Hero / Ações -->
@@ -98,6 +98,7 @@
             </ul>
         </article>
 
+        {% if pode_gerenciar_carga_automatica %}
         <!-- Card 4: Parâmetros -->
         <article class="home-card cargaxml-card cargaxml-card-parametros">
             <div class="home-card-head">
@@ -144,6 +145,7 @@
                 <ul id="paginacao-cargas" class="pagination pagination-sm justify-content-end mb-0"></ul>
             </nav>
         </article>
+        {% endif %}
     </section>
 </div>
 
@@ -161,9 +163,11 @@
                     <li class="nav-item">
                         <button class="nav-link active" id="tab-manual-sped" data-bs-toggle="tab" data-bs-target="#manual-sped" type="button">Carga Manual</button>
                     </li>
+                    {% if pode_gerenciar_carga_automatica %}
                     <li class="nav-item">
                         <button class="nav-link" id="tab-automatico-sped" data-bs-toggle="tab" data-bs-target="#automatico-sped" type="button">Carga Automática</button>
                     </li>
+                    {% endif %}
                 </ul>
                 <div class="tab-content">
                     <div class="tab-pane fade show active" id="manual-sped">
@@ -198,6 +202,7 @@
                             <strong>Arquivos:</strong> <span id="contador-sped">0</span>
                         </div>
                     </div>
+                    {% if pode_gerenciar_carga_automatica %}
                     <div class="tab-pane fade" id="automatico-sped">
                         <form id="form-parametros-sped" class="param-form">
                             <div class="row g-3">
@@ -236,6 +241,7 @@
                             </table>
                         </div>
                     </div>
+                    {% endif %}
                 </div>
             </div>
             <div class="modal-footer">
@@ -246,6 +252,7 @@
     </div>
 </div>
 
+{% if pode_gerenciar_carga_automatica %}
 <!-- MODAL - UPLOAD ZIP SPED -->
 <div class="modal fade" id="modalUploadZipSped" tabindex="-1">
     <div class="modal-dialog">
@@ -266,6 +273,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 <!-- MODAL - DETALHES JOB SPED -->
 <div class="modal fade" id="modalJobDetailsSped" tabindex="-1">

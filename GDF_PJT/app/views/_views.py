@@ -103,12 +103,15 @@ from django.core.exceptions import ValidationError
 from app.utils.view_helpers import (
     COD_CLIENTE_PROJETO,
     TIPO_PAGAMENTO_DESC,
+    autenticar_sessao_ou_jwt_dashboard,
     descricao_tipo_pagamento,
     get_subsolucoes_usuario,
+    json_negado_gerenciar_carga_automatica,
     relatorio_empresas_queryset,
     reprocessamento_empresas_cliente,
     superuser_acesso_total_painel,
     usuario_acesso_total_painel,
+    usuario_pode_gerenciar_carga_automatica,
     usuario_vinculado_cliente_1000,
 )
 from app.utils.relatorio_params import (
@@ -118,6 +121,7 @@ from app.utils.relatorio_params import (
     parse_filial_id,
     parse_relatorio_order,
 )
+from app.utils.datetime_json import isoformat_brasilia
 
 @ensure_csrf_cookie
 def fn_view_login(request):
@@ -868,6 +872,24 @@ def fn_view_dashboard_custo(request):
     return render(request, "Dashboard/index_Custo.html", {"token": token, "streamlit_iframe_url": streamlit_url})
 
 
+@login_required(login_url='Login')
+@requer_acesso_subsolucao('Db_BalancoFin')
+def fn_view_dashboard_balanco_financeiro(request):
+    """Dashboard Balanço financeiro (Streamlit); token tipo_relatorio BalancoFin."""
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
+    token = ClGdf.gerar_token(request, request.user, tipo_relatorio='BalancoFin')
+    if not token:
+        return render(request, 'index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
+    streamlit_url = _streamlit_iframe_url(request)
+    return render(
+        request,
+        "Dashboard/index_BalancoFinanceiro.html",
+        {"token": token, "streamlit_iframe_url": streamlit_url},
+    )
+
+
 #--------------------------------------------------------------------
 #       Sub-soluções Views (Manifesto)
 #--------------------------------------------------------------------
@@ -1476,6 +1498,7 @@ def fn_view_CargaXml(request):
         "parametros": parametros,
         "empresas_usuario": empresas_usuario,
         "url_prefix": url_prefix,
+        "pode_gerenciar_carga_automatica": usuario_pode_gerenciar_carga_automatica(request.user),
     }
     return render(request, "Processamento/index_CargaXml.html", context)
 
@@ -1645,6 +1668,9 @@ def fn_api_cargaxml_parametros(request):
 
     cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
 
+    if not usuario_pode_gerenciar_carga_automatica(request.user):
+        return json_negado_gerenciar_carga_automatica()
+
     if request.method == "GET":
         apenas_ativos = request.GET.get('ativo')
         parametros = ParametroCargaXml.objects.filter(gdfcliente=cliente)
@@ -1662,7 +1688,7 @@ def fn_api_cargaxml_parametros(request):
                 'diretorio': param.diretorio,
                 'empresa_id': param.empresa.cod_empresa if param.empresa else None,
                 'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
-                'ultima_execucao': param.ultima_execucao.isoformat() if param.ultima_execucao else None,
+                'ultima_execucao': isoformat_brasilia(param.ultima_execucao),
             })
 
         return JsonResponse({'sucesso': True, 'items': items}, status=200)
@@ -1741,6 +1767,9 @@ def fn_api_cargaxml_parametro_detail(request, param_id):
     cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
     param = get_object_or_404(ParametroCargaXml, id=param_id, gdfcliente=cliente)
 
+    if not usuario_pode_gerenciar_carga_automatica(request.user):
+        return json_negado_gerenciar_carga_automatica()
+
     if request.method == 'GET':
         param_data = {
             'id': param.id,
@@ -1750,7 +1779,7 @@ def fn_api_cargaxml_parametro_detail(request, param_id):
             'diretorio': param.diretorio,
             'empresa_id': param.empresa.cod_empresa if param.empresa else None,
             'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
-            'ultima_execucao': param.ultima_execucao.isoformat() if param.ultima_execucao else None,
+            'ultima_execucao': isoformat_brasilia(param.ultima_execucao),
         }
         return JsonResponse({'sucesso': True, 'parametro': param_data}, status=200)
 
@@ -1815,6 +1844,9 @@ def fn_api_cargaxml_upload_zip(request, param_id):
     cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
     param = get_object_or_404(ParametroCargaXml, id=param_id, gdfcliente=cliente)
 
+    if not usuario_pode_gerenciar_carga_automatica(request.user):
+        return json_negado_gerenciar_carga_automatica()
+
     arquivo_zip = request.FILES.get('arquivo_zip')
     if not arquivo_zip:
         return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo ZIP enviado'}, status=400)
@@ -1875,6 +1907,10 @@ def fn_api_cargaxml_relatorio(request):
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
 
     cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
+
+    if not usuario_pode_gerenciar_carga_automatica(request.user):
+        return json_negado_gerenciar_carga_automatica()
+
     parametros = ParametroCargaXml.objects.filter(gdfcliente=cliente)
     items = []
 
@@ -1891,14 +1927,14 @@ def fn_api_cargaxml_relatorio(request):
             'empresa_id': param.empresa.cod_empresa if param.empresa else None,
             'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
             'dir_exists': dir_exists,
-            'ultima_execucao': param.ultima_execucao.isoformat() if param.ultima_execucao else None,
+            'ultima_execucao': isoformat_brasilia(param.ultima_execucao),
             'last_job_status': last_job.status if last_job else None,
             'last_job_total': last_job.total_arquivos if last_job else None,
             'last_job_success': last_job.total_sucesso if last_job else None,
             'last_job_error': last_job.total_erro if last_job else None,
             'last_job_msg': last_job.mensagem if last_job else None,
-            'last_job_started': last_job.started_at.isoformat() if last_job and last_job.started_at else None,
-            'last_job_finished': last_job.finished_at.isoformat() if last_job and last_job.finished_at else None,
+            'last_job_started': isoformat_brasilia(last_job.started_at if last_job else None),
+            'last_job_finished': isoformat_brasilia(last_job.finished_at if last_job else None),
         })
 
     return JsonResponse({'sucesso': True, 'items': items}, status=200)
@@ -1915,6 +1951,9 @@ def fn_api_cargaxml_param_toggle(request, param_id):
 
     cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
     param = get_object_or_404(ParametroCargaXml, id=param_id, gdfcliente=cliente)
+
+    if not usuario_pode_gerenciar_carga_automatica(request.user):
+        return json_negado_gerenciar_carga_automatica()
 
     ativo_raw = None
     if request.content_type and 'application/json' in request.content_type:
@@ -2006,8 +2045,8 @@ def fn_api_cargaxml_avisos(request):
         log_lines = _ordem_log_erros_primeiro(log_lines)
         items.append({
             'id': job.id,
-            'started_at': job.started_at.isoformat() if job.started_at else None,
-            'finished_at': job.finished_at.isoformat() if job.finished_at else None,
+            'started_at': isoformat_brasilia(job.started_at),
+            'finished_at': isoformat_brasilia(job.finished_at),
             'total_arquivos': job.total_arquivos,
             'total_sucesso': job.total_sucesso,
             'total_erro': job.total_erro,
@@ -2036,8 +2075,8 @@ def fn_api_cargaxml_jobs(request):
             'total_sucesso': job.total_sucesso,
             'total_erro': job.total_erro,
             'mensagem': (job.mensagem or '')[:500],
-            'started_at': job.started_at.isoformat() if job.started_at else None,
-            'finished_at': job.finished_at.isoformat() if job.finished_at else None,
+            'started_at': isoformat_brasilia(job.started_at),
+            'finished_at': isoformat_brasilia(job.finished_at),
             'parametro_id': job.parametro.id if job.parametro else None,
         })
     return JsonResponse({'sucesso': True, 'items': items}, status=200)
@@ -2091,15 +2130,16 @@ def fn_api_cargaxml_job_details(request, job_id):
     param_data = None
     if job.parametro:
         p = job.parametro
+        pode_auto = usuario_pode_gerenciar_carga_automatica(request.user)
         param_data = {
             'id': p.id,
             'ativo': p.ativo,
             'horario': p.horario.strftime('%H:%M'),
             'origem_dados': p.origem_dados,
-            'diretorio': p.diretorio,
+            'diretorio': p.diretorio if pode_auto else '',
             'empresa_id': p.empresa.cod_empresa if p.empresa else None,
             'empresa_nome': p.empresa.fantasia or p.empresa.razao if p.empresa else '',
-            'ultima_execucao': p.ultima_execucao.isoformat() if p.ultima_execucao else None,
+            'ultima_execucao': isoformat_brasilia(p.ultima_execucao),
         }
     return JsonResponse({
         'sucesso': True,
@@ -2109,8 +2149,8 @@ def fn_api_cargaxml_job_details(request, job_id):
             'total_arquivos': job.total_arquivos,
             'total_sucesso': job.total_sucesso,
             'total_erro': job.total_erro,
-            'started_at': job.started_at.isoformat() if job.started_at else None,
-            'finished_at': job.finished_at.isoformat() if job.finished_at else None,
+            'started_at': isoformat_brasilia(job.started_at),
+            'finished_at': isoformat_brasilia(job.finished_at),
         },
         'parametro': param_data,
         'log': log_lines,
@@ -2254,6 +2294,9 @@ def fn_api_cargasped_parametros(request):
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
 
+    if not usuario_pode_gerenciar_carga_automatica(request.user):
+        return json_negado_gerenciar_carga_automatica()
+
     if request.method == "GET":
         parametros = ParametroCargaSped.objects.filter(gdfcliente=cliente)
         items = []
@@ -2266,7 +2309,7 @@ def fn_api_cargasped_parametros(request):
                 'diretorio': param.diretorio,
                 'empresa_id': param.empresa.cod_empresa if param.empresa else None,
                 'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
-                'ultima_execucao': param.ultima_execucao.isoformat() if param.ultima_execucao else None,
+                'ultima_execucao': isoformat_brasilia(param.ultima_execucao),
             })
         return JsonResponse({'sucesso': True, 'items': items}, status=200)
 
@@ -2327,6 +2370,9 @@ def fn_api_cargasped_parametro_detail(request, param_id):
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     param = get_object_or_404(ParametroCargaSped, id=param_id, gdfcliente__cod_cliente=cod_cliente)
 
+    if not usuario_pode_gerenciar_carga_automatica(request.user):
+        return json_negado_gerenciar_carga_automatica()
+
     if request.method == "GET":
         return JsonResponse({
             'sucesso': True,
@@ -2338,7 +2384,7 @@ def fn_api_cargasped_parametro_detail(request, param_id):
                 'diretorio': param.diretorio,
                 'empresa_id': param.empresa.cod_empresa if param.empresa else None,
                 'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
-                'ultima_execucao': param.ultima_execucao.isoformat() if param.ultima_execucao else None,
+                'ultima_execucao': isoformat_brasilia(param.ultima_execucao),
             }
         }, status=200)
 
@@ -2376,6 +2422,10 @@ def fn_api_cargasped_upload_zip(request, param_id):
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
     param = get_object_or_404(ParametroCargaSped, id=param_id, gdfcliente=cliente)
+
+    if not usuario_pode_gerenciar_carga_automatica(request.user):
+        return json_negado_gerenciar_carga_automatica()
+
     arquivo_zip = request.FILES.get('arquivo_zip')
     if not arquivo_zip or not (arquivo_zip.name or '').lower().endswith('.zip'):
         return JsonResponse({'sucesso': False, 'mensagem': 'Envie um arquivo .zip'}, status=400)
@@ -2424,6 +2474,10 @@ def fn_api_cargasped_param_toggle(request, param_id):
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     param = get_object_or_404(ParametroCargaSped, id=param_id, gdfcliente__cod_cliente=cod_cliente)
+
+    if not usuario_pode_gerenciar_carga_automatica(request.user):
+        return json_negado_gerenciar_carga_automatica()
+
     body = json.loads(request.body.decode('utf-8')) if request.content_type and 'application/json' in request.content_type else {}
     ativo_raw = body.get('ativo', request.POST.get('ativo'))
     if ativo_raw is None:
@@ -2476,8 +2530,8 @@ def fn_api_cargasped_avisos(request):
             log_lines = [msg.strip()]
         items.append({
             'id': job.id,
-            'started_at': job.started_at.isoformat() if job.started_at else None,
-            'finished_at': job.finished_at.isoformat() if job.finished_at else None,
+            'started_at': isoformat_brasilia(job.started_at),
+            'finished_at': isoformat_brasilia(job.finished_at),
             'total_arquivos': job.total_arquivos,
             'total_sucesso': job.total_sucesso,
             'total_erro': job.total_erro,
@@ -2501,8 +2555,8 @@ def fn_api_cargasped_jobs(request):
         'total_arquivos': j.total_arquivos,
         'total_sucesso': j.total_sucesso,
         'total_erro': j.total_erro,
-        'started_at': j.started_at.isoformat() if j.started_at else None,
-        'finished_at': j.finished_at.isoformat() if j.finished_at else None,
+        'started_at': isoformat_brasilia(j.started_at),
+        'finished_at': isoformat_brasilia(j.finished_at),
         'parametro_id': j.parametro.id if j.parametro else None,
     } for j in jobs]
     return JsonResponse({'sucesso': True, 'items': items}, status=200)
@@ -2520,14 +2574,15 @@ def fn_api_cargasped_job_details(request, job_id):
     param_data = None
     if job.parametro:
         p = job.parametro
+        pode_auto = usuario_pode_gerenciar_carga_automatica(request.user)
         param_data = {
             'id': p.id, 'ativo': p.ativo,
             'horario': p.horario.strftime('%H:%M'),
             'tipo_sped': p.tipo_sped,
-            'diretorio': p.diretorio,
+            'diretorio': p.diretorio if pode_auto else '',
             'empresa_id': p.empresa.cod_empresa if p.empresa else None,
             'empresa_nome': p.empresa.fantasia or p.empresa.razao if p.empresa else '',
-            'ultima_execucao': p.ultima_execucao.isoformat() if p.ultima_execucao else None,
+            'ultima_execucao': isoformat_brasilia(p.ultima_execucao),
         }
     return JsonResponse({
         'sucesso': True,
@@ -2536,8 +2591,8 @@ def fn_api_cargasped_job_details(request, job_id):
             'total_arquivos': job.total_arquivos,
             'total_sucesso': job.total_sucesso,
             'total_erro': job.total_erro,
-            'started_at': job.started_at.isoformat() if job.started_at else None,
-            'finished_at': job.finished_at.isoformat() if job.finished_at else None,
+            'started_at': isoformat_brasilia(job.started_at),
+            'finished_at': isoformat_brasilia(job.finished_at),
         },
         'parametro': param_data,
         'log': log_lines,
@@ -2586,6 +2641,7 @@ def fn_view_CargaSped(request):
         "parametros": parametros,
         "empresas_usuario": empresas_usuario,
         "url_prefix": url_prefix,
+        "pode_gerenciar_carga_automatica": usuario_pode_gerenciar_carga_automatica(request.user),
     }
     return render(request, "Processamento/index_CargaSped.html", context)
 
@@ -4076,6 +4132,32 @@ def fn_api_rfc_executar(request):
     registry = get_rfc_registry()
     result = registry.execute(cod_rfc, cod_cliente, **params)
     return JsonResponse(result)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def fn_api_sap_balanco_financeiro(request):
+    """
+    Consulta RFC ZF_ECF01 (balanço financeiro) no processo Django (PyRFC).
+
+    Autenticação: sessão (navegador) ou ``Authorization: Bearer <JWT do dashboard>`` (Streamlit).
+    Body JSON: ``i_bukrs``, ``i_ktopl``, ``i_versn``, ``i_year`` e ``i_month_b`` / ``i_month_v``
+    (equivalente SAP a I_MONTH_B inicial e I_MONTH_V final; alias ``i_month_ini`` / ``i_month_fim``), ou
+    ``i_month`` + ``i_year`` (período único, B = V).
+    """
+    _user, cod_cliente, auth_err = autenticar_sessao_ou_jwt_dashboard(request, "Db_BalancoFin")
+    if auth_err is not None:
+        return auth_err
+
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'sucesso': False, 'mensagem': 'JSON inválido'}, status=400)
+
+    from app.integracao_sap.zf_ecf01_balanco import executar_balanco_financeiro
+
+    out = executar_balanco_financeiro(cod_cliente, **data)
+    return JsonResponse(out)
 
 
 # -------------------------------------------------------------------------

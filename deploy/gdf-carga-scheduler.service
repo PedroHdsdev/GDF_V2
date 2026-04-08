@@ -1,0 +1,25 @@
+[Unit]
+Description=GDF agendador de carga automática sem Celery (run_carga_scheduler.py)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/gdf_v2/GDF_PJT
+Environment="PATH=/var/www/gdf_v2/venv/bin"
+Environment="DJANGO_SETTINGS_MODULE=GDF_PJT.settings"
+ExecStart=/var/www/gdf_v2/GDF_PJT/bin/run_carga_scheduler_foreground.sh
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+
+# Use este serviço OU o par celery-worker + celery-beat, não os dois para a mesma função.
+# Instalação:
+#   sudo cp deploy/gdf-carga-scheduler.service /etc/systemd/system/
+#   sudo chmod +x /var/www/gdf_v2/GDF_PJT/bin/run_carga_scheduler_foreground.sh
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now gdf-carga-scheduler

@@ -10,6 +10,19 @@ const estadoSped = {
     avisosAtuaisIds: []
 };
 
+function formatJobDateTimeLocal(iso, detailed) {
+    if (!iso) return '-';
+    try {
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        return d.toLocaleString('pt-BR', detailed
+            ? { dateStyle: 'short', timeStyle: 'medium' }
+            : { dateStyle: 'short', timeStyle: 'short' });
+    } catch (e) {
+        return iso;
+    }
+}
+
 function obterCsrfToken() {
     const t = document.querySelector('[name=csrfmiddlewaretoken]');
     return t ? t.value : '';
@@ -20,6 +33,11 @@ function getApiBase() {
     var prefix = (el && el.getAttribute('data-url-prefix')) || '';
     if (!prefix && typeof getUrlPrefix === 'function') prefix = getUrlPrefix();
     return prefix || '';
+}
+
+function podeGerenciarCargaAutomatica() {
+    var el = document.querySelector('.cargaxml-page[data-pode-carga-automatica]');
+    return !!(el && el.getAttribute('data-pode-carga-automatica') === '1');
 }
 
 var intervaloResumoSped = null;
@@ -128,13 +146,6 @@ function preencherModalAvisosCargaSped(items) {
     }
     emptyEl.style.display = 'none';
     listEl.style.display = 'block';
-    function formatDt(iso) {
-        if (!iso) return '-';
-        try {
-            var d = new Date(iso);
-            return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-        } catch (e) { return iso; }
-    }
     function escapeHtml(s) {
         return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
@@ -174,7 +185,7 @@ function preencherModalAvisosCargaSped(items) {
         var bodyVisible = index === 0;
         html += '<div class="aviso-item layout-subcard">';
         html += '  <div class="aviso-item-header d-flex justify-content-between align-items-center" role="button" tabindex="0">';
-        html += '    <span class="aviso-item-info"><strong>Job #' + job.id + '</strong> &middot; ' + formatDt(job.started_at) + ' <span class="text-muted small ms-1">(clique para ' + (bodyVisible ? 'recolher' : 'expandir') + ')</span></span>';
+        html += '    <span class="aviso-item-info"><strong>Job #' + job.id + '</strong> &middot; ' + formatJobDateTimeLocal(job.started_at, false) + ' <span class="text-muted small ms-1">(clique para ' + (bodyVisible ? 'recolher' : 'expandir') + ')</span></span>';
         html += '    <span class="d-flex align-items-center gap-2">';
         if (totalOk > 0) html += '<span class="badge aviso-badge-ok">' + totalOk + ' OK</span>';
         html += '<span class="badge aviso-badge-erro">' + totalErro + ' erro(s)</span> <i class="fas fa-chevron-' + (bodyVisible ? 'down' : 'right') + ' aviso-chevron small"></i></span>';
@@ -265,7 +276,7 @@ function renderizarEmExecucaoSped() {
         li.className = 'home-activity-item cargaxml-job-item';
         li.style.cursor = 'pointer';
         li.setAttribute('data-job-id', carga.id);
-        var dataStr = carga.started_at ? (carga.started_at.split('T')[0] + ' ' + (carga.started_at.split('T')[1] || '').substring(0, 5)) : '-';
+        var dataStr = carga.started_at ? formatJobDateTimeLocal(carga.started_at, false) : '-';
         li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + (carga.tipo || 'SPED') + '</span>' +
             '<div class="home-activity-detail">' +
             '<span class="home-activity-status home-activity-status-running">Em execução</span>' +
@@ -299,7 +310,7 @@ function renderizarJaExecutadoSped() {
         li.className = 'home-activity-item cargaxml-job-item';
         li.style.cursor = 'pointer';
         var statusClass = (carga.status || '').toUpperCase() === 'ERROR' ? 'home-activity-status-error' : 'home-activity-status-success';
-        var dataStr = carga.started_at ? (carga.started_at.split('T')[0] + ' ' + (carga.started_at.split('T')[1] || '').substring(0, 5)) : '-';
+        var dataStr = carga.started_at ? formatJobDateTimeLocal(carga.started_at, false) : '-';
         li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + (carga.tipo || 'SPED') + '</span>' +
             '<div class="home-activity-detail">' +
             '<span class="home-activity-status ' + statusClass + '">' + (carga.status === 'SUCCESS' ? 'Concluído' : 'Erro') + '</span>' +
@@ -328,13 +339,6 @@ function renderizarLogsResumoSped(items) {
     }
     emptyEl.style.display = 'none';
     contentEl.style.display = 'block';
-    function formatDt(iso) {
-        if (!iso) return '-';
-        try {
-            var d = new Date(iso);
-            return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-        } catch (e) { return iso; }
-    }
     function escapeHtml(s) {
         return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
@@ -352,7 +356,7 @@ function renderizarLogsResumoSped(items) {
             return t.indexOf('ERRO:') === 0 || t.indexOf('PENDENTES') === 0;
         }).slice(0, 5) : [];
         html += '<div class="cargaxml-log-job mb-3">';
-        html += '<div class="small fw-600 text-secondary mb-1">Job #' + job.id + ' \u00b7 ' + formatDt(job.started_at) + '</div>';
+        html += '<div class="small fw-600 text-secondary mb-1">Job #' + job.id + ' \u00b7 ' + formatJobDateTimeLocal(job.started_at, false) + '</div>';
         if (logLines.length === 0) {
             html += '<div class="small text-muted">Sem linhas de log</div>';
         } else {
@@ -367,16 +371,26 @@ function renderizarLogsResumoSped(items) {
 
 function abrirModalJobSped(jobId) {
     if (!jobId) return;
+    var expectedId = Number(jobId);
     fetch(getApiBase() + '/api/cargasped/jobs/' + jobId + '/', { method: 'GET', headers: { 'X-CSRFToken': obterCsrfToken() } })
         .then(function (r) { return r.json(); })
         .then(function (data) {
             if (!data.sucesso || !data.job) return;
+            if (Number(data.job.id) !== expectedId) return;
             var job = data.job;
             var logLines = data.log || [];
             document.getElementById('modal-sped-job-id').textContent = job.id;
             document.getElementById('modal-sped-job-status').textContent = job.status || '-';
-            document.getElementById('modal-sped-job-started').textContent = job.started_at ? new Date(job.started_at).toLocaleString('pt-BR') : '-';
-            document.getElementById('modal-sped-job-finished').textContent = job.finished_at ? new Date(job.finished_at).toLocaleString('pt-BR') : '-';
+            var elS = document.getElementById('modal-sped-job-started');
+            var elF = document.getElementById('modal-sped-job-finished');
+            if (elS) {
+                elS.textContent = formatJobDateTimeLocal(job.started_at, true);
+                elS.title = job.started_at ? ('Registro em UTC (API): ' + job.started_at) : '';
+            }
+            if (elF) {
+                elF.textContent = formatJobDateTimeLocal(job.finished_at, true);
+                elF.title = job.finished_at ? ('Registro em UTC (API): ' + job.finished_at) : '';
+            }
             document.getElementById('modal-sped-job-log').textContent = logLines.length ? logLines.join('\n') : 'Sem log.';
             var modal = document.getElementById('modalJobDetailsSped');
             if (modal && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
@@ -388,6 +402,7 @@ function abrirModalJobSped(jobId) {
 }
 
 function carregarParametrosPrincipais() {
+    if (!podeGerenciarCargaAutomatica()) return;
     const tbody = document.querySelector('#tabela-parametros-main tbody');
     if (!tbody) return;
     fetch(getApiBase() + '/api/cargasped/parametros/')
@@ -459,6 +474,7 @@ function renderizarTabelaParametrosSped() {
 }
 
 function carregarParametrosModal() {
+    if (!podeGerenciarCargaAutomatica()) return;
     const tbody = document.querySelector('#tabela-parametros-sped tbody');
     if (!tbody) return;
     fetch(getApiBase() + '/api/cargasped/parametros/')
@@ -520,7 +536,9 @@ function fecharModalELimparArquivosSped() {
         var inst = bootstrap.Modal.getInstance(modal);
         if (inst) inst.hide();
     }
-    carregarParametrosPrincipais();
+    if (podeGerenciarCargaAutomatica()) {
+        carregarParametrosPrincipais();
+    }
     carregarResumoCargaSped();
     carregarJobsCargaSped();
     carregarAvisosCargaSped();
@@ -608,7 +626,9 @@ function enviarArquivosManuais() {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    carregarParametrosPrincipais();
+    if (podeGerenciarCargaAutomatica()) {
+        carregarParametrosPrincipais();
+    }
     carregarResumoCargaSped();
     carregarJobsCargaSped();
     carregarAvisosCargaSped();
@@ -643,13 +663,15 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    const filtroBusca = document.getElementById('filtro-param-busca');
-    if (filtroBusca) filtroBusca.addEventListener('keyup', function () { estadoSped.filtros.busca = this.value.toLowerCase(); aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
+    if (podeGerenciarCargaAutomatica()) {
+        const filtroBusca = document.getElementById('filtro-param-busca');
+        if (filtroBusca) filtroBusca.addEventListener('keyup', function () { estadoSped.filtros.busca = this.value.toLowerCase(); aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
 
-    const chkAtivos = document.getElementById('filtro-param-ativos');
-    const chkInativos = document.getElementById('filtro-param-inativos');
-    if (chkAtivos) chkAtivos.addEventListener('change', function () { estadoSped.filtros.mostrarAtivos = this.checked; aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
-    if (chkInativos) chkInativos.addEventListener('change', function () { estadoSped.filtros.mostrarInativos = this.checked; aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
+        const chkAtivos = document.getElementById('filtro-param-ativos');
+        const chkInativos = document.getElementById('filtro-param-inativos');
+        if (chkAtivos) chkAtivos.addEventListener('change', function () { estadoSped.filtros.mostrarAtivos = this.checked; aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
+        if (chkInativos) chkInativos.addEventListener('change', function () { estadoSped.filtros.mostrarInativos = this.checked; aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
+    }
 
     const fileInput = document.getElementById('file-input-sped');
     const fileInputPasta = document.getElementById('file-input-sped-pasta');
@@ -679,45 +701,52 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    document.getElementById('form-parametros-sped').addEventListener('submit', function (e) {
-        e.preventDefault();
-        const payload = {
-            horario: document.getElementById('param-sped-horario').value,
-            diretorio: document.getElementById('param-sped-diretorio').value.trim(),
-            empresa_id: document.getElementById('param-sped-empresa').value,
-            ativo: document.getElementById('param-sped-ativo').checked
-        };
-        if (!payload.horario || !payload.diretorio) { Notificacoes.modal('Preencha horário e diretório.', 'warning', 'modalCargaSpedAlerts'); return; }
-        fetch(getApiBase() + '/api/cargasped/parametros/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': obterCsrfToken() },
-            body: JSON.stringify(payload)
-        })
-            .then(r => r.json())
-            .then(data => {
-                if (data.sucesso) { carregarParametrosModal(); carregarParametrosPrincipais(); this.reset(); }
-                else Notificacoes.modal(data.mensagem || 'Erro', 'danger', 'modalCargaSpedAlerts');
+    var formParamSped = document.getElementById('form-parametros-sped');
+    if (formParamSped) {
+        formParamSped.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const payload = {
+                horario: document.getElementById('param-sped-horario').value,
+                diretorio: document.getElementById('param-sped-diretorio').value.trim(),
+                empresa_id: document.getElementById('param-sped-empresa').value,
+                ativo: document.getElementById('param-sped-ativo').checked
+            };
+            if (!payload.horario || !payload.diretorio) { Notificacoes.modal('Preencha horário e diretório.', 'warning', 'modalCargaSpedAlerts'); return; }
+            fetch(getApiBase() + '/api/cargasped/parametros/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': obterCsrfToken() },
+                body: JSON.stringify(payload)
             })
-            .catch(() => Notificacoes.modal('Erro na requisição.', 'danger', 'modalCargaSpedAlerts'));
-    });
+                .then(r => r.json())
+                .then(data => {
+                    if (data.sucesso) { carregarParametrosModal(); carregarParametrosPrincipais(); this.reset(); }
+                    else Notificacoes.modal(data.mensagem || 'Erro', 'danger', 'modalCargaSpedAlerts');
+                })
+                .catch(() => Notificacoes.modal('Erro na requisição.', 'danger', 'modalCargaSpedAlerts'));
+        });
+    }
 
-    document.getElementById('tab-automatico-sped').addEventListener('shown.bs.tab', carregarParametrosModal);
+    var tabAutoSped = document.getElementById('tab-automatico-sped');
+    if (tabAutoSped) tabAutoSped.addEventListener('shown.bs.tab', carregarParametrosModal);
 
-    document.getElementById('btn-confirmar-upload-zip-sped').addEventListener('click', function () {
-        const paramId = document.getElementById('upload-zip-sped-param-id').value;
-        const fileInput = document.getElementById('upload-zip-sped-file');
-        if (!paramId || !fileInput.files || !fileInput.files[0]) { Notificacoes.modal('Selecione um arquivo ZIP.', 'warning', 'modalUploadZipSpedAlerts'); return; }
-        const fd = new FormData();
-        fd.append('arquivo_zip', fileInput.files[0]);
-        fd.append('csrfmiddlewaretoken', obterCsrfToken());
-        fetch(getApiBase() + `/api/cargasped/parametros/${paramId}/upload-zip/`, { method: 'POST', body: fd })
-            .then(r => r.json())
-            .then(data => {
-                Notificacoes.modal(data.mensagem || (data.sucesso ? 'OK' : 'Erro'), data.sucesso ? 'success' : 'danger', 'modalUploadZipSpedAlerts');
-                if (data.sucesso) { fileInput.value = ''; bootstrap.Modal.getInstance(document.getElementById('modalUploadZipSped')).hide(); carregarParametrosPrincipais(); carregarParametrosModal(); }
-            })
-            .catch(() => Notificacoes.modal('Erro na requisição.', 'danger', 'modalUploadZipSpedAlerts'));
-    });
+    var btnZipSped = document.getElementById('btn-confirmar-upload-zip-sped');
+    if (btnZipSped) {
+        btnZipSped.addEventListener('click', function () {
+            const paramId = document.getElementById('upload-zip-sped-param-id').value;
+            const fileInput = document.getElementById('upload-zip-sped-file');
+            if (!paramId || !fileInput.files || !fileInput.files[0]) { Notificacoes.modal('Selecione um arquivo ZIP.', 'warning', 'modalUploadZipSpedAlerts'); return; }
+            const fd = new FormData();
+            fd.append('arquivo_zip', fileInput.files[0]);
+            fd.append('csrfmiddlewaretoken', obterCsrfToken());
+            fetch(getApiBase() + `/api/cargasped/parametros/${paramId}/upload-zip/`, { method: 'POST', body: fd })
+                .then(r => r.json())
+                .then(data => {
+                    Notificacoes.modal(data.mensagem || (data.sucesso ? 'OK' : 'Erro'), data.sucesso ? 'success' : 'danger', 'modalUploadZipSpedAlerts');
+                    if (data.sucesso) { fileInput.value = ''; bootstrap.Modal.getInstance(document.getElementById('modalUploadZipSped')).hide(); carregarParametrosPrincipais(); carregarParametrosModal(); }
+                })
+                .catch(() => Notificacoes.modal('Erro na requisição.', 'danger', 'modalUploadZipSpedAlerts'));
+        });
+    }
 
     // Limpar alertas ao abrir cada modal
     ['modalCargaSped', 'modalUploadZipSped'].forEach(function (modalId) {

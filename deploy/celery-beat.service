@@ -1,0 +1,28 @@
+[Unit]
+Description=GDF Celery beat (agenda scan_carga_automatica — XML + SPED)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/gdf_v2/GDF_PJT
+Environment="PATH=/var/www/gdf_v2/venv/bin"
+Environment="DJANGO_SETTINGS_MODULE=GDF_PJT.settings"
+Environment="CELERY_BEAT_SCHEDULE_FILE=/var/lib/gdf/celerybeat-schedule"
+ExecStartPre=/bin/mkdir -p /var/lib/gdf
+ExecStartPre=/bin/chown www-data:www-data /var/lib/gdf
+ExecStart=/var/www/gdf_v2/GDF_PJT/bin/run_celery_beat.sh
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
+
+# Instalação:
+#   sudo cp deploy/celery-beat.service /etc/systemd/system/
+#   sudo chmod +x /var/www/gdf_v2/GDF_PJT/bin/run_celery_beat.sh
+#   Um único beat por broker (evite dois hosts com beat no mesmo Redis).
+#   Após mudar CELERY_BEAT_SCHEDULE no código, reinicie: sudo systemctl restart celery-beat
+#   sudo systemctl enable --now celery-beat

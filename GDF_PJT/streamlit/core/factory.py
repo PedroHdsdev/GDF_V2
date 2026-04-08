@@ -10,6 +10,7 @@ from core.auth import AuthResult
 from dashboards.vendas import DashboardVendas
 from dashboards.compras import DashboardCompras
 from dashboards.custo import DashboardCusto
+from dashboards.balanco_financeiro import DashboardBalancoFin
 
 
 # Registro de dashboards: chave -> classe (solução Dashboard hoje; outras soluções podem registrar no futuro)
@@ -17,6 +18,7 @@ DASHBOARD_REGISTRY = {
     "Vendas": DashboardVendas,
     "Compras": DashboardCompras,
     "Custo": DashboardCusto,
+    "BalancoFin": DashboardBalancoFin,
 }
 
 

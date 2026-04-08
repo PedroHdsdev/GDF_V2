@@ -61,7 +61,7 @@ O `settings.py` usa `environ.Env.read_env(BASE_DIR / '.env')`. **Não commitar**
 
 Se `CACHE_URL` ou `REDIS_URL` estiver definido com URL redis, o Django usa Redis para cache; caso contrário usa cache em memória (apenas um worker).
 
-O `settings.py` define `CELERY_BROKER_URL` e `CELERY_RESULT_BACKEND`. O agendamento (beat) usa `CELERY_BEAT_SCHEDULE` (ex.: `scan_cargaxml_params` a cada minuto).
+O `settings.py` define `CELERY_BROKER_URL` e `CELERY_RESULT_BACKEND`. O agendamento (beat) usa `CELERY_BEAT_SCHEDULE` com a tarefa **`scan_carga_automatica`** (a cada minuto: XML + SPED).
 
 ### 2.5 SAP (opcional)
 
@@ -235,36 +235,76 @@ Quando o iframe do Dashboard (Compras/Vendas) retorna **404** com corpo em JSON 
 
 ---
 
-## 5. Celery (worker e beat)
+## 5. Carga automática em produção (Celery ou agendador local)
 
-Se usar carga XML agendada com Celery:
+A carga agendada (XML e SPED) depende de **processo em segundo plano**. Duas opções **mutuamente exclusivas** para o agendamento em si:
 
-1. **Redis** em execução e `CELERY_BROKER_URL` configurado.
-2. **Worker:** em um terminal (ou processo gerenciado por systemd/supervisor):
+| Opção | O que rodar | Quando usar |
+|--------|-------------|-------------|
+| **A — Celery** | **Redis** + **worker** + **beat** | Produção com fila, carga manual em background, múltiplos workers |
+| **B — Script** | só `run_carga_scheduler.py` | Servidor sem Redis; processa no próprio processo (sem fila Celery) |
 
+Regras de horário e “uma vez por dia” estão em `app/api/carga_automatica.py`. O Beat dispara a tarefa **`scan_carga_automatica`** (uma batida por minuto: XML + SPED), definida em `CELERY_BEAT_SCHEDULE` no `settings.py`.
+
+### 5.1 Pré-requisitos comuns
+
+- **`TIME_ZONE`** (ex.: `America/Sao_Paulo`) e **`USE_TZ=True`** já configurados no Django.
+- No `.env` em `GDF_PJT/`: `CELERY_BROKER_URL` e `CELERY_RESULT_BACKEND` apontando para o Redis (se usar opção A).
+- Redis: pode subir com Docker, por exemplo: `docker compose -f docker-compose.redis.yml up -d`.
+
+### 5.2 Produção com systemd (recomendado)
+
+Arquivos em **`deploy/`** (ajuste paths `User`, `Group` e `/var/www/gdf_v2` ao seu servidor):
+
+1. Tornar os scripts executáveis:
    ```bash
-   cd /app/gdf_v2/GDF_PJT
-   celery -A GDF_PJT worker -l info
+   chmod +x GDF_PJT/bin/run_celery_worker.sh GDF_PJT/bin/run_celery_beat.sh
+   chmod +x GDF_PJT/bin/run_carga_scheduler_foreground.sh
    ```
-
-3. **Beat:** em outro processo, para agendar `scan_cargaxml_params`:
-
+2. Instalar unidades:
    ```bash
-   celery -A GDF_PJT beat -l info
+   sudo cp deploy/celery-worker.service deploy/celery-beat.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now celery-worker celery-beat
    ```
+3. Conferir:
+   ```bash
+   sudo systemctl status celery-worker celery-beat
+   ```
+4. Após alterar **`CELERY_BEAT_SCHEDULE`** no código, **reinicie o beat**: `sudo systemctl restart celery-beat`.
 
-Ou use um único comando que inicia worker + beat, se disponível na documentação do Celery para a sua versão.
+**Um único Celery Beat** deve usar cada broker (evite dois beats apontando ao mesmo Redis).
 
-### 5.1 Agendador alternativo (sem Redis/Celery)
+**Logs:** saída padrão do systemd (`journalctl -u celery-worker -f`, `journalctl -u celery-beat -f`). O logger **`gdf`** também registra linhas como `scan_carga_automatica: xml=… sped=…` quando há disparos.
 
-O projeto inclui `run_carga_scheduler.py`, que consulta a tabela `ParametroCargaXml` e executa a tarefa de processamento no horário configurado (sem fila). Para usar:
+### 5.3 Manual (depuração)
 
 ```bash
-cd /app/gdf_v2/GDF_PJT
-python run_carga_scheduler.py
+cd GDF_PJT
+source /caminho/venv/bin/activate
+export DJANGO_SETTINGS_MODULE=GDF_PJT.settings
+celery -A GDF_PJT worker -l info
+# outro terminal:
+celery -A GDF_PJT beat -l info --schedule=/tmp/celerybeat-schedule
 ```
 
-Mantenha esse script rodando (ex.: via systemd ou supervisor). Ele verifica a cada 30 segundos se há parâmetros para executar; após executar um parâmetro no dia, não repete no mesmo dia (conforme lógica do script). Observe que no script pode existir referência a `param.cliente`; se o model usar `gdfcliente`, será necessário ajustar o script (ex.: `param.gdfcliente`).
+Ou use os scripts `bin/run_celery_worker.sh` e `bin/run_celery_beat.sh` (variáveis `VENV_PATH` e `PROJECT_DIR` podem ser sobrescritas).
+
+### 5.4 Agendador sem Redis/Celery (systemd)
+
+```bash
+sudo cp deploy/gdf-carga-scheduler.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now gdf-carga-scheduler
+```
+
+**Não** habilite ao mesmo tempo `gdf-carga-scheduler` e o par `celery-worker`+`celery-beat` para executar a mesma carga automática (risco de execução duplicada). Se usar Celery para outras filas mas quiser só o script para agendamento, desative as tarefas de scan no Beat ou não suba o beat — alinhe com a equipe.
+
+O script `run_carga_scheduler.py` consulta parâmetros XML e SPED ativos a cada 30 segundos e aplica a mesma regra `parametro_deve_executar_carga_automatica`.
+
+### 5.5 django-celery-beat (banco de dados)
+
+Se no ambiente existir **PeriodicTask** no banco, elas podem **sobrepor** o `CELERY_BEAT_SCHEDULE` estático. Após deploy, confira no admin django-celery-beat se há entradas antigas (`scan_cargaxml_params` / `scan_cargasped_params`) e alinhe com **`scan_carga_automatica`** ou remova duplicatas.
 
 ---
 
@@ -289,7 +329,7 @@ Mantenha esse script rodando (ex.: via systemd ou supervisor). Ele verifica a ca
 - [ ] **Gunicorn** em execução (ou outro WSGI); Nginx faz proxy para a aplicação e envia headers (Host, X-Forwarded-For, X-Forwarded-Proto).
 - [ ] **HTTPS** ativo no proxy; certificados válidos; Django com SECURE_*, SESSION_COOKIE_SECURE, CSRF_COOKIE_SECURE.
 - [ ] **Streamlit** em execução (porta 8600) e **Nginx** com `location /streamlit/` (ou path equivalente) em proxy para o processo; `STREAMLIT_BASE_URL` no `.env` com a URL completa do iframe.
-- [ ] **Celery worker e beat** rodando (se usar carga agendada) ou **run_carga_scheduler.py** em execução.
+- [ ] **Carga automática:** `celery-worker` + `celery-beat` (systemd em `deploy/`) ou **gdf-carga-scheduler** com `run_carga_scheduler.py`; **Redis** se usar Celery.
 - [ ] **Redis** acessível quando Celery estiver em uso.
 - [ ] **Logs** configurados (Django LOGGING e logs do Gunicorn/Nginx); **monitoramento** (opcional: saúde da aplicação, fila Celery, disco para diretórios de carga).
 - [ ] **Backup** do banco e política de retenção definidos.

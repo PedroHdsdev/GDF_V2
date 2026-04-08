@@ -34,6 +34,7 @@ if _NWRFC_PATH.exists():
 import environ
 from csp.constants import NONCE
 from django.urls import reverse_lazy
+from celery.schedules import crontab
 
 env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
@@ -89,6 +90,28 @@ FORCE_SCRIPT_NAME = env('FORCE_SCRIPT_NAME', default='/gdf')
 _raw = (env('STREAMLIT_BASE_URL', default='http://127.0.0.1:8600') or '').strip()
 STREAMLIT_IFRAME_URL = _raw.split(',')[0].strip() if _raw else 'http://127.0.0.1:8600'
 
+# Base HTTP do Django (Gunicorn) para o Streamlit chamar APIs internas (RFC fica só no Django).
+# Padrão alinhado a etc/gunicorn_config.py (GUNICORN_BIND, default 127.0.0.1:8500 — não 8000).
+# Sobrescreva com STREAMLIT_DJANGO_API_BASE_URL se o bind for outro, unix socket, ou Django em outro host.
+_gunicorn_bind = (env('GUNICORN_BIND', default='127.0.0.1:8500') or '').strip()
+if _gunicorn_bind.startswith('unix:') or not _gunicorn_bind:
+    _streamlit_django_api_default = 'http://127.0.0.1:8500'
+elif _gunicorn_bind.startswith('http://') or _gunicorn_bind.startswith('https://'):
+    _streamlit_django_api_default = _gunicorn_bind.rstrip('/')
+else:
+    _streamlit_django_api_default = f'http://{_gunicorn_bind}'
+STREAMLIT_DJANGO_API_BASE_URL = (
+    (env('STREAMLIT_DJANGO_API_BASE_URL', default=_streamlit_django_api_default) or '').strip().rstrip('/')
+)
+
+# Streamlit → Gunicorn (loopback): use PATH /api/... sem prefixo /gdf (padrão). O NGINX costuma retirar
+# FORCE_SCRIPT_NAME antes do proxy; incluir /gdf na URL interna gera 404. True só se o upstream
+# do Gunicorn realmente receber PATH com /gdf/...
+STREAMLIT_DJANGO_API_USE_FORCE_SCRIPT_NAME = env.bool(
+    'STREAMLIT_DJANGO_API_USE_FORCE_SCRIPT_NAME',
+    default=False,
+)
+
 # Proxy reverso (NGINX): confiar nos headers para HTTPS e Host corretos
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
@@ -118,6 +141,7 @@ MIDDLEWARE = [
     'app.security.middlewares.static_prefix_fix.StaticPrefixFixMiddleware',  # /static/ -> /gdf/static/ quando atrás de proxy
     'whitenoise.middleware.WhiteNoiseMiddleware',  # Servir estáticos com Gunicorn (CSS/JS)
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.locale.LocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -318,11 +342,19 @@ LOGGING = {
 
 LANGUAGE_CODE = 'pt-br'
 
+# Fuso padrão do projeto (Brasília). Com USE_TZ=True o banco guarda UTC;
+# timezone.localtime() e este TIME_ZONE definem exibição e agendamentos locais.
 TIME_ZONE = 'America/Sao_Paulo'
 
 USE_I18N = True
 
 USE_TZ = True
+
+# Admin / templates: datas curtas no padrão brasileiro (LocaleMiddleware + LANGUAGE_CODE)
+SHORT_DATE_FORMAT = 'd/m/Y'
+SHORT_DATETIME_FORMAT = 'd/m/Y H:i'
+DATE_FORMAT = 'd/m/Y'
+DATETIME_FORMAT = 'd/m/Y H:i:s'
 
 # Static files (CSS, JavaScript, Images)
 # Com subpath (FORCE_SCRIPT_NAME=/gdf): STATIC_URL = /gdf/static/
@@ -347,9 +379,10 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_BEAT_SCHEDULE = {
-    'cargaxml-scan-params-every-minute': {
-        'task': 'app.api.tasks.scan_cargaxml_params',
-        'schedule': 60.0,
+    # Uma tarefa: Carga XML + SPED (regras em app.api.carga_automatica).
+    'carga-automatica-scan-minuto': {
+        'task': 'app.api.tasks.scan_carga_automatica',
+        'schedule': crontab(minute='*'),
     },
 }
 

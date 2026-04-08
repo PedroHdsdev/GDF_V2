@@ -1,0 +1,28 @@
+[Unit]
+Description=GDF Celery worker (carga automática XML/SPED e fila de tarefas)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/gdf_v2/GDF_PJT
+Environment="PATH=/var/www/gdf_v2/venv/bin"
+Environment="DJANGO_SETTINGS_MODULE=GDF_PJT.settings"
+# Opcional: concorrência (padrão 2 no script)
+# Environment="CELERY_WORKER_CONCURRENCY=4"
+ExecStart=/var/www/gdf_v2/GDF_PJT/bin/run_celery_worker.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
+# Instalação:
+#   sudo cp deploy/celery-worker.service /etc/systemd/system/
+#   sudo chmod +x /var/www/gdf_v2/GDF_PJT/bin/run_celery_worker.sh
+#   Ajuste User, Group e paths se diferirem do servidor.
+#   Redis deve estar acessível (CELERY_BROKER_URL no .env em GDF_PJT).
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now celery-worker

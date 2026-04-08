@@ -35,17 +35,49 @@ const estadoParametros = {
     itemsPerPage: 10,
 };
 
+/** API envia datas em ISO com offset UTC; exibe no fuso do navegador (ex.: America/Sao_Paulo). */
+function formatJobDateTimeLocal(iso, detailed) {
+    if (!iso) return '-';
+    try {
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        return d.toLocaleString('pt-BR', detailed
+            ? { dateStyle: 'short', timeStyle: 'medium' }
+            : { dateStyle: 'short', timeStyle: 'short' });
+    } catch (e) {
+        return iso;
+    }
+}
+
+/** Data e hora locais para colunas separadas (evita usar substring do ISO em UTC). */
+function partesDataLocalDeIso(iso) {
+    if (!iso) return { data: '', hora: '' };
+    try {
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return { data: '', hora: '' };
+        var pad = function (n) { return String(n).padStart(2, '0'); };
+        return {
+            data: pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear(),
+            hora: pad(d.getHours()) + ':' + pad(d.getMinutes())
+        };
+    } catch (e) {
+        return { data: '', hora: '' };
+    }
+}
+
 /* ===============================
    INICIALIZAR ELEMENTOS
 ================================ */
 var intervaloResumoCargaXml = null;
 
 document.addEventListener('DOMContentLoaded', function () {
-    // Tabela principal: parâmetros + filtros ativo/inativo
-    carregarParametrosPrincipais();
-    inicializarEventosFiltroParametrosPrincipais();
-    inicializarEventosParametros();
-    carregarParametrosAtivos();
+    // Tabela principal: parâmetros + filtros ativo/inativo (somente com grupo CargaAutomatica)
+    if (podeGerenciarCargaAutomatica()) {
+        carregarParametrosPrincipais();
+        inicializarEventosFiltroParametrosPrincipais();
+        inicializarEventosParametros();
+        carregarParametrosAtivos();
+    }
     inicializarDragDropInputFiles();
     inicializarEventosJobsRenderizados();
     carregarAvisosCargaXml();
@@ -114,6 +146,12 @@ function getApiBase() {
     var prefix = (el && el.getAttribute('data-url-prefix')) || '';
     if (!prefix && typeof getUrlPrefix === 'function') prefix = getUrlPrefix();
     return prefix || '';
+}
+
+/** Parâmetros de carga automática (API + UI) exigem grupo Django "CargaAutomatica" no servidor. */
+function podeGerenciarCargaAutomatica() {
+    var el = document.querySelector('.cargaxml-page[data-pode-carga-automatica]');
+    return !!(el && el.getAttribute('data-pode-carga-automatica') === '1');
 }
 
 /* ===============================
@@ -231,13 +269,6 @@ function preencherModalAvisosCargaXml(items) {
     }
     emptyEl.style.display = 'none';
     listEl.style.display = 'block';
-    function formatDt(iso) {
-        if (!iso) return '-';
-        try {
-            var d = new Date(iso);
-            return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-        } catch (e) { return iso; }
-    }
     function escapeHtml(s) {
         return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
@@ -287,7 +318,7 @@ function preencherModalAvisosCargaXml(items) {
         }
         html += '<div class="aviso-item layout-subcard">';
         html += '  <div class="aviso-item-header d-flex justify-content-between align-items-center" role="button" tabindex="0">';
-        html += '    <span class="aviso-item-info"><strong>Job #' + job.id + '</strong> &middot; ' + formatDt(job.started_at) + ' <span class="text-muted small ms-1">(clique para detalhes)</span></span>';
+        html += '    <span class="aviso-item-info"><strong>Job #' + job.id + '</strong> &middot; ' + formatJobDateTimeLocal(job.started_at, false) + ' <span class="text-muted small ms-1">(clique para detalhes)</span></span>';
         html += '    <span class="d-flex align-items-center gap-2">';
         if (totalOk > 0) html += '<span class="badge aviso-badge-ok">' + totalOk + ' OK</span>';
         html += '<span class="badge aviso-badge-erro">' + totalErro + ' erro(s)</span> <i class="fas fa-chevron-right aviso-chevron small"></i></span>';
@@ -383,6 +414,7 @@ function inicializarEventosJobsRenderizados() {
 ================================ */
 
 function carregarParametrosPrincipais() {
+    if (!podeGerenciarCargaAutomatica()) return;
     const tbody = document.querySelector('#tabela-parametros-main tbody');
     if (!tbody) return;
 
@@ -603,14 +635,9 @@ function carregarJobsDoParametro(paramId) {
                 const sucesso = j.total_sucesso || 0;
                 const erro = j.total_erro || 0;
                 const resumo = totalArq > 0 ? `${totalArq} arq(s) - ${sucesso}✓/${erro}✗` : '-';
-                const dataHora = j.started_at || '';
-                let dataStr = '';
-                let horaStr = '';
-                if (dataHora.includes('T')) {
-                    const [d, t] = dataHora.split('T');
-                    dataStr = d;
-                    horaStr = (t || '').substring(0, 5);
-                }
+                const loc = partesDataLocalDeIso(j.started_at);
+                const dataStr = loc.data;
+                const horaStr = loc.hora;
 
                 const tr = document.createElement('tr');
                 tr.style.cursor = 'pointer';
@@ -705,6 +732,7 @@ function carregarTodasAsCargas() {
                         ? (j.mensagem || '').trim().split('\n')[0]
                         : `${totalArq} arquivo(s) - ${resumoNumeros}`;
 
+                    var locJH = partesDataLocalDeIso(j.started_at);
                     return {
                         id: j.id,
                         arquivo: `Job #${j.id}`,
@@ -712,8 +740,8 @@ function carregarTodasAsCargas() {
                         tipo: j.parametro_id ? 'Automático' : 'Manual',
                         numero: '',
                         empresa: '',
-                        data: j.started_at ? j.started_at.split('T')[0] : '',
-                        hora: j.started_at ? j.started_at.split('T')[1]?.substring(0, 5) : '',
+                        data: locJH.data,
+                        hora: locJH.hora,
                         status: j.status,
                         detalhes: Object.assign({}, j, { mensagem: j.mensagem }),
                     };
@@ -763,8 +791,8 @@ function renderizarEmExecucao() {
         li.className = 'home-activity-item cargaxml-job-item';
         li.style.cursor = 'pointer';
         li.setAttribute('data-job-id', carga.id);
-        var dataHora = (carga.detalhes && carga.detalhes.started_at) ? carga.detalhes.started_at : (carga.data + 'T' + (carga.hora || ''));
-        var dataStr = dataHora ? (dataHora.split('T')[0] + ' ' + (dataHora.split('T')[1] || '').substring(0, 5)) : '-';
+        var isoEm = (carga.detalhes && carga.detalhes.started_at) ? carga.detalhes.started_at : null;
+        var dataStr = isoEm ? formatJobDateTimeLocal(isoEm, false) : ((carga.data && carga.hora) ? (carga.data + ' ' + carga.hora) : '-');
         li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + (carga.tipo || 'XML') + '</span>' +
             '<div class="home-activity-detail">' +
             '<span class="home-activity-status home-activity-status-running">Em execução</span>' +
@@ -801,8 +829,8 @@ function renderizarJaExecutado() {
         li.className = 'home-activity-item cargaxml-job-item';
         li.style.cursor = 'pointer';
         var statusClass = (carga.status || '').toUpperCase() === 'ERROR' ? 'home-activity-status-error' : 'home-activity-status-success';
-        var dataHora = (carga.detalhes && carga.detalhes.started_at) ? carga.detalhes.started_at : (carga.data + 'T' + (carga.hora || ''));
-        var dataStr = dataHora ? (dataHora.split('T')[0] + ' ' + (dataHora.split('T')[1] || '').substring(0, 5)) : '-';
+        var isoJa = (carga.detalhes && carga.detalhes.started_at) ? carga.detalhes.started_at : null;
+        var dataStr = isoJa ? formatJobDateTimeLocal(isoJa, false) : ((carga.data && carga.hora) ? (carga.data + ' ' + carga.hora) : '-');
         li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + (carga.tipo || 'XML') + '</span>' +
             '<div class="home-activity-detail">' +
             '<span class="home-activity-status ' + statusClass + '">' + (carga.status === 'SUCCESS' ? 'Concluído' : 'Erro') + '</span>' +
@@ -837,13 +865,6 @@ function renderizarLogsResumo(items) {
     emptyEl.style.display = 'none';
     contentEl.style.display = 'block';
 
-    function formatDt(iso) {
-        if (!iso) return '-';
-        try {
-            var d = new Date(iso);
-            return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-        } catch (e) { return iso; }
-    }
     function escapeHtml(s) {
         return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
@@ -862,7 +883,7 @@ function renderizarLogsResumo(items) {
             return t.indexOf('ERRO:') === 0 || t.indexOf('PENDENTES') === 0;
         }).slice(0, 5) : [];
         html += '<div class="cargaxml-log-job mb-3">';
-        html += '<div class="small fw-600 text-secondary mb-1">Job #' + job.id + ' &middot; ' + formatDt(job.started_at) + '</div>';
+        html += '<div class="small fw-600 text-secondary mb-1">Job #' + job.id + ' &middot; ' + formatJobDateTimeLocal(job.started_at, false) + '</div>';
         if (logLines.length === 0) {
             html += '<div class="small text-muted">Sem linhas de log</div>';
         } else {
@@ -880,27 +901,46 @@ function renderizarLogsResumo(items) {
 ================================ */
 
 
-function atualizarConteudoModalJob(data) {
+function atualizarConteudoModalJob(data, expectedJobId) {
     if (!data || !data.sucesso || !data.job) return;
+    if (expectedJobId != null && Number(data.job.id) !== Number(expectedJobId)) {
+        return;
+    }
     const job = data.job;
     const param = data.parametro;
     const log = data.log || [];
-    document.getElementById('modal-job-id').textContent = job.id;
-    document.getElementById('modal-job-status').textContent = job.status;
-    document.getElementById('modal-job-started').textContent = job.started_at || '-';
-    document.getElementById('modal-job-finished').textContent = job.finished_at || '-';
-    if (param) {
-        document.getElementById('modal-param-horario').value = param.horario || '';
-        document.getElementById('modal-param-origem').value = param.origem_dados || '';
-        document.getElementById('modal-param-diretorio').value = param.diretorio || '';
-        document.getElementById('modal-param-empresa').value = param.empresa_nome || param.empresa_id || '';
-    } else {
-        document.getElementById('modal-param-horario').value = '';
-        document.getElementById('modal-param-origem').value = '';
-        document.getElementById('modal-param-diretorio').value = '';
-        document.getElementById('modal-param-empresa').value = '';
+    const modalRoot = document.getElementById('modalJobDetails');
+    if (!modalRoot) return;
+    const elId = modalRoot.querySelector('#modal-job-id');
+    const elStatus = modalRoot.querySelector('#modal-job-status');
+    const elStarted = modalRoot.querySelector('#modal-job-started');
+    const elFinished = modalRoot.querySelector('#modal-job-finished');
+    if (elId) elId.textContent = job.id;
+    if (elStatus) elStatus.textContent = job.status;
+    if (elStarted) {
+        elStarted.textContent = formatJobDateTimeLocal(job.started_at, true);
+        elStarted.title = job.started_at ? ('Registro em UTC (API): ' + job.started_at) : '';
     }
-    const tbodyLog = document.querySelector('#tabela-log tbody');
+    if (elFinished) {
+        elFinished.textContent = formatJobDateTimeLocal(job.finished_at, true);
+        elFinished.title = job.finished_at ? ('Registro em UTC (API): ' + job.finished_at) : '';
+    }
+    const ph = modalRoot.querySelector('#modal-param-horario');
+    const po = modalRoot.querySelector('#modal-param-origem');
+    const pd = modalRoot.querySelector('#modal-param-diretorio');
+    const pe = modalRoot.querySelector('#modal-param-empresa');
+    if (param) {
+        if (ph) ph.value = param.horario || '';
+        if (po) po.value = param.origem_dados || '';
+        if (pd) pd.value = param.diretorio || '';
+        if (pe) pe.value = param.empresa_nome || param.empresa_id || '';
+    } else {
+        if (ph) ph.value = '';
+        if (po) po.value = '';
+        if (pd) pd.value = '';
+        if (pe) pe.value = '';
+    }
+    const tbodyLog = modalRoot.querySelector('#tabela-log tbody');
     if (tbodyLog) {
         tbodyLog.innerHTML = '';
         if (log.length === 0) {
@@ -952,7 +992,7 @@ function abrirModalJob(jobId) {
         fetch(getApiBase() + `/api/cargaxml/jobs/${jobId}/`)
             .then(resp => resp.json())
             .then(data => {
-                atualizarConteudoModalJob(data);
+                atualizarConteudoModalJob(data, jobId);
                 var status = (data.job && data.job.status) ? data.job.status.toUpperCase() : '';
                 if (status === 'SUCCESS' || status === 'ERROR') {
                     if (estadoCargaXml.modalJobPollInterval) {
@@ -974,7 +1014,7 @@ function abrirModalJob(jobId) {
                 Notificacoes.pagina('❌ Não foi possível carregar detalhes do job', 'error');
                 return;
             }
-            atualizarConteudoModalJob(data);
+            atualizarConteudoModalJob(data, jobId);
             var modalEl = document.getElementById('modalJobDetails');
             var modal = new bootstrap.Modal(modalEl);
             modal.show();
@@ -1171,7 +1211,7 @@ function inicializarEventosParametros() {
     const modalCarga = document.getElementById('modalCargaXml');
     if (modalCarga) {
         modalCarga.addEventListener('shown.bs.modal', function () {
-            carregarParametrosAtivos();
+            if (podeGerenciarCargaAutomatica()) carregarParametrosAtivos();
         });
     }
 
@@ -1249,6 +1289,7 @@ function criarParametroCarga() {
 }
 
 function carregarParametrosAtivos() {
+    if (!podeGerenciarCargaAutomatica()) return;
     const tabela = document.querySelector('#tabela-parametros tbody');
     if (!tabela) return;
 

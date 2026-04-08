@@ -40,6 +40,11 @@ urlpatterns = [
     path('dashboard/vendas/', views.fn_view_dashboard_vendas, name='Db_Vendas'),
     path('dashboard/compras/', views.fn_view_dashboard_compras, name='Db_Compras'),
     path('dashboard/custo/', views.fn_view_dashboard_custo, name='Db_Custo'),
+    path(
+        'dashboard/balanco-financeiro/',
+        views.fn_view_dashboard_balanco_financeiro,
+        name='Db_BalancoFin',
+    ),
 
     #Manifesto
     path('manifesto/painel/', views.fn_view_manifesto_painel, name='Mnf_Painel'),
@@ -93,7 +98,12 @@ urlpatterns = [
     path('api/sap/relatorio-custo/', views.fn_api_sap_relatorio_custo_receber, name='API_SapRelatorioCustoReceber'),
     path('integracao/rfc/', views.fn_view_Integracao_Rfc, name='Int_Rfc'),
     path('api/rfc/executar/', views.fn_api_rfc_executar, name='API_RfcExecutar'),
-    
+    path(
+        'api/sap/balanco-financeiro/',
+        views.fn_api_sap_balanco_financeiro,
+        name='API_SapBalancoFinanceiro',
+    ),
+
         
 #--------------------------------------------------------------------
     # modal path
