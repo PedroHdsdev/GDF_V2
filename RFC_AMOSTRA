@@ -1,0 +1,403 @@
+*----------------------------------------------------------------------*
+* Classe local lcl_balance_tree — balanço hierárquico (ERGSL) → JSON
+* Ajustes: lt_all_ergsl completo, linha posição is_account = false,
+*          find_parent (maior prefixo + chop), escape JSON, ordenação flat.
+*----------------------------------------------------------------------*
+CLASS lcl_balance_tree DEFINITION.
+  PUBLIC SECTION.
+    TYPES: BEGIN OF ty_account_node,
+             racct   TYPE string,
+             txt_acc TYPE string,
+             valor   TYPE wrbtr,
+           END OF ty_account_node.
+
+    TYPES: tt_account_node TYPE STANDARD TABLE OF ty_account_node WITH EMPTY KEY.
+
+    TYPES: BEGIN OF ty_balance_node,
+             id       TYPE string,
+             text     TYPE string,
+             valor    TYPE wrbtr,
+             accounts TYPE tt_account_node,
+             children TYPE STANDARD TABLE OF string WITH EMPTY KEY,
+           END OF ty_balance_node.
+
+    TYPES: tt_balance_node_map TYPE HASHED TABLE OF ty_balance_node WITH UNIQUE KEY id.
+    TYPES: tt_string TYPE STANDARD TABLE OF string.
+
+    METHODS get_tree
+      IMPORTING
+        i_v_bukrs       TYPE bukrs
+        i_v_year        TYPE gjahr
+        i_v_ktopl       TYPE ktopl
+        i_v_versn       TYPE versn_011
+        i_v_monat_b     TYPE monat OPTIONAL
+        i_v_monat_v     TYPE monat OPTIONAL
+      RETURNING
+        VALUE(r_v_json) TYPE string.
+
+  PRIVATE SECTION.
+    TYPES: BEGIN OF ty_flat_item,
+             ergsl      TYPE string,
+             text       TYPE string,
+             valor      TYPE wrbtr,
+             racct      TYPE string,
+             is_account TYPE abap_bool,
+           END OF ty_flat_item.
+
+    TYPES: tt_flat_item TYPE STANDARD TABLE OF ty_flat_item WITH EMPTY KEY.
+
+    " Agregação de saldos por conta (faglflext)
+    TYPES: BEGIN OF ty_acc,
+             racct TYPE saknr,
+             valor TYPE wrbtr,
+           END OF ty_acc.
+
+    METHODS build_flat_data
+      IMPORTING
+        i_v_bukrs       TYPE bukrs
+        i_v_year        TYPE gjahr
+        i_v_ktopl       TYPE ktopl
+        i_v_versn       TYPE versn_011
+        i_v_monat_b     TYPE monat
+        i_v_monat_v     TYPE monat
+      RETURNING
+        VALUE(r_t_flat) TYPE tt_flat_item.
+
+    METHODS build_hierarchical_map
+      IMPORTING
+        i_t_flat  TYPE tt_flat_item
+      EXPORTING
+        e_t_map   TYPE tt_balance_node_map
+        e_t_roots TYPE tt_string.
+
+    METHODS serialize_to_json
+      IMPORTING
+        i_t_ids         TYPE tt_string
+        i_t_map         TYPE tt_balance_node_map
+      RETURNING
+        VALUE(r_v_json) TYPE string.
+
+    METHODS find_parent_ergsl
+      IMPORTING
+        i_v_child_ergsl         TYPE string
+        i_t_all_ergsl           TYPE tt_string
+      RETURNING
+        VALUE(r_v_parent_ergsl) TYPE string.
+
+    METHODS sum_node_values
+      IMPORTING
+        i_v_id  TYPE string
+      CHANGING
+        c_t_map TYPE tt_balance_node_map.
+
+    METHODS escape_json_string
+      IMPORTING
+        i_v_in         TYPE string
+      RETURNING
+        VALUE(r_v_out) TYPE string.
+
+ENDCLASS.
+
+CLASS lcl_balance_tree IMPLEMENTATION.
+
+  METHOD get_tree.
+    DATA: lt_map   TYPE tt_balance_node_map,
+          lt_roots TYPE tt_string.
+
+    DATA(lt_flat) = build_flat_data(
+      i_v_bukrs   = i_v_bukrs
+      i_v_year    = i_v_year
+      i_v_ktopl   = i_v_ktopl
+      i_v_versn   = i_v_versn
+      i_v_monat_b = i_v_monat_b
+      i_v_monat_v = i_v_monat_v ).
+
+    build_hierarchical_map(
+      EXPORTING i_t_flat  = lt_flat
+      IMPORTING e_t_map   = lt_map
+                e_t_roots = lt_roots ).
+
+    LOOP AT lt_roots INTO DATA(lv_root_id).
+      sum_node_values( EXPORTING i_v_id = lv_root_id CHANGING c_t_map = lt_map ).
+    ENDLOOP.
+
+    r_v_json = serialize_to_json( i_t_ids = lt_roots i_t_map = lt_map ).
+
+  ENDMETHOD.
+
+  METHOD build_flat_data.
+
+    DATA: tl_acc   TYPE HASHED TABLE OF ty_acc WITH UNIQUE KEY racct,
+          tl_i011z TYPE STANDARD TABLE OF rf011z,
+          tl_x011p TYPE STANDARD TABLE OF rf011p,
+          tl_x011q TYPE STANDARD TABLE OF rf011q,
+          tl_flex  TYPE TABLE OF faglflext.
+
+    DATA: vl_total TYPE wrbtr,
+          wl_skat  TYPE skat,
+          vl_field TYPE c LENGTH 6.
+
+    SELECT SINGLE * FROM t011 INTO @DATA(wl_t011) WHERE versn EQ @i_v_versn.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    CALL FUNCTION 'FI_IMPORT_BALANCE_SHEET_POS'
+      EXPORTING
+        version = wl_t011-versn
+      TABLES
+        i011z   = tl_i011z
+        x011p   = tl_x011p.
+
+    CALL FUNCTION 'FI_IMPORT_BALANCE_SHEET_TEXT'
+      EXPORTING
+        sprache = 'P'
+        version = wl_t011-versn
+      TABLES
+        x011q   = tl_x011q
+      EXCEPTIONS
+        OTHERS  = 0.
+
+    SELECT racct hsl01 hsl02 hsl03 hsl04 hsl05
+      hsl06 hsl07 hsl08 hsl09 hsl10 hsl11 hsl12
+      FROM faglflext
+      INTO CORRESPONDING FIELDS OF TABLE tl_flex
+                  WHERE rbukrs = i_v_bukrs
+                    AND ryear = i_v_year
+                    AND rldnr = '0L'.
+
+    LOOP AT tl_flex INTO DATA(wl_flex).
+      CLEAR vl_total.
+      DO i_v_monat_v TIMES.
+        IF sy-index < 10.
+          vl_field = |HSL0{ sy-index } |.
+        ELSE.
+          vl_field = |HSL0{ sy-index } |.
+        ENDIF.
+
+        ASSIGN COMPONENT vl_field OF STRUCTURE wl_flex TO FIELD-SYMBOL(<lv_val>).
+        IF sy-subrc = 0.
+          vl_total = vl_total + <lv_val>.
+        ENDIF.
+      ENDDO.
+
+      COLLECT VALUE ty_acc( racct = wl_flex-racct valor = vl_total ) INTO tl_acc.
+
+    ENDLOOP.
+
+    LOOP AT tl_x011p INTO DATA(wl_x011p).
+      READ TABLE tl_x011q INTO DATA(wl_x011q) WITH KEY ergsl = wl_x011p-ergsl.
+
+      " Posição ERGSL (cabeçalho) — não é linha de razão; habilita hierarquia e lt_all_ergsl
+      APPEND VALUE ty_flat_item(
+        ergsl = wl_x011p-ergsl
+        text  = wl_x011q-txt45
+        is_account = abap_false
+      ) TO r_t_flat.
+
+      LOOP AT tl_i011z INTO DATA(wl_i011z) WHERE ergso = wl_x011p-ergsl OR erghb = wl_x011p-ergsl.
+
+        LOOP AT tl_acc INTO DATA(wl_acc) WHERE racct BETWEEN wl_i011z-vonkt AND wl_i011z-bilkt.
+
+          DATA(vl_v) = wl_acc-valor.
+          IF wl_x011p-sign = '-'.
+            vl_v = vl_v * -1.
+          ENDIF.
+
+          CALL FUNCTION 'READ_HAUPTBUCH_TEXT'
+            EXPORTING
+              kontenplan = i_v_ktopl
+              sachkonto  = wl_acc-racct
+              sprache    = 'P'
+            IMPORTING
+              text_wa    = wl_skat
+            EXCEPTIONS
+              OTHERS     = 0.
+
+          APPEND VALUE ty_flat_item(
+            ergsl = wl_x011p-ergsl
+            text  = wl_skat-txt50
+            valor = vl_v
+            racct = wl_acc-racct
+            is_account = abap_true
+          ) TO r_t_flat.
+
+        ENDLOOP.
+
+      ENDLOOP.
+    ENDLOOP.
+
+    SORT r_t_flat BY ergsl is_account.
+
+  ENDMETHOD.
+
+  METHOD escape_json_string.
+    DATA(lv_tmp) = i_v_in.
+    REPLACE ALL OCCURRENCES OF '\' IN lv_tmp WITH '\\'.
+    REPLACE ALL OCCURRENCES OF '"' IN lv_tmp WITH '\"'.
+    r_v_out = lv_tmp.
+  ENDMETHOD.
+
+  METHOD find_parent_ergsl.
+
+    DATA: lv_best   TYPE string,
+          lv_best_l TYPE i,
+          lv_l      TYPE i,
+          lv_line   TYPE string,
+          lv_child  TYPE string,
+          lv_curr   TYPE string,
+          lv_len    TYPE i.
+
+    CLEAR r_v_parent_ergsl.
+    lv_child = i_v_child_ergsl.
+    IF strlen( lv_child ) = 0.
+      RETURN.
+    ENDIF.
+
+    " Maior prefixo à esquerda existente em i_t_all_ergsl
+    lv_best_l = 0.
+    CLEAR lv_best.
+    LOOP AT i_t_all_ergsl INTO lv_line.
+      lv_l = strlen( lv_line ).
+      IF lv_l > 0 AND lv_l < strlen( lv_child ).
+        IF lv_line = lv_child+0(lv_l).
+          IF lv_l > lv_best_l.
+            lv_best = lv_line.
+            lv_best_l = lv_l.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+
+    IF strlen( lv_best ) > 0.
+      r_v_parent_ergsl = lv_best.
+      RETURN.
+    ENDIF.
+
+    " Fallback: remove último caractere até achar ID na lista
+    lv_curr = i_v_child_ergsl.
+    WHILE strlen( lv_curr ) > 0.
+      lv_len = strlen( lv_curr ) - 1.
+      lv_curr = lv_curr+0(lv_len).
+      IF lv_curr IS INITIAL.
+        EXIT.
+      ENDIF.
+      READ TABLE i_t_all_ergsl TRANSPORTING NO FIELDS WITH KEY table_line = lv_curr.
+      IF sy-subrc = 0.
+        r_v_parent_ergsl = lv_curr.
+        RETURN.
+      ENDIF.
+    ENDWHILE.
+
+  ENDMETHOD.
+
+  METHOD build_hierarchical_map.
+
+    DATA: lt_all_ergsl TYPE tt_string,
+          ls_node      TYPE ty_balance_node.
+
+    " Todos os ERGSL distintos (evita lt_all_ergsl vazio se só houvesse is_account = true)
+    LOOP AT i_t_flat INTO DATA(ls_f).
+      COLLECT ls_f-ergsl INTO lt_all_ergsl.
+    ENDLOOP.
+
+    LOOP AT i_t_flat INTO DATA(ls_item).
+      READ TABLE e_t_map ASSIGNING FIELD-SYMBOL(<fs_node>) WITH KEY id = ls_item-ergsl.
+      IF sy-subrc <> 0.
+        CLEAR ls_node.
+        ls_node-id   = ls_item-ergsl.
+        ls_node-text = ls_item-text.
+        INSERT ls_node INTO TABLE e_t_map ASSIGNING <fs_node>.
+      ENDIF.
+
+      IF ls_item-is_account = abap_true.
+        APPEND VALUE ty_account_node(
+          racct   = ls_item-racct
+          txt_acc = ls_item-text
+          valor   = ls_item-valor
+        ) TO <fs_node>-accounts.
+        <fs_node>-valor = <fs_node>-valor + ls_item-valor.
+      ENDIF.
+    ENDLOOP.
+
+    LOOP AT e_t_map ASSIGNING <fs_node>.
+      DATA(lv_p) = find_parent_ergsl(
+        i_v_child_ergsl = <fs_node>-id
+        i_t_all_ergsl   = lt_all_ergsl ).
+      IF lv_p IS INITIAL OR lv_p = <fs_node>-id.
+        APPEND <fs_node>-id TO e_t_roots.
+      ELSE.
+        READ TABLE e_t_map ASSIGNING FIELD-SYMBOL(<fs_parent>) WITH KEY id = lv_p.
+        IF sy-subrc = 0.
+          APPEND <fs_node>-id TO <fs_parent>-children.
+        ELSE.
+          APPEND <fs_node>-id TO e_t_roots.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+
+    SORT e_t_roots.
+    DELETE ADJACENT DUPLICATES FROM e_t_roots.
+
+  ENDMETHOD.
+
+  METHOD sum_node_values.
+
+    READ TABLE c_t_map ASSIGNING FIELD-SYMBOL(<fs_node>) WITH KEY id = i_v_id.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    LOOP AT <fs_node>-children INTO DATA(lv_child_id).
+      sum_node_values( EXPORTING i_v_id = lv_child_id CHANGING c_t_map = c_t_map ).
+
+      READ TABLE c_t_map INTO DATA(ls_child) WITH KEY id = lv_child_id.
+      <fs_node>-valor = <fs_node>-valor + ls_child-valor.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD serialize_to_json.
+
+    DATA: lv_first TYPE abap_bool VALUE abap_true,
+          lv_esc   TYPE string,
+          lv_txt   TYPE string,
+          lv_f_acc TYPE abap_bool,
+          lv_id    LIKE LINE OF i_t_ids,
+          ls_node  TYPE ty_balance_node,
+          ls_acc   TYPE ty_account_node.
+
+    r_v_json = '['.
+
+    LOOP AT i_t_ids INTO lv_id.
+      READ TABLE i_t_map INTO ls_node WITH KEY id = lv_id.
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
+
+      IF lv_first = abap_false.
+        r_v_json = r_v_json && ','.
+      ENDIF.
+      lv_first = abap_false.
+
+      lv_esc = escape_json_string( ls_node-text ).
+
+      r_v_json = r_v_json && |\{"id":"{ ls_node-id }","text":"{ lv_esc }","valor":{ ls_node-valor },"accounts":[|.
+
+      lv_f_acc = abap_true.
+      LOOP AT ls_node-accounts INTO ls_acc.
+        IF lv_f_acc = abap_false.
+          r_v_json = r_v_json && ','.
+        ENDIF.
+        lv_f_acc = abap_false.
+        lv_txt = escape_json_string( ls_acc-txt_acc ).
+        r_v_json = r_v_json && |\{"racct":"{ ls_acc-racct }","txt":"{ lv_txt }","valor":{ ls_acc-valor }\}|.
+      ENDLOOP.
+      r_v_json = r_v_json && |],"children":{ serialize_to_json( i_t_ids = ls_node-children i_t_map = i_t_map ) }\}|.
+    ENDLOOP.
+
+    r_v_json = r_v_json && ']'.
+
+  ENDMETHOD.
+
+ENDCLASS.

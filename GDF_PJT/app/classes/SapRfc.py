@@ -9,6 +9,8 @@ Padrão de uso para cada função SAP via RFC:
 
 Exemplo: ver importar_custo_cliente, importar_relatorio_custo, consultar_balanco_financeiro (ZF_ECF01).
 """
+import json
+import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Tuple
@@ -26,50 +28,246 @@ except Exception as _pyrfc_exc:
 
 _RFC_BALANCO_FINANCEIRO = "ZF_ECF01"
 
-# T_BALANCE (ZF_ECF01): estrutura ABAP documentada — ordem fixa para API/UI.
-_T_BALANCE_CAMPOS_CABECALHO: Tuple[str, ...] = (
-    "TP_IMP",
-    "SAKNR",
-    "DESC",
-    "TIPO",
-    "IND_DC",
-)
-_T_BALANCE_CAMPOS_SALDO_MES: Tuple[str, ...] = tuple(f"UM{i:02d}O" for i in range(1, 13))
-_T_BALANCE_CAMPOS_FIM: Tuple[str, ...] = ("SORT",)
-T_BALANCE_COLUNAS_PROCESSADAS: Tuple[str, ...] = (
-    *_T_BALANCE_CAMPOS_CABECALHO,
-    *_T_BALANCE_CAMPOS_SALDO_MES,
-    *_T_BALANCE_CAMPOS_FIM,
-)
-# Colunas adicionais: ano e intervalo I_MONTH_B / I_MONTH_V enviados à RFC + soma do exercício
-T_BALANCE_COLUNAS_RESPOSTA: Tuple[str, ...] = (
-    "ano_referencia",
-    "mes_referencia_b",
-    "mes_referencia_v",
-    *T_BALANCE_COLUNAS_PROCESSADAS,
-    "total_saldo_exercicio",
-    "saldos_mensais",
-)
-
 # Limite dos números em I_MONTH_B / I_MONTH_V e largura máxima do intervalo (inclusive).
 _ZF_ECF01_MAX_NUMERO_PERIODO: int = 99
 _ZF_ECF01_MAX_INTERVALO_PERIODOS: int = 120
 
+# Colunas lógicas do JSON em R_RETURN (lista / árvore de nós).
+ZF_ECF01_ARVORE_COLUNAS: Tuple[str, ...] = ("id", "conta", "text", "valor", "children")
 
-def _zf_ecf01_valor_json(v: Any) -> Any:
+
+def _zf_ecf01_ler_conta(item: Dict[str, Any]) -> str:
+    """Número da conta SAP (ex.: 0011110001); aceita conta / CONTA / SAKNR.
+
+    Na estrutura atual do JSON em R_RETURN, o código da linha na hierarquia costuma vir
+    em ``id``; ``racct`` fica nas subcontas dentro de ``accounts`` — não usar ``racct`` aqui.
+    """
+    for k in ("conta", "CONTA", "Conta", "SAKNR", "saknr"):
+        if k in item and item.get(k) is not None:
+            s = str(item.get(k)).strip()
+            if s:
+                return s
+    nid = item.get("id")
+    if nid is not None:
+        s = str(nid).strip()
+        if s:
+            return s
+    return ""
+
+
+def _zf_ecf01_ler_texto_no(item: Dict[str, Any]) -> str:
+    """Descrição do nó: ``text`` (árvore recursiva ABAP), ``txt_balance`` (lista plana), etc."""
+    for k in ("text", "TEXT", "Text", "txt_balance", "TXT_BALANCE", "TxtBalance"):
+        if k in item and item.get(k) is not None:
+            return str(item.get(k)).strip()
+    return ""
+
+
+def _zf_ecf01_ler_stufe(item: Dict[str, Any]) -> Optional[int]:
+    v = item.get("stufe")
+    if v is None:
+        v = item.get("STUFE")
     if v is None:
         return None
-    if isinstance(v, Decimal):
-        return str(v)
-    if isinstance(v, datetime):
-        return v.isoformat()
-    if isinstance(v, date):
-        return v.isoformat()
-    if isinstance(v, bytes):
-        return v.decode("utf-8", errors="replace")
-    if isinstance(v, (bool, int, float, str)):
-        return v
-    return str(v)
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _zf_ecf01_normalizar_accounts_list(raw: Any) -> List[Dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    out: List[Dict[str, Any]] = []
+    for acc in raw:
+        if not isinstance(acc, dict):
+            continue
+        parsed = _zf_ecf01_parse_valor_sap(acc.get("valor"))
+        if parsed is not None:
+            v_out: Any = int(parsed) if parsed == int(parsed) else parsed
+        else:
+            vr = acc.get("valor")
+            v_out = vr if vr is None or isinstance(vr, (int, float)) else str(vr)
+        txt_linha = ""
+        for tk in ("txt_acc", "TXT_ACC", "txt", "TXT", "Txt"):
+            if tk in acc and acc.get(tk) is not None:
+                txt_linha = str(acc.get(tk)).strip()
+                break
+        out.append(
+            {
+                "racct": str(acc.get("racct", "") if acc.get("racct") is not None else "").strip(),
+                "txt_acc": txt_linha,
+                "valor": v_out,
+            }
+        )
+    return out
+
+
+def _zf_ecf01_campos_extras_no(raw: Dict[str, Any]) -> Dict[str, Any]:
+    ex: Dict[str, Any] = {}
+    st = _zf_ecf01_ler_stufe(raw)
+    if st is not None:
+        ex["stufe"] = st
+    acc = _zf_ecf01_normalizar_accounts_list(raw.get("accounts"))
+    if acc:
+        ex["accounts"] = acc
+    return ex
+
+
+def _zf_ecf01_parse_valor_sap(val: Any) -> Optional[float]:
+    """
+    Converte valor numérico SAP / JSON para float.
+    Aceita: número; string com vírgula decimal e ponto milhar (ex.: 150.037.234,87);
+    sinal negativo com menos à direita (ex.: 121.936.748,93-).
+    """
+    if val is None:
+        return None
+    if isinstance(val, bool):
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip()
+    if not s:
+        return None
+    neg = False
+    if s.endswith("-"):
+        neg = True
+        s = s[:-1].strip()
+    s = s.replace(" ", "")
+    if not s:
+        return None
+    if "," in s:
+        # Formato BR: 1.234.567,89
+        s = s.replace(".", "").replace(",", ".")
+    else:
+        parts = s.split(".")
+        if len(parts) > 1:
+            last = parts[-1]
+            if len(last) == 3 and len(parts) >= 2 and all(p.isdigit() for p in parts):
+                s = "".join(parts)
+            elif len(parts) > 2:
+                s = "".join(parts[:-1]) + "." + parts[-1] if last.isdigit() else "".join(parts)
+    try:
+        x = float(s)
+        return -x if neg else x
+    except ValueError:
+        return None
+
+
+def _zf_ecf01_parent_id_vazio(pid: Any) -> bool:
+    if pid is None:
+        return True
+    if isinstance(pid, str) and not pid.strip():
+        return True
+    return False
+
+
+def _zf_ecf01_ler_parent_id(item: Dict[str, Any]) -> Any:
+    for k in ("parent_id", "PARENT_ID", "ParentId", "parentId"):
+        if k in item:
+            return item.get(k)
+    return None
+
+
+def _zf_ecf01_dict_tem_chave_parent_id(d: Dict[str, Any]) -> bool:
+    return any(k in d for k in ("parent_id", "PARENT_ID", "ParentId", "parentId"))
+
+
+def _zf_ecf01_lista_parece_plana_com_parent_id(itens: List[Any]) -> bool:
+    """Lista plana se algum objeto declara campo parent_id (mesmo que null nas raízes)."""
+    for x in itens:
+        if isinstance(x, dict) and _zf_ecf01_dict_tem_chave_parent_id(x):
+            return True
+    return False
+
+
+def _zf_ecf01_raiz_tem_children_com_nos(itens: List[Any]) -> bool:
+    """
+    Verdadeiro se algum item raiz traz ``children`` com pelo menos um objeto (árvore recursiva
+    ABAP ``lcl_balance_tree``). Nesse caso não se deve usar o montador de lista plana por
+    ``parent_id``, mesmo que ``parent_id`` exista como campo espúrio.
+    """
+    for x in itens:
+        if not isinstance(x, dict):
+            continue
+        ch = x.get("children")
+        if isinstance(ch, list) and any(isinstance(c, dict) for c in ch):
+            return True
+    return False
+
+
+def _zf_ecf01_indice_pai_por_id(itens: List[Dict[str, Any]], parent_id: str, filho_idx: int) -> int:
+    """Primeiro índice cujo ``id`` coincide com ``parent_id`` (exceto o próprio filho)."""
+    pid = (parent_id or "").strip()
+    if not pid:
+        return -1
+    for j, it in enumerate(itens):
+        if j == filho_idx:
+            continue
+        sid = str(it.get("id", "") if it.get("id") is not None else "").strip()
+        if sid == pid:
+            return j
+    return -1
+
+
+def _zf_ecf01_lista_plana_para_arvore(
+    itens: List[Dict[str, Any]],
+    agregar_somar_valor_proprio: bool = False,
+) -> List[Dict[str, Any]]:
+    """
+    Monta raízes e filhos com parent_id == id (ordem da lista preservada nos arrays children).
+    Raiz: parent_id vazio/null. Cada nó tem sempre ``children`` (lista, possivelmente vazia).
+
+    Agregação: com filhos, ``valor`` do pai passa a ser a soma dos valores dos filhos (após
+    agregação recursiva), ou soma + valor próprio se ``agregar_somar_valor_proprio`` for True.
+    Folhas sem filhos mantêm o valor vindo do SAP.
+    """
+    rows: List[Dict[str, Any]] = [x for x in itens if isinstance(x, dict)]
+    if not rows:
+        return []
+
+    nos: List[Dict[str, Any]] = []
+    for raw in rows:
+        v0 = _zf_ecf01_parse_valor_sap(raw.get("valor"))
+        no: Dict[str, Any] = {
+            "id": str(raw.get("id", "") if raw.get("id") is not None else ""),
+            "conta": _zf_ecf01_ler_conta(raw),
+            "text": _zf_ecf01_ler_texto_no(raw),
+            "valor": v0,
+            "children": [],
+        }
+        no.update(_zf_ecf01_campos_extras_no(raw))
+        nos.append(no)
+
+    raizes: List[Dict[str, Any]] = []
+    for i, raw in enumerate(rows):
+        pid = _zf_ecf01_ler_parent_id(raw)
+        if _zf_ecf01_parent_id_vazio(pid):
+            raizes.append(nos[i])
+            continue
+        pidx = _zf_ecf01_indice_pai_por_id(rows, str(pid).strip(), filho_idx=i)
+        if pidx >= 0:
+            nos[pidx]["children"].append(nos[i])
+        else:
+            raizes.append(nos[i])
+
+    def agregar(no: Dict[str, Any]) -> float:
+        ch = no.get("children") or []
+        if not ch:
+            v = no.get("valor")
+            f = float(v) if v is not None else 0.0
+            no["valor"] = int(f) if f == int(f) else f
+            return f
+        s = sum(agregar(c) for c in ch)
+        proprio = _zf_ecf01_parse_valor_sap(no.get("valor"))
+        base = float(proprio) if proprio is not None else 0.0
+        total = base + s if agregar_somar_valor_proprio else s
+        no["valor"] = int(total) if total == int(total) else total
+        return float(total)
+
+    for r in raizes:
+        agregar(r)
+    return raizes
 
 
 def _zf_ecf01_buscar_chave_dict(d: Dict[str, Any], *nomes: str) -> Any:
@@ -84,104 +282,297 @@ def _zf_ecf01_buscar_chave_dict(d: Dict[str, Any], *nomes: str) -> Any:
     return None
 
 
-def _zf_ecf01_extrair_t_balance_e_return(result: Optional[Dict[str, Any]]) -> tuple:
+def _zf_ecf01_extrair_r_return(result: Optional[Dict[str, Any]]) -> str:
+    """Somente R_RETURN (string); o balanço vem como JSON dentro deste campo."""
     if not result or not isinstance(result, dict):
-        return [], ""
-    raw_tb = _zf_ecf01_buscar_chave_dict(result, "T_BALANCE", "ET_BALANCE")
-    if raw_tb is None:
-        linhas = []
-    elif isinstance(raw_tb, list):
-        linhas = raw_tb
-    else:
-        linhas = list(raw_tb)
+        return ""
     r_ret = _zf_ecf01_buscar_chave_dict(result, "R_RETURN", "E_RETURN", "EV_RETURN")
     if r_ret is None:
-        msg = ""
-    else:
-        msg = str(r_ret).strip()
-    return linhas, msg
-
-
-def _zf_ecf01_campo_str(linha: Dict[str, Any], nome_abap: str) -> str:
-    v = _zf_ecf01_buscar_chave_dict(linha, nome_abap)
-    if v is None:
         return ""
-    if isinstance(v, bytes):
-        return v.decode("utf-8", errors="replace").strip()
-    return str(v).strip()
+    return str(r_ret).strip()
 
 
-def _zf_ecf01_para_decimal_saldo(v: Any) -> Optional[Decimal]:
-    """Interpreta CURR/quantidade vinda do PyRFC como Decimal."""
-    if v is None:
-        return None
-    if isinstance(v, Decimal):
-        return v
-    if isinstance(v, (int, float)):
-        return Decimal(str(v))
-    s = str(v).strip().replace(" ", "")
-    if not s:
-        return None
-    s = s.replace(",", ".")
+def _zf_ecf01_normalizar_no_arvore(no: Any) -> Dict[str, Any]:
+    if not isinstance(no, dict):
+        return {"id": "", "conta": "", "text": "", "valor": None, "children": []}
+    ch_raw = no.get("children")
+    children_in = ch_raw if isinstance(ch_raw, list) else []
+    parsed = _zf_ecf01_parse_valor_sap(no.get("valor"))
+    if parsed is not None:
+        valor_out: Any = int(parsed) if parsed == int(parsed) else parsed
+    else:
+        vraw = no.get("valor")
+        valor_out = vraw if vraw is None or isinstance(vraw, (int, float)) else str(vraw)
+    node: Dict[str, Any] = {
+        "id": str(no.get("id", "") if no.get("id") is not None else ""),
+        "conta": _zf_ecf01_ler_conta(no),
+        "text": _zf_ecf01_ler_texto_no(no),
+        "valor": valor_out,
+        "children": [_zf_ecf01_normalizar_no_arvore(c) for c in children_in],
+    }
+    node.update(_zf_ecf01_campos_extras_no(no))
+    return node
+
+
+def _zf_ecf01_agregar_valores_arvore_aninhada(
+    nos: List[Dict[str, Any]],
+    agregar_somar_valor_proprio: bool = False,
+) -> None:
+    """Para árvore já aninhada: recalcula valor dos pais a partir dos filhos (pós-ordem)."""
+
+    def agregar(no: Dict[str, Any]) -> float:
+        ch = no.get("children") if isinstance(no.get("children"), list) else []
+        if not ch:
+            p = _zf_ecf01_parse_valor_sap(no.get("valor"))
+            f = float(p) if p is not None else 0.0
+            no["valor"] = int(f) if f == int(f) else f
+            return f
+        s = sum(agregar(c) for c in ch)
+        proprio = _zf_ecf01_parse_valor_sap(no.get("valor"))
+        base = float(proprio) if proprio is not None else 0.0
+        total = base + s if agregar_somar_valor_proprio else s
+        no["valor"] = int(total) if total == int(total) else total
+        return float(total)
+
+    for n in nos:
+        agregar(n)
+
+
+def _zf_ecf01_sanitizar_inteiros_zero_esquerda_json(s: str) -> str:
+    """
+    JSON não permite inteiros com zero à esquerda (ex.: ``04``, ``007``). O ABAP costuma formatar
+    ``stufe`` assim; o ``json`` do Python falha com ``Expecting ',' delimiter`` na posição do segundo dígito.
+
+    Só altera números após ``:`` (valor de campo), não texto entre aspas (ex.: ``"0011110001"``).
+    """
+    return re.sub(
+        r'(:\s*)(-?)0+([1-9]\d*)(\.\d+)?(?=[\s,\]\}]|$)',
+        lambda m: m.group(1) + (m.group(2) or "") + m.group(3) + (m.group(4) or ""),
+        s,
+    )
+
+
+def _zf_ecf01_sanitizar_separadores_json_sap(s: str) -> str:
+    """
+    Corrige concatenação inválida comum em saída ABAP: objetos ou arrays colados sem vírgula.
+
+    Ex.: ``[{...}{...}]`` ou ``{...}{...}`` — o parser JSON exige ``,`` entre valores; sem isso
+    ocorre ``Expecting ',' delimiter``. Não altera o conteúdo dentro de strings (não há regex
+    que percorra estado de string); se ``txt_balance`` contiver literal ``}{``, haverá falso
+    positivo (caso raro).
+    """
+    t = re.sub(r"}\s*{", "},{", s)
+    t = re.sub(r"]\s*\[", "],[", t)
+    return t
+
+
+# Padrões para inserir vírgula entre membros de um mesmo objeto quando o ABAP omite a vírgula
+# (gera ``Expecting ',' delimiter`` em posição fixa, ex. após ``stufe`` / antes de ``accounts``).
+_ZF_ECF01_RE_VIRGULA_STR_STR = re.compile(
+    r'("(?:\\.|[^"\\])*")\s+("(?:\\.|[^"\\])*"\s*:)',
+)
+_ZF_ECF01_RE_VIRGULA_NUM_STR = re.compile(
+    r"(-?\d+(?:\.\d+)?)\s+(" r'"(?:\\.|[^"\\])*"\s*:' r")",
+)
+_ZF_ECF01_RE_VIRGULA_BOOL_STR = re.compile(
+    r"\b(true|false|null)\s+(" r'"(?:\\.|[^"\\])*"\s*:' r")",
+    re.IGNORECASE,
+)
+_ZF_ECF01_RE_VIRGULA_FECHA_STR = re.compile(
+    r"([\}\]])\s+(" r'"(?:\\.|[^"\\])*"\s*:' r")",
+)
+
+
+def _zf_ecf01_sanitizar_virgulas_membros_json(s: str) -> str:
+    """
+    Insere vírgulas omitidas entre pares ``valor`` / ``"próxima_chave":`` no mesmo objeto.
+
+    Cobre casos como ``"stufe":1 "accounts":[]``, ``"x":"y" "z":1`` ou ``...} "k":`` sem vírgula
+    antes de ``"k"``. Executa várias passadas até estabilizar (várias omissões seguidas).
+    """
+    t = s
+    for _ in range(48):
+        t0 = t
+        t = _ZF_ECF01_RE_VIRGULA_STR_STR.sub(r"\1,\2", t)
+        t = _ZF_ECF01_RE_VIRGULA_NUM_STR.sub(r"\1,\2", t)
+        t = _ZF_ECF01_RE_VIRGULA_BOOL_STR.sub(r"\1,\2", t)
+        t = _ZF_ECF01_RE_VIRGULA_FECHA_STR.sub(r"\1,\2", t)
+        if t == t0:
+            break
+    return t
+
+
+def _zf_ecf01_sanitizar_json_r_return_abap(s: str) -> str:
+    """Pipeline: zeros à esquerda em inteiros + separadores ``}{`` / ``][`` + vírgulas entre membros."""
+    t = _zf_ecf01_sanitizar_inteiros_zero_esquerda_json(s)
+    for _ in range(8):
+        t2 = _zf_ecf01_sanitizar_separadores_json_sap(t)
+        t2 = _zf_ecf01_sanitizar_virgulas_membros_json(t2)
+        t2 = _zf_ecf01_sanitizar_inteiros_zero_esquerda_json(t2)
+        if t2 == t:
+            return t
+        t = t2
+    return t
+
+
+def _zf_ecf01_raw_decode_multiplos_valores(s: str) -> Tuple[Optional[Any], Optional[str]]:
+    """Decodifica um ou mais valores JSON adjacentes (vírgulas / espaços entre eles)."""
+    decoder = json.JSONDecoder()
+    idx = 0
+    n = len(s)
+    valores: List[Any] = []
     try:
-        return Decimal(s)
-    except InvalidOperation:
-        return None
+        while idx < n:
+            while idx < n and s[idx] in " \t\n\r,":
+                idx += 1
+            if idx >= n:
+                break
+            obj, end = decoder.raw_decode(s, idx)
+            valores.append(obj)
+            idx = end
+        while idx < n and s[idx] in " \t\n\r":
+            idx += 1
+        if idx < n:
+            trecho = s[idx : idx + 48].replace("\n", " ")
+            return None, f"Texto após JSON válido (posição {idx}): {trecho!r}"
+    except json.JSONDecodeError as e:
+        return None, str(e)
+
+    if not valores:
+        return None, "Nenhum JSON encontrado em R_RETURN."
+
+    if len(valores) == 1:
+        return valores[0], None
+    return valores, None
 
 
-def _zf_ecf01_multiplicador_ind_dc(ind_dc: Any) -> Decimal:
+def _zf_ecf01_contar_nos_arvore(nos: List[Dict[str, Any]]) -> int:
+    t = 0
+    for n in nos:
+        t += 1
+        ch = n.get("children")
+        if isinstance(ch, list) and ch:
+            t += _zf_ecf01_contar_nos_arvore(ch)
+    return t
+
+
+def _zf_ecf01_carregar_json_r_return(s: str) -> Tuple[Any, Optional[str]]:
     """
-    Fator aplicado aos saldos UM01O–UM12O conforme indicador débito/crédito (ZECFED_INDICADOR_D_C).
+    Interpreta o texto de R_RETURN como JSON.
 
-    Convenção: valores no SAP seguem o lado da conta; para exibição analítica unificada,
-    crédito (Haben) inverte o sinal. Ajuste o mapeamento se o domínio no SAP for outro.
+    Aceita um array ou um objeto único. Também aceita **vários objetos JSON concatenados**
+    separados por vírgula e espaços (ex.: ``{...} , {...}``), que o SAP/ABAP costuma montar
+    em vez de um único array — caso em que ``json.loads`` falha com "Extra data".
 
-    S, D, 1 → +1 (Soll / débito)
-    H, C, 2 → -1 (Haben / crédito)
+    Se o ABAP montar **objetos colados sem vírgula** (ex.: ``[{...}{...}]`` ou ``{...}{...}``),
+    insere ``,`` entre ``}{`` / ``][``.
+
+    Se omitir vírgula **entre campos do mesmo objeto** (ex.: ``"stufe":1 "accounts":[]``), aplica
+    sanitização adicional (regex) antes de nova tentativa de parse.
+
+    Inteiros com **zero à esquerda** (ex.: ``"stufe":04``), inválidos em JSON estrito, são normalizados
+    (ex.: ``"stufe":4``).
     """
-    s = (str(ind_dc).strip()[:1] if ind_dc is not None else "") or ""
+    s = (s or "").strip()
+    if s.startswith("\ufeff"):
+        s = s.lstrip("\ufeff").strip()
     if not s:
-        return Decimal("1")
-    u = s.upper()
-    if u in ("H", "C", "2"):
-        return Decimal("-1")
-    if u in ("S", "D", "1"):
-        return Decimal("1")
-    return Decimal("1")
+        return None, None
+
+    s_led = _zf_ecf01_sanitizar_inteiros_zero_esquerda_json(s)
+    s_san = _zf_ecf01_sanitizar_separadores_json_sap(s)
+    s_full = _zf_ecf01_sanitizar_json_r_return_abap(s)
+    candidatos: List[str] = []
+    for cand in (s, s_led, s_san, s_full):
+        if cand not in candidatos:
+            candidatos.append(cand)
+
+    primeiro_erro: Optional[str] = None
+    for cand in candidatos:
+        try:
+            return json.loads(cand), None
+        except json.JSONDecodeError as e:
+            if primeiro_erro is None:
+                primeiro_erro = str(e)
+
+    ultimo_raw: Optional[str] = None
+    for cand in candidatos:
+        data, err_raw = _zf_ecf01_raw_decode_multiplos_valores(cand)
+        if err_raw is None:
+            return data, None
+        ultimo_raw = err_raw
+
+    msg = primeiro_erro or ultimo_raw or "JSON inválido em R_RETURN."
+    mpos = re.search(r"\(char (\d+)\)", msg)
+    if mpos:
+        try:
+            pos = int(mpos.group(1))
+        except ValueError:
+            pos = -1
+        if 0 <= pos <= len(s):
+            lo = max(0, pos - 40)
+            hi = min(len(s), pos + 40)
+            frag = s[lo:hi].replace("\n", " ").replace("\r", "")
+            msg = f"{msg} | trecho em [{lo}:{hi}]: {frag!r}"
+    return None, msg
 
 
-def _zf_ecf01_processar_linha_t_balance(linha: Dict[str, Any]) -> Dict[str, Any]:
+def _zf_ecf01_parse_arvore_r_return(
+    raw: str,
+    agregar_somar_valor_proprio: bool = False,
+    reagregar_arvore_aninhada: bool = False,
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """
-    Mapeia uma linha bruta de T_BALANCE para o layout documentado, com saldos mensais
-    já multiplicados por IND_DC (sinal analítico).
+    Interpreta o JSON em ``R_RETURN`` (ZF_ECF01 / balanço hierárquico).
+
+    **Formato 1 — árvore recursiva (ex.: ``lcl_balance_tree``):** array de raízes; cada nó com
+    ``id``, ``text``, ``valor``, ``accounts``[], ``children``[] (mesma forma recursiva). Contas:
+    ``racct``, ``txt`` ou ``txt_acc``, ``valor``. Valores já vêm consolidados do SAP; por padrão
+    não se recalcula o pai no Python.
+
+    **Formato 2 — lista plana:** objetos com ``parent_id`` (e usualmente ``txt_balance``,
+    ``stufe``) sem ``children`` preenchidos nas raízes; monta-se a árvore por ``parent_id``.
+
+    **Saída normalizada:** ``id``, ``conta`` (= ``id`` da linha quando não há ``conta``), ``text``,
+    ``valor``, ``children``, ``accounts`` com ``racct``, ``txt_acc`` (unificado a partir de ``txt``
+    ou ``txt_acc``), opcionalmente ``stufe``.
     """
-    if not linha:
-        return {}
+    s = (raw or "").strip()
+    if not s:
+        return [], None
+    data, err_load = _zf_ecf01_carregar_json_r_return(s)
+    if err_load:
+        return [], f"R_RETURN não contém JSON válido: {err_load}"
+    if data is None:
+        return [], None
+    if isinstance(data, dict):
+        data = [data]
+    if not isinstance(data, list):
+        return [], "R_RETURN JSON deve ser um array (ou um objeto) na raiz."
+    if not data:
+        return [], None
 
-    ind_dc_raw = _zf_ecf01_buscar_chave_dict(linha, "IND_DC")
-    mult = _zf_ecf01_multiplicador_ind_dc(ind_dc_raw)
+    if _zf_ecf01_lista_parece_plana_com_parent_id(data) and not _zf_ecf01_raiz_tem_children_com_nos(
+        data
+    ):
+        planos = [x for x in data if isinstance(x, dict)]
+        arvore = _zf_ecf01_lista_plana_para_arvore(planos, agregar_somar_valor_proprio=agregar_somar_valor_proprio)
+        return arvore, None
 
-    out: Dict[str, Any] = {}
-    for nome in _T_BALANCE_CAMPOS_CABECALHO:
-        out[nome] = _zf_ecf01_campo_str(linha, nome)
+    arvore = [_zf_ecf01_normalizar_no_arvore(n) for n in data]
+    if reagregar_arvore_aninhada:
+        _zf_ecf01_agregar_valores_arvore_aninhada(arvore, agregar_somar_valor_proprio=agregar_somar_valor_proprio)
+    return arvore, None
 
-    total_parcial = Decimal("0")
-    for key in _T_BALANCE_CAMPOS_SALDO_MES:
-        bruto = _zf_ecf01_para_decimal_saldo(_zf_ecf01_buscar_chave_dict(linha, key))
-        if bruto is None:
-            out[key] = None
-        else:
-            assinado = (bruto * mult).quantize(Decimal("0.01"))
-            out[key] = str(assinado)
-            total_parcial += assinado
 
-    out["SORT"] = _zf_ecf01_campo_str(linha, "SORT")
-    out["total_saldo_exercicio"] = str(total_parcial.quantize(Decimal("0.01")))
-
-    # Lista Jan–Dez (mesmo sinal que as colunas UMxxO) — útil para gráficos sem reparsing
-    out["saldos_mensais"] = [out[k] for k in _T_BALANCE_CAMPOS_SALDO_MES]
-
-    return out
+def _zf_ecf01_bool_param(params: Dict[str, Any], *keys: str, default: bool = False) -> bool:
+    for k in keys:
+        if k in params and params[k] is not None:
+            v = params[k]
+            if isinstance(v, str):
+                return v.strip().lower() in ("1", "true", "yes", "sim", "s")
+            return bool(v)
+    return default
 
 
 def _zf_ecf01_montar_parametros(
@@ -832,60 +1223,61 @@ class SapRfc:
     @staticmethod
     def consultar_balanco_financeiro(cod_cliente, **params):
         """
-        RFC ZF_ECF01 — balanço financeiro (T_BALANCE, R_RETURN).
+        RFC ZF_ECF01 — balanço financeiro.
 
-        Parâmetros em params (API/UI), alinhados à RFC:
-          I_BUKRS, I_MONTH_B, I_MONTH_V, I_YEAR, I_KTOPL, I_VERSN — na API: i_bukrs, i_month_b,
-          i_month_v, i_year, i_ktopl, i_versn (aceita também I_*). Aliases: i_month_ini / i_month_fim
-          no lugar de i_month_b / i_month_v. Período único: i_month + i_year (envia B = V).
+        O SAP devolve o resultado em ``R_RETURN`` (string) contendo JSON:
 
-        Uma única chamada RFC; cada linha traz ano_referencia, mes_referencia_b e mes_referencia_v.
+        - **Lista plana** com ``parent_id`` (vazio/null na raiz), sem ``children`` nas raízes:
+          monta ``children`` por ``parent_id == id``; agrega ``valor`` do pai (ou + próprio se
+          ``agregar_pai_soma_propria``).
+        - **Árvore recursiva** (ex.: ``lcl_balance_tree``): ``id``, ``text``, ``valor``,
+          ``accounts`` (``racct``, ``txt`` ou ``txt_acc``), ``children`` aninhados. Valores
+          consolidados vêm do SAP; por padrão **não** se recalcula o pai
+          (``reagregar_arvore_aninhada`` falso). Use ``reagregar_arvore_aninhada`` verdadeiro
+          só se quiser sobrescrever pais com a soma dos filhos.
 
-        Retorno: dict com sucesso, mensagem, r_return, t_balance, total_linhas, colunas.
+        Parâmetros RFC: i_bukrs, i_month_b, i_month_v, i_year, i_ktopl, i_versn.
+        Opcionais: ``agregar_pai_soma_propria``, ``reagregar_arvore_aninhada`` (bool).
+
+        Retorno: sucesso, mensagem, r_return, arvore, total_nos, t_balance (legado vazio),
+        total_linhas, colunas, periodo, opcoes_arvore.
         """
+        cols = list(ZF_ECF01_ARVORE_COLUNAS)
+
+        def _fail(
+            msg: str,
+            r_ret: str = "",
+            periodo: Optional[Dict[str, Any]] = None,
+        ) -> Dict[str, Any]:
+            return {
+                "sucesso": False,
+                "mensagem": msg,
+                "r_return": r_ret,
+                "arvore": [],
+                "total_nos": 0,
+                "t_balance": [],
+                "total_linhas": 0,
+                "colunas": cols,
+                "periodo": periodo or {},
+                "opcoes_arvore": {},
+            }
+
         i_bukrs = str(params.get("i_bukrs") or params.get("I_BUKRS") or "").strip()
         intervalo, err_intervalo = _zf_ecf01_resolver_intervalo_meses(params)
         if err_intervalo or not intervalo:
-            return {
-                "sucesso": False,
-                "mensagem": err_intervalo or "Não foi possível determinar o período.",
-                "r_return": "",
-                "t_balance": [],
-                "total_linhas": 0,
-                "colunas": [],
-            }
+            return _fail(err_intervalo or "Não foi possível determinar o período.")
         ref_year, month_b, month_v = intervalo
+        periodo = {"i_year": ref_year, "i_month_b": month_b, "i_month_v": month_v}
         i_ktopl = str(params.get("i_ktopl") or params.get("I_KTOPL") or "").strip()
         i_versn = str(params.get("i_versn") or params.get("I_VERSN") or "").strip()
 
         if not i_bukrs:
-            return {
-                "sucesso": False,
-                "mensagem": "Empresa (I_BUKRS) é obrigatória.",
-                "r_return": "",
-                "t_balance": [],
-                "total_linhas": 0,
-                "colunas": [],
-            }
+            return _fail("Empresa (I_BUKRS) é obrigatória.", periodo=periodo)
         if not i_ktopl or not i_versn:
-            return {
-                "sucesso": False,
-                "mensagem": "Plano de contas (I_KTOPL) e versão (I_VERSN) são obrigatórios.",
-                "r_return": "",
-                "t_balance": [],
-                "total_linhas": 0,
-                "colunas": [],
-            }
+            return _fail("Plano de contas (I_KTOPL) e versão (I_VERSN) são obrigatórios.", periodo=periodo)
 
         if not SapRfc.is_available():
-            return {
-                "sucesso": False,
-                "mensagem": SapRfc.pyrfc_mensagem_indisponivel(),
-                "r_return": "",
-                "t_balance": [],
-                "total_linhas": 0,
-                "colunas": [],
-            }
+            return _fail(SapRfc.pyrfc_mensagem_indisponivel(), periodo=periodo)
 
         rfc_params = _zf_ecf01_montar_parametros(
             i_bukrs, month_b, month_v, ref_year, i_ktopl, i_versn
@@ -899,61 +1291,55 @@ class SapRfc:
 
         if not ok:
             err = str(result or f"Erro ao chamar RFC {_RFC_BALANCO_FINANCEIRO}.")
-            return {
-                "sucesso": False,
-                "mensagem": err,
-                "r_return": "",
-                "t_balance": [],
-                "total_linhas": 0,
-                "colunas": [],
-            }
+            return _fail(err, periodo=periodo)
 
-        linhas_brutas, r_return = _zf_ecf01_extrair_t_balance_e_return(
-            result if isinstance(result, dict) else None
+        r_return = _zf_ecf01_extrair_r_return(result if isinstance(result, dict) else None)
+        agregar_somar = _zf_ecf01_bool_param(
+            params, "agregar_pai_soma_propria", "i_agregar_pai_soma_propria"
         )
-        linhas_proc = [
-            _zf_ecf01_processar_linha_t_balance(row) for row in linhas_brutas if isinstance(row, dict)
-        ]
-        if not linhas_proc and r_return:
-            return {
-                "sucesso": False,
-                "mensagem": r_return,
-                "r_return": r_return,
-                "t_balance": [],
-                "total_linhas": 0,
-                "colunas": [],
-            }
+        reagregar = _zf_ecf01_bool_param(
+            params,
+            "reagregar_arvore_aninhada",
+            "i_reagregar_arvore_aninhada",
+            default=False,
+        )
+        opcoes_arvore = {
+            "agregar_pai_soma_propria": agregar_somar,
+            "reagregar_arvore_aninhada": reagregar,
+        }
+        arvore, err_json = _zf_ecf01_parse_arvore_r_return(
+            r_return,
+            agregar_somar_valor_proprio=agregar_somar,
+            reagregar_arvore_aninhada=reagregar,
+        )
+        if err_json:
+            return _fail(err_json, r_ret=r_return, periodo=periodo)
 
-        t_balance: List[Dict[str, Any]] = []
-        for proc in linhas_proc:
-            linha = {
-                "ano_referencia": ref_year,
-                "mes_referencia_b": month_b,
-                "mes_referencia_v": month_v,
-                **proc,
-            }
-            t_balance.append(linha)
-
-        colunas: List[str] = list(T_BALANCE_COLUNAS_RESPOSTA) if t_balance else []
+        total_nos = _zf_ecf01_contar_nos_arvore(arvore)
         label_periodo = f"{ref_year}: I_MONTH_B={month_b} … I_MONTH_V={month_v}"
-        if month_b == month_v:
+        if not arvore:
             msg_ok = (
-                "Dados obtidos com sucesso." if t_balance else "Nenhuma linha retornada para os filtros informados."
+                "RFC executada; R_RETURN vazio ou sem nós."
+                if not (r_return or "").strip()
+                else "RFC executada; nenhum nó na árvore JSON."
             )
+        elif month_b == month_v:
+            msg_ok = "Dados obtidos com sucesso."
         else:
-            msg_ok = (
-                f"Dados obtidos com sucesso ({label_periodo})."
-                if t_balance
-                else f"Nenhuma linha retornada ({label_periodo})."
-            )
-        print(f"[SapRfc] consultar_balanco_financeiro: {len(t_balance)} linha(s) em T_BALANCE")
+            msg_ok = f"Dados obtidos com sucesso ({label_periodo})."
+
+        print(f"[SapRfc] consultar_balanco_financeiro: {total_nos} nó(s) no JSON de R_RETURN")
         return {
             "sucesso": True,
             "mensagem": msg_ok,
-            "r_return": r_return or "",
-            "t_balance": t_balance,
-            "total_linhas": len(t_balance),
-            "colunas": colunas,
+            "r_return": r_return,
+            "arvore": arvore,
+            "total_nos": total_nos,
+            "t_balance": [],
+            "total_linhas": total_nos,
+            "colunas": cols,
+            "periodo": periodo,
+            "opcoes_arvore": opcoes_arvore,
         }
 
 

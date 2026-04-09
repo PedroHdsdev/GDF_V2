@@ -4142,8 +4142,11 @@ def fn_api_sap_balanco_financeiro(request):
 
     Autenticação: sessão (navegador) ou ``Authorization: Bearer <JWT do dashboard>`` (Streamlit).
     Body JSON: ``i_bukrs``, ``i_ktopl``, ``i_versn``, ``i_year`` e ``i_month_b`` / ``i_month_v``
-    (equivalente SAP a I_MONTH_B inicial e I_MONTH_V final; alias ``i_month_ini`` / ``i_month_fim``), ou
-    ``i_month`` + ``i_year`` (período único, B = V).
+    (SAP: I_MONTH_B / I_MONTH_V; alias ``i_month_ini`` / ``i_month_fim``), ou ``i_month`` + ``i_year`` (B = V).
+
+    Resposta: ``r_return``, ``arvore`` (nós com ``id``, ``conta``, ``text``, ``valor``, ``children``),
+    ``total_nos``, ``periodo``, ``opcoes_arvore``.
+    Lista plana: ``parent_id`` na raiz/filhos; campo ``conta`` (conta razão SAP) preservado em cada nó.
     """
     _user, cod_cliente, auth_err = autenticar_sessao_ou_jwt_dashboard(request, "Db_BalancoFin")
     if auth_err is not None:

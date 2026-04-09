@@ -1,8 +1,15 @@
 """
 RFC ZF_ECF01 – Balanço financeiro.
 
-A comunicação e o processamento de ``T_BALANCE`` (mapeamento de campos, sinal via
-``IND_DC``, saldos UM01O–UM12O) estão em ``SapRfc.consultar_balanco_financeiro``.
+O SAP devolve o balanço em ``R_RETURN`` (string JSON). Há dois formatos suportados após o parse:
+
+- **Árvore recursiva:** raízes com ``id``, ``text``, ``valor``, ``accounts``, ``children``;
+  em ``accounts``, descrição em ``txt`` ou ``txt_acc``.
+- **Lista plana:** ``parent_id``, ``txt_balance``, ``stufe``, etc.
+
+A normalização em ``SapRfc`` unifica para ``id``, ``conta``, ``text``, ``valor``, ``children``,
+``accounts`` (com ``txt_acc`` preenchido a partir de ``txt`` quando necessário).
+A normalização está em ``SapRfc.consultar_balanco_financeiro``.
 Este módulo mantém tipagem (TypedDict) e ``executar_balanco_financeiro`` para API/Streamlit.
 """
 from __future__ import annotations
@@ -31,14 +38,18 @@ class ZfEcf01Resultado(TypedDict, total=False):
     sucesso: bool
     mensagem: str
     r_return: str
+    arvore: List[dict[str, Any]]
+    total_nos: int
     t_balance: List[dict[str, Any]]
     total_linhas: int
     colunas: List[str]
+    periodo: dict[str, Any]
+    opcoes_arvore: dict[str, Any]
 
 
 def executar_balanco_financeiro(cod_cliente: str, **params: Any) -> ZfEcf01Resultado:
     """
-    Executa ZF_ECF01 e devolve T_BALANCE normalizado.
+    Executa ZF_ECF01 e devolve ``arvore`` (JSON parseado de R_RETURN) e metadados.
 
     params: i_bukrs, i_ktopl, i_versn, i_year; intervalo i_month_b / i_month_v (RFC I_MONTH_B / I_MONTH_V)
     ou alias i_month_ini / i_month_fim; período único: i_month + i_year.
