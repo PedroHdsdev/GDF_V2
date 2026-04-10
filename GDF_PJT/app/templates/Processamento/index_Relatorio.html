@@ -59,6 +59,19 @@
 .relatorio-th-sort.is-sorted-asc .sort-ind::after { content: '▲'; }
 .relatorio-th-sort.is-sorted-desc .sort-ind { opacity: 1; }
 .relatorio-th-sort.is-sorted-desc .sort-ind::after { content: '▼'; }
+/* Filtros: duas linhas — período / busca+SAP+botão */
+.relatorio-filtros-row-periodo { margin-bottom: 0; }
+.relatorio-filtros-row-busca {
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
+    padding-top: 1rem;
+    margin-top: 0.75rem;
+}
+.relatorio-filtro-sap-col { min-width: 11rem; max-width: 16rem; }
+.relatorio-filtros-btn-aplicar .btn { min-height: calc(1.5em + 0.75rem + 2px); }
+@media (min-width: 992px) {
+    .relatorio-filtros-btn-aplicar { min-width: 11rem; }
+}
+.relatorio-filtros-wrap .relatorio-filial-hint { font-size: 0.75rem; line-height: 1.35; }
 </style>
 {% endblock %}
 
@@ -78,8 +91,8 @@
         <div class="layout-card">
             <div class="layout-subcard mb-3 relatorio-filtros-wrap">
                 <h6 class="fw-600 mb-3">Filtros</h6>
-                <div class="row g-3 align-items-end">
-                    <div class="col-12 col-xl-4">
+                <div class="row g-3 align-items-start relatorio-filtros-row-periodo">
+                    <div class="col-12 col-md-6 col-xl-4">
                         <label class="form-label" for="relatorio-empresa">Empresa</label>
                         <select id="relatorio-empresa" class="form-select">
                             <option value="">Todas</option>
@@ -88,7 +101,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-12 col-xl-4">
+                    <div class="col-12 col-md-6 col-xl-4">
                         <label class="form-label" for="relatorio-filial">Filial</label>
                         <select id="relatorio-filial" class="form-select">
                             <option value="">Todas as filiais</option>
@@ -96,21 +109,31 @@
                             <option value="{{ f.id }}" data-cod-empresa="{{ f.empresa.cod_empresa }}">{{ f.empresa.cod_empresa }} — {{ f.cod_filial }}{% if f.nome %}: {{ f.nome }}{% endif %}</option>
                             {% endfor %}
                         </select>
-                        <p class="text-muted small mb-0 mt-1">NFe, CTe e NFS. SPED não possui filial no cadastro.</p>
+                        <p class="text-muted relatorio-filial-hint mb-0 mt-1">Aplica-se a NFe, CT-e e NFS-e. SPED não usa filial.</p>
                     </div>
-                    <div class="col-6 col-md-4 col-xl-2">
+                    <div class="col-6 col-sm-6 col-md-3 col-xl-2">
                         <label class="form-label" for="relatorio-data-inicio">Data início</label>
                         <input type="date" id="relatorio-data-inicio" class="form-control">
                     </div>
-                    <div class="col-6 col-md-4 col-xl-2">
+                    <div class="col-6 col-sm-6 col-md-3 col-xl-2">
                         <label class="form-label" for="relatorio-data-fim">Data fim</label>
                         <input type="date" id="relatorio-data-fim" class="form-control">
                     </div>
-                    <div class="col-12 col-md-8 col-xl-8">
+                </div>
+                <div class="d-flex flex-column flex-lg-row gap-3 align-items-stretch align-items-lg-end relatorio-filtros-row-busca">
+                    <div class="flex-grow-1 min-width-0">
                         <label class="form-label" for="relatorio-busca">Buscar</label>
-                        <input type="text" id="relatorio-busca" class="form-control" placeholder="Chave, número, nome de arquivo...">
+                        <input type="text" id="relatorio-busca" class="form-control" placeholder="Chave, número, nome de arquivo…">
                     </div>
-                    <div class="col-12 col-md-4 col-xl-4 d-grid d-md-flex align-items-end">
+                    <div class="d-none flex-shrink-0 relatorio-filtro-sap-col" id="relatorio-filtros-xml-sap-wrap">
+                        <label class="form-label" for="relatorio-tem-sap" title="Filtro por chave encontrada no SAP (NFe, CT-e e NFS-e)">Chave no SAP</label>
+                        <select id="relatorio-tem-sap" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="sim">Tem</option>
+                            <option value="nao">Não tem</option>
+                        </select>
+                    </div>
+                    <div class="flex-shrink-0 relatorio-filtros-btn-aplicar align-self-lg-end">
                         <button type="button" class="btn btn-primary w-100" id="relatorio-btn-aplicar">
                             <i class="fas fa-search"></i> Aplicar filtros
                         </button>
@@ -181,10 +204,11 @@
                                     <th class="relatorio-th-sort" data-sort="empresa" scope="col" title="Ordenar">Empresa<span class="sort-ind"></span></th>
                                     <th class="relatorio-th-sort" data-sort="filial" scope="col" title="Ordenar">Filial<span class="sort-ind"></span></th>
                                     <th class="relatorio-th-sort" data-sort="natureza" scope="col" title="Ordenar">Natureza<span class="sort-ind"></span></th>
+                                    <th scope="col">SAP</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="9" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
+                                <tr><td colspan="10" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -200,10 +224,11 @@
                                     <th class="relatorio-th-sort" data-sort="emissao" scope="col" title="Ordenar">Emissão<span class="sort-ind"></span></th>
                                     <th class="relatorio-th-sort" data-sort="empresa" scope="col" title="Ordenar">Empresa<span class="sort-ind"></span></th>
                                     <th class="relatorio-th-sort" data-sort="filial" scope="col" title="Ordenar">Filial<span class="sort-ind"></span></th>
+                                    <th scope="col">SAP</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="6" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
+                                <tr><td colspan="7" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -218,10 +243,11 @@
                                     <th class="relatorio-th-sort" data-sort="emissao" scope="col" title="Ordenar">Emissão<span class="sort-ind"></span></th>
                                     <th class="relatorio-th-sort" data-sort="empresa" scope="col" title="Ordenar">Empresa<span class="sort-ind"></span></th>
                                     <th class="relatorio-th-sort" data-sort="filial" scope="col" title="Ordenar">Filial<span class="sort-ind"></span></th>
+                                    <th scope="col">SAP</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="5" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
+                                <tr><td colspan="6" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
                             </tbody>
                         </table>
                     </div>

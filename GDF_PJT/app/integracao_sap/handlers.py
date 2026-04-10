@@ -8,7 +8,15 @@ Para adicionar novos RFCs:
   2. Crie RfcHandler com params e handler_fn
   3. Chame registry.register(handler) em register_all
 """
-from typing import Dict, Any, List
+from collections import defaultdict
+from typing import Any, DefaultDict, Dict, List, Tuple
+
+from django.db import transaction
+from django.utils import timezone
+
+from app.db_GDF.CTe.models import CTe
+from app.db_GDF.NFe.models import NFe
+from app.db_GDF.NFSe.models import NFSe
 
 from app.integracao_sap.rfc_registry import (
     RfcHandler,
@@ -18,7 +26,7 @@ from app.integracao_sap.rfc_registry import (
 
 
 def _handler_relatorio_custo_impl(cod_cliente: str, **params) -> Dict[str, Any]:
-    """Chama RFC /BRGMN/CUSTR_IMP_CUSTO e persiste em sap.relatorio_custo."""
+    """Chama RFC /PRCIT/GDF_RFC_CUSTO e persiste em sap.relatorio_custo."""
     from app.classes.SapRfc import SapRfc
 
     bukrs = str(params.get("bukrs") or "").strip()
@@ -64,6 +72,162 @@ def _handler_relatorio_custo_impl(cod_cliente: str, **params) -> Dict[str, Any]:
     }
 
 
+RFC_CONSULTA_SYNC_CHUNK = 80
+RFC_CONSULTA_SYNC_MAX = 5000
+
+
+def _lookup_linha_sap(m: Dict[str, Dict[str, Any]], ch: str):
+    ch_norm = (ch or "").strip()
+    if not ch_norm:
+        return None
+    digits = "".join(c for c in ch_norm if c.isdigit())
+    return (
+        m.get(ch_norm)
+        or m.get(ch_norm[:48])
+        or (m.get(digits) if len(digits) == 44 else None)
+    )
+
+
+def _handler_gdf_rfc_consulta_impl(cod_cliente: str, **params) -> Dict[str, Any]:
+    """
+    RFC /PRCIT/GDF_RFC_CONSULTA: busca no GDF documentos com tem_sap=False (NFe, CT-e, NFS-e),
+    consulta o SAP em lotes e atualiza tem_sap / sap_nome_tabela quando encontrado.
+    """
+    from app.classes.SapRfc import SapRfc
+
+    if not SapRfc.is_available():
+        return {"sucesso": False, "mensagem": SapRfc.pyrfc_mensagem_indisponivel()}
+
+    entries: List[Tuple[str, int, str]] = []
+
+    for nfe in (
+        NFe.objects.filter(gdfcliente__cod_cliente=cod_cliente, tem_sap=False)
+        .select_related("identificacao")
+        .order_by("data_atualizacao")
+        .iterator(chunk_size=300)
+    ):
+        if len(entries) >= RFC_CONSULTA_SYNC_MAX:
+            break
+        ch = (nfe.identificacao.chave_acesso or "").strip()
+        if ch:
+            entries.append(("nfe", nfe.id_nfe, ch))
+
+    for cte in (
+        CTe.objects.filter(gdfcliente__cod_cliente=cod_cliente, tem_sap=False)
+        .select_related("identificacao")
+        .order_by("data_atualizacao")
+        .iterator(chunk_size=300)
+    ):
+        if len(entries) >= RFC_CONSULTA_SYNC_MAX:
+            break
+        ch = (cte.identificacao.chave_acesso or "").strip()
+        if ch:
+            entries.append(("cte", cte.id_cte, ch))
+
+    for nfse in (
+        NFSe.objects.filter(gdfcliente__cod_cliente=cod_cliente, tem_sap=False)
+        .select_related("identificacao")
+        .order_by("data_atualizacao")
+        .iterator(chunk_size=300)
+    ):
+        if len(entries) >= RFC_CONSULTA_SYNC_MAX:
+            break
+        ch = (nfse.identificacao.chave or "").strip()
+        if ch:
+            entries.append(("nfse", nfse.id_nfse, ch))
+
+    total_pendentes = len(entries)
+    if total_pendentes == 0:
+        return {
+            "sucesso": True,
+            "mensagem": "Nenhum documento pendente (tem_sap = Não) para este cliente.",
+            "total_pendentes": 0,
+            "total_chaves_unicas": 0,
+            "total_chaves_consultadas": 0,
+            "total_atualizados": 0,
+            "total_linhas": 0,
+            "linhas": [],
+        }
+
+    refs_by_chave: DefaultDict[str, List[Tuple[str, int]]] = defaultdict(list)
+    ordered_unique: List[str] = []
+    seen_ch = set()
+    for tipo, pk, ch in entries:
+        refs_by_chave[ch].append((tipo, pk))
+        if ch not in seen_ch:
+            seen_ch.add(ch)
+            ordered_unique.append(ch)
+
+    total_chaves_unicas = len(ordered_unique)
+    amostra: List[Dict[str, Any]] = []
+    total_atualizados = 0
+
+    try:
+        with transaction.atomic():
+            for i in range(0, len(ordered_unique), RFC_CONSULTA_SYNC_CHUNK):
+                chunk = ordered_unique[i : i + RFC_CONSULTA_SYNC_CHUNK]
+                ok, err, m, ord_chunk = SapRfc.consultar_chaves_no_sap_batch(cod_cliente, chunk)
+                if not ok:
+                    raise RuntimeError(err)
+                for ch in ord_chunk:
+                    row = _lookup_linha_sap(m, ch)
+                    if not row or not row.get("tem_sap"):
+                        continue
+                    nt = (row.get("name_table") or "").strip()[:30] or None
+                    now = timezone.now()
+                    for tipo, pk in refs_by_chave.get(ch, []):
+                        if tipo == "nfe":
+                            n = NFe.objects.filter(pk=pk, tem_sap=False).update(
+                                tem_sap=True,
+                                sap_nome_tabela=nt,
+                                data_atualizacao=now,
+                            )
+                        elif tipo == "cte":
+                            n = CTe.objects.filter(pk=pk, tem_sap=False).update(
+                                tem_sap=True,
+                                sap_nome_tabela=nt,
+                                data_atualizacao=now,
+                            )
+                        else:
+                            n = NFSe.objects.filter(pk=pk, tem_sap=False).update(
+                                tem_sap=True,
+                                sap_nome_tabela=nt,
+                                data_atualizacao=now,
+                            )
+                        total_atualizados += n
+                        if n and len(amostra) < 40:
+                            amostra.append(
+                                {
+                                    "tipo": tipo.upper(),
+                                    "chave": ch,
+                                    "tem_sap": True,
+                                    "status": row.get("status", ""),
+                                    "name_table": nt or "",
+                                }
+                            )
+    except Exception as e:
+        return {
+            "sucesso": False,
+            "mensagem": str(e),
+            "total_pendentes": total_pendentes,
+            "total_chaves_unicas": total_chaves_unicas,
+        }
+
+    return {
+        "sucesso": True,
+        "mensagem": (
+            f"Consultadas {total_chaves_unicas} chave(s) única(s) no SAP; "
+            f"{total_atualizados} documento(s) atualizado(s) no GDF."
+        ),
+        "total_pendentes": total_pendentes,
+        "total_chaves_unicas": total_chaves_unicas,
+        "total_chaves_consultadas": total_chaves_unicas,
+        "total_atualizados": total_atualizados,
+        "total_linhas": len(amostra),
+        "linhas": amostra,
+    }
+
+
 def register_all(registry) -> None:
     """Registra todos os handlers de RFC no registry."""
     registry.register(RfcHandler(
@@ -79,6 +243,15 @@ def register_all(registry) -> None:
             RfcParam("persistir", "Persistir no banco", RfcParamType.BOOLEAN, required=False, default=True),
         ],
         handler_fn=_handler_relatorio_custo_impl,
+    ))
+
+    registry.register(RfcHandler(
+        codigo="RFC_GDF_RFC_CONSULTA",
+        nome="Reconsultar SAP (pendentes)",
+        descricao="RFC /PRCIT/GDF_RFC_CONSULTA: localiza NF-e, CT-e e NFS-e com tem_sap = Não, consulta o SAP em lotes e grava tem_sap / tabela quando encontrar. Até 5000 documentos por execução (ordem: NFe → CT-e → NFS-e).",
+        tabela_sap="/PRCIT/GDF_RFC_CONSULTA",
+        params=[],
+        handler_fn=_handler_gdf_rfc_consulta_impl,
     ))
 
     # Exemplo: adicione novos RFCs aqui:

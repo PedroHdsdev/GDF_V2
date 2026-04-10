@@ -1519,7 +1519,6 @@ def fn_api_processar_xml(request):
     try:
         lsl_Xml = request.FILES.getlist('arquivo')
         l_v_type_xml = (request.POST.get('type_xml') or 'NFe').strip() or 'NFe'
-        l_v_origem_dados = (request.POST.get('origem_dados') or 'LOCAL').strip() or 'LOCAL'
         l_v_empresa_id = (request.POST.get('empresa_id') or '').strip()
 
         if not lsl_Xml:
@@ -1605,7 +1604,7 @@ def fn_api_processar_xml(request):
             try:
                 from app.api.tasks import processar_job_xml_manual
                 processar_job_xml_manual.delay(
-                    job.id, temp_dir, l_v_type_xml, l_v_origem_dados,
+                    job.id, temp_dir, l_v_type_xml,
                     request.user.id, cod_cliente, l_v_empresa_id or None,
                 )
                 return
@@ -1613,7 +1612,7 @@ def fn_api_processar_xml(request):
                 pass
             t = threading.Thread(
                 target=processar_job_xml_background,
-                args=(job.id, temp_dir, l_v_type_xml, l_v_origem_dados, request.user.id, cod_cliente, l_v_empresa_id),
+                args=(job.id, temp_dir, l_v_type_xml, request.user.id, cod_cliente, l_v_empresa_id),
                 daemon=True,
             )
             t.start()
@@ -1687,7 +1686,6 @@ def fn_api_cargaxml_parametros(request):
                 'id': param.id,
                 'ativo': param.ativo,
                 'horario': param.horario.strftime('%H:%M'),
-                'origem_dados': param.origem_dados,
                 'diretorio': param.diretorio,
                 'empresa_id': param.empresa.cod_empresa if param.empresa else None,
                 'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
@@ -1705,7 +1703,6 @@ def fn_api_cargaxml_parametros(request):
             payload = request.POST
 
         horario_raw = (payload.get('horario') or '').strip()
-        origem_dados = (payload.get('origem_dados') or 'LOCAL').strip().upper()
         diretorio = (payload.get('diretorio') or '').strip()
         empresa_id = (payload.get('empresa_id') or '').strip()
         ativo_raw = payload.get('ativo', True)
@@ -1736,7 +1733,6 @@ def fn_api_cargaxml_parametros(request):
             empresa=empresa,
             ativo=ativo,
             horario=horario,
-            origem_dados=origem_dados,
             diretorio=diretorio,
             usuario_criacao=request.user,
             data_atualizacao=timezone.localtime(),
@@ -1749,7 +1745,6 @@ def fn_api_cargaxml_parametros(request):
                 'id': param.id,
                 'ativo': param.ativo,
                 'horario': param.horario.strftime('%H:%M'),
-                'origem_dados': param.origem_dados,
                 'diretorio': param.diretorio,
                 'empresa_id': param.empresa.cod_empresa if param.empresa else None,
                 'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
@@ -1778,7 +1773,6 @@ def fn_api_cargaxml_parametro_detail(request, param_id):
             'id': param.id,
             'ativo': param.ativo,
             'horario': param.horario.strftime('%H:%M'),
-            'origem_dados': param.origem_dados,
             'diretorio': param.diretorio,
             'empresa_id': param.empresa.cod_empresa if param.empresa else None,
             'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
@@ -1797,7 +1791,6 @@ def fn_api_cargaxml_parametro_detail(request, param_id):
         payload = request.POST
 
     horario_raw = (payload.get('horario') or '').strip()
-    origem_dados = (payload.get('origem_dados') or param.origem_dados).strip().upper()
     diretorio = (payload.get('diretorio') or param.diretorio).strip()
     empresa_id = (payload.get('empresa_id') or (param.empresa.cod_empresa if param.empresa else '')).strip()
     ativo_raw = payload.get('ativo', param.ativo)
@@ -1826,11 +1819,10 @@ def fn_api_cargaxml_parametro_detail(request, param_id):
 
     # Aplicar alterações
     param.horario = horario
-    param.origem_dados = origem_dados
     param.diretorio = diretorio
     param.ativo = ativo
     param.data_atualizacao = timezone.localtime()
-    param.save(update_fields=['horario', 'origem_dados', 'diretorio', 'empresa', 'ativo', 'data_atualizacao'])
+    param.save(update_fields=['horario', 'diretorio', 'empresa', 'ativo', 'data_atualizacao'])
 
     return JsonResponse({'sucesso': True, 'mensagem': 'Parametro atualizado com sucesso'}, status=200)
 
@@ -1925,7 +1917,6 @@ def fn_api_cargaxml_relatorio(request):
             'id': param.id,
             'ativo': param.ativo,
             'horario': param.horario.strftime('%H:%M'),
-            'origem_dados': param.origem_dados,
             'diretorio': param.diretorio,
             'empresa_id': param.empresa.cod_empresa if param.empresa else None,
             'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
@@ -2138,7 +2129,6 @@ def fn_api_cargaxml_job_details(request, job_id):
             'id': p.id,
             'ativo': p.ativo,
             'horario': p.horario.strftime('%H:%M'),
-            'origem_dados': p.origem_dados,
             'diretorio': p.diretorio if pode_auto else '',
             'empresa_id': p.empresa.cod_empresa if p.empresa else None,
             'empresa_nome': p.empresa.fantasia or p.empresa.razao if p.empresa else '',
@@ -2702,6 +2692,10 @@ def fn_api_relatorio_nfe(request):
     dt_fim = parse_date_safe(params.data_fim)
     if dt_fim:
         qs = qs.filter(identificacao__emissao__date__lte=dt_fim)
+    if params.tem_sap == 'sim':
+        qs = qs.filter(tem_sap=True)
+    elif params.tem_sap == 'nao':
+        qs = qs.filter(tem_sap=False)
     order_nfe = {
         'numero': 'identificacao__numero',
         'serie': 'identificacao__serie',
@@ -2730,6 +2724,8 @@ def fn_api_relatorio_nfe(request):
             'natureza': id_.natureza_operacao,
             'filial': nfe.filial.cod_filial if nfe.filial else None,
             'filial_nome': (nfe.filial.nome or '') if nfe.filial else '',
+            'tem_sap': nfe.tem_sap,
+            'sap_nome_tabela': nfe.sap_nome_tabela or '',
         })
     return JsonResponse({
         'sucesso': True,
@@ -2775,6 +2771,10 @@ def fn_api_relatorio_cte(request):
     dt_fim = parse_date_safe(params.data_fim)
     if dt_fim:
         qs = qs.filter(identificacao__emissao__date__lte=dt_fim)
+    if params.tem_sap == 'sim':
+        qs = qs.filter(tem_sap=True)
+    elif params.tem_sap == 'nao':
+        qs = qs.filter(tem_sap=False)
     order_cte = {
         'numero': 'identificacao__numero',
         'serie': 'identificacao__serie',
@@ -2797,6 +2797,8 @@ def fn_api_relatorio_cte(request):
             'empresa': cte.empresa.cod_empresa if cte.empresa else None,
             'filial': cte.filial.cod_filial if cte.filial else None,
             'filial_nome': (cte.filial.nome or '') if cte.filial else '',
+            'tem_sap': cte.tem_sap,
+            'sap_nome_tabela': cte.sap_nome_tabela or '',
         })
     return JsonResponse({
         'sucesso': True,
@@ -2841,6 +2843,10 @@ def fn_api_relatorio_nfse(request):
     dt_fim = parse_date_safe(params.data_fim)
     if dt_fim:
         qs = qs.filter(identificacao__emissao__date__lte=dt_fim)
+    if params.tem_sap == 'sim':
+        qs = qs.filter(tem_sap=True)
+    elif params.tem_sap == 'nao':
+        qs = qs.filter(tem_sap=False)
     order_nfse = {
         'numero': 'identificacao__numero',
         'chave': 'identificacao__chave',
@@ -2861,6 +2867,8 @@ def fn_api_relatorio_nfse(request):
             'empresa': nfse.empresa.cod_empresa if nfse.empresa else None,
             'filial': nfse.filial.cod_filial if nfse.filial else None,
             'filial_nome': (nfse.filial.nome or '') if nfse.filial else '',
+            'tem_sap': nfse.tem_sap,
+            'sap_nome_tabela': nfse.sap_nome_tabela or '',
         })
     return JsonResponse({
         'sucesso': True,
@@ -4398,7 +4406,7 @@ def fn_view_Integracao_Rfc(request):
 def fn_api_rfc_executar(request):
     """
     Executa um RFC registrado.
-    Body (JSON): { "cod_rfc": "RFC_RELATORIO_CUSTO", "params": { "bukrs": "...", "branch": "...", ... } }
+    Body (JSON): { "cod_rfc": "RFC_...", "params": { ... } } — ex.: RFC_RELATORIO_CUSTO, RFC_GDF_RFC_CONSULTA (chaves multilinha).
     """
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
@@ -4424,7 +4432,7 @@ def fn_api_rfc_executar(request):
 @require_http_methods(["POST"])
 def fn_api_sap_balanco_financeiro(request):
     """
-    Consulta RFC ZF_ECF01 (balanço financeiro) no processo Django (PyRFC).
+    Consulta RFC /PRCIT/GDF_RFC_BALANCE (balanço financeiro) no processo Django (PyRFC).
 
     Autenticação: sessão (navegador) ou ``Authorization: Bearer <JWT do dashboard>`` (Streamlit).
     Body JSON: ``i_bukrs``, ``i_ktopl``, ``i_versn``, ``i_year`` e ``i_month_b`` / ``i_month_v``

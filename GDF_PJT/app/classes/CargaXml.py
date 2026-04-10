@@ -664,6 +664,41 @@ class CargaXml:
             defaults={'condicao_pagamento_sap': ''},
         )
 
+    def _resolver_cod_cliente_para_sap(self, cod_cliente: Optional[str], cliente_eff) -> Optional[str]:
+        """Código do cliente GDF usado em SapConnection (string cod_cliente)."""
+        if cod_cliente and str(cod_cliente).strip():
+            return str(cod_cliente).strip()
+        if cliente_eff is not None and getattr(cliente_eff, "cod_cliente", None):
+            return str(cliente_eff.cod_cliente).strip()
+        return None
+
+    def _aplicar_consulta_sap_documento(self, cod_cliente_sap: Optional[str], doc, chave: str) -> None:
+        """
+        RFC /PRCIT/GDF_RFC_CONSULTA: preenche tem_sap e sap_nome_tabela após gravar o XML.
+        Falha de rede/SAP não interrompe a carga.
+        """
+        if not cod_cliente_sap or not (chave or "").strip():
+            return
+        try:
+            from app.classes.SapRfc import SapRfc
+
+            if not SapRfc.is_available():
+                return
+            ch_raw = (chave or "").strip()
+            m = SapRfc.consultar_chaves_no_sap(cod_cliente_sap, [ch_raw])
+            digits = "".join(c for c in ch_raw if c.isdigit())
+            row = m.get(ch_raw) or m.get(ch_raw[:48])
+            if not row and len(digits) == 44:
+                row = m.get(digits)
+            if not row:
+                return
+            doc.tem_sap = bool(row.get("tem_sap"))
+            nt = (row.get("name_table") or "").strip()
+            doc.sap_nome_tabela = nt[:30] if nt else None
+            doc.save(update_fields=["tem_sap", "sap_nome_tabela", "data_atualizacao"])
+        except Exception as ex:
+            print(f"[CargaXml] consulta SAP pós-carga ignorada: {ex}")
+
     def _processar_informacoes_adicionais(self, infNFe, identificacao):
         """
         Processa o bloco infAdic da NFe (informações adicionais) e grava em NFe_Informacoes_Adicionais.
@@ -785,7 +820,6 @@ class CargaXml:
     def set_evento(
         self,
         xml_data: bytes,
-        origem_dados: str,
         usuario: str,
         cod_cliente: str = None,
         dados_evento: Optional[Dict] = None,
@@ -857,14 +891,13 @@ class CargaXml:
 
         return False  # Chave não encontrada em nenhuma tabela
 
-    def set_upload_xml(self, I_LsXml, i_type, I_origem_dados, i_usuario, i_cod_cliente=None) -> Dict:
+    def set_upload_xml(self, I_LsXml, i_type, i_usuario, i_cod_cliente=None) -> Dict:
         """
         Processa upload de múltiplos XMLs
-        
+
         Args:
             I_LsXml: Lista de arquivos XML (Django UploadedFile)
             i_type: Tipo do documento ('NFe', 'CTe', 'NFSe')
-            I_origem_dados: Origem dos dados ('LOCAL', 'SAP', 'SPED', 'OUTROS')
             i_usuario: Usuário que fez o upload
             i_cod_cliente: código do cliente para validação de empresas
         """
@@ -893,7 +926,6 @@ class CargaXml:
                 if dados_evento:
                     if self.set_evento(
                         xml_data,
-                        I_origem_dados,
                         i_usuario,
                         i_cod_cliente,
                         dados_evento=dados_evento,
@@ -914,13 +946,13 @@ class CargaXml:
                     continue
 
                 if i_type == 'NFe':
-                    self.set_nfe(xml_data, I_origem_dados, i_usuario, i_cod_cliente, nome_arquivo=nome_arquivo)
+                    self.set_nfe(xml_data, i_usuario, i_cod_cliente, nome_arquivo=nome_arquivo)
                 
                 elif i_type == 'CTe':
-                    self.set_cte(xml_data, I_origem_dados, i_usuario, i_cod_cliente)
-                
+                    self.set_cte(xml_data, i_usuario, i_cod_cliente)
+
                 elif i_type == 'NFSe':
-                    self.set_nfse(xml_data, I_origem_dados, i_usuario, i_cod_cliente)
+                    self.set_nfse(xml_data, i_usuario, i_cod_cliente)
 
                 result['success'].append(nome_arquivo)
                 result['avisos'].extend(getattr(self, '_avisos', []))
@@ -940,7 +972,7 @@ class CargaXml:
 
         return result
     
-    def set_nfe(self, xml_data: bytes, origem_dados: str, usuario: str, cod_cliente: str = None, nome_arquivo: str = None):
+    def set_nfe(self, xml_data: bytes, usuario: str, cod_cliente: str = None, nome_arquivo: str = None):
         """
         Processa e insere NFe no banco de dados com TODOS os campos.
         Tipo da nota (ENTRADA/SAÍDA) é determinado pelo nosso critério:
@@ -1090,7 +1122,6 @@ class CargaXml:
                         'status': 'DRAFT',
                         'xml_assinado': xml_data.decode('utf-8', errors='ignore'),
                         'usuario_atualizacao': usuario,
-                        'origem_dados': origem_dados,
                         'data_atualizacao': timezone.now()
                     }
                 )
@@ -1118,6 +1149,9 @@ class CargaXml:
                 _cod_cliente = cod_cliente or (empresa.gdfcliente_id if empresa and getattr(empresa, 'gdfcliente_id', None) else None)
                 self._salvar_condicao_param_se_nao_existir(identificacao, cod_cliente=_cod_cliente)
 
+            cod_sap = self._resolver_cod_cliente_para_sap(cod_cliente, cliente_eff)
+            self._aplicar_consulta_sap_documento(cod_sap, nfe, chave_acesso)
+
             return []
         
         except EmpresaNaoCadastradaError:
@@ -1126,7 +1160,7 @@ class CargaXml:
             print(str(e))
             raise Exception(f"Erro ao processar NFe: {str(e)}")
 
-    def set_cte(self, xml_data: bytes, origem_dados: str, usuario: str, cod_cliente: str = None):
+    def set_cte(self, xml_data: bytes, usuario: str, cod_cliente: str = None):
         """
         Processa e insere CTe no banco de dados com extração completa de todos os campos
         """
@@ -1386,12 +1420,15 @@ class CargaXml:
                     }
                 )
 
+            cod_sap = self._resolver_cod_cliente_para_sap(cod_cliente, cliente_eff)
+            self._aplicar_consulta_sap_documento(cod_sap, cte, (chave or "").strip())
+
             return cte
 
         except Exception as e:
             raise Exception(f"Erro ao processar CTe: {str(e)}")
 
-    def set_nfse(self, xml_data: bytes, origem_dados: str, usuario: str, cod_cliente: str = None):
+    def set_nfse(self, xml_data: bytes, usuario: str, cod_cliente: str = None):
         """
         Processa e insere NFSe no banco de dados com extração completa de RPS, retenções e pagamento.
 
@@ -1681,6 +1718,9 @@ class CargaXml:
                         valor_csll_retido=self._to_decimal(self._get_text(s, 'ValorCSLLRetido') or self._get_text(s, 'ValorRetidoCSLL') or self._get_text(s, 'valor_csll_retido')),
                         data_criacao=timezone.now()
                     )
+
+            cod_sap = self._resolver_cod_cliente_para_sap(cod_cliente, cliente_eff)
+            self._aplicar_consulta_sap_documento(cod_sap, nfse, (chave or "").strip())
 
             return nfse
 

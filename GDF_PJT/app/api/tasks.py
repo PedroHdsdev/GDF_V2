@@ -235,7 +235,6 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
                         try:
                             processor.set_nfe(
                                 xml_bytes,
-                                param.origem_dados,
                                 "SYSTEM",
                                 param.gdfcliente.cod_cliente if param.gdfcliente else None,
                                 nome_arquivo=xml_path.name,
@@ -251,14 +250,12 @@ def process_cargaxml_param(param_id: int) -> Dict[str, int]:
                     elif tipo == "CTe":
                         processor.set_cte(
                             xml_bytes,
-                            param.origem_dados,
                             "SYSTEM",
                             param.gdfcliente.cod_cliente if param.gdfcliente else None,
                         )
                     elif tipo == "NFSe":
                         processor.set_nfse(
                             xml_bytes,
-                            param.origem_dados,
                             "SYSTEM",
                             param.gdfcliente.cod_cliente if param.gdfcliente else None,
                         )
@@ -466,7 +463,6 @@ def processar_job_xml_manual(
     job_id: int,
     temp_dir: str,
     type_xml: str,
-    origem_dados: str,
     user_id: int,
     cod_cliente: str,
     empresa_id: str | None = None,
@@ -478,8 +474,6 @@ def processar_job_xml_manual(
     from app.api.jobs import processar_job_xml_background
     empresa_id = (empresa_id or "").strip() or None
     cod_cliente = (cod_cliente or "").strip() or None
-    processar_job_xml_background(
-        job_id, temp_dir, type_xml, origem_dados, user_id, cod_cliente, empresa_id
-    )
+    processar_job_xml_background(job_id, temp_dir, type_xml, user_id, cod_cliente, empresa_id)
 
 

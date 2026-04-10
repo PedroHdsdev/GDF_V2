@@ -33,6 +33,11 @@ function relatorioParams() {
     } else if (tab === 'rel-sped') {
         params.tipo_sped = (document.getElementById('relatorio-tipo-sped') && document.getElementById('relatorio-tipo-sped').value.trim()) || '';
     }
+    if (tab === 'rel-nfe' || tab === 'rel-cte' || tab === 'rel-nfse') {
+        var tsap = document.getElementById('relatorio-tem-sap');
+        var vsap = tsap && tsap.value.trim();
+        if (vsap) params.tem_sap = vsap;
+    }
     var sort = relatorioSortState[tab];
     if (sort && sort.field) {
         params.order = sort.field;
@@ -56,6 +61,7 @@ function relatorioBuildUrl(base, params) {
     if (params.tipo_operacao) q.set('tipo_operacao', params.tipo_operacao);
     if (params.tipo_pagamento) q.set('tipo_pagamento', params.tipo_pagamento);
     if (params.tipo_sped) q.set('tipo_sped', params.tipo_sped);
+    if (params.tem_sap) q.set('tem_sap', params.tem_sap);
     if (params.order) q.set('order', params.order);
     if (params.dir) q.set('dir', params.dir);
     if (params.page) q.set('page', String(params.page));
@@ -134,6 +140,11 @@ function relatorioMostrarFiltrosTab() {
     document.querySelectorAll('.filtros-por-tab').forEach(function (el) {
         el.classList.add('d-none');
     });
+    var sapWrap = document.getElementById('relatorio-filtros-xml-sap-wrap');
+    if (sapWrap) {
+        if (tab === 'rel-nfe' || tab === 'rel-cte' || tab === 'rel-nfse') sapWrap.classList.remove('d-none');
+        else sapWrap.classList.add('d-none');
+    }
     if (tab === 'rel-nfe') {
         var nfe = document.getElementById('relatorio-filtros-nfe');
         if (nfe) nfe.classList.remove('d-none');
@@ -183,7 +194,8 @@ var LABEL_CAMPO = {
     chv_nfe: 'Chave NFe', dt_doc: 'Data doc.', vl_doc: 'Valor doc.', vl_item: 'Valor item',
     chv_cte: 'Chave CT-e', vl_icms: 'Valor ICMS', cod_part: 'Cód. participante',
     cod_item: 'Cód. item', descr_item: 'Descrição item', unid_inv: 'Unid. inventário', cod_ncm: 'NCM',
-    fantasia: 'Fantasia', end: 'Endereço', descr_compl: 'Descr. complementar', unid: 'Unidade', descr: 'Descrição'
+    fantasia: 'Fantasia', end: 'Endereço', descr_compl: 'Descr. complementar', unid: 'Unidade', descr: 'Descrição',
+    tem_sap: 'Chave localizada no SAP', sap_nome_tabela: 'Tabela SAP'
 };
 
 function labelCampo(key) {
@@ -220,6 +232,28 @@ function escapeHtml(s) {
 function relatorioFmtFilialCelula(x) {
     if (!x || !x.filial) return '—';
     return escapeHtml(String(x.filial));
+}
+
+/** Coluna listagem: indicador SAP + tooltip com nome da tabela. */
+function relatorioFmtSapCelula(x) {
+    if (!x) return '—';
+    var tem = x.tem_sap === true;
+    var tabela = (x.sap_nome_tabela || '').trim();
+    var tip = tabela ? ' title="' + escapeHtml(tabela).replace(/"/g, '&quot;') + '"' : '';
+    if (tem) return '<span class="text-success"' + tip + '>Sim</span>';
+    return '<span class="text-muted">Não</span>';
+}
+
+function buildBlocoSapCabecalho(docObj) {
+    if (!docObj || typeof docObj !== 'object') return '';
+    var tem = docObj.tem_sap === true;
+    var tabela = (docObj.sap_nome_tabela != null && docObj.sap_nome_tabela !== undefined) ? String(docObj.sap_nome_tabela).trim() : '';
+    var html = '<div class="relatorio-bloco"><h6>Integração SAP</h6>';
+    html += '<table class="table table-sm table-detalhe relatorio-cab table-bordered"><tbody>';
+    html += '<tr><th>Chave localizada no SAP</th><td>' + (tem ? '<span class="text-success">Sim</span>' : '<span class="text-muted">Não</span>') + '</td></tr>';
+    html += '<tr><th>Tabela SAP</th><td>' + (tabela ? escapeHtml(tabela) : '—') + '</td></tr>';
+    html += '</tbody></table></div>';
+    return html;
 }
 
 function fmtNum(v) {
@@ -370,12 +404,13 @@ function preencherModalNFe(data, tabsContainer, tabContentContainer) {
 
 function buildCabecalhoNFe(cab) {
     var h = '';
+    if (cab.nfe) h += buildBlocoSapCabecalho(cab.nfe);
     if (cab.identificacao) h += '<div class="relatorio-bloco"><h6>Identificação</h6>' + objParaTabela(cab.identificacao, [], 'relatorio-cab') + '</div>';
     if (cab.emitente) h += '<div class="relatorio-bloco"><h6>Emitente</h6>' + objParaTabela(cab.emitente, [], 'relatorio-cab') + '</div>';
     if (cab.emitente_endereco) h += '<div class="relatorio-bloco"><h6>Endereço do emitente</h6>' + objParaTabela(cab.emitente_endereco, [], 'relatorio-cab') + '</div>';
     if (cab.destinatario) h += '<div class="relatorio-bloco"><h6>Destinatário</h6>' + objParaTabela(cab.destinatario, [], 'relatorio-cab') + '</div>';
     if (cab.destinatario_endereco) h += '<div class="relatorio-bloco"><h6>Endereço do destinatário</h6>' + objParaTabela(cab.destinatario_endereco, [], 'relatorio-cab') + '</div>';
-    if (cab.nfe) h += '<div class="relatorio-bloco"><h6>NFe (status / origem)</h6>' + objParaTabela(cab.nfe, [], 'relatorio-cab') + '</div>';
+    if (cab.nfe) h += '<div class="relatorio-bloco"><h6>NFe (status / origem)</h6>' + objParaTabela(cab.nfe, ['tem_sap', 'sap_nome_tabela'], 'relatorio-cab') + '</div>';
     return h || '<p class="text-muted">Sem dados</p>';
 }
 
@@ -436,10 +471,11 @@ function preencherModalCTe(data, tabsContainer, tabContentContainer) {
 
 function buildCabecalhoCTe(cab) {
     var h = '';
+    if (cab.cte) h += buildBlocoSapCabecalho(cab.cte);
     if (cab.identificacao) h += '<div class="relatorio-bloco"><h6>Identificação</h6>' + objParaTabela(cab.identificacao, [], 'relatorio-cab') + '</div>';
     if (cab.emitente) h += '<div class="relatorio-bloco"><h6>Emitente</h6>' + objParaTabela(cab.emitente, [], 'relatorio-cab') + '</div>';
     if (cab.destinatario) h += '<div class="relatorio-bloco"><h6>Destinatário</h6>' + objParaTabela(cab.destinatario, [], 'relatorio-cab') + '</div>';
-    if (cab.cte) h += '<div class="relatorio-bloco"><h6>CTe</h6>' + objParaTabela(cab.cte, [], 'relatorio-cab') + '</div>';
+    if (cab.cte) h += '<div class="relatorio-bloco"><h6>CTe</h6>' + objParaTabela(cab.cte, ['tem_sap', 'sap_nome_tabela'], 'relatorio-cab') + '</div>';
     return h || '<p class="text-muted">Sem dados</p>';
 }
 
@@ -457,10 +493,11 @@ function preencherModalNFSe(data, tabsContainer, tabContentContainer) {
 
 function buildCabecalhoNFSe(cab) {
     var h = '';
+    if (cab.nfse) h += buildBlocoSapCabecalho(cab.nfse);
     if (cab.identificacao) h += '<div class="relatorio-bloco"><h6>Identificação</h6>' + objParaTabela(cab.identificacao, [], 'relatorio-cab') + '</div>';
     if (cab.prestador) h += '<div class="relatorio-bloco"><h6>Prestador</h6>' + objParaTabela(cab.prestador, [], 'relatorio-cab') + '</div>';
     if (cab.tomador) h += '<div class="relatorio-bloco"><h6>Tomador</h6>' + objParaTabela(cab.tomador, [], 'relatorio-cab') + '</div>';
-    if (cab.nfse) h += '<div class="relatorio-bloco"><h6>NFSe</h6>' + objParaTabela(cab.nfse, [], 'relatorio-cab') + '</div>';
+    if (cab.nfse) h += '<div class="relatorio-bloco"><h6>NFSe</h6>' + objParaTabela(cab.nfse, ['tem_sap', 'sap_nome_tabela'], 'relatorio-cab') + '</div>';
     return h || '<p class="text-muted">Sem dados</p>';
 }
 
@@ -683,7 +720,7 @@ function relatorioRenderizarPaginacao(paginacao) {
 function relatorioCarregarNFe() {
     var tbody = document.querySelector('#tabela-rel-nfe tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center">Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center">Carregando...</td></tr>';
     var url = relatorioGetPrefix() + relatorioBuildUrl('/api/relatorio/nfe/', relatorioParams());
     fetch(url)
         .then(function (r) { return r.json(); })
@@ -693,7 +730,7 @@ function relatorioCarregarNFe() {
             relatorioAtualizarContador('nfe', pag.total, pag);
             relatorioRenderizarPaginacao(pag);
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Nenhum registro</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">Nenhum registro</td></tr>';
                 return;
             }
             tbody.innerHTML = items.map(function (x) {
@@ -704,20 +741,21 @@ function relatorioCarregarNFe() {
                     '<td>' + (x.tipo_operacao === '1' ? 'Saída' : 'Entrada') + '</td><td>' + (x.status || '-') + '</td>' +
                     '<td>' + (x.empresa || '-') + '</td>' +
                     '<td class="text-truncate" style="max-width:140px">' + relatorioFmtFilialCelula(x) + '</td>' +
-                    '<td class="text-truncate" style="max-width:150px" title="' + (x.natureza || '').replace(/"/g, '&quot;') + '">' + (x.natureza || '-') + '</td></tr>';
+                    '<td class="text-truncate" style="max-width:150px" title="' + (x.natureza || '').replace(/"/g, '&quot;') + '">' + (x.natureza || '-') + '</td>' +
+                    '<td class="text-center">' + relatorioFmtSapCelula(x) + '</td></tr>';
             }).join('');
             tbody.querySelectorAll('tr[data-id]').forEach(function (tr) {
                 tr.addEventListener('click', function () { abrirDetalhe(tr.getAttribute('data-tipo'), tr.getAttribute('data-id')); });
             });
             relatorioAtualizarIndicadoresSort();
         })
-        .catch(function () { tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('nfe', 0); relatorioRenderizarPaginacao(null); });
+        .catch(function () { tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('nfe', 0); relatorioRenderizarPaginacao(null); });
 }
 
 function relatorioCarregarCTe() {
     var tbody = document.querySelector('#tabela-rel-cte tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center">Carregando...</td></tr>';
     var url = relatorioGetPrefix() + relatorioBuildUrl('/api/relatorio/cte/', relatorioParams());
     fetch(url)
         .then(function (r) { return r.json(); })
@@ -727,7 +765,7 @@ function relatorioCarregarCTe() {
             relatorioAtualizarContador('cte', pag.total, pag);
             relatorioRenderizarPaginacao(pag);
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum registro</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Nenhum registro</td></tr>';
                 return;
             }
             tbody.innerHTML = items.map(function (x) {
@@ -735,20 +773,21 @@ function relatorioCarregarCTe() {
                     '<td>' + (x.numero || '-') + '</td><td>' + (x.serie || '-') + '</td>' +
                     '<td class="small text-truncate" style="max-width:120px">' + (x.chave || '-') + '</td>' +
                     '<td>' + (x.emissao ? x.emissao.slice(0, 10) : '-') + '</td><td>' + (x.empresa || '-') + '</td>' +
-                    '<td class="text-truncate" style="max-width:140px">' + relatorioFmtFilialCelula(x) + '</td></tr>';
+                    '<td class="text-truncate" style="max-width:140px">' + relatorioFmtFilialCelula(x) + '</td>' +
+                    '<td class="text-center">' + relatorioFmtSapCelula(x) + '</td></tr>';
             }).join('');
             tbody.querySelectorAll('tr[data-id]').forEach(function (tr) {
                 tr.addEventListener('click', function () { abrirDetalhe(tr.getAttribute('data-tipo'), tr.getAttribute('data-id')); });
             });
             relatorioAtualizarIndicadoresSort();
         })
-        .catch(function () { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('cte', 0); relatorioRenderizarPaginacao(null); });
+        .catch(function () { tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('cte', 0); relatorioRenderizarPaginacao(null); });
 }
 
 function relatorioCarregarNFSe() {
     var tbody = document.querySelector('#tabela-rel-nfse tbody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center">Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
     var url = relatorioGetPrefix() + relatorioBuildUrl('/api/relatorio/nfse/', relatorioParams());
     fetch(url)
         .then(function (r) { return r.json(); })
@@ -758,7 +797,7 @@ function relatorioCarregarNFSe() {
             relatorioAtualizarContador('nfse', pag.total, pag);
             relatorioRenderizarPaginacao(pag);
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum registro</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum registro</td></tr>';
                 return;
             }
             tbody.innerHTML = items.map(function (x) {
@@ -766,14 +805,15 @@ function relatorioCarregarNFSe() {
                     '<td>' + (x.numero || '-') + '</td>' +
                     '<td class="small text-truncate" style="max-width:120px">' + (x.chave || '-') + '</td>' +
                     '<td>' + (x.emissao ? x.emissao.slice(0, 10) : '-') + '</td><td>' + (x.empresa || '-') + '</td>' +
-                    '<td class="text-truncate" style="max-width:140px">' + relatorioFmtFilialCelula(x) + '</td></tr>';
+                    '<td class="text-truncate" style="max-width:140px">' + relatorioFmtFilialCelula(x) + '</td>' +
+                    '<td class="text-center">' + relatorioFmtSapCelula(x) + '</td></tr>';
             }).join('');
             tbody.querySelectorAll('tr[data-id]').forEach(function (tr) {
                 tr.addEventListener('click', function () { abrirDetalhe(tr.getAttribute('data-tipo'), tr.getAttribute('data-id')); });
             });
             relatorioAtualizarIndicadoresSort();
         })
-        .catch(function () { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('nfse', 0); relatorioRenderizarPaginacao(null); });
+        .catch(function () { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar</td></tr>'; relatorioAtualizarContador('nfse', 0); relatorioRenderizarPaginacao(null); });
 }
 
 function relatorioCarregarSped() {

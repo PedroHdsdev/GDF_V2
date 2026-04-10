@@ -1,5 +1,5 @@
 """
-RFC ZF_ECF01 – Balanço financeiro.
+RFC /PRCIT/GDF_RFC_BALANCE – Balanço financeiro (equivalente lógico a ZF_ECF01).
 
 O SAP devolve o balanço em ``R_RETURN`` (string JSON). Há dois formatos suportados após o parse:
 
@@ -18,7 +18,7 @@ from typing import Any, List, TypedDict
 
 from app.classes.SapRfc import SapRfc
 
-RFC_NAME = "ZF_ECF01"
+RFC_NAME = "/PRCIT/GDF_RFC_BALANCE"
 
 
 class ZfEcf01Params(TypedDict):
@@ -49,7 +49,7 @@ class ZfEcf01Resultado(TypedDict, total=False):
 
 def executar_balanco_financeiro(cod_cliente: str, **params: Any) -> ZfEcf01Resultado:
     """
-    Executa ZF_ECF01 e devolve ``arvore`` (JSON parseado de R_RETURN) e metadados.
+    Executa GDF_RFC_BALANCE e devolve ``arvore`` (JSON parseado de R_RETURN) e metadados.
 
     params: i_bukrs, i_ktopl, i_versn, i_year; intervalo i_month_b / i_month_v (RFC I_MONTH_B / I_MONTH_V)
     ou alias i_month_ini / i_month_fim; período único: i_month + i_year.

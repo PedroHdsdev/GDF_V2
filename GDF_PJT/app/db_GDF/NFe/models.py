@@ -623,12 +623,17 @@ class NFe(models.Model):
     data_atualizacao = models.DateTimeField(auto_now=True)
     usuario_criacao = models.CharField(max_length=120, blank=True, null=True)
     usuario_atualizacao = models.CharField(max_length=120, blank=True, null=True)
-    origem_dados = models.CharField(max_length=8, choices=[
-        ('LOCAL', 'Maquina Local'),
-        ('SAP', 'Importação SAP'),
-        ('SPED', 'Importação SPED'),
-        ('OUTROS', 'Outros'),
-    ], default='LOCAL')
+    # Consulta SAP (RFC): após carga do XML, preencher se a chave existe no SAP e em qual tabela.
+    tem_sap = models.BooleanField(
+        default=False,
+        help_text='True se a chave foi encontrada no SAP.',
+    )
+    sap_nome_tabela = models.CharField(
+        max_length=30,
+        blank=True,
+        null=True,
+        help_text='Nome da tabela SAP onde o documento foi localizado (NAME_TABLE na RFC, até 30 caracteres).',
+    )
 
     class Meta:
         managed = True

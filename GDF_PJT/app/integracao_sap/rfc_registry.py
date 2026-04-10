@@ -21,6 +21,7 @@ class RfcParamType(str, Enum):
     DATE = "date"
     INTEGER = "integer"
     BOOLEAN = "boolean"
+    TEXTAREA = "textarea"
 
 
 @dataclass

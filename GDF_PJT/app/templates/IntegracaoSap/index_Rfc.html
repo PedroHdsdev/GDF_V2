@@ -20,7 +20,7 @@
         <div class="home-welcome-main">
             <h2 class="home-welcome-title">Integração SAP via RFC</h2>
             <p class="home-welcome-meta">
-                Execute RFCs para alimentar as tabelas do schema <code>sap</code>.
+                Execute RFCs para alimentar o schema <code>sap</code> ou consultar dados no SAP (ex.: <code>/PRCIT/GDF_RFC_CONSULTA</code>).
                 Configure a conexão SAP em Clientes → Conexão SAP.
                 <br><small class="opacity-75">Se o SAP exige VPN, o servidor deve estar conectado à VPN (não o seu navegador).</small>
             </p>
@@ -39,6 +39,9 @@
             <p class="text-muted small mb-3">{{ rfc.descricao }}</p>
 
             <form class="rfc-form" data-cod-rfc="{{ rfc.codigo }}">
+                {% if not rfc.params %}
+                <p class="text-muted small mb-2"><i class="fas fa-info-circle"></i> Nenhum parâmetro — clique em executar para rodar a RFC.</p>
+                {% endif %}
                 {% for p in rfc.params %}
                 <div class="mb-2">
                     <label class="form-label small">{{ p.label }}{% if p.required %} *{% endif %}</label>
@@ -64,10 +67,12 @@
                         <input type="checkbox" name="{{ p.key }}" class="form-check-input" value="1" {% if p.default %}checked{% endif %}>
                         <label class="form-check-label small">{{ p.help_text|default:"Sim" }}</label>
                     </div>
+                    {% elif p.param_type == "textarea" %}
+                    <textarea name="{{ p.key }}" class="form-control form-control-sm font-monospace" rows="5" placeholder="{{ p.help_text|default:'' }}" {% if p.required %}required{% endif %}></textarea>
                     {% else %}
                     <input type="text" name="{{ p.key }}" class="form-control form-control-sm" {% if p.required %}required{% endif %} value="{{ p.default|default:'' }}">
                     {% endif %}
-                    {% if p.help_text and p.param_type != "boolean" %}<small class="text-muted">{{ p.help_text }}</small>{% endif %}
+                    {% if p.help_text and p.param_type != "boolean" and p.param_type != "textarea" %}<small class="text-muted">{{ p.help_text }}</small>{% endif %}
                 </div>
                 {% endfor %}
                 <button type="submit" class="btn btn-primary btn-sm mt-2">
@@ -101,13 +106,13 @@ document.addEventListener('DOMContentLoaded', function() {
       e.preventDefault();
       var codRfc = form.getAttribute('data-cod-rfc') || form.dataset.codRfc || '';
       var params = {};
-      form.querySelectorAll('input, select').forEach(function(el) {
+      form.querySelectorAll('input, select, textarea').forEach(function(el) {
         if (!el.name) return;
         if (el.type === 'checkbox') {
           params[el.name] = el.checked;
         } else {
-          var v = (el.value || '').trim();
-          if (v) params[el.name] = v;
+          var v = el.tagName === 'TEXTAREA' ? (el.value || '') : (el.value || '').trim();
+          if (v || el.tagName === 'TEXTAREA') params[el.name] = v;
         }
       });
       var card = form.closest('.rfc-card');
@@ -132,9 +137,30 @@ document.addEventListener('DOMContentLoaded', function() {
       .then(function(data) {
         if (data.sucesso) {
           var msg = (data.mensagem || 'OK');
-          if (data.total_linhas !== undefined) msg += ' Linhas: ' + data.total_linhas;
+          if (data.total_pendentes !== undefined) msg += ' <br><span class="d-inline-block mt-1">Documentos pendentes: ' + data.total_pendentes + '</span>';
+          if (data.total_chaves_unicas !== undefined) msg += ' | Chaves únicas consultadas: ' + data.total_chaves_unicas;
+          if (data.total_atualizados !== undefined) msg += ' | Atualizados no GDF: ' + data.total_atualizados;
+          if (data.total_linhas !== undefined && data.total_atualizados === undefined) msg += ' Linhas: ' + data.total_linhas;
           if (data.total_gravados !== undefined) msg += ' | Gravados: ' + data.total_gravados;
-          resultEl.innerHTML = '<div class="alert alert-success small mb-0">' + msg + '</div>';
+          var html = '<div class="alert alert-success small mb-2">' + msg + '</div>';
+          if (data.linhas && data.linhas.length) {
+            var hasTipo = data.linhas.some(function(l) { return l.tipo; });
+            html += '<div class="table-responsive"><table class="table table-sm table-bordered mb-0 small"><thead><tr>' +
+              (hasTipo ? '<th>Tipo</th>' : '') + '<th>Chave</th><th>No SAP</th><th>STATUS</th><th>NAME_TABLE</th></tr></thead><tbody>';
+            function escCell(s) {
+              var d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+            }
+            data.linhas.forEach(function(l) {
+              var ts = l.tem_sap ? '<span class="text-success">Sim</span>' : '<span class="text-muted">Não</span>';
+              var ch = (l.chave != null ? String(l.chave) : '');
+              var st = (l.status != null ? String(l.status) : '');
+              var nt = (l.name_table != null ? String(l.name_table) : '');
+              var tipoTd = hasTipo ? '<td>' + escCell(l.tipo != null ? String(l.tipo) : '') + '</td>' : '';
+              html += '<tr>' + tipoTd + '<td class="font-monospace text-break">' + escCell(ch) + '</td><td>' + ts + '</td><td>' + escCell(st) + '</td><td class="text-break">' + escCell(nt) + '</td></tr>';
+            });
+            html += '</tbody></table></div>';
+          }
+          resultEl.innerHTML = html;
         } else {
           resultEl.innerHTML = '<div class="alert alert-danger small mb-0">' + (data.mensagem || 'Erro') + '</div>';
         }

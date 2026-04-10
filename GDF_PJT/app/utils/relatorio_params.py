@@ -23,6 +23,8 @@ class RelatorioParams:
     busca: str
     page: int
     page_size: int
+    # Integração SAP (NFe, CTe, NFSe): '' = todos, 'sim' = tem_sap True, 'nao' = tem_sap False
+    tem_sap: str
 
 
 def parse_relatorio_params(
@@ -63,6 +65,13 @@ def parse_relatorio_params(
     except (TypeError, ValueError):
         page = 1
 
+    raw_tem_sap = (request.GET.get('tem_sap') or '').strip().lower()
+    tem_sap = ''
+    if raw_tem_sap in ('sim', 'tem', 's', '1', 'true', 'yes'):
+        tem_sap = 'sim'
+    elif raw_tem_sap in ('nao', 'não', 'nao_tem', 'sem', '0', 'false', 'no'):
+        tem_sap = 'nao'
+
     return RelatorioParams(
         cod_empresas=cod_empresas,
         cod_cliente=cod_cliente,
@@ -72,6 +81,7 @@ def parse_relatorio_params(
         busca=busca,
         page=page,
         page_size=page_size,
+        tem_sap=tem_sap,
     )
 
 

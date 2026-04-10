@@ -17,7 +17,7 @@ def _get_chunk_size():
     return getattr(settings, 'CARGAXML_CHUNK_SIZE', 50)
 
 
-def processar_job_xml_background(job_id, temp_dir, type_xml, origem_dados, user_id, cod_cliente, empresa_id):
+def processar_job_xml_background(job_id, temp_dir, type_xml, user_id, cod_cliente, empresa_id):
     """Executa em thread/Celery: processa XMLs da pasta temp e atualiza o job."""
     from django.db import connection
     from app.db_GDF.Public.models import JobCargaXml
@@ -51,7 +51,6 @@ def processar_job_xml_background(job_id, temp_dir, type_xml, origem_dados, user_
             return
 
         type_xml = (type_xml or "NFe").strip() or "NFe"
-        origem_dados = (origem_dados or "LOCAL").strip() or "LOCAL"
 
         merged = {"success": [], "errors": [], "pendentes": [], "avisos": []}
         cl_xml = CargaXml()
@@ -65,9 +64,7 @@ def processar_job_xml_background(job_id, temp_dir, type_xml, origem_dados, user_
                 with open(path, "rb") as f:
                     xml_bytes = f.read()
                 xml_files.append(SimpleUploadedFile(nome, xml_bytes))
-            result = cl_xml.set_upload_xml(
-                xml_files, type_xml, origem_dados, username, cod_cliente
-            )
+            result = cl_xml.set_upload_xml(xml_files, type_xml, username, cod_cliente)
             for key in merged:
                 merged[key].extend(result.get(key) or [])
 

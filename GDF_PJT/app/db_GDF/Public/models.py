@@ -225,16 +225,6 @@ class ParametroCargaXml(models.Model):
     empresa = models.ForeignKey(Empresa, models.CASCADE, null=True, blank=True)
     ativo = models.BooleanField(default=True)
     horario = models.TimeField()
-    origem_dados = models.CharField(
-        max_length=10,
-        choices=[
-            ('LOCAL', 'Máquina local'),
-            ('SAP', 'Importação SAP'),
-            ('SPED', 'Importação SPED'),
-            ('OUTROS', 'Outros'),
-        ],
-        default='LOCAL',
-    )
     diretorio = models.CharField(max_length=500)
     usuario_criacao = models.ForeignKey(
         User, models.SET_NULL, null=True, blank=True, related_name='cargaxml_params'

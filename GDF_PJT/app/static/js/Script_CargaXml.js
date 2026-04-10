@@ -432,7 +432,6 @@ function carregarParametrosPrincipais() {
             estadoParametros.todos = items.map(item => ({
                 id: item.id,
                 horario: item.horario || '',
-                origem_dados: item.origem_dados || '',
                 diretorio: item.diretorio || '',
                 empresa_id: item.empresa_id || '',
                 empresa_nome: item.empresa_nome || '',
@@ -492,7 +491,7 @@ function aplicarFiltrosParametrosPrincipais() {
 
         // filtro texto
         if (busca) {
-            const texto = `${p.horario} ${p.origem_dados} ${p.diretorio} ${p.empresa_nome}`.toLowerCase();
+            const texto = `${p.horario} ${p.diretorio} ${p.empresa_nome}`.toLowerCase();
             if (!texto.includes(busca)) return false;
         }
 
@@ -511,7 +510,7 @@ function renderizarTabelaParametrosPrincipais() {
     if (!estadoParametros.filtrados.length) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="5" class="text-center text-muted py-4">
+                <td colspan="4" class="text-center text-muted py-4">
                     <i class="fas fa-list" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
                     Nenhum parâmetro cadastrado
                 </td>
@@ -531,7 +530,6 @@ function renderizarTabelaParametrosPrincipais() {
         tr.style.cursor = 'pointer';
         tr.innerHTML = `
             <td>${p.horario || '-'}</td>
-            <td>${p.origem_dados || '-'}</td>
             <td>${p.diretorio || '-'}</td>
             <td>${p.empresa_nome || '-'}</td>
             <td>
@@ -579,7 +577,6 @@ function preencherFormularioParametro(param) {
     if (!param) return;
     const id = param.id;
     const horario = param.horario || '';
-    const origem = param.origem_dados || param.origem || '';
     const diretorio = param.diretorio || '';
     const empresa_id = param.empresa_id || '';
     const ativo = !!param.ativo;
@@ -587,7 +584,6 @@ function preencherFormularioParametro(param) {
     const idInput = document.getElementById('param-edit-id');
     const idLabel = document.getElementById('param-edit-id-label');
     const inputHorario = document.getElementById('param-edit-horario');
-    const selectOrigem = document.getElementById('param-edit-origem-dados');
     const inputDiretorio = document.getElementById('param-edit-diretorio');
     const selectEmpresa = document.getElementById('param-edit-empresa');
     const chkAtivo = document.getElementById('param-edit-ativo');
@@ -595,7 +591,6 @@ function preencherFormularioParametro(param) {
     if (idInput) idInput.value = id || '';
     if (idLabel) idLabel.textContent = id || '';
     if (inputHorario) inputHorario.value = horario;
-    if (selectOrigem) selectOrigem.value = origem || 'SAP';
     if (inputDiretorio) inputDiretorio.value = diretorio;
     if (selectEmpresa) selectEmpresa.value = empresa_id || '';
     if (chkAtivo) chkAtivo.checked = ativo;
@@ -926,17 +921,14 @@ function atualizarConteudoModalJob(data, expectedJobId) {
         elFinished.title = job.finished_at ? ('Registro em UTC (API): ' + job.finished_at) : '';
     }
     const ph = modalRoot.querySelector('#modal-param-horario');
-    const po = modalRoot.querySelector('#modal-param-origem');
     const pd = modalRoot.querySelector('#modal-param-diretorio');
     const pe = modalRoot.querySelector('#modal-param-empresa');
     if (param) {
         if (ph) ph.value = param.horario || '';
-        if (po) po.value = param.origem_dados || '';
         if (pd) pd.value = param.diretorio || '';
         if (pe) pe.value = param.empresa_nome || param.empresa_id || '';
     } else {
         if (ph) ph.value = '';
-        if (po) po.value = '';
         if (pd) pd.value = '';
         if (pe) pe.value = '';
     }
@@ -1250,7 +1242,6 @@ function inicializarEventosParametros() {
 
 function criarParametroCarga() {
     const horario = document.getElementById('param-horario')?.value || '';
-    const origemDados = document.getElementById('param-origem-dados')?.value || 'SAP';
     const diretorio = document.getElementById('param-diretorio')?.value || '';
     const ativo = document.getElementById('param-ativo')?.checked || false;
 
@@ -1267,7 +1258,6 @@ function criarParametroCarga() {
         },
         body: JSON.stringify({
             horario: horario,
-            origem_dados: origemDados,
             diretorio: diretorio,
             empresa_id: '',
             ativo: ativo,
@@ -1300,7 +1290,7 @@ function carregarParametrosAtivos() {
             const items = data.items || [];
 
             if (!data.sucesso || items.length === 0) {
-                tabela.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum parametro ativo</td></tr>';
+                tabela.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum parametro ativo</td></tr>';
                 return;
             }
 
@@ -1308,7 +1298,6 @@ function carregarParametrosAtivos() {
                 const linha = document.createElement('tr');
                 linha.innerHTML = `
                     <td>${item.horario}</td>
-                    <td>${item.origem_dados}</td>
                     <td>${item.diretorio}</td>
                     <td>${item.empresa_nome || '-'}</td>
                     <td>
@@ -1329,7 +1318,7 @@ function carregarParametrosAtivos() {
             });
         })
         .catch(() => {
-            tabela.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Erro ao carregar parametros</td></tr>';
+            tabela.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Erro ao carregar parametros</td></tr>';
         });
 }
 
@@ -1388,7 +1377,6 @@ function atualizarParametroCarga() {
     }
 
     const horario = document.getElementById('param-edit-horario')?.value || '';
-    const origemDados = document.getElementById('param-edit-origem-dados')?.value || 'SAP';
     const diretorio = document.getElementById('param-edit-diretorio')?.value || '';
     const empresaId = document.getElementById('param-edit-empresa')?.value || '';
     const ativo = document.getElementById('param-edit-ativo')?.checked || false;
@@ -1406,7 +1394,6 @@ function atualizarParametroCarga() {
         },
         body: JSON.stringify({
             horario: horario,
-            origem_dados: origemDados,
             diretorio: diretorio,
             empresa_id: empresaId,
             ativo: ativo,
@@ -1519,22 +1506,20 @@ function iniciarUpload() {
     }
 
     var tipoDocumento = (document.getElementById('select-tipo-documento') && document.getElementById('select-tipo-documento').value) || 'NFe';
-    var origemDados = (document.getElementById('select-origem-dados') && document.getElementById('select-origem-dados').value) || 'SAP';
 
     estadoCargaXml.uploadEmProgresso = true;
     var btn = document.getElementById('btn-enviar-xml');
     if (btn) btn.disabled = true;
-    uploadArquivosLote(estadoCargaXml.arquivos, tipoDocumento, origemDados);
+    uploadArquivosLote(estadoCargaXml.arquivos, tipoDocumento);
 }
 
 /* ===============================
    UPLOAD (envio único: todos os arquivos em uma requisição)
 ================================ */
-function enviarXmlUnico(arquivos, tipoDocumento, origemDados, apiUrl, csrfToken) {
+function enviarXmlUnico(arquivos, tipoDocumento, apiUrl, csrfToken) {
     var formData = new FormData();
     arquivos.forEach(function (f) { formData.append('arquivo', f); });
     formData.append('type_xml', tipoDocumento);
-    formData.append('origem_dados', origemDados);
     return fetch(apiUrl, {
         method: 'POST',
         headers: { 'X-CSRFToken': csrfToken },
@@ -1575,14 +1560,14 @@ function finalizarUploadCargaXml(erroMsg, opts) {
     }
 }
 
-function uploadArquivosLote(arquivos, tipoDocumento, origemDados) {
+function uploadArquivosLote(arquivos, tipoDocumento) {
     var apiUrl = (document.querySelector('.layout-page') && document.querySelector('.layout-page').getAttribute('data-api-processar-xml')) || '/api/processar-xml/';
     var csrfToken = (document.querySelector('[name=csrfmiddlewaretoken]') && document.querySelector('[name=csrfmiddlewaretoken]').value) || (typeof window.getCsrfToken === 'function' ? window.getCsrfToken() : '');
     var total = arquivos.length;
 
     atualizarStatusUpload(0, 'processing', 'Enviando arquivos...');
 
-    enviarXmlUnico(arquivos, tipoDocumento, origemDados, apiUrl, csrfToken)
+    enviarXmlUnico(arquivos, tipoDocumento, apiUrl, csrfToken)
         .then(function (result) {
             var status = result.status;
             var data = result.data;

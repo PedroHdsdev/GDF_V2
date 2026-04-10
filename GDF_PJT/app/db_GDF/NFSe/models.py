@@ -326,6 +326,8 @@ class NFSe(models.Model):
         db_column='cod_cliente',
         to_field='cod_cliente',
     )
+    tem_sap = models.BooleanField(default=False, help_text='True se a chave foi encontrada no SAP.')
+    sap_nome_tabela = models.CharField(max_length=30, blank=True, null=True)
     data_criacao = models.DateTimeField(auto_now_add=True)
     data_atualizacao = models.DateTimeField(auto_now=True)
 

@@ -1,4 +1,4 @@
-"""Dashboard Balanço financeiro — integração com SAP (ZF_ECF01) via backend Django."""
+"""Dashboard Balanço financeiro — integração com SAP (/PRCIT/GDF_RFC_BALANCE) via backend Django."""
 from __future__ import annotations
 
 import html as html_module
@@ -13,7 +13,7 @@ from core.django_backend import balanco_financeiro_api_url, post_json_bearer
 
 from .balanco_financeiro_analise import render_analise_gerencial
 
-# Alinhado a SapRfc._ZF_ECF01_MAX_NUMERO_PERIODO (I_MONTH_B / I_MONTH_V na RFC).
+# Alinhado a SapRfc._ZF_ECF01_MAX_NUMERO_PERIODO (I_MONTH_B / I_MONTH_V na GDF_RFC_BALANCE).
 _MAX_PERIODO_SAP = 99
 
 

@@ -2,12 +2,12 @@
 Comunicação RFC com SAP usando a tabela SapConnection.
 
 Padrão de uso para cada função SAP via RFC:
-  1. Crie um método com o nome da funcionalidade (ex: importar_custo_cliente).
+  1. Crie um método com o nome da funcionalidade (ex: importar_relatorio_custo).
   2. Esse método chama o responsável pela conexão (SapRfc.call ou SapRfc.with_connection).
   3. Chame a função RFC passando os parâmetros.
   4. A comunicação é fechada ao final (SapRfc.call já abre, chama e fecha).
 
-Exemplo: ver importar_custo_cliente, importar_relatorio_custo, consultar_balanco_financeiro (ZF_ECF01).
+Exemplo: ver importar_relatorio_custo, consultar_balanco_financeiro (GDF_RFC_BALANCE), enviar_condicoes_pagamento_sap.
 """
 import json
 import re
@@ -26,7 +26,13 @@ except Exception as _pyrfc_exc:
     PYRFC_AVAILABLE = False
     PYRFC_IMPORT_ERROR = str(_pyrfc_exc).strip() or repr(_pyrfc_exc)
 
-_RFC_BALANCO_FINANCEIRO = "ZF_ECF01"
+# Nomes de módulo de função no SAP (namespace /PRCIT/).
+_RFC_BALANCO_FINANCEIRO = "/PRCIT/GDF_RFC_BALANCE"  # balanço (equivalente lógico a ZF_ECF01)
+_RFC_RELATORIO_CUSTO = "/PRCIT/GDF_RFC_CUSTO"  # custo (equivalente a /BRGMN/CUSTR_IMP_CUSTO)
+_RFC_CONDICOES_PAGAMENTO = "/PRCIT/GDF_RFC_CONDICOES_PAG"  # condições pag. (equivalente a ZGDF_CONDICOES_PAGAMENTO)
+# Consulta de chave no SAP (carga XML): T_CONSULTA com CHAVE (ZGDF_ED_CHAVE), STATUS, NAME_TABLE.
+_RFC_CONSULTA_DOCUMENTO = "/PRCIT/GDF_RFC_CONSULTA"
+_RFC_CONSULTA_CHAVE_MAX = 48
 
 # Limite dos números em I_MONTH_B / I_MONTH_V e largura máxima do intervalo (inclusive).
 _ZF_ECF01_MAX_NUMERO_PERIODO: int = 99
@@ -523,7 +529,7 @@ def _zf_ecf01_parse_arvore_r_return(
     reagregar_arvore_aninhada: bool = False,
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """
-    Interpreta o JSON em ``R_RETURN`` (ZF_ECF01 / balanço hierárquico).
+    Interpreta o JSON em ``R_RETURN`` (GDF_RFC_BALANCE / balanço hierárquico).
 
     **Formato 1 — árvore recursiva (ex.: ``lcl_balance_tree``):** array de raízes; cada nó com
     ``id``, ``text``, ``valor``, ``accounts``[], ``children``[] (mesma forma recursiva). Contas:
@@ -578,7 +584,7 @@ def _zf_ecf01_bool_param(params: Dict[str, Any], *keys: str, default: bool = Fal
 def _zf_ecf01_montar_parametros(
     i_bukrs: str, i_month_b: int, i_month_v: int, i_year: int, i_ktopl: str, i_versn: str
 ) -> Dict[str, str]:
-    """Parâmetros de importação ZF_ECF01: I_MONTH_B (inicial), I_MONTH_V (final), 2 dígitos."""
+    """Parâmetros de importação GDF_RFC_BALANCE: I_MONTH_B (inicial), I_MONTH_V (final), 2 dígitos."""
     return {
         "I_BUKRS": str(i_bukrs).strip(),
         "I_MONTH_B": f"{int(i_month_b):02d}",
@@ -858,7 +864,7 @@ class SapRfc:
         Args:
             cod_cliente_or_conn: cod_cliente (str) para buscar conexão do cliente, ou
                                 instância de SapConnection (model) se já tiver o registro
-            rfc_name: nome do módulo de função RFC (ex: '/BRGMN/CUSTR_IMP_CUSTO')
+            rfc_name: nome do módulo de função RFC (ex: '/PRCIT/GDF_RFC_CUSTO')
             **params: parâmetros nomeados da chamada RFC (ex: I_V_BUKRS=..., I_V_BRANCH=...)
 
         Returns:
@@ -944,14 +950,14 @@ class SapRfc:
         A conexão é por cliente: use cod_cliente para processar apenas esse cliente.
 
         Args:
-            rfc_name: nome do RFC (ex: '/BRGMN/CUSTR_IMP_CUSTO')
+            rfc_name: nome do RFC (ex: '/PRCIT/GDF_RFC_CUSTO')
             cod_cliente: opcional. Se informado, usa apenas conexões desse cliente (tabela SapConnection).
             params_callback: opcional. (conn) -> iterável de parâmetros.
             call_callback: opcional. (sap, conn) -> resultado.
 
         Exemplo:
             for conn, result in SapRfc.run_for_active_connections(
-                '/BRGMN/CUSTR_IMP_CUSTO', cod_cliente='CLI01', params_callback=params_por_conexao
+                '/PRCIT/GDF_RFC_CUSTO', cod_cliente='CLI01', params_callback=params_por_conexao
             ):
                 print(conn, result)
         """
@@ -997,32 +1003,9 @@ class SapRfc:
     # -------------------------------------------------------------------------
 
     @staticmethod
-    def importar_custo_cliente(cod_cliente, bukrs, branch, psdat_ini, psdat_fim):
-        """
-        Exemplo de método por funcionalidade:
-          1. Chama o responsável pela conexão (SapRfc.call obtém conexão por cod_cliente).
-          2. Chama a função RFC com os parâmetros.
-          3. A comunicação é fechada ao final (SapRfc.call já faz isso).
-
-        Returns:
-            tuple (success: bool, result_or_error)
-        """
-        print(f"[SapRfc] importar_custo_cliente: cod_cliente={cod_cliente!r} bukrs={bukrs} branch={branch} psdat_ini={psdat_ini} psdat_fim={psdat_fim}")
-        ok, res = SapRfc.call(
-            cod_cliente,
-            '/PRCIT/GDF_condicoes_pagamento',
-            I_V_BUKRS=bukrs,
-            I_V_BRANCH=branch,
-            I_V_PSDAT_INI=psdat_ini,
-            I_V_PSDAT_FIM=psdat_fim,
-        )
-        print(f"[SapRfc] importar_custo_cliente: resultado success={ok} result_type={type(res).__name__}")
-        return ok, res
-
-    @staticmethod
     def importar_relatorio_custo(cod_cliente, bukrs, branch, psdat_ini, psdat_fim, empresa=None, filial=None, persistir=True):
         """
-        Chama a RFC /BRGMN/CUSTR_IMP_CUSTO para importar dados de custo do SAP e,
+        Chama a RFC /PRCIT/GDF_RFC_CUSTO para importar dados de custo do SAP e,
         se persistir=True, grava na tabela sap.relatorio_custo (RelatorioCusto),
         vinculando à Empresa e Filial do GDF.
 
@@ -1071,7 +1054,7 @@ class SapRfc:
 
         ok, result = SapRfc.call(
             cod_cliente,
-            "/BRGMN/CUSTR_IMP_CUSTO",
+            _RFC_RELATORIO_CUSTO,
             I_V_BUKRS=_bukrs,
             I_V_BRANCH=branch or '',
             I_V_PSDAT_INI=psdat_ini,
@@ -1081,13 +1064,13 @@ class SapRfc:
         if not ok:
             return {
                 'sucesso': False,
-                'mensagem': result or 'Erro ao chamar RFC /BRGMN/CUSTR_IMP_CUSTO.',
+                'mensagem': result or f'Erro ao chamar RFC {_RFC_RELATORIO_CUSTO}.',
                 'total_linhas': 0,
                 'total_gravados': 0,
                 'resultado_rfc': None,
             }
 
-        # Tabela de retorno da RFC /BRGMN/CUSTR_IMP_CUSTO
+        # Tabela de retorno da RFC /PRCIT/GDF_RFC_CUSTO
         table_data = result.get("T_RELAT003", []) if result and isinstance(result, dict) else []
         linhas = table_data if isinstance(table_data, list) else (list(table_data) if table_data else [])
 
@@ -1223,7 +1206,7 @@ class SapRfc:
     @staticmethod
     def consultar_balanco_financeiro(cod_cliente, **params):
         """
-        RFC ZF_ECF01 — balanço financeiro.
+        RFC /PRCIT/GDF_RFC_BALANCE — balanço financeiro.
 
         O SAP devolve o resultado em ``R_RETURN`` (string) contendo JSON:
 
@@ -1342,6 +1325,150 @@ class SapRfc:
             "opcoes_arvore": opcoes_arvore,
         }
 
+    @staticmethod
+    def _interpretar_tem_sap_linha(status: str, name_table: str) -> bool:
+        """Indica documento encontrado no SAP: NAME_TABLE preenchido ou STATUS de sucesso comum."""
+        if (name_table or "").strip():
+            return True
+        st = (status or "").strip().upper()
+        return st in ("1", "X", "S", "Y")
+
+    @staticmethod
+    def _extrair_linhas_t_consulta(result: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not result or not isinstance(result, dict):
+            return []
+        for key in ("T_CONSULTA", "ET_T_CONSULTA", "R_T_CONSULTA"):
+            rows = result.get(key)
+            if rows:
+                return list(rows)
+        return []
+
+    @staticmethod
+    def _mapa_t_consulta_from_rfc_result(result: Any) -> Dict[str, Dict[str, Any]]:
+        out: Dict[str, Dict[str, Any]] = {}
+        for r in SapRfc._extrair_linhas_t_consulta(result if isinstance(result, dict) else None):
+            ch = (r.get("CHAVE") or r.get("chave") or "").strip()
+            st = (r.get("STATUS") or r.get("status") or "").strip()
+            nt = (r.get("NAME_TABLE") or r.get("name_table") or "").strip()
+            payload = {
+                "tem_sap": SapRfc._interpretar_tem_sap_linha(st, nt),
+                "status": st,
+                "name_table": nt,
+            }
+            if ch:
+                out[ch] = payload
+                digits = "".join(c for c in ch if c.isdigit())
+                if len(digits) == 44:
+                    out[digits] = payload
+        return out
+
+    @staticmethod
+    def consultar_chaves_no_sap_batch(
+        cod_cliente: str, chaves: List[str]
+    ) -> Tuple[bool, str, Dict[str, Dict[str, Any]], List[str]]:
+        """
+        Uma chamada RFC /PRCIT/GDF_RFC_CONSULTA com lote de chaves.
+
+        Returns:
+            (sucesso, mensagem_erro, mapa_chave->payload, chaves_unicas_na_ordem_enviada)
+        """
+        empty: Dict[str, Dict[str, Any]] = {}
+        if not (cod_cliente or "").strip():
+            return False, "Cliente SAP não informado.", empty, []
+        if not chaves:
+            return True, "", empty, []
+        if not SapRfc.is_available():
+            return False, SapRfc.pyrfc_mensagem_indisponivel(), empty, []
+
+        seen = set()
+        ordered: List[str] = []
+        t_consulta: List[Dict[str, str]] = []
+        for raw in chaves:
+            s = (raw or "").strip()
+            if not s or s in seen:
+                continue
+            seen.add(s)
+            ordered.append(s)
+            t_consulta.append({"CHAVE": s[:_RFC_CONSULTA_CHAVE_MAX], "STATUS": "", "NAME_TABLE": ""})
+
+        if not t_consulta:
+            return True, "", empty, []
+
+        ok, result = SapRfc.call(cod_cliente, _RFC_CONSULTA_DOCUMENTO, T_CONSULTA=t_consulta)
+        if not ok:
+            return False, str(result or "Erro ao chamar RFC /PRCIT/GDF_RFC_CONSULTA."), empty, ordered
+
+        return True, "", SapRfc._mapa_t_consulta_from_rfc_result(result), ordered
+
+    @staticmethod
+    def consultar_chaves_no_sap(cod_cliente: str, chaves: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        RFC /PRCIT/GDF_RFC_CONSULTA: envia T_CONSULTA (CHAVE, STATUS, NAME_TABLE) e lê o retorno na mesma tabela.
+
+        Returns:
+            Mapa chave (como retornada ou só dígitos 44) -> {'tem_sap': bool, 'status': str, 'name_table': str}.
+            Dicionário vazio se PyRFC indisponível, sem conexão ou falha na chamada.
+        """
+        ok, err, m, _ = SapRfc.consultar_chaves_no_sap_batch(cod_cliente, chaves)
+        if not ok:
+            print(f"[SapRfc] consultar_chaves_no_sap: falha — {err!r}")
+            return {}
+        return m
+
+    @staticmethod
+    def consultar_chaves_no_sap_exec(cod_cliente: str, chaves: List[str]) -> Dict[str, Any]:
+        """
+        Mesma RFC que ``consultar_chaves_no_sap``, com retorno para a tela Integração (sucesso/mensagem/linhas).
+
+        ``linhas``: lista de dicts ``chave``, ``tem_sap``, ``status``, ``name_table`` (ordem das chaves enviadas).
+        """
+        base: Dict[str, Any] = {
+            "sucesso": False,
+            "mensagem": "",
+            "total_linhas": 0,
+            "linhas": [],
+        }
+        if not (cod_cliente or "").strip():
+            base["mensagem"] = "Cliente não informado."
+            return base
+        if not chaves:
+            base["mensagem"] = "Informe pelo menos uma chave."
+            return base
+
+        ok, err, m, ordered = SapRfc.consultar_chaves_no_sap_batch(cod_cliente, chaves)
+        if not ok:
+            base["mensagem"] = err
+            return base
+        if not ordered:
+            base["mensagem"] = "Nenhuma chave válida após normalização."
+            return base
+
+        linhas: List[Dict[str, Any]] = []
+        for orig in ordered:
+            ch_send = orig[:_RFC_CONSULTA_CHAVE_MAX]
+            digits = "".join(c for c in orig if c.isdigit())
+            row = m.get(orig) or m.get(ch_send) or (m.get(digits) if len(digits) == 44 else None)
+            if row:
+                linhas.append({
+                    "chave": orig,
+                    "tem_sap": row.get("tem_sap", False),
+                    "status": row.get("status", ""),
+                    "name_table": row.get("name_table", ""),
+                })
+            else:
+                linhas.append({
+                    "chave": orig,
+                    "tem_sap": False,
+                    "status": "",
+                    "name_table": "",
+                })
+
+        base["sucesso"] = True
+        base["mensagem"] = f"RFC /PRCIT/GDF_RFC_CONSULTA executada com {len(linhas)} chave(s)."
+        base["total_linhas"] = len(linhas)
+        base["linhas"] = linhas
+        return base
+
 
 def enviar_condicoes_pagamento_sap(id_lote, cod_cliente, condicoes_lista):
     """
@@ -1400,11 +1527,11 @@ def enviar_condicoes_pagamento_sap(id_lote, cod_cliente, condicoes_lista):
             'COND_PAG_NFE': (c.get('condicao_pagamento_nfe') or '')[:50],
             'COND_PAG_SAP': (c.get('condicao_pagamento_sap') or '')[:4],
         })
-    print(f"[SapRfc] enviar_condicoes_pagamento_sap: montada tabela T_COND_PAGAMENTO com {len(t_cond_pagamento)} registro(s), chamando RFC ZGDF_CONDICOES_PAGAMENTO")
+    print(f"[SapRfc] enviar_condicoes_pagamento_sap: montada tabela T_COND_PAGAMENTO com {len(t_cond_pagamento)} registro(s), chamando RFC {_RFC_CONDICOES_PAGAMENTO}")
 
     success, result = SapRfc.call(
         cod_cliente,
-        'ZGDF_CONDICOES_PAGAMENTO',
+        _RFC_CONDICOES_PAGAMENTO,
         T_COND_PAGAMENTO=t_cond_pagamento,
     )
 
