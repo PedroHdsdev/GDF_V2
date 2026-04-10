@@ -1326,7 +1326,7 @@ class SapRfc:
         elif month_b == month_v:
             msg_ok = "Dados obtidos com sucesso."
         else:
-            msg_ok = f"Dados obtidos com sucesso ({label_periodo})."
+            msg_ok = f"Dados obtidos com sucesso."
 
         print(f"[SapRfc] consultar_balanco_financeiro: {total_nos} nó(s) no JSON de R_RETURN")
         return {

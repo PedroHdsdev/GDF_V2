@@ -903,6 +903,121 @@
         });
     }
 
+    function exportarExcelCondicaoParam() {
+        const btn = document.getElementById('btn-exportar-excel-condicao-param');
+        if (btn) btn.disabled = true;
+        fetch(apiUrl('api/reprocessamento/condicao-param/exportar-excel/'), {
+            method: 'GET',
+            credentials: 'same-origin',
+        })
+            .then(function (res) {
+                if (!res.ok) {
+                    const ct = (res.headers.get('content-type') || '').toLowerCase();
+                    if (ct.indexOf('application/json') >= 0) {
+                        return res.json().then(function (d) {
+                            throw new Error(d.mensagem || 'Erro ao exportar');
+                        });
+                    }
+                    throw new Error('Erro ao exportar');
+                }
+                let filename = 'parametros_condicao_pagamento.xlsx';
+                const cd = res.headers.get('Content-Disposition') || '';
+                const m = /filename\*=UTF-8''([^;\s]+)|filename="([^"]+)"/i.exec(cd);
+                if (m) {
+                    const raw = (m[1] || m[2] || '').trim();
+                    try {
+                        filename = decodeURIComponent(raw) || filename;
+                    } catch (e) {
+                        filename = raw || filename;
+                    }
+                }
+                return res.blob().then(function (blob) {
+                    return { blob: blob, filename: filename };
+                });
+            })
+            .then(function (pair) {
+                const blob = pair.blob;
+                if (!blob || blob.size === 0) {
+                    throw new Error('Arquivo vazio ou inválido');
+                }
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = pair.filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            })
+            .catch(function (err) {
+                if (typeof Notificacoes !== 'undefined') {
+                    Notificacoes.pagina(err.message || 'Erro ao baixar Excel', 'danger');
+                }
+            })
+            .finally(function () {
+                if (btn) btn.disabled = false;
+            });
+    }
+
+    function importarExcelCondicaoParam(file) {
+        if (!file || !file.name || !/\.xlsx$/i.test(file.name)) {
+            if (typeof Notificacoes !== 'undefined') {
+                Notificacoes.pagina('Selecione um arquivo .xlsx (mesmo modelo da exportação).', 'warning');
+            }
+            return;
+        }
+        const btnImp = document.getElementById('btn-importar-excel-condicao-param');
+        const btnExp = document.getElementById('btn-exportar-excel-condicao-param');
+        if (btnImp) btnImp.disabled = true;
+        if (btnExp) btnExp.disabled = true;
+        const csrf = getCsrfToken();
+        const fd = new FormData();
+        fd.append('arquivo', file);
+        fd.append('csrfmiddlewaretoken', csrf);
+        fetch(apiUrl('api/reprocessamento/condicao-param/importar-excel/'), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-CSRFToken': csrf },
+            body: fd,
+        })
+            .then(function (res) {
+                return res.json().then(function (data) {
+                    return { ok: res.ok, data: data };
+                });
+            })
+            .then(function (r) {
+                const data = r.data;
+                if (!r.ok || !data.sucesso) {
+                    throw new Error(data.mensagem || 'Erro na importação');
+                }
+                let nivel = 'success';
+                let texto = data.mensagem || 'Importação concluída.';
+                if (data.detalhes_erro && data.detalhes_erro.length) {
+                    nivel = 'warning';
+                    const amostra = data.detalhes_erro.slice(0, 5).join(' ');
+                    texto += ' ' + amostra;
+                    if (data.detalhes_erro.length > 5) {
+                        texto += ' (+' + (data.detalhes_erro.length - 5) + ' aviso(s))';
+                    }
+                }
+                if (typeof Notificacoes !== 'undefined') {
+                    Notificacoes.pagina(texto, nivel);
+                }
+                carregarCondicaoParam();
+            })
+            .catch(function (err) {
+                if (typeof Notificacoes !== 'undefined') {
+                    Notificacoes.pagina(err.message || 'Erro ao importar Excel', 'danger');
+                }
+            })
+            .finally(function () {
+                if (btnImp) btnImp.disabled = false;
+                if (btnExp) btnExp.disabled = false;
+                const inp = document.getElementById('input-importar-excel-condicao-param');
+                if (inp) inp.value = '';
+            });
+    }
+
     function salvarCondicaoParam() {
         const tbody = document.getElementById('tbody-condicao-param');
         if (!tbody) return;
@@ -1014,6 +1129,14 @@
         document.getElementById('btn-abrir-condicao-param-painel')?.addEventListener('click', abrirModalCondicaoParam);
         document.getElementById('btn-fechar-modal-condicao-param')?.addEventListener('click', fecharModalCondicaoParam);
         document.getElementById('btn-salvar-condicao-param')?.addEventListener('click', salvarCondicaoParam);
+        document.getElementById('btn-exportar-excel-condicao-param')?.addEventListener('click', exportarExcelCondicaoParam);
+        document.getElementById('btn-importar-excel-condicao-param')?.addEventListener('click', function () {
+            document.getElementById('input-importar-excel-condicao-param')?.click();
+        });
+        document.getElementById('input-importar-excel-condicao-param')?.addEventListener('change', function () {
+            const f = this.files && this.files[0];
+            if (f) importarExcelCondicaoParam(f);
+        });
         document.getElementById('btn-enviar-sap')?.addEventListener('click', function () {
             if (estado.condicoesLoteId) enviarCondicoesSap(estado.condicoesLoteId);
         });

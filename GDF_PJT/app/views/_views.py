@@ -5,13 +5,16 @@ Views do app GDF – ponto único: telas e APIs.
 - Usa app.classes (ClGdf, CargaXml, CargaSped) e app.utils.view_helpers. Jobs em app.api.jobs.
 """
 import json
+import math
 import os
 import re
+import unicodedata
 import shutil
 import tempfile
 import threading
 import zipfile
 from datetime import datetime, timedelta, timezone as _py_tz
+from io import BytesIO
 from pathlib import Path
 
 from django.conf import settings
@@ -21,7 +24,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.paginator import Paginator
 from django.db.models import Q, Count
-from django.http import HttpResponseForbidden, JsonResponse
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
@@ -3963,6 +3966,289 @@ def fn_api_reprocessamento_condicao_param_listar(request):
         for c in qs
     ]
     return JsonResponse({'sucesso': True, 'condicoes': lista})
+
+
+@login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@require_http_methods(["GET"])
+def fn_api_reprocessamento_condicao_param_exportar_excel(request):
+    """Exporta todos os registros de condicao_param do cliente em planilha .xlsx."""
+    cod_cliente = request.session.get('cod_cliente')
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+    except ImportError:
+        return JsonResponse(
+            {
+                'sucesso': False,
+                'mensagem': 'Exportação Excel indisponível: instale o pacote openpyxl (pip install openpyxl).',
+            },
+            status=503,
+        )
+
+    qs = CondicaoParam.objects.filter(gdfcliente_id=cod_cliente).order_by(
+        'condicao_pagamento_nfe', 'tipo_pagamento'
+    )
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Parametros'
+    headers = [
+        'ID',
+        'Tipo pagamento (código)',
+        'Tipo pagamento (descrição)',
+        'Condição NFe',
+        'Condição SAP',
+    ]
+    ws.append(headers)
+    bold = Font(bold=True)
+    for cell in ws[1]:
+        cell.font = bold
+
+    for c in qs:
+        cod_tipo = (c.tipo_pagamento or '').strip()
+        if not cod_tipo:
+            tipo_desc = descricao_tipo_pagamento(None)
+        else:
+            tipo_desc = descricao_tipo_pagamento(cod_tipo) or cod_tipo
+        ws.append(
+            [
+                c.id,
+                cod_tipo,
+                tipo_desc,
+                c.condicao_pagamento_nfe or '',
+                c.condicao_pagamento_sap or '',
+            ]
+        )
+
+    for col_letter, width in zip('ABCDE', [10, 22, 40, 36, 18]):
+        ws.column_dimensions[col_letter].width = width
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    stamp = timezone.now().strftime('%Y%m%d_%H%M')
+    fname = f'parametros_condicao_pagamento_{stamp}.xlsx'
+    resp = HttpResponse(
+        buf.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="{fname}"'
+    return resp
+
+
+def _condicao_param_header_norm(val):
+    if val is None:
+        return ''
+    t = str(val).strip().lower()
+    t = ''.join(
+        c for c in unicodedata.normalize('NFD', t) if unicodedata.category(c) != 'Mn'
+    )
+    return ' '.join(t.split())
+
+
+def _condicao_param_parse_id_excel(val):
+    if val is None:
+        return None
+    if isinstance(val, bool):
+        return None
+    if isinstance(val, int):
+        return val
+    if isinstance(val, float):
+        if math.isnan(val) or math.isinf(val):
+            return None
+        r = round(val)
+        if abs(val - r) < 1e-9:
+            return int(r)
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    try:
+        return int(float(s.replace(',', '.')))
+    except (ValueError, TypeError):
+        return None
+
+
+def _condicao_param_cell_sap(val):
+    if val is None:
+        return ''
+    if isinstance(val, float):
+        if math.isnan(val) or math.isinf(val):
+            return ''
+        r = round(val)
+        if abs(val - r) < 1e-9:
+            val = str(int(r))
+        else:
+            val = str(val).strip()
+    else:
+        val = str(val).strip()
+    return val[:60]
+
+
+def _condicao_param_row_str(val):
+    if val is None:
+        return ''
+    if isinstance(val, float):
+        if math.isnan(val) or math.isinf(val):
+            return ''
+        r = round(val)
+        if abs(val - r) < 1e-9:
+            return str(int(r))
+    return str(val).strip()
+
+
+@login_required(login_url='Login')
+@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@require_http_methods(["POST"])
+def fn_api_reprocessamento_condicao_param_importar_excel(request):
+    """
+    Carga de planilha .xlsx com o mesmo layout da exportação (aba Parametros).
+    Atualiza condicao_pagamento_sap por ID, com checagem de tipo NFe e condição NFe.
+    """
+    cod_cliente = request.session.get('cod_cliente')
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
+    try:
+        from openpyxl import load_workbook
+    except ImportError:
+        return JsonResponse(
+            {
+                'sucesso': False,
+                'mensagem': 'Importação Excel indisponível: instale o pacote openpyxl (pip install openpyxl).',
+            },
+            status=503,
+        )
+
+    upload = request.FILES.get('arquivo')
+    if not upload:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Envie um arquivo .xlsx no campo "arquivo".'}, status=400)
+    name = (upload.name or '').lower()
+    if not name.endswith('.xlsx'):
+        return JsonResponse({'sucesso': False, 'mensagem': 'O arquivo deve ser .xlsx.'}, status=400)
+    if upload.size > 5 * 1024 * 1024:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Arquivo acima do limite de 5 MB.'}, status=400)
+
+    raw = upload.read()
+    try:
+        wb = load_workbook(filename=BytesIO(raw), read_only=True, data_only=True)
+    except Exception as e:
+        return JsonResponse(
+            {'sucesso': False, 'mensagem': f'Não foi possível ler a planilha: {str(e)[:200]}'},
+            status=400,
+        )
+
+    if 'Parametros' in wb.sheetnames:
+        ws = wb['Parametros']
+    else:
+        ws = wb.worksheets[0]
+
+    rows = ws.iter_rows(values_only=True)
+    header = next(rows, None)
+    if not header:
+        wb.close()
+        return JsonResponse({'sucesso': False, 'mensagem': 'Planilha vazia.'}, status=400)
+
+    col_map = {}
+    for idx, cell in enumerate(header):
+        key = _condicao_param_header_norm(cell)
+        if key:
+            col_map[key] = idx
+
+    key_id = 'id'
+    key_sap = 'condicao sap'
+    key_tipo = 'tipo pagamento (codigo)'
+    key_nfe = 'condicao nfe'
+
+    if key_id not in col_map or key_sap not in col_map:
+        wb.close()
+        return JsonResponse(
+            {
+                'sucesso': False,
+                'mensagem': 'Cabeçalho inválido: é necessário ID e Condição SAP (use a planilha exportada pelo sistema, sem alterar a linha de títulos).',
+            },
+            status=400,
+        )
+
+    idx_id = col_map[key_id]
+    idx_sap = col_map[key_sap]
+    idx_tipo = col_map.get(key_tipo)
+    idx_nfe = col_map.get(key_nfe)
+
+    atualizados = 0
+    linhas_puladas = 0
+    detalhes_erro = []
+    max_linhas = 5000
+    linha_num = 1
+
+    for row in rows:
+        linha_num += 1
+        if linha_num > max_linhas + 1:
+            detalhes_erro.append(f'Processamento interrompido: mais de {max_linhas} linhas de dados.')
+            break
+        if not row:
+            continue
+        cells = list(row)
+        def cell_at(i):
+            if i is None or i >= len(cells):
+                return None
+            return cells[i]
+
+        pk = _condicao_param_parse_id_excel(cell_at(idx_id))
+        sap_new = _condicao_param_cell_sap(cell_at(idx_sap))
+        if pk is None:
+            if sap_new == '' and all(
+                (cell_at(j) is None or str(cell_at(j)).strip() == '')
+                for j in (idx_id, idx_sap, idx_tipo, idx_nfe)
+                if j is not None
+            ):
+                continue
+            linhas_puladas += 1
+            if len(detalhes_erro) < 25:
+                detalhes_erro.append(f'Linha {linha_num}: ID inválido ou vazio.')
+            continue
+
+        obj = CondicaoParam.objects.filter(pk=pk, gdfcliente_id=cod_cliente).first()
+        if not obj:
+            linhas_puladas += 1
+            if len(detalhes_erro) < 25:
+                detalhes_erro.append(f'Linha {linha_num}: ID {pk} não encontrado para este cliente.')
+            continue
+
+        if idx_tipo is not None and idx_nfe is not None:
+            tipo_x = _condicao_param_row_str(cell_at(idx_tipo))
+            nfe_x = _condicao_param_row_str(cell_at(idx_nfe))
+            tipo_db = (obj.tipo_pagamento or '').strip()
+            nfe_db = (obj.condicao_pagamento_nfe or '').strip()
+            if tipo_x != tipo_db or nfe_x != nfe_db:
+                linhas_puladas += 1
+                if len(detalhes_erro) < 25:
+                    detalhes_erro.append(
+                        f'Linha {linha_num}: ID {pk} não confere com NFe/tipo do cadastro (não alterado).'
+                    )
+                continue
+
+        n = CondicaoParam.objects.filter(pk=pk, gdfcliente_id=cod_cliente).update(
+            condicao_pagamento_sap=sap_new
+        )
+        if n:
+            atualizados += 1
+
+    wb.close()
+
+    msg_parts = [f'{atualizados} registro(s) atualizado(s).']
+    if linhas_puladas:
+        msg_parts.append(f'{linhas_puladas} linha(s) ignorada(s).')
+    return JsonResponse(
+        {
+            'sucesso': True,
+            'atualizados': atualizados,
+            'linhas_ignoradas': linhas_puladas,
+            'detalhes_erro': detalhes_erro,
+            'mensagem': ' '.join(msg_parts),
+        }
+    )
 
 
 @login_required(login_url='Login')

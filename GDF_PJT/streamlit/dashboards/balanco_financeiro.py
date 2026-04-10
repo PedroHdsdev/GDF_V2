@@ -11,6 +11,8 @@ import streamlit.components.v1 as components
 from core.auth import AuthResult
 from core.django_backend import balanco_financeiro_api_url, post_json_bearer
 
+from .balanco_financeiro_analise import render_analise_gerencial
+
 # Alinhado a SapRfc._ZF_ECF01_MAX_NUMERO_PERIODO (I_MONTH_B / I_MONTH_V na RFC).
 _MAX_PERIODO_SAP = 99
 
@@ -513,12 +515,31 @@ class DashboardBalancoFin:
             )
             return True
 
+        snap_an = st.session_state.get("balanco_fin_snapshot")
+        if isinstance(snap_an, tuple) and len(snap_an) >= 4:
+            _y, _mb, _mv = int(snap_an[1]), int(snap_an[2]), int(snap_an[3])
+        else:
+            _y, _mb, _mv = int(agora.year), int(i_month_b_rfc), int(i_month_v_rfc)
+        consulta_key = ""
+        if isinstance(snap_an, tuple) and len(snap_an) >= 6:
+            consulta_key = "|".join(str(x) for x in snap_an[:6])
+
+        render_analise_gerencial(
+            arvore,
+            ano=_y,
+            mes_ini=_mb,
+            mes_fim=_mv,
+            consulta_key=consulta_key,
+        )
+
+        st.divider()
+        st.markdown("### Detalhamento da árvore (RFC)")
         total_nos = int(
             st.session_state.get("balanco_fin_total_nos") or _contar_nos_local(arvore)
         )
         st.metric("Nós na árvore", total_nos)
 
-        st.markdown("### Resultado")
+        st.markdown("#### Resultado")
         st.caption(
             "Visualização apenas nos dados da última consulta (sem nova chamada RFC). "
             "A árvore segue ``children`` do JSON (formato recursivo ABAP) ou o montado a partir de "

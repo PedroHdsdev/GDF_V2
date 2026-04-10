@@ -93,6 +93,16 @@ urlpatterns = [
     path('api/reprocessamento/divergencias/<int:id_divergencia>/detalhe/', views.fn_api_reprocessamento_divergencia_detalhe, name='API_ReprocessamentoDivergenciaDetalhe'),
     path('api/reprocessamento/divergencias/<int:id_divergencia>/reprocessar/', views.fn_api_reprocessamento_reprocessar_divergencia, name='API_ReprocessamentoReprocessarDivergencia'),
     path('api/reprocessamento/condicao-param/', views.fn_api_reprocessamento_condicao_param_listar, name='API_ReprocessamentoCondicaoParamListar'),
+    path(
+        'api/reprocessamento/condicao-param/exportar-excel/',
+        views.fn_api_reprocessamento_condicao_param_exportar_excel,
+        name='API_ReprocessamentoCondicaoParamExportarExcel',
+    ),
+    path(
+        'api/reprocessamento/condicao-param/importar-excel/',
+        views.fn_api_reprocessamento_condicao_param_importar_excel,
+        name='API_ReprocessamentoCondicaoParamImportarExcel',
+    ),
     path('api/reprocessamento/condicao-param/atualizar/', views.fn_api_reprocessamento_condicao_param_atualizar, name='API_ReprocessamentoCondicaoParamAtualizar'),
     path('api/sap/testar-conexao/', views.fn_api_sap_testar_conexao, name='API_SapTestarConexao'),
     path('api/sap/relatorio-custo/', views.fn_api_sap_relatorio_custo_receber, name='API_SapRelatorioCustoReceber'),
