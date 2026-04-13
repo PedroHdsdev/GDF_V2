@@ -73,7 +73,8 @@ def _handler_relatorio_custo_impl(cod_cliente: str, **params) -> Dict[str, Any]:
 
 
 RFC_CONSULTA_SYNC_CHUNK = 80
-RFC_CONSULTA_SYNC_MAX = 5000
+# Máximo de chaves únicas consultadas por execução da RFC /PRCIT/GDF_RFC_CONSULTA (evita timeout e carga excessiva no SAP).
+RFC_CONSULTA_MAX_CHAVES_POR_EXECUCAO = 5000
 
 
 def _lookup_linha_sap(m: Dict[str, Dict[str, Any]], ch: str):
@@ -90,8 +91,8 @@ def _lookup_linha_sap(m: Dict[str, Dict[str, Any]], ch: str):
 
 def _handler_gdf_rfc_consulta_impl(cod_cliente: str, **params) -> Dict[str, Any]:
     """
-    RFC /PRCIT/GDF_RFC_CONSULTA: busca no GDF documentos com tem_sap=False (NFe, CT-e, NFS-e),
-    consulta o SAP em lotes e atualiza tem_sap / sap_nome_tabela quando encontrado.
+    RFC /PRCIT/GDF_RFC_CONSULTA: busca no GDF todos os documentos com tem_sap=False (NFe, CT-e, NFS-e),
+    consulta o SAP em lotes (chunks); interpreta R_RETURN (JSON) e atualiza tem_sap / sap_nome_tabela quando status=true.
     """
     from app.classes.SapRfc import SapRfc
 
@@ -106,8 +107,6 @@ def _handler_gdf_rfc_consulta_impl(cod_cliente: str, **params) -> Dict[str, Any]
         .order_by("data_atualizacao")
         .iterator(chunk_size=300)
     ):
-        if len(entries) >= RFC_CONSULTA_SYNC_MAX:
-            break
         ch = (nfe.identificacao.chave_acesso or "").strip()
         if ch:
             entries.append(("nfe", nfe.id_nfe, ch))
@@ -118,8 +117,6 @@ def _handler_gdf_rfc_consulta_impl(cod_cliente: str, **params) -> Dict[str, Any]
         .order_by("data_atualizacao")
         .iterator(chunk_size=300)
     ):
-        if len(entries) >= RFC_CONSULTA_SYNC_MAX:
-            break
         ch = (cte.identificacao.chave_acesso or "").strip()
         if ch:
             entries.append(("cte", cte.id_cte, ch))
@@ -130,8 +127,6 @@ def _handler_gdf_rfc_consulta_impl(cod_cliente: str, **params) -> Dict[str, Any]
         .order_by("data_atualizacao")
         .iterator(chunk_size=300)
     ):
-        if len(entries) >= RFC_CONSULTA_SYNC_MAX:
-            break
         ch = (nfse.identificacao.chave or "").strip()
         if ch:
             entries.append(("nfse", nfse.id_nfse, ch))
@@ -144,9 +139,11 @@ def _handler_gdf_rfc_consulta_impl(cod_cliente: str, **params) -> Dict[str, Any]
             "total_pendentes": 0,
             "total_chaves_unicas": 0,
             "total_chaves_consultadas": 0,
+            "limite_chaves_por_execucao": RFC_CONSULTA_MAX_CHAVES_POR_EXECUCAO,
             "total_atualizados": 0,
             "total_linhas": 0,
             "linhas": [],
+            "linhas_consulta_sap": [],
         }
 
     refs_by_chave: DefaultDict[str, List[Tuple[str, int]]] = defaultdict(list)
@@ -158,73 +155,100 @@ def _handler_gdf_rfc_consulta_impl(cod_cliente: str, **params) -> Dict[str, Any]
             seen_ch.add(ch)
             ordered_unique.append(ch)
 
-    total_chaves_unicas = len(ordered_unique)
-    amostra: List[Dict[str, Any]] = []
+    total_chaves_unicas_total = len(ordered_unique)
+    consultar_estas = ordered_unique
+    if total_chaves_unicas_total > RFC_CONSULTA_MAX_CHAVES_POR_EXECUCAO:
+        consultar_estas = ordered_unique[:RFC_CONSULTA_MAX_CHAVES_POR_EXECUCAO]
+
+    total_chaves_unicas = total_chaves_unicas_total
+    n_chaves_nesta_execucao = len(consultar_estas)
+    linhas_consulta_sap: List[Dict[str, Any]] = []
     total_atualizados = 0
 
     try:
         with transaction.atomic():
-            for i in range(0, len(ordered_unique), RFC_CONSULTA_SYNC_CHUNK):
-                chunk = ordered_unique[i : i + RFC_CONSULTA_SYNC_CHUNK]
+            for i in range(0, len(consultar_estas), RFC_CONSULTA_SYNC_CHUNK):
+                chunk = consultar_estas[i : i + RFC_CONSULTA_SYNC_CHUNK]
                 ok, err, m, ord_chunk = SapRfc.consultar_chaves_no_sap_batch(cod_cliente, chunk)
                 if not ok:
                     raise RuntimeError(err)
                 for ch in ord_chunk:
-                    row = _lookup_linha_sap(m, ch)
-                    if not row or not row.get("tem_sap"):
-                        continue
-                    nt = (row.get("name_table") or "").strip()[:30] or None
-                    now = timezone.now()
-                    for tipo, pk in refs_by_chave.get(ch, []):
-                        if tipo == "nfe":
-                            n = NFe.objects.filter(pk=pk, tem_sap=False).update(
-                                tem_sap=True,
-                                sap_nome_tabela=nt,
-                                data_atualizacao=now,
-                            )
-                        elif tipo == "cte":
-                            n = CTe.objects.filter(pk=pk, tem_sap=False).update(
-                                tem_sap=True,
-                                sap_nome_tabela=nt,
-                                data_atualizacao=now,
-                            )
-                        else:
-                            n = NFSe.objects.filter(pk=pk, tem_sap=False).update(
-                                tem_sap=True,
-                                sap_nome_tabela=nt,
-                                data_atualizacao=now,
-                            )
-                        total_atualizados += n
-                        if n and len(amostra) < 40:
-                            amostra.append(
-                                {
-                                    "tipo": tipo.upper(),
-                                    "chave": ch,
-                                    "tem_sap": True,
-                                    "status": row.get("status", ""),
-                                    "name_table": nt or "",
-                                }
-                            )
+                    row = _lookup_linha_sap(m, ch) or {}
+                    tem_s = bool(row.get("tem_sap"))
+                    st_val = row.get("status", "") or ""
+                    nt_full = (row.get("name_table") or "").strip()
+                    refs = refs_by_chave.get(ch, [])
+                    tipos_set = {t.upper() for t, _ in refs}
+                    tipos_str = ", ".join(sorted(tipos_set)) if tipos_set else "—"
+                    atualizados_ch = 0
+                    if tem_s:
+                        nt_db = nt_full[:30] if nt_full else None
+                        now = timezone.now()
+                        for tipo, pk in refs:
+                            if tipo == "nfe":
+                                n = NFe.objects.filter(pk=pk, tem_sap=False).update(
+                                    tem_sap=True,
+                                    sap_nome_tabela=nt_db,
+                                    data_atualizacao=now,
+                                )
+                            elif tipo == "cte":
+                                n = CTe.objects.filter(pk=pk, tem_sap=False).update(
+                                    tem_sap=True,
+                                    sap_nome_tabela=nt_db,
+                                    data_atualizacao=now,
+                                )
+                            else:
+                                n = NFSe.objects.filter(pk=pk, tem_sap=False).update(
+                                    tem_sap=True,
+                                    sap_nome_tabela=nt_db,
+                                    data_atualizacao=now,
+                                )
+                            atualizados_ch += n
+                        total_atualizados += atualizados_ch
+                    linhas_consulta_sap.append(
+                        {
+                            "chave": ch,
+                            "tem_sap": tem_s,
+                            "status": st_val,
+                            "name_table": nt_full,
+                            "tipos": tipos_str,
+                            "qtd_docs": len(refs),
+                            "atualizado_gdf": atualizados_ch,
+                        }
+                    )
     except Exception as e:
         return {
             "sucesso": False,
             "mensagem": str(e),
             "total_pendentes": total_pendentes,
             "total_chaves_unicas": total_chaves_unicas,
+            "total_chaves_consultadas": n_chaves_nesta_execucao,
+            "limite_chaves_por_execucao": RFC_CONSULTA_MAX_CHAVES_POR_EXECUCAO,
+            "linhas_consulta_sap": linhas_consulta_sap,
         }
+
+    msg_ok = (
+        f"Consultadas {n_chaves_nesta_execucao} chave(s) única(s) no SAP nesta execução; "
+        f"{total_atualizados} documento(s) atualizado(s) no GDF."
+    )
+    if total_chaves_unicas_total > n_chaves_nesta_execucao:
+        restante = total_chaves_unicas_total - n_chaves_nesta_execucao
+        msg_ok += (
+            f" Há {restante} chave(s) única(s) ainda pendentes (limite {RFC_CONSULTA_MAX_CHAVES_POR_EXECUCAO} por execução); "
+            "execute novamente para continuar."
+        )
 
     return {
         "sucesso": True,
-        "mensagem": (
-            f"Consultadas {total_chaves_unicas} chave(s) única(s) no SAP; "
-            f"{total_atualizados} documento(s) atualizado(s) no GDF."
-        ),
+        "mensagem": msg_ok,
         "total_pendentes": total_pendentes,
         "total_chaves_unicas": total_chaves_unicas,
-        "total_chaves_consultadas": total_chaves_unicas,
+        "total_chaves_consultadas": n_chaves_nesta_execucao,
+        "limite_chaves_por_execucao": RFC_CONSULTA_MAX_CHAVES_POR_EXECUCAO,
         "total_atualizados": total_atualizados,
-        "total_linhas": len(amostra),
-        "linhas": amostra,
+        "total_linhas": len(linhas_consulta_sap),
+        "linhas": [],
+        "linhas_consulta_sap": linhas_consulta_sap,
     }
 
 
@@ -248,7 +272,7 @@ def register_all(registry) -> None:
     registry.register(RfcHandler(
         codigo="RFC_GDF_RFC_CONSULTA",
         nome="Reconsultar SAP (pendentes)",
-        descricao="RFC /PRCIT/GDF_RFC_CONSULTA: localiza NF-e, CT-e e NFS-e com tem_sap = Não, consulta o SAP em lotes e grava tem_sap / tabela quando encontrar. Até 5000 documentos por execução (ordem: NFe → CT-e → NFS-e).",
+        descricao="RFC /PRCIT/GDF_RFC_CONSULTA: localiza NF-e, CT-e e NFS-e com tem_sap = Não, consulta em lotes (até 5000 chaves únicas por execução); o SAP devolve R_RETURN (JSON). Grava tem_sap / sap_nome_tabela quando status=true (ordem: NFe → CT-e → NFS-e).",
         tabela_sap="/PRCIT/GDF_RFC_CONSULTA",
         params=[],
         handler_fn=_handler_gdf_rfc_consulta_impl,

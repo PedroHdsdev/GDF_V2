@@ -90,6 +90,42 @@
         </article>
         {% endfor %}
     </section>
+
+    <!-- Modal: resultado completo da RFC GDF_RFC_CONSULTA (Integração SAP) -->
+    <div class="modal fade" id="modalRfcConsultaSap" tabindex="-1" aria-labelledby="modalRfcConsultaSapLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content text-dark">
+                <div class="modal-header border-secondary">
+                    <div>
+                        <h5 class="modal-title mb-0" id="modalRfcConsultaSapLabel">Resultado da consulta SAP</h5>
+                        <p class="small text-muted mb-0 mt-1" id="modalRfcConsultaSapSub">/PRCIT/GDF_RFC_CONSULTA — retorno em R_RETURN (JSON); uma linha por chave consultada.</p>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="table-responsive" style="max-height: min(70vh, 720px);">
+                        <table class="table table-sm table-striped table-hover mb-0 align-middle small" id="modalRfcConsultaSapTable">
+                            <thead class="table-light sticky-top shadow-sm">
+                                <tr>
+                                    <th scope="col">Chave</th>
+                                    <th scope="col">Tipos (GDF)</th>
+                                    <th scope="col" class="text-center">Docs</th>
+                                    <th scope="col">No SAP</th>
+                                    <th scope="col">STATUS</th>
+                                    <th scope="col">NAME_TABLE</th>
+                                    <th scope="col" class="text-center">Atual. GDF</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -99,7 +135,59 @@ document.addEventListener('DOMContentLoaded', function() {
   if (!apiUrl) return;
 
   var csrfEl = document.querySelector('[name=csrfmiddlewaretoken]');
-  var getCsrf = function() { return csrfEl ? csrfEl.value : ''; };
+  function getCookie(name) {
+    var m = document.cookie.match('(?:^|; )' + name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&') + '=([^;]*)');
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  var getCsrf = function() {
+    if (csrfEl && csrfEl.value) return csrfEl.value;
+    return getCookie('csrftoken') || '';
+  };
+
+  var lastConsultaSapLinhas = null;
+
+  function escHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }
+
+  function preencherModalConsultaSap(linhas) {
+    var tb = document.querySelector('#modalRfcConsultaSapTable tbody');
+    var titleEl = document.getElementById('modalRfcConsultaSapLabel');
+    if (!tb) return;
+    var n = (linhas && linhas.length) ? linhas.length : 0;
+    if (titleEl) titleEl.textContent = 'Resultado da consulta SAP — ' + n + ' chave(s)';
+    var html = '';
+    (linhas || []).forEach(function(l) {
+      var ts = l.tem_sap
+        ? '<span class="text-success fw-semibold">Sim</span>'
+        : '<span class="text-secondary">Não</span>';
+      var ag = (l.atualizado_gdf && Number(l.atualizado_gdf) > 0)
+        ? '<span class="text-success fw-semibold">' + escHtml(l.atualizado_gdf) + '</span>'
+        : '<span class="text-muted">0</span>';
+      html += '<tr><td class="font-monospace text-break">' + escHtml(l.chave) + '</td>' +
+        '<td>' + escHtml(l.tipos) + '</td><td class="text-center">' + escHtml(l.qtd_docs) + '</td><td>' + ts + '</td>' +
+        '<td>' + escHtml(l.status) + '</td><td class="text-break font-monospace">' + escHtml(l.name_table) + '</td><td class="text-center">' + ag + '</td></tr>';
+    });
+    tb.innerHTML = html;
+  }
+
+  function abrirModalConsultaSap(linhas) {
+    var el = document.getElementById('modalRfcConsultaSap');
+    if (!el || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+    preencherModalConsultaSap(linhas);
+    bootstrap.Modal.getOrCreateInstance(el).show();
+  }
+
+  if (pageEl) {
+    pageEl.addEventListener('click', function(ev) {
+      var t = ev.target && ev.target.closest ? ev.target.closest('#btnRfcReabrirModalConsulta') : null;
+      if (t && lastConsultaSapLinhas && lastConsultaSapLinhas.length) {
+        abrirModalConsultaSap(lastConsultaSapLinhas);
+      }
+    });
+  }
 
   document.querySelectorAll('.rfc-form').forEach(function(form) {
     form.addEventListener('submit', function(e) {
@@ -133,8 +221,36 @@ document.addEventListener('DOMContentLoaded', function() {
         body: JSON.stringify({ cod_rfc: codRfc, params: params }),
         credentials: 'same-origin'
       })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
+      .then(function(r) {
+        return r.text().then(function(text) {
+          var data = null;
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch (parseErr) {
+            var head = (text || '').replace(/^\s+/, '').slice(0, 1);
+            var hint;
+            if (r.status === 502 || r.status === 503 || r.status === 504) {
+              hint = 'Gateway ou tempo esgotado: a RFC pode demorar muito e o proxy ou o Gunicorn encerrou a conexão. '
+                + 'Aumente GUNICORN_TIMEOUT (ex.: 600) e no Nginx proxy_read_timeout para /api/; confira logs do Gunicorn. '
+                + 'Se não for timeout, pode ser página HTML de erro do proxy.';
+            } else if (head === '<') {
+              hint = 'O servidor devolveu HTML (login, CSRF ou erro), não JSON. Atualize a página, faça login de novo; '
+                + 'se persistir, confira se o cookie csrftoken está sendo enviado.';
+            } else {
+              hint = (text || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+            }
+            throw new Error('Resposta não é JSON (HTTP ' + r.status + '). ' + hint);
+          }
+          return { ok: r.ok, status: r.status, data: data };
+        });
+      })
+      .then(function(resp) {
+        var data = resp.data;
+        if (!resp.ok) {
+          var errMsg = (data && (data.mensagem || data.erro || data.detail)) || ('HTTP ' + resp.status);
+          resultEl.innerHTML = '<div class="alert alert-danger small mb-0">' + escHtml(errMsg) + '</div>';
+          return;
+        }
         if (data.sucesso) {
           var msg = (data.mensagem || 'OK');
           if (data.total_pendentes !== undefined) msg += ' <br><span class="d-inline-block mt-1">Documentos pendentes: ' + data.total_pendentes + '</span>';
@@ -143,30 +259,35 @@ document.addEventListener('DOMContentLoaded', function() {
           if (data.total_linhas !== undefined && data.total_atualizados === undefined) msg += ' Linhas: ' + data.total_linhas;
           if (data.total_gravados !== undefined) msg += ' | Gravados: ' + data.total_gravados;
           var html = '<div class="alert alert-success small mb-2">' + msg + '</div>';
-          if (data.linhas && data.linhas.length) {
+          lastConsultaSapLinhas = null;
+          if (data.linhas_consulta_sap && data.linhas_consulta_sap.length) {
+            lastConsultaSapLinhas = data.linhas_consulta_sap;
+            html += '<p class="small mb-2 opacity-90">A tabela completa foi aberta em um modal. Use o botão abaixo para abrir novamente.</p>' +
+              '<button type="button" class="btn btn-sm btn-outline-light" id="btnRfcReabrirModalConsulta">' +
+              '<i class="fas fa-table me-1"></i>Ver resultados completos (' + data.linhas_consulta_sap.length + ' chave(s))</button>';
+            abrirModalConsultaSap(data.linhas_consulta_sap);
+          } else if (data.linhas && data.linhas.length) {
             var hasTipo = data.linhas.some(function(l) { return l.tipo; });
             html += '<div class="table-responsive"><table class="table table-sm table-bordered mb-0 small"><thead><tr>' +
               (hasTipo ? '<th>Tipo</th>' : '') + '<th>Chave</th><th>No SAP</th><th>STATUS</th><th>NAME_TABLE</th></tr></thead><tbody>';
-            function escCell(s) {
-              var d = document.createElement('div'); d.textContent = s; return d.innerHTML;
-            }
             data.linhas.forEach(function(l) {
               var ts = l.tem_sap ? '<span class="text-success">Sim</span>' : '<span class="text-muted">Não</span>';
               var ch = (l.chave != null ? String(l.chave) : '');
               var st = (l.status != null ? String(l.status) : '');
               var nt = (l.name_table != null ? String(l.name_table) : '');
-              var tipoTd = hasTipo ? '<td>' + escCell(l.tipo != null ? String(l.tipo) : '') + '</td>' : '';
-              html += '<tr>' + tipoTd + '<td class="font-monospace text-break">' + escCell(ch) + '</td><td>' + ts + '</td><td>' + escCell(st) + '</td><td class="text-break">' + escCell(nt) + '</td></tr>';
+              var tipoTd = hasTipo ? '<td>' + escHtml(l.tipo != null ? String(l.tipo) : '') + '</td>' : '';
+              html += '<tr>' + tipoTd + '<td class="font-monospace text-break">' + escHtml(ch) + '</td><td>' + ts + '</td><td>' + escHtml(st) + '</td><td class="text-break">' + escHtml(nt) + '</td></tr>';
             });
             html += '</tbody></table></div>';
           }
           resultEl.innerHTML = html;
         } else {
-          resultEl.innerHTML = '<div class="alert alert-danger small mb-0">' + (data.mensagem || 'Erro') + '</div>';
+          var failMsg = (data.mensagem || data.erro || 'Erro');
+          resultEl.innerHTML = '<div class="alert alert-danger small mb-0">' + escHtml(failMsg) + '</div>';
         }
       })
       .catch(function(err) {
-        resultEl.innerHTML = '<div class="alert alert-danger small mb-0">Erro na requisição: ' + (err.message || '') + '</div>';
+        resultEl.innerHTML = '<div class="alert alert-danger small mb-0">' + escHtml(err.message || 'Erro na requisição') + '</div>';
       })
       .finally(function() {
         if (btn) btn.disabled = false;

@@ -23,7 +23,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.paginator import Paginator
-from django.db.models import Q, Count
+from django.db.models import Count, Prefetch, Q
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
@@ -33,6 +33,11 @@ from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from app.classes.CargaSped import CargaSped
 from app.classes.CargaXml import CargaXml
 from app.classes.gdf import ClGdf
+from app.classes.Reprocessamento import (
+    _condicao_sap_da_param,
+    condicao_pagamento_da_nfe,
+    tipo_pagamento_da_nfe,
+)
 from app.db_GDF.Public.models import (
     AcessoSubsolucaoGrupo,
     ClienteGdf,
@@ -118,11 +123,17 @@ from app.utils.view_helpers import (
     usuario_vinculado_cliente_1000,
 )
 from app.utils.relatorio_params import (
-    parse_relatorio_params,
     paginate_queryset,
     parse_date_safe,
     parse_filial_id,
     parse_relatorio_order,
+    parse_relatorio_params,
+)
+from app.utils.relatorio_querysets import (
+    list_relatorio_sped_items,
+    queryset_relatorio_cte,
+    queryset_relatorio_nfe,
+    queryset_relatorio_nfse,
 )
 from app.utils.datetime_json import isoformat_brasilia
 
@@ -2653,65 +2664,25 @@ def fn_api_relatorio_nfe(request):
     if not params.cod_empresas and not params.cod_cliente:
         return JsonResponse({'sucesso': True, 'items': []}, status=200)
 
-    parcelas = request.GET.get('parcelas', '').strip()
-    tipo_operacao = request.GET.get('tipo_operacao', '').strip()  # '0'=Entrada, '1'=Saída
-    tipo_pagamento = request.GET.get('tipo_pagamento', '').strip()
-
-    if params.empresa_id:
-        qs = NFe.objects.filter(empresa__cod_empresa__in=params.cod_empresas).select_related('identificacao', 'empresa', 'filial')
-    else:
-        qs = NFe.objects.filter(
-            Q(empresa__cod_empresa__in=params.cod_empresas) |
-            Q(empresa__isnull=True, gdfcliente__cod_cliente=params.cod_cliente)
-        ).select_related('identificacao', 'empresa', 'filial')
-    filial_id = parse_filial_id(request, params.cod_empresas)
-    if filial_id:
-        qs = qs.filter(filial_id=filial_id)
-    if tipo_operacao in ('0', '1'):
-        qs = qs.filter(identificacao__tipo_operacao=tipo_operacao)
-    if tipo_pagamento:
-        qs = qs.filter(identificacao__pagamento__meio_pagamento=tipo_pagamento)
-    if parcelas != '':
-        try:
-            qtd = int(parcelas)
-            if qtd >= 0:
-                qs = qs.annotate(num_parcelas=Count('identificacao__cobranca__parcelas', distinct=True)).filter(num_parcelas=qtd)
-        except ValueError:
-            pass
-    if params.busca:
-        qs = qs.filter(
-            Q(identificacao__chave_acesso__icontains=params.busca) |
-            Q(identificacao__numero__icontains=params.busca) |
-            Q(identificacao__serie__icontains=params.busca) |
-            Q(status__icontains=params.busca) |
-            Q(identificacao__natureza_operacao__icontains=params.busca)
-        )
-    dt_ini = parse_date_safe(params.data_inicio)
-    if dt_ini:
-        qs = qs.filter(identificacao__emissao__date__gte=dt_ini)
-    dt_fim = parse_date_safe(params.data_fim)
-    if dt_fim:
-        qs = qs.filter(identificacao__emissao__date__lte=dt_fim)
-    if params.tem_sap == 'sim':
-        qs = qs.filter(tem_sap=True)
-    elif params.tem_sap == 'nao':
-        qs = qs.filter(tem_sap=False)
-    order_nfe = {
-        'numero': 'identificacao__numero',
-        'serie': 'identificacao__serie',
-        'chave': 'identificacao__chave_acesso',
-        'emissao': 'identificacao__emissao',
-        'tipo_operacao': 'identificacao__tipo_operacao',
-        'status': 'status',
-        'empresa': 'empresa__cod_empresa',
-        'natureza': 'identificacao__natureza_operacao',
-        'filial': 'filial__cod_filial',
-    }
-    qs = qs.order_by(parse_relatorio_order(request, order_nfe, '-identificacao__emissao'))
+    qs = queryset_relatorio_nfe(request, params)
     total, total_pages, page, qs = paginate_queryset(qs, params.page, params.page_size)
+    qs = qs.select_related('identificacao__pagamento').prefetch_related(
+        Prefetch(
+            'identificacao__cobranca__parcelas',
+            queryset=NFe_Parcela.objects.order_by('numero_parcela'),
+        )
+    )
+    cod_cli_param = (params.cod_cliente or '').strip() or None
     items = []
     for nfe in qs:
         id_ = nfe.identificacao
+        cond_nfe = condicao_pagamento_da_nfe(id_)
+        tipo_pag = tipo_pagamento_da_nfe(id_)
+        cond_sap = (
+            _condicao_sap_da_param(cond_nfe, tipo_pagamento=tipo_pag, cod_cliente=cod_cli_param)
+            if cod_cli_param
+            else ''
+        )
         items.append({
             'id_nfe': nfe.id_nfe,
             'numero': id_.numero,
@@ -2724,6 +2695,7 @@ def fn_api_relatorio_nfe(request):
             'natureza': id_.natureza_operacao,
             'filial': nfe.filial.cod_filial if nfe.filial else None,
             'filial_nome': (nfe.filial.nome or '') if nfe.filial else '',
+            'condicao_pagamento_sap': cond_sap,
             'tem_sap': nfe.tem_sap,
             'sap_nome_tabela': nfe.sap_nome_tabela or '',
         })
@@ -2749,41 +2721,7 @@ def fn_api_relatorio_cte(request):
     if not params.cod_empresas and not params.cod_cliente:
         return JsonResponse({'sucesso': True, 'items': []}, status=200)
 
-    if params.empresa_id:
-        qs = CTe.objects.filter(empresa__cod_empresa__in=params.cod_empresas).select_related('identificacao', 'empresa', 'filial')
-    else:
-        qs = CTe.objects.filter(
-            Q(empresa__cod_empresa__in=params.cod_empresas) |
-            Q(empresa__isnull=True, gdfcliente__cod_cliente=params.cod_cliente)
-        ).select_related('identificacao', 'empresa', 'filial')
-    filial_id = parse_filial_id(request, params.cod_empresas)
-    if filial_id:
-        qs = qs.filter(filial_id=filial_id)
-    if params.busca:
-        qs = qs.filter(
-            Q(identificacao__chave_acesso__icontains=params.busca) |
-            Q(identificacao__numero__icontains=params.busca) |
-            Q(identificacao__serie__icontains=params.busca)
-        )
-    dt_ini = parse_date_safe(params.data_inicio)
-    if dt_ini:
-        qs = qs.filter(identificacao__emissao__date__gte=dt_ini)
-    dt_fim = parse_date_safe(params.data_fim)
-    if dt_fim:
-        qs = qs.filter(identificacao__emissao__date__lte=dt_fim)
-    if params.tem_sap == 'sim':
-        qs = qs.filter(tem_sap=True)
-    elif params.tem_sap == 'nao':
-        qs = qs.filter(tem_sap=False)
-    order_cte = {
-        'numero': 'identificacao__numero',
-        'serie': 'identificacao__serie',
-        'chave': 'identificacao__chave_acesso',
-        'emissao': 'identificacao__emissao',
-        'empresa': 'empresa__cod_empresa',
-        'filial': 'filial__cod_filial',
-    }
-    qs = qs.order_by(parse_relatorio_order(request, order_cte, '-identificacao__emissao'))
+    qs = queryset_relatorio_cte(request, params)
     total, total_pages, page, qs = paginate_queryset(qs, params.page, params.page_size)
     items = []
     for cte in qs:
@@ -2822,39 +2760,7 @@ def fn_api_relatorio_nfse(request):
     if not params.cod_empresas and not params.cod_cliente:
         return JsonResponse({'sucesso': True, 'items': []}, status=200)
 
-    if params.empresa_id:
-        qs = NFSe.objects.filter(empresa__cod_empresa__in=params.cod_empresas).select_related('identificacao', 'empresa', 'filial')
-    else:
-        qs = NFSe.objects.filter(
-            Q(empresa__cod_empresa__in=params.cod_empresas) |
-            Q(empresa__isnull=True, gdfcliente__cod_cliente=params.cod_cliente)
-        ).select_related('identificacao', 'empresa', 'filial')
-    filial_id = parse_filial_id(request, params.cod_empresas)
-    if filial_id:
-        qs = qs.filter(filial_id=filial_id)
-    if params.busca:
-        qs = qs.filter(
-            Q(identificacao__chave__icontains=params.busca) |
-            Q(identificacao__numero__icontains=params.busca)
-        )
-    dt_ini = parse_date_safe(params.data_inicio)
-    if dt_ini:
-        qs = qs.filter(identificacao__emissao__date__gte=dt_ini)
-    dt_fim = parse_date_safe(params.data_fim)
-    if dt_fim:
-        qs = qs.filter(identificacao__emissao__date__lte=dt_fim)
-    if params.tem_sap == 'sim':
-        qs = qs.filter(tem_sap=True)
-    elif params.tem_sap == 'nao':
-        qs = qs.filter(tem_sap=False)
-    order_nfse = {
-        'numero': 'identificacao__numero',
-        'chave': 'identificacao__chave',
-        'emissao': 'identificacao__emissao',
-        'empresa': 'empresa__cod_empresa',
-        'filial': 'filial__cod_filial',
-    }
-    qs = qs.order_by(parse_relatorio_order(request, order_nfse, '-identificacao__emissao'))
+    qs = queryset_relatorio_nfse(request, params)
     total, total_pages, page, qs = paginate_queryset(qs, params.page, params.page_size)
     items = []
     for nfse in qs:
@@ -2885,141 +2791,21 @@ def fn_api_relatorio_nfse(request):
 @require_http_methods(["GET"])
 def fn_api_relatorio_sped(request):
     """Lista SPED nível cabeçalho. tipo_sped: C=Contribuição, F=Fiscal. Busca em sped_fiscal e sped_contribuicao."""
-    from app.db_GDF.sped_contribuicao.models import SpedContribuicaoArquivo
-
     try:
         params = parse_relatorio_params(request, relatorio_empresas_queryset)
     except ValidationError:
         return JsonResponse({'erro': 'Parâmetro de busca inválido'}, status=400)
-    cod_empresas = params.cod_empresas
-    cod_cliente = params.cod_cliente
-    if not cod_empresas and not cod_cliente:
+    if not params.cod_empresas and not params.cod_cliente:
         return JsonResponse({'sucesso': True, 'items': []}, status=200)
-    q_sped_base = Q(empresa__cod_empresa__in=cod_empresas)
-    if cod_cliente:
-        q_sped_base |= Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
-    tipo_sped = request.GET.get('tipo_sped', '').strip().upper()  # F=Fiscal, C=Contribuição
-    busca = params.busca
-    page = params.page
-    page_size = params.page_size
-    data_inicio = params.data_inicio
-    data_fim = params.data_fim
 
-    items = []
-    if tipo_sped in ('F', 'C'):
-        ModelSped = SpedFiscalArquivo if tipo_sped == 'F' else SpedContribuicaoArquivo
-        qs = ModelSped.objects.filter(q_sped_base).select_related('empresa')
-        if busca:
-            qs = qs.filter(Q(nome_arquivo__icontains=busca))
-        if data_inicio:
-            try:
-                from django.utils.dateparse import parse_date
-                dt = parse_date(data_inicio)
-                if dt:
-                    qs = qs.filter(competencia__gte=dt)
-            except Exception:
-                pass
-        if data_fim:
-            try:
-                from django.utils.dateparse import parse_date
-                dt = parse_date(data_fim)
-                if dt:
-                    qs = qs.filter(competencia__lte=dt)
-            except Exception:
-                pass
-        order_sped = {
-            'competencia': 'competencia',
-            'nome_arquivo': 'nome_arquivo',
-            'data_carga': 'data_carga',
-            'empresa': 'empresa__cod_empresa',
-            'tipo': 'id_arquivo',
-        }
-        qs = qs.order_by(parse_relatorio_order(request, order_sped, '-data_carga'))
-        total = qs.count()
-        total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
-        page = min(page, total_pages)
-        start = (page - 1) * page_size
-        for arq in qs[start:start + page_size]:
-            items.append({
-                'id_arquivo': arq.id_arquivo,
-                'tipo': tipo_sped,
-                'tipo_display': 'Fiscal' if tipo_sped == 'F' else 'Contribuição',
-                'competencia': arq.competencia.isoformat() if arq.competencia else None,
-                'nome_arquivo': arq.nome_arquivo,
-                'data_carga': arq.data_carga.isoformat() if arq.data_carga else None,
-                'empresa': arq.empresa.cod_empresa if arq.empresa else None,
-            })
-        return JsonResponse({
-            'sucesso': True,
-            'items': items,
-            'total': total,
-            'page': page,
-            'page_size': page_size,
-            'total_pages': total_pages,
-        }, status=200)
-
-    # tipo_sped vazio = todos (F + C)
-    qs_f = SpedFiscalArquivo.objects.filter(q_sped_base).select_related('empresa')
-    qs_c = SpedContribuicaoArquivo.objects.filter(q_sped_base).select_related('empresa')
-    qs = list(qs_f) + list(qs_c)
-    qs = sorted(qs, key=lambda a: (a.data_carga or timezone.now()), reverse=True)
-    for arq in qs:
-        t = 'F' if isinstance(arq, SpedFiscalArquivo) else 'C'
-        items.append({
-            'id_arquivo': arq.id_arquivo,
-            'tipo': t,
-            'tipo_display': 'Fiscal' if t == 'F' else 'Contribuição',
-            'competencia': arq.competencia.isoformat() if arq.competencia else None,
-            'nome_arquivo': arq.nome_arquivo,
-            'data_carga': arq.data_carga.isoformat() if arq.data_carga else None,
-            'empresa': arq.empresa.cod_empresa if arq.empresa else None,
-        })
-    if data_inicio or data_fim or busca:
-        from django.utils.dateparse import parse_date
-        filtered = []
-        dt_ini = parse_date(data_inicio) if data_inicio else None
-        dt_fim = parse_date(data_fim) if data_fim else None
-        for it in items:
-            if dt_ini and it.get('competencia'):
-                try:
-                    from datetime import datetime
-                    comp = datetime.fromisoformat(it['competencia'].replace('Z', '+00:00')).date() if it['competencia'] else None
-                    if comp and comp < dt_ini:
-                        continue
-                except Exception:
-                    pass
-            if dt_fim and it.get('competencia'):
-                try:
-                    from datetime import datetime
-                    comp = datetime.fromisoformat(it['competencia'].replace('Z', '+00:00')).date() if it['competencia'] else None
-                    if comp and comp > dt_fim:
-                        continue
-                except Exception:
-                    pass
-            if busca and busca.lower() not in (it.get('nome_arquivo') or '').lower() and busca.lower() not in (it.get('tipo_display') or '').lower():
-                continue
-            filtered.append(it)
-        items = filtered
-
-    order_key_sped = (request.GET.get('order') or '').strip()
-    dir_sped = (request.GET.get('dir') or 'desc').strip().lower()
-    if dir_sped not in ('asc', 'desc'):
-        dir_sped = 'desc'
-    _sped_sort_keys = {
-        'tipo': lambda it: (it.get('tipo_display') or '').lower(),
-        'competencia': lambda it: it.get('competencia') or '',
-        'nome_arquivo': lambda it: (it.get('nome_arquivo') or '').lower(),
-        'data_carga': lambda it: it.get('data_carga') or '',
-        'empresa': lambda it: str(it.get('empresa') or ''),
-    }
-    if order_key_sped in _sped_sort_keys:
-        items.sort(key=_sped_sort_keys[order_key_sped], reverse=(dir_sped == 'desc'))
-
+    items = list_relatorio_sped_items(request, params)
     total = len(items)
+    page_size = params.page_size
+    page = params.page
     total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
     page = min(page, total_pages)
     start = (page - 1) * page_size
-    items = items[start:start + page_size]
+    items = items[start : start + page_size]
     return JsonResponse({
         'sucesso': True,
         'items': items,
@@ -3028,6 +2814,244 @@ def fn_api_relatorio_sped(request):
         'page_size': page_size,
         'total_pages': total_pages,
     }, status=200)
+
+
+@login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
+@require_http_methods(['GET'])
+def fn_api_relatorio_excel(request):
+    """
+    Exporta planilha .xlsx com NFe, CTe, NFS-e e SPED (listagens completas),
+    usando os mesmos filtros das APIs de relatório (sem paginação).
+    """
+    try:
+        params = parse_relatorio_params(request, relatorio_empresas_queryset)
+    except ValidationError:
+        return JsonResponse({'erro': 'Parâmetro de busca inválido'}, status=400)
+
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        return JsonResponse(
+            {
+                'sucesso': False,
+                'mensagem': 'Exportação Excel indisponível: instale o pacote openpyxl (pip install openpyxl).',
+            },
+            status=503,
+        )
+
+    MAX_ROWS = 100000
+    wb = Workbook()
+    bold = Font(bold=True)
+
+    def _style_header(ws_row1):
+        for cell in ws_row1:
+            cell.font = bold
+
+    # --- Resumo dos filtros ---
+    ws0 = wb.active
+    ws0.title = 'Resumo'
+    ws0.append(['Parâmetro', 'Valor'])
+    _style_header(ws0[1])
+    filtros = [
+        ('cod_cliente', params.cod_cliente or ''),
+        ('empresa_id', params.empresa_id or ''),
+        ('data_inicio', params.data_inicio or ''),
+        ('data_fim', params.data_fim or ''),
+        ('busca', params.busca or ''),
+        ('tem_sap', params.tem_sap or ''),
+        ('tipo_sped', (request.GET.get('tipo_sped') or '').strip()),
+        ('tipo_operacao', (request.GET.get('tipo_operacao') or '').strip()),
+        ('tipo_pagamento', (request.GET.get('tipo_pagamento') or '').strip()),
+        ('parcelas', (request.GET.get('parcelas') or '').strip()),
+        ('condicao_pagamento_sap', (request.GET.get('condicao_pagamento_sap') or '').strip()),
+        ('filial_id', (request.GET.get('filial_id') or '').strip()),
+        ('order', (request.GET.get('order') or '').strip()),
+        ('dir', (request.GET.get('dir') or '').strip()),
+        ('limite_linhas_por_aba', str(MAX_ROWS)),
+    ]
+    for k, v in filtros:
+        ws0.append([k, v])
+    ws0.column_dimensions['A'].width = 28
+    ws0.column_dimensions['B'].width = 72
+
+    cod_cli_param = (params.cod_cliente or '').strip() or None
+
+    # --- NFe ---
+    ws_nfe = wb.create_sheet('NFe')
+    h_nfe = [
+        'id_nfe',
+        'Número',
+        'Série',
+        'Chave',
+        'Emissão',
+        'Tipo operação',
+        'Status',
+        'Empresa',
+        'Filial',
+        'Nome filial',
+        'Natureza',
+        'Condição pagamento SAP',
+        'Chave no SAP',
+        'Tabela SAP',
+    ]
+    ws_nfe.append(h_nfe)
+    _style_header(ws_nfe[1])
+    qs_nfe = queryset_relatorio_nfe(request, params).select_related('identificacao__pagamento').prefetch_related(
+        Prefetch(
+            'identificacao__cobranca__parcelas',
+            queryset=NFe_Parcela.objects.order_by('numero_parcela'),
+        )
+    )
+    n_nfe = 0
+    for nfe in qs_nfe.iterator(chunk_size=500):
+        if n_nfe >= MAX_ROWS:
+            break
+        id_ = nfe.identificacao
+        cond_nfe = condicao_pagamento_da_nfe(id_)
+        tipo_pag = tipo_pagamento_da_nfe(id_)
+        cond_sap = (
+            _condicao_sap_da_param(cond_nfe, tipo_pagamento=tipo_pag, cod_cliente=cod_cli_param)
+            if cod_cli_param
+            else ''
+        )
+        tipo_txt = 'Saída' if (id_.tipo_operacao or '') == '1' else 'Entrada'
+        ws_nfe.append(
+            [
+                nfe.id_nfe,
+                id_.numero or '',
+                id_.serie or '',
+                id_.chave_acesso or '',
+                id_.emissao.isoformat() if id_.emissao else '',
+                tipo_txt,
+                nfe.status or '',
+                nfe.empresa.cod_empresa if nfe.empresa else '',
+                nfe.filial.cod_filial if nfe.filial else '',
+                (nfe.filial.nome or '') if nfe.filial else '',
+                id_.natureza_operacao or '',
+                cond_sap,
+                'Sim' if nfe.tem_sap else 'Não',
+                nfe.sap_nome_tabela or '',
+            ]
+        )
+        n_nfe += 1
+
+    # --- CTe ---
+    ws_cte = wb.create_sheet('CTe')
+    h_cte = [
+        'id_cte',
+        'Número',
+        'Série',
+        'Chave',
+        'Emissão',
+        'Empresa',
+        'Filial',
+        'Nome filial',
+        'Chave no SAP',
+        'Tabela SAP',
+    ]
+    ws_cte.append(h_cte)
+    _style_header(ws_cte[1])
+    n_cte = 0
+    for cte in queryset_relatorio_cte(request, params).iterator(chunk_size=500):
+        if n_cte >= MAX_ROWS:
+            break
+        id_ = cte.identificacao
+        ws_cte.append(
+            [
+                cte.id_cte,
+                id_.numero or '',
+                id_.serie or '',
+                id_.chave_acesso or '',
+                id_.emissao.isoformat() if id_.emissao else '',
+                cte.empresa.cod_empresa if cte.empresa else '',
+                cte.filial.cod_filial if cte.filial else '',
+                (cte.filial.nome or '') if cte.filial else '',
+                'Sim' if cte.tem_sap else 'Não',
+                cte.sap_nome_tabela or '',
+            ]
+        )
+        n_cte += 1
+
+    # --- NFS-e ---
+    ws_nfse = wb.create_sheet('NFS-e')
+    h_nfse = [
+        'id_nfse',
+        'Número',
+        'Chave',
+        'Emissão',
+        'Empresa',
+        'Filial',
+        'Nome filial',
+        'Chave no SAP',
+        'Tabela SAP',
+    ]
+    ws_nfse.append(h_nfse)
+    _style_header(ws_nfse[1])
+    n_nfse = 0
+    for nfse in queryset_relatorio_nfse(request, params).iterator(chunk_size=500):
+        if n_nfse >= MAX_ROWS:
+            break
+        id_ = nfse.identificacao
+        ws_nfse.append(
+            [
+                nfse.id_nfse,
+                id_.numero or '',
+                id_.chave or '',
+                id_.emissao.isoformat() if id_.emissao else '',
+                nfse.empresa.cod_empresa if nfse.empresa else '',
+                nfse.filial.cod_filial if nfse.filial else '',
+                (nfse.filial.nome or '') if nfse.filial else '',
+                'Sim' if nfse.tem_sap else 'Não',
+                nfse.sap_nome_tabela or '',
+            ]
+        )
+        n_nfse += 1
+
+    # --- SPED ---
+    ws_sped = wb.create_sheet('SPED')
+    h_sped = ['id_arquivo', 'Tipo', 'Tipo (texto)', 'Competência', 'Arquivo', 'Data carga', 'Empresa']
+    ws_sped.append(h_sped)
+    _style_header(ws_sped[1])
+    n_sped = 0
+    for it in list_relatorio_sped_items(request, params):
+        if n_sped >= MAX_ROWS:
+            break
+        ws_sped.append(
+            [
+                it.get('id_arquivo'),
+                it.get('tipo') or '',
+                it.get('tipo_display') or '',
+                it.get('competencia') or '',
+                it.get('nome_arquivo') or '',
+                it.get('data_carga') or '',
+                it.get('empresa') or '',
+            ]
+        )
+        n_sped += 1
+
+    for ws, widths in (
+        (ws_nfe, [9, 10, 6, 48, 20, 14, 14, 12, 10, 24, 36, 22, 12, 14]),
+        (ws_cte, [9, 10, 6, 48, 20, 12, 10, 24, 12, 14]),
+        (ws_nfse, [9, 12, 48, 20, 12, 10, 24, 12, 14]),
+        (ws_sped, [12, 6, 18, 14, 48, 20, 12]),
+    ):
+        for i, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    stamp = timezone.now().strftime('%Y%m%d_%H%M')
+    fname = f'relatorio_fiscal_{stamp}.xlsx'
+    resp = HttpResponse(
+        buf.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="{fname}"'
+    return resp
 
 
 def _serialize_model(inst, exclude=None):
@@ -3363,6 +3387,16 @@ def fn_view_Relatorio_Fiscal(request):
             ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
     except ClienteGdf.DoesNotExist:
         empresas_usuario = []
+        relatorio_condicao_sap_opcoes = []
+    else:
+        relatorio_condicao_sap_opcoes = list(
+            CondicaoParam.objects.filter(gdfcliente_id=cod_cliente)
+            .exclude(condicao_pagamento_sap__isnull=True)
+            .exclude(condicao_pagamento_sap='')
+            .values_list('condicao_pagamento_sap', flat=True)
+            .distinct()
+            .order_by('condicao_pagamento_sap')[:200]
+        )
     # Opções de tipo de pagamento (NFe) para o filtro do relatório (código 2 dígitos = valor no XML tPag)
     try:
         meio_pagamento_choices = list(
@@ -3381,6 +3415,7 @@ def fn_view_Relatorio_Fiscal(request):
         'filiais_usuario': filiais_usuario,
         'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC,
         'meio_pagamento_choices': meio_pagamento_choices,
+        'relatorio_condicao_sap_opcoes': relatorio_condicao_sap_opcoes,
     }
     return render(request, 'Processamento/index_Relatorio.html', context)
 
@@ -4339,6 +4374,7 @@ def fn_api_sap_testar_conexao(request):
 # Integração SAP – RFC (subsolução Int_Rfc)
 # -------------------------------------------------------------------------
 @login_required(login_url='Login')
+@ensure_csrf_cookie
 @requer_acesso_subsolucao('Int_Rfc')
 @require_http_methods(["GET"])
 def fn_view_Integracao_Rfc(request):
@@ -4399,14 +4435,17 @@ def fn_view_Integracao_Rfc(request):
     }
     return render(request, 'IntegracaoSap/index_Rfc.html', context)
 
-
 @login_required(login_url='Login')
+@ensure_csrf_cookie 
 @requer_acesso_subsolucao('Int_Rfc', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_rfc_executar(request):
     """
     Executa um RFC registrado.
     Body (JSON): { "cod_rfc": "RFC_...", "params": { ... } } — ex.: RFC_RELATORIO_CUSTO, RFC_GDF_RFC_CONSULTA (chaves multilinha).
+
+    Nota: não usar @login_required aqui — ele redireciona para página HTML de login e o fetch
+    quebra com JSON.parse (Unexpected token '<'). Autenticação fica em requer_acesso_subsolucao (JSON 403).
     """
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
@@ -4422,10 +4461,61 @@ def fn_api_rfc_executar(request):
     if not cod_rfc:
         return JsonResponse({'sucesso': False, 'mensagem': 'cod_rfc é obrigatório'}, status=400)
 
+    from datetime import date as date_type
+    from decimal import Decimal
+    import uuid
+
+    def _sanitize_for_json(obj):
+        if isinstance(obj, dict):
+            return {str(k): _sanitize_for_json(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_sanitize_for_json(v) for v in obj]
+        if isinstance(obj, (datetime, date_type)):
+            return obj.isoformat()
+        if isinstance(obj, Decimal):
+            return str(obj)
+        if isinstance(obj, uuid.UUID):
+            return str(obj)
+        if isinstance(obj, bytes):
+            return obj.decode('utf-8', errors='replace')
+        if isinstance(obj, bool) or obj is None:
+            return obj
+        if isinstance(obj, (int, str)):
+            return obj
+        if isinstance(obj, float):
+            if obj != obj:  # NaN
+                return None
+            return obj
+        return str(obj)
+
     from app.integracao_sap import get_rfc_registry
+    import logging
+
     registry = get_rfc_registry()
-    result = registry.execute(cod_rfc, cod_cliente, **params)
-    return JsonResponse(result)
+    try:
+        result = registry.execute(cod_rfc, cod_cliente, **params)
+    except Exception as e:
+        logging.getLogger("gdf").exception(
+            "fn_api_rfc_executar cod_rfc=%s cod_cliente=%s", cod_rfc, cod_cliente
+        )
+        return JsonResponse(
+            {
+                "sucesso": False,
+                "mensagem": f"Erro ao executar RFC: {str(e)[:1500]}",
+            },
+            status=500,
+        )
+    try:
+        safe = _sanitize_for_json(result)
+        return JsonResponse(safe, json_dumps_params={'ensure_ascii': False})
+    except (TypeError, ValueError) as e:
+        return JsonResponse(
+            {
+                'sucesso': False,
+                'mensagem': f'Erro ao serializar resposta da RFC: {e}',
+            },
+            status=500,
+        )
 
 
 @csrf_exempt

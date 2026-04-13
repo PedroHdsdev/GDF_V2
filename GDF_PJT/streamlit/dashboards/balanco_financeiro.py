@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html as html_module
+import unicodedata
 from datetime import datetime
 
 import pandas as pd
@@ -10,8 +11,6 @@ import streamlit.components.v1 as components
 
 from core.auth import AuthResult
 from core.django_backend import balanco_financeiro_api_url, post_json_bearer
-
-from .balanco_financeiro_analise import render_analise_gerencial
 
 # Alinhado a SapRfc._ZF_ECF01_MAX_NUMERO_PERIODO (I_MONTH_B / I_MONTH_V na GDF_RFC_BALANCE).
 _MAX_PERIODO_SAP = 99
@@ -319,6 +318,227 @@ def _flatten_arvore_balanco(nodes: list, depth: int = 0) -> list[dict]:
     return rows
 
 
+def _texto_norm_busca(s: object) -> str:
+    """Minúsculas sem acentos, para casar rótulos do SAP (Ativo / Passivo / etc.)."""
+    t = unicodedata.normalize("NFKD", str(s or "").lower())
+    return "".join(c for c in t if not unicodedata.combining(c))
+
+
+def _float_balanco(v: object) -> float | None:
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _iter_nos_arvore_com_caminho(
+    nodes: list,
+    ancestrais: tuple[str, ...] = (),
+) -> list[tuple[dict, tuple[str, ...], str, str]]:
+    """(nó, textos ancestrais sem o nó atual, text_norm, conta_norm) em pré-ordem."""
+    out: list[tuple[dict, tuple[str, ...], str, str]] = []
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        txt_raw = str(n.get("text") or "")
+        conta_raw = str(n.get("conta") or "")
+        tnorm = _texto_norm_busca(txt_raw)
+        cnorm = _texto_norm_busca(conta_raw)
+        out.append((n, ancestrais, tnorm, cnorm))
+        ch = n.get("children")
+        if isinstance(ch, list) and ch:
+            prox = ancestrais + (tnorm,) if tnorm else ancestrais
+            out.extend(_iter_nos_arvore_com_caminho(ch, prox))
+    return out
+
+
+def _full_path_norm(ancestrais: tuple[str, ...], tnorm: str, cnorm: str) -> str:
+    return (" ".join(ancestrais) + " " + tnorm + " " + cnorm).strip()
+
+
+def _primeiro_valor_no(
+    nos_info: list[tuple[dict, tuple[str, ...], str, str]],
+    pred,
+) -> float | None:
+    """Primeiro nó que satisfaz ``pred(full, tnorm, ancestrais)`` com ``valor`` numérico."""
+    for n, ancestrais, tnorm, cnorm in nos_info:
+        full = _full_path_norm(ancestrais, tnorm, cnorm)
+        if pred(full, tnorm, ancestrais):
+            fv = _float_balanco(n.get("valor"))
+            if fv is not None:
+                return fv
+    return None
+
+
+def _valores_indicadores_balanco(arvore: list) -> dict[str, float | None]:
+    """
+    Extrai totais da árvore por rótulos usuais (Ativo/Passivo/Patrimônio).
+    Os indicadores dependem do texto enviado pelo SAP; ajuste os rótulos se o plano for outro.
+    """
+    infos = _iter_nos_arvore_com_caminho(arvore if isinstance(arvore, list) else [])
+
+    def ac_pred(full: str, tnorm: str, ancestrais: tuple[str, ...]) -> bool:
+        if "passivo" in full:
+            return False
+        if "circulante" not in full:
+            return False
+        return "ativo" in full
+
+    def pc_pred(full: str, tnorm: str, ancestrais: tuple[str, ...]) -> bool:
+        if "nao circulante" in full or "nao-circulante" in full:
+            return False
+        if "circulante" not in full:
+            return False
+        return "passivo" in full
+
+    def pnc_pred(full: str, tnorm: str, ancestrais: tuple[str, ...]) -> bool:
+        if "nao circulante" not in full and "nao-circulante" not in full:
+            return False
+        return "passivo" in full
+
+    def pl_pred(full: str, tnorm: str, ancestrais: tuple[str, ...]) -> bool:
+        return "patrimonio" in tnorm and "liquido" in tnorm
+
+    ac = _primeiro_valor_no(infos, ac_pred)
+    pc = _primeiro_valor_no(infos, pc_pred)
+    pnc = _primeiro_valor_no(infos, pnc_pred)
+    pl = _primeiro_valor_no(infos, pl_pred)
+
+    def imob_pred(full: str, tnorm: str, ancestrais: tuple[str, ...]) -> bool:
+        return "imobiliz" in tnorm and "intangiv" not in tnorm
+
+    def inv_pred(full: str, tnorm: str, ancestrais: tuple[str, ...]) -> bool:
+        return "investiment" in tnorm
+
+    def int_pred(full: str, tnorm: str, ancestrais: tuple[str, ...]) -> bool:
+        return "intangiv" in tnorm
+
+    imob = _primeiro_valor_no(infos, imob_pred)
+    inv = _primeiro_valor_no(infos, inv_pred)
+    intang = _primeiro_valor_no(infos, int_pred)
+    anc = 0.0
+    n_anc = 0
+    for x in (imob, inv, intang):
+        if x is not None:
+            anc += x
+            n_anc += 1
+    anc_nao_circ = anc if n_anc else None
+
+    return {
+        "AC": ac,
+        "PC": pc,
+        "PNC": pnc,
+        "PL": pl,
+        "ANC": anc_nao_circ,
+    }
+
+
+def _div_seguro(num: float | None, den: float | None) -> float | None:
+    if num is None or den is None:
+        return None
+    if abs(float(den)) < 1e-12:
+        return None
+    return float(num) / float(den)
+
+
+def _format_br_numero(x: float | None, dec: int = 2) -> str:
+    if x is None:
+        return "—"
+    neg = x < 0
+    v = abs(x)
+    s = format(v, f",.{dec}f").replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"-{s}" if neg else s
+
+
+def _format_pct_br(x: float | None, dec: int = 2) -> str:
+    """``x`` como taxa (ex.: 0,42); exibe percentual com vírgula decimal."""
+    if x is None:
+        return "—"
+    return f"{x * 100:.{dec}f} %".replace(".", ",")
+
+
+def _tabela_indicadores_balanco(arvore: list) -> pd.DataFrame:
+    v = _valores_indicadores_balanco(arvore)
+    ac, pc, pnc, pl, anc = v["AC"], v["PC"], v["PNC"], v["PL"], v["ANC"]
+    ac_a, pc_a, pnc_a, pl_a = (
+        abs(x) if x is not None else None for x in (ac, pc, pnc, pl)
+    )
+    pc_pnc = None
+    if pc_a is not None and pnc_a is not None:
+        pc_pnc = pc_a + pnc_a
+    elif pc_a is not None:
+        pc_pnc = pc_a
+    elif pnc_a is not None:
+        pc_pnc = pnc_a
+
+    pl_pc_pnc = None
+    if pl_a is not None and pc_pnc is not None:
+        pl_pc_pnc = pl_a + pc_pnc
+    elif pl_a is not None:
+        pl_pc_pnc = pl_a
+    elif pc_pnc is not None:
+        pl_pc_pnc = pc_pnc
+
+    pct = _div_seguro(pc_pnc, pl_pc_pnc)
+    grau_divida = _div_seguro(pl_a, pc_pnc)
+    comp_endiv = _div_seguro(pc_a, pc_pnc)
+    imob_pl = _div_seguro(anc, pl_a)
+    pl_pnc = None
+    if pl_a is not None and pnc_a is not None:
+        pl_pnc = pl_a + pnc_a
+    elif pl_a is not None:
+        pl_pnc = pl_a
+    elif pnc_a is not None:
+        pl_pnc = pnc_a
+    imob_rec_nc = _div_seguro(anc, pl_pnc)
+    lc = _div_seguro(ac_a, pc_a)
+    ccl = None
+    if ac is not None and pc is not None:
+        ccl = ac - pc
+
+    linhas: list[dict[str, str]] = [
+        {
+            "Indicador": "Participação de capital de terceiros (PCT)",
+            "Valor": _format_br_numero(pct, 6) if pct is not None else "—",
+            "Porcentagem": _format_pct_br(pct),
+        },
+        {
+            "Indicador": "Grau da dívida (garantia PL / capital de terceiros)",
+            "Valor": _format_br_numero(grau_divida, 4) if grau_divida is not None else "—",
+            "Porcentagem": "—",
+        },
+        {
+            "Indicador": "Composição do endividamento",
+            "Valor": _format_br_numero(comp_endiv, 6) if comp_endiv is not None else "—",
+            "Porcentagem": _format_pct_br(comp_endiv),
+        },
+        {
+            "Indicador": "Imobilização do patrimônio líquido",
+            "Valor": _format_br_numero(imob_pl, 6) if imob_pl is not None else "—",
+            "Porcentagem": _format_pct_br(imob_pl),
+        },
+        {
+            "Indicador": "Imobilização dos recursos não correntes",
+            "Valor": _format_br_numero(imob_rec_nc, 6) if imob_rec_nc is not None else "—",
+            "Porcentagem": _format_pct_br(imob_rec_nc),
+        },
+        {
+            "Indicador": "Índice de liquidez corrente (LC)",
+            "Valor": _format_br_numero(lc, 4) if lc is not None else "—",
+            "Porcentagem": "—",
+        },
+        {
+            "Indicador": "Capital circulante líquido (CCL)",
+            "Valor": _format_br_numero(ccl),
+            "Porcentagem": "—",
+        },
+    ]
+    cols = ["Indicador", "Valor", "Porcentagem"]
+    return pd.DataFrame(linhas, columns=cols)
+
+
 class DashboardBalancoFin:
     """Painel de balanço financeiro com filtros e tabela de resultados."""
 
@@ -524,27 +744,23 @@ class DashboardBalancoFin:
         if isinstance(snap_an, tuple) and len(snap_an) >= 6:
             consulta_key = "|".join(str(x) for x in snap_an[:6])
 
-        render_analise_gerencial(
-            arvore,
-            ano=_y,
-            mes_ini=_mb,
-            mes_fim=_mv,
-            consulta_key=consulta_key,
-        )
-
         st.divider()
-        st.markdown("### Detalhamento da árvore (RFC)")
-        total_nos = int(
-            st.session_state.get("balanco_fin_total_nos") or _contar_nos_local(arvore)
-        )
-        st.metric("Nós na árvore", total_nos)
+        with st.container(border=True):
+            st.markdown("#### Tabela de indicadores (resultado dos cálculos)")
+            st.caption(
+                "**Valor** = coeficiente ou montante numérico; **Porcentagem** = taxa em % quando aplicável "
+                "(LC e grau da dívida são índices sem coluna de %). “—” = dado ausente ou denominador zero."
+            )
+            df_ind = _tabela_indicadores_balanco(arvore)
+            st.dataframe(
+                df_ind,
+                use_container_width=True,
+                hide_index=True,
+                height=min(480, 36 + 32 * len(df_ind)),
+            )
 
-        st.markdown("#### Resultado")
-        st.caption(
-            "Visualização apenas nos dados da última consulta (sem nova chamada RFC). "
-            "A árvore segue ``children`` do JSON (formato recursivo ABAP) ou o montado a partir de "
-            "``parent_id`` (lista plana). Ao expandir, aparecem sublinhas e, por último, contas RACCT em ``accounts``."
-        )
+        st.markdown("### Detalhamento da árvore (RFC)")
+
         modo_viz = st.radio(
             "Visualização",
             ["Hierárquica (estilo SAP)", "Tabela plana"],
@@ -566,7 +782,7 @@ class DashboardBalancoFin:
                     "Níveis abertos inicialmente",
                     min_value=0,
                     max_value=12,
-                    value=2,
+                    value=0,
                     step=1,
                     help="Com 'Expandir todos' desligado, abre automaticamente até este nível (0 = só raiz fechada).",
                     key="balanco_hier_niveis_abertos",
@@ -583,10 +799,11 @@ class DashboardBalancoFin:
             df = pd.DataFrame(flat)
             st.dataframe(df, use_container_width=True, height=min(520, 120 + 28 * min(len(df), 15)))
 
-        with st.expander("Árvore JSON (R_RETURN parseado)"):
-            st.json(arvore)
+        #with st.expander("Árvore JSON (R_RETURN parseado)"):
+        #    st.json(arvore)
 
-        st.caption(
-            f"Última atualização (RFC): {st.session_state.get('balanco_fin_atualizado', '—')}"
-        )
+        #st.caption(
+        #    f"Última atualização (RFC): {st.session_state.get('balanco_fin_atualizado', '—')}"
+        #)
+
         return True

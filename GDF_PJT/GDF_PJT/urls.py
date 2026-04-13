@@ -81,6 +81,7 @@ urlpatterns = [
     path('api/relatorio/nfse/<int:id_nfse>/', views.fn_api_relatorio_nfse_detalhe, name='API_RelatorioNFSEDetalhe'),
     path('api/relatorio/sped/', views.fn_api_relatorio_sped, name='API_RelatorioSped'),
     path('api/relatorio/sped/<str:tipo>/<int:id_arquivo>/', views.fn_api_relatorio_sped_detalhe, name='API_RelatorioSpedDetalhe'),
+    path('api/relatorio/excel/', views.fn_api_relatorio_excel, name='API_RelatorioExcel'),
 
     # API Reprocessamento (Painel: lotes, divergências, confronto)
     path('api/reprocessamento/lotes/', views.fn_api_reprocessamento_lotes, name='API_ReprocessamentoLotes'),

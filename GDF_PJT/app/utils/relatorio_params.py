@@ -5,6 +5,8 @@ Centraliza leitura, validação e paginação (DRY).
 from dataclasses import dataclass
 from typing import List, Optional
 
+from django.db.models import CharField, F, Q
+from django.db.models.expressions import RawSQL
 from django.http import HttpRequest
 
 from app.db_GDF.Public.models import Filial
@@ -119,6 +121,53 @@ def parse_filial_id(request: HttpRequest, cod_empresas: List[str]):
     if not Filial.objects.filter(pk=fid, empresa__cod_empresa__in=cod_empresas).exists():
         return None
     return fid
+
+
+def nfe_condicao_pagamento_nfe_rawsql():
+    """
+    Expressão SQL (anotação) alinhada a condicao_pagamento_da_nfe (Reprocessamento):
+    sem cobrança / sem parcelas → 'À vista'; caso contrário 'Nx em d1/d2/... dias'.
+    Usada para filtrar NF-e no relatório pela condição SAP mapeada em CondicaoParam.
+    """
+    sql = """(
+        SELECT CASE
+            WHEN c.id_cobranca IS NULL THEN 'À vista'
+            WHEN NOT EXISTS (
+                SELECT 1 FROM nfe.nfe_parcela p0
+                WHERE p0.nfe_cobranca_id = c.id_cobranca
+            ) THEN 'À vista'
+            ELSE (
+                SELECT lp.cnt || 'x em ' || lp.parts || ' dias'
+                FROM (
+                    SELECT COUNT(*)::int AS cnt,
+                        string_agg(
+                            ((p.data_vencimento - DATE(i.emissao))::integer)::text,
+                            '/' ORDER BY p.numero_parcela
+                        ) AS parts
+                    FROM nfe.nfe_parcela p
+                    INNER JOIN nfe.nfe_cobranca c2 ON p.nfe_cobranca_id = c2.id_cobranca
+                    WHERE c2.nfe_identificacao_id = i.id_identificacao
+                ) lp
+            )
+        END
+        FROM nfe.nfe_identificacao i
+        LEFT JOIN nfe.nfe_cobranca c ON c.nfe_identificacao_id = i.id_identificacao
+        WHERE i.id_identificacao = %s
+        LIMIT 1
+    )"""
+    return RawSQL(sql, [F('identificacao_id')], output_field=CharField())
+
+
+def q_condicao_param_tipo_pagamento_match(tipo_pagamento) -> Q:
+    """Combina com tipo_pagamento armazenado em CondicaoParam (e tipo_pagamento_da_nfe)."""
+    if tipo_pagamento is None or str(tipo_pagamento).strip() == '':
+        return (
+            Q(identificacao__pagamento__isnull=True)
+            | Q(identificacao__pagamento__meio_pagamento='')
+            | Q(identificacao__pagamento__meio_pagamento__isnull=True)
+        )
+    t = str(tipo_pagamento).strip()[:2]
+    return Q(identificacao__pagamento__meio_pagamento=t)
 
 
 def parse_relatorio_order(request: HttpRequest, field_to_orm: dict, default_order_expr: str) -> str:

@@ -128,6 +128,7 @@ O `run_gunicorn.sh` pode encapsular o comando; use-o se já existir no projeto.
 ### 4.2 Nginx (proxy reverso e estáticos)
 
 - **Proxy:** encaminhar requisições para o Gunicorn. No projeto o Gunicorn usa a **porta 8500** (`bin/start_gdf.sh` e `etc/gunicorn_config.py`).
+- **Timeouts (SAP / RFC):** requisições como `POST /api/rfc/executar/` podem durar vários minutos. Se o Nginx ou o Gunicorn cortarem antes, o navegador recebe **502** com HTML. Defina `proxy_read_timeout` (e `proxy_connect_timeout` se necessário) no `location` do Django em **pelo menos o mesmo valor** que `GUNICORN_TIMEOUT` no `etc/gunicorn_config.py` (padrão **600** s).
 - **Streamlit:** usado para dashboards de análise de **qualquer solução** (não só a solução Dashboard). Uma única URL base (ex.: `/gdf/streamlit/`) atende todos; o dashboard exibido vem do parâmetro `?dashboard=`. É **obrigatório** ter um `location` para esse path fazendo proxy para o processo Streamlit (porta 8600). Sem isso, o iframe retorna **404**. Ver também `documentacao_md/README_streamlit.md` para adicionar novos dashboards por solução.
 - **Estáticos:** `alias` (ou `root`) apontando para o diretório de `collectstatic` (ex.: `staticfiles/`).
 - **SSL:** configurar certificado e listen 443; redirecionar HTTP para HTTPS se desejado.

@@ -30,7 +30,7 @@ except Exception as _pyrfc_exc:
 _RFC_BALANCO_FINANCEIRO = "/PRCIT/GDF_RFC_BALANCE"  # balanço (equivalente lógico a ZF_ECF01)
 _RFC_RELATORIO_CUSTO = "/PRCIT/GDF_RFC_CUSTO"  # custo (equivalente a /BRGMN/CUSTR_IMP_CUSTO)
 _RFC_CONDICOES_PAGAMENTO = "/PRCIT/GDF_RFC_CONDICOES_PAG"  # condições pag. (equivalente a ZGDF_CONDICOES_PAGAMENTO)
-# Consulta de chave no SAP (carga XML): T_CONSULTA com CHAVE (ZGDF_ED_CHAVE), STATUS, NAME_TABLE.
+# Consulta de chave no SAP: entrada T_CONSULTA (CHAVE, …); retorno em R_RETURN = JSON (array de objetos).
 _RFC_CONSULTA_DOCUMENTO = "/PRCIT/GDF_RFC_CONSULTA"
 _RFC_CONSULTA_CHAVE_MAX = 48
 
@@ -1013,8 +1013,8 @@ class SapRfc:
             cod_cliente: Código do cliente GDF (para conexão SAP).
             bukrs: Código da empresa no SAP (string ou objeto com atributo .bukrs).
             branch: Filial/ramo no SAP (string).
-            psdat_ini: Data inicial do período (string ou date, formato aceito pelo SAP).
-            psdat_fim: Data final do período (string ou date).
+            psdat_ini: Data inicial (datetime.date, datetime ou string YYYY-MM-DD / DD.MM.AAAA / DD/MM/AAAA).
+            psdat_fim: Data final (mesmos formatos; convertido para date antes da RFC pyrfc).
             empresa: Opcional. Instância de Empresa (GDF) para vincular aos registros.
                      Se None, tenta resolver por cod_empresa=bukrs.
             filial: Opcional. Instância de Filial (GDF) para vincular.
@@ -1031,7 +1031,6 @@ class SapRfc:
             }
         """
         from decimal import Decimal, InvalidOperation
-        from datetime import datetime
         from app.db_GDF.Public.models import Empresa, Filial
         from app.db_GDF.Sap.models import RelatorioCusto
 
@@ -1041,7 +1040,34 @@ class SapRfc:
             _bukrs = ''
         _bukrs = str(_bukrs).strip()
 
-        print(f"[SapRfc] importar_relatorio_custo: cod_cliente={cod_cliente!r} bukrs={_bukrs} branch={branch} psdat_ini={psdat_ini} psdat_fim={psdat_fim} persistir={persistir}")
+        def _to_abap_date(val):
+            """pyrfc exige datetime.date para campos ABAP DATE; strings ISO falham."""
+            if val is None or val == '':
+                return None
+            if isinstance(val, datetime):
+                return val.date()
+            if isinstance(val, date):
+                return val
+            if hasattr(val, 'date') and callable(getattr(val, 'date')):
+                try:
+                    d = val.date()
+                    if isinstance(d, date):
+                        return d
+                except Exception:
+                    pass
+            if isinstance(val, str):
+                s = val.strip()
+                for fmt in ('%Y-%m-%d', '%d.%m.%Y', '%d/%m/%Y'):
+                    try:
+                        return datetime.strptime(s[:10], fmt).date()
+                    except (ValueError, TypeError):
+                        continue
+            return None
+
+        d_ini = _to_abap_date(psdat_ini)
+        d_fim = _to_abap_date(psdat_fim)
+
+        print(f"[SapRfc] importar_relatorio_custo: cod_cliente={cod_cliente!r} bukrs={_bukrs} branch={branch} psdat_ini={d_ini} psdat_fim={d_fim} persistir={persistir}")
 
         if not SapRfc.is_available():
             return {
@@ -1052,13 +1078,22 @@ class SapRfc:
                 'resultado_rfc': None,
             }
 
+        if d_ini is None or d_fim is None:
+            return {
+                'sucesso': False,
+                'mensagem': 'Data inicial e final devem ser válidas (ex.: YYYY-MM-DD ou DD/MM/AAAA).',
+                'total_linhas': 0,
+                'total_gravados': 0,
+                'resultado_rfc': None,
+            }
+
         ok, result = SapRfc.call(
             cod_cliente,
             _RFC_RELATORIO_CUSTO,
             I_V_BUKRS=_bukrs,
             I_V_BRANCH=branch or '',
-            I_V_PSDAT_INI=psdat_ini,
-            I_V_PSDAT_FIM=psdat_fim,
+            I_V_PSDAT_INI=d_ini,
+            I_V_PSDAT_FIM=d_fim,
         )
 
         if not ok:
@@ -1326,32 +1361,260 @@ class SapRfc:
         }
 
     @staticmethod
+    def _sap_cell_str(val: Any) -> str:
+        if val is None:
+            return ""
+        if isinstance(val, bytes):
+            try:
+                return val.decode("utf-8", errors="replace").strip()
+            except Exception:
+                return ""
+        if isinstance(val, bool):
+            return "X" if val else ""
+        return str(val).strip()
+
+    @staticmethod
+    def _t_consulta_row_as_dict(row: Any) -> Dict[str, Any]:
+        if row is None:
+            return {}
+        if isinstance(row, dict):
+            return dict(row)
+        try:
+            if hasattr(row, "keys"):
+                return {str(k): row[k] for k in row.keys()}
+        except Exception:
+            pass
+        try:
+            return dict(row)
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _pick_from_row_by_upper_keys(row_dict: Dict[str, Any], upper_names: Tuple[str, ...]) -> str:
+        """Lê o primeiro campo cujo nome (maiúsculo) está em upper_names."""
+        for k, v in row_dict.items():
+            ku = str(k).upper().replace("-", "_")
+            if ku in upper_names:
+                s = SapRfc._sap_cell_str(v)
+                if s:
+                    return s
+        return ""
+
+    @staticmethod
+    def _pick_chave_linha(row_dict: Dict[str, Any]) -> str:
+        return SapRfc._pick_from_row_by_upper_keys(
+            row_dict,
+            (
+                "CHAVE",
+                "CHAVE_ACESSO",
+                "CHAVE_NFE",
+                "CHAVE_DOC",
+                "DOCKEY",
+                "ED_CHAVE",
+                "ZGDF_ED_CHAVE",
+            ),
+        )
+
+    @staticmethod
+    def _pick_status_linha(row_dict: Dict[str, Any]) -> str:
+        # Não incluir SUBRC/RC aqui: muitas estruturas ABAP vêm com 0 inicial e gerariam falso "encontrado".
+        return SapRfc._pick_from_row_by_upper_keys(
+            row_dict,
+            ("STATUS", "MSGTY", "MSG_TYP", "RET_STATUS"),
+        )
+
+    @staticmethod
+    def _pick_name_table_linha(row_dict: Dict[str, Any]) -> str:
+        return SapRfc._pick_from_row_by_upper_keys(
+            row_dict,
+            (
+                "NAME_TABLE",
+                "NAMETABLE",
+                "TABNAME",
+                "TABLE_NAME",
+                "TABELA",
+                "ZNAME_TABLE",
+                "SAP_TABLE",
+            ),
+        )
+
+    @staticmethod
+    def _pick_flag_encontrado(row_dict: Dict[str, Any]) -> bool:
+        for k, v in row_dict.items():
+            ku = str(k).upper().replace("-", "_")
+            if ku not in (
+                "FOUND",
+                "ENCONTRADO",
+                "FL_EXISTS",
+                "EXISTS",
+                "EXISTE",
+                "LOCALIZADO",
+                "TEM_SAP",
+            ):
+                continue
+            sv = SapRfc._sap_cell_str(v).upper()
+            if sv in ("X", "1", "S", "Y", "T", "J", "SIM", "TRUE", "V"):
+                return True
+        return False
+
+    @staticmethod
     def _interpretar_tem_sap_linha(status: str, name_table: str) -> bool:
         """Indica documento encontrado no SAP: NAME_TABLE preenchido ou STATUS de sucesso comum."""
-        if (name_table or "").strip():
+        nt = SapRfc._sap_cell_str(name_table)
+        if nt:
             return True
-        st = (status or "").strip().upper()
-        return st in ("1", "X", "S", "Y")
+        st = SapRfc._sap_cell_str(status).upper()
+        # Códigos frequentes em Z RFCs / BAPIRET2 (S=success). Evitar tratar vazio como sucesso.
+        if st in ("1", "X", "S", "Y", "0", "OK", "C", "P", "T", "V", "SIM", "SUCESSO", "SUCCESS"):
+            return True
+        return False
+
+    @staticmethod
+    def _tem_sap_from_linha(row_dict: Dict[str, Any], st: str, nt: str) -> bool:
+        if SapRfc._interpretar_tem_sap_linha(st, nt):
+            return True
+        if SapRfc._pick_flag_encontrado(row_dict):
+            return True
+        return False
 
     @staticmethod
     def _extrair_linhas_t_consulta(result: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not result or not isinstance(result, dict):
             return []
-        for key in ("T_CONSULTA", "ET_T_CONSULTA", "R_T_CONSULTA"):
+        for key in (
+            "T_CONSULTA",
+            "ET_T_CONSULTA",
+            "R_T_CONSULTA",
+            "IT_CONSULTA",
+            "OT_T_CONSULTA",
+            "EX_T_CONSULTA",
+            "LT_CONSULTA",
+            "T_OUT",
+        ):
             rows = result.get(key)
             if rows:
-                return list(rows)
+                return [SapRfc._t_consulta_row_as_dict(r) for r in list(rows)]
+        # Qualquer lista de estruturas com campo de chave reconhecível
+        for _k, v in result.items():
+            if not isinstance(v, list) or len(v) == 0:
+                continue
+            d0 = SapRfc._t_consulta_row_as_dict(v[0])
+            if SapRfc._pick_chave_linha(d0):
+                return [SapRfc._t_consulta_row_as_dict(r) for r in v]
         return []
 
     @staticmethod
+    def _r_return_consulta_parse_itens(r_return: Any) -> List[Dict[str, Any]]:
+        """
+        Interpreta R_RETURN da GDF_RFC_CONSULTA: string JSON com array de
+        { "chave", "status" (bool), "nameTable" } (camelCase; aceita variações).
+        """
+        if r_return is None:
+            return []
+        data: Any = None
+        if isinstance(r_return, (list, tuple)):
+            data = list(r_return)
+        else:
+            raw = r_return
+            if isinstance(raw, bytes):
+                try:
+                    raw = raw.decode("utf-8", errors="replace")
+                except Exception:
+                    return []
+            if not isinstance(raw, str):
+                raw = str(raw).strip()
+            s = (raw or "").strip()
+            if not s:
+                return []
+            try:
+                data = json.loads(s)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                return []
+        if isinstance(data, dict):
+            for wrap in ("items", "result", "data", "linhas", "rows", "registros"):
+                inner = data.get(wrap)
+                if isinstance(inner, list):
+                    data = inner
+                    break
+            else:
+                if any(k in data for k in ("chave", "CHAVE", "status", "nameTable")):
+                    data = [data]
+                else:
+                    return []
+        if not isinstance(data, list):
+            return []
+        return [x for x in data if isinstance(x, dict)]
+
+    @staticmethod
+    def _coerce_status_bool_consulta(val: Any) -> bool:
+        if isinstance(val, bool):
+            return val
+        if val is None:
+            return False
+        if isinstance(val, (int, float)):
+            return val != 0
+        s = str(val).strip().lower()
+        if s in ("true", "1", "x", "s", "sim", "yes", "y", "t"):
+            return True
+        if s in ("false", "0", "n", "nao", "não", "no", "f", ""):
+            return False
+        return bool(s)
+
+    @staticmethod
+    def _mapa_from_r_return_consulta(r_return: Any) -> Dict[str, Dict[str, Any]]:
+        """Monta mapa chave -> {tem_sap, status, name_table} a partir do JSON em R_RETURN."""
+        out: Dict[str, Dict[str, Any]] = {}
+        for item in SapRfc._r_return_consulta_parse_itens(r_return):
+            ch = (
+                item.get("chave")
+                or item.get("CHAVE")
+                or item.get("Chave")
+                or ""
+            )
+            ch = str(ch).strip() if ch is not None else ""
+            if not ch:
+                continue
+            tem_s = SapRfc._coerce_status_bool_consulta(item.get("status"))
+            nt = (
+                item.get("nameTable")
+                or item.get("name_table")
+                or item.get("NAME_TABLE")
+                or item.get("tabname")
+                or ""
+            )
+            nt = str(nt).strip() if nt is not None else ""
+            st_disp = "true" if tem_s else "false"
+            payload = {
+                "tem_sap": tem_s,
+                "status": st_disp,
+                "name_table": nt,
+            }
+            out[ch] = payload
+            digits = "".join(c for c in ch if c.isdigit())
+            if len(digits) == 44:
+                out[digits] = payload
+            if len(ch) > _RFC_CONSULTA_CHAVE_MAX:
+                out[ch[:_RFC_CONSULTA_CHAVE_MAX]] = payload
+        return out
+
+    @staticmethod
     def _mapa_t_consulta_from_rfc_result(result: Any) -> Dict[str, Dict[str, Any]]:
+        """Prioriza R_RETURN (JSON); se vazio, usa tabelas T_CONSULTA (formato legado)."""
+        if isinstance(result, dict):
+            r_ret = result.get("R_RETURN")
+            if r_ret is None:
+                r_ret = result.get("r_return")
+            if r_ret is not None:
+                m_json = SapRfc._mapa_from_r_return_consulta(r_ret)
+                if m_json:
+                    return m_json
         out: Dict[str, Dict[str, Any]] = {}
         for r in SapRfc._extrair_linhas_t_consulta(result if isinstance(result, dict) else None):
-            ch = (r.get("CHAVE") or r.get("chave") or "").strip()
-            st = (r.get("STATUS") or r.get("status") or "").strip()
-            nt = (r.get("NAME_TABLE") or r.get("name_table") or "").strip()
+            ch = SapRfc._pick_chave_linha(r)
+            st = SapRfc._pick_status_linha(r)
+            nt = SapRfc._pick_name_table_linha(r)
             payload = {
-                "tem_sap": SapRfc._interpretar_tem_sap_linha(st, nt),
+                "tem_sap": SapRfc._tem_sap_from_linha(r, st, nt),
                 "status": st,
                 "name_table": nt,
             }
@@ -1360,6 +1623,8 @@ class SapRfc:
                 digits = "".join(c for c in ch if c.isdigit())
                 if len(digits) == 44:
                     out[digits] = payload
+                if len(ch) > _RFC_CONSULTA_CHAVE_MAX:
+                    out[ch[:_RFC_CONSULTA_CHAVE_MAX]] = payload
         return out
 
     @staticmethod
@@ -1367,7 +1632,9 @@ class SapRfc:
         cod_cliente: str, chaves: List[str]
     ) -> Tuple[bool, str, Dict[str, Dict[str, Any]], List[str]]:
         """
-        Uma chamada RFC /PRCIT/GDF_RFC_CONSULTA com lote de chaves.
+        Uma chamada RFC /PRCIT/GDF_RFC_CONSULTA com lote de chaves (T_CONSULTA).
+        O SAP devolve o resultado em R_RETURN (string JSON: array de
+        { chave, status bool, nameTable }).
 
         Returns:
             (sucesso, mensagem_erro, mapa_chave->payload, chaves_unicas_na_ordem_enviada)
@@ -1390,7 +1657,6 @@ class SapRfc:
             seen.add(s)
             ordered.append(s)
             t_consulta.append({"CHAVE": s[:_RFC_CONSULTA_CHAVE_MAX], "STATUS": "", "NAME_TABLE": ""})
-
         if not t_consulta:
             return True, "", empty, []
 
@@ -1398,12 +1664,19 @@ class SapRfc:
         if not ok:
             return False, str(result or "Erro ao chamar RFC /PRCIT/GDF_RFC_CONSULTA."), empty, ordered
 
-        return True, "", SapRfc._mapa_t_consulta_from_rfc_result(result), ordered
+        m = SapRfc._mapa_t_consulta_from_rfc_result(result)
+        if not m and ordered and isinstance(result, dict):
+            print(
+                "[SapRfc] GDF_RFC_CONSULTA: nenhuma linha reconhecida após a RFC; "
+                f"parâmetros no retorno PyRFC: {list(result.keys())}"
+            )
+        return True, "", m, ordered
 
     @staticmethod
     def consultar_chaves_no_sap(cod_cliente: str, chaves: List[str]) -> Dict[str, Dict[str, Any]]:
         """
-        RFC /PRCIT/GDF_RFC_CONSULTA: envia T_CONSULTA (CHAVE, STATUS, NAME_TABLE) e lê o retorno na mesma tabela.
+        RFC /PRCIT/GDF_RFC_CONSULTA: envia T_CONSULTA com as chaves; lê R_RETURN (JSON com array de
+        { chave, status, nameTable }). Fallback: tabela T_CONSULTA preenchida (legado).
 
         Returns:
             Mapa chave (como retornada ou só dígitos 44) -> {'tem_sap': bool, 'status': str, 'name_table': str}.

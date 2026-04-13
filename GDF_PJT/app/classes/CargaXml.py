@@ -674,7 +674,7 @@ class CargaXml:
 
     def _aplicar_consulta_sap_documento(self, cod_cliente_sap: Optional[str], doc, chave: str) -> None:
         """
-        RFC /PRCIT/GDF_RFC_CONSULTA: preenche tem_sap e sap_nome_tabela após gravar o XML.
+        RFC /PRCIT/GDF_RFC_CONSULTA: lê R_RETURN (JSON) e preenche tem_sap e sap_nome_tabela após gravar o XML.
         Falha de rede/SAP não interrompe a carga.
         """
         if not cod_cliente_sap or not (chave or "").strip():

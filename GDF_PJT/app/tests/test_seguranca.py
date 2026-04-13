@@ -46,6 +46,11 @@ class SegurancaTestCase(TestCase):
         r = self.client.get('/api/relatorio/nfe/')
         self.assertIn(r.status_code, (302, 301))
 
+    def test_api_relatorio_excel_sem_login_redireciona(self):
+        """GET /api/relatorio/excel/ sem autenticação deve redirecionar."""
+        r = self.client.get('/api/relatorio/excel/')
+        self.assertIn(r.status_code, (302, 301))
+
     def test_relatorio_fiscal_sem_login_redireciona(self):
         """GET /Relatorio/ sem autenticação deve redirecionar."""
         r = self.client.get('/Relatorio/')

@@ -85,6 +85,11 @@
             <h1 class="layout-title">Relatório Fiscal</h1>
             <p class="layout-subtitle">Dados e filtros das tabelas carregadas: NFe, CTe, NFS e SPED. Clique na linha para ver o detalhe.</p>
         </div>
+        <div class="layout-hero-actions">
+            <button type="button" class="btn btn-outline-light layout-btn" id="relatorio-btn-excel" title="Baixar Excel com todos os registros (NFe, CTe, NFS-e, SPED) conforme os filtros atuais, sem limite de página">
+                <i class="fas fa-file-excel"></i> Baixar Excel
+            </button>
+        </div>
     </section>
 
     <section class="layout-panel">
@@ -165,6 +170,12 @@
                                 <option value="6">6 parcelas</option>
                                 <option value="12">12 parcelas</option>
                             </select>
+                            <select id="relatorio-condicao-pagamento-sap" class="form-select" style="min-width:160px;max-width:240px" title="Filtrar pela condição de pagamento SAP cadastrada em CondicaoParam">
+                                <option value="">Condição pag. SAP</option>
+                                {% for sap in relatorio_condicao_sap_opcoes %}
+                                <option value="{{ sap }}">{{ sap }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                     </div>
                     <div id="relatorio-filtros-sped" class="filtros-por-tab d-none mt-2">
@@ -204,11 +215,12 @@
                                     <th class="relatorio-th-sort" data-sort="empresa" scope="col" title="Ordenar">Empresa<span class="sort-ind"></span></th>
                                     <th class="relatorio-th-sort" data-sort="filial" scope="col" title="Ordenar">Filial<span class="sort-ind"></span></th>
                                     <th class="relatorio-th-sort" data-sort="natureza" scope="col" title="Ordenar">Natureza<span class="sort-ind"></span></th>
+                                    <th scope="col" title="Condição de pagamento SAP (depara CondicaoParam)">Cond.Pag.Sap</th>
                                     <th scope="col">SAP</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="10" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
+                                <tr><td colspan="11" class="text-center text-muted">Defina o período e clique em Aplicar</td></tr>
                             </tbody>
                         </table>
                     </div>
