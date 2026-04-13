@@ -273,6 +273,87 @@
 .alert-padrao.alert-info { border-left-color: #0284c7; background-color: #f0f9ff; color: #075985; }
 .alert-padrao.alert-info .alert-padrao-rotulo { color: #0369a1; }
 
+/* Pilha de toasts (NotificacoesPadrao.js) — topo central, abaixo da navbar, acima de modais */
+.gdf-toast-stack {
+    margin-top: 4.25rem;
+    z-index: 1090;
+    width: min(72rem, calc(100vw - 2rem));
+    max-width: min(72rem, calc(100vw - 2rem));
+    pointer-events: none;
+}
+
+/* Bootstrap limita .toast a ~350px; expande para a largura do stack (mensagens longas). */
+.gdf-toast-stack > .toast {
+    pointer-events: auto;
+    --bs-toast-max-width: 100%;
+    width: 100%;
+    max-width: 100%;
+}
+
+/*
+ * Toasts: fundo por tipo (mesma família de cor dos .alert-padrao), com leve translucidez + vidro.
+ * Seletores compostos para não perder para a regra genérica do stack.
+ */
+.gdf-toast-stack > .toast.gdf-toast-item {
+    color: var(--gdf-ink, #0f172a);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 10px 36px rgba(15, 23, 42, 0.12);
+}
+
+/* Erro — alinhado a .alert-padrao.alert-danger (#fef2f2 / #fecaca) */
+.gdf-toast-stack > .toast.gdf-toast-item.gdf-toast--danger {
+    background: linear-gradient(145deg, rgba(254, 242, 242, 0.94), rgba(254, 226, 226, 0.88));
+    border: 1px solid rgba(252, 165, 165, 0.65) !important;
+    border-left: 5px solid rgba(220, 38, 38, 0.85) !important;
+}
+
+/* Sucesso — .alert-padrao.alert-success */
+.gdf-toast-stack > .toast.gdf-toast-item.gdf-toast--success {
+    background: linear-gradient(145deg, rgba(240, 253, 244, 0.94), rgba(220, 252, 231, 0.88));
+    border: 1px solid rgba(167, 243, 208, 0.65) !important;
+    border-left: 5px solid rgba(22, 163, 74, 0.85) !important;
+}
+
+/* Aviso — .alert-padrao.alert-warning */
+.gdf-toast-stack > .toast.gdf-toast-item.gdf-toast--warning {
+    background: linear-gradient(145deg, rgba(254, 252, 232, 0.95), rgba(254, 243, 199, 0.88));
+    border: 1px solid rgba(253, 224, 71, 0.55) !important;
+    border-left: 5px solid rgba(202, 138, 4, 0.88) !important;
+}
+
+/* Informação — .alert-padrao.alert-info */
+.gdf-toast-stack > .toast.gdf-toast-item.gdf-toast--info {
+    background: linear-gradient(145deg, rgba(240, 249, 255, 0.94), rgba(224, 242, 254, 0.88));
+    border: 1px solid rgba(125, 211, 252, 0.55) !important;
+    border-left: 5px solid rgba(2, 132, 199, 0.85) !important;
+}
+
+.gdf-toast-item .toast-body strong {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(51, 65, 85, 0.92);
+}
+
+.gdf-toast-item.gdf-toast--danger .toast-body strong { color: rgba(185, 28, 28, 0.88); }
+.gdf-toast-item.gdf-toast--success .toast-body strong { color: rgba(21, 128, 61, 0.9); }
+.gdf-toast-item.gdf-toast--warning .toast-body strong { color: rgba(161, 98, 7, 0.92); }
+.gdf-toast-item.gdf-toast--info .toast-body strong { color: rgba(3, 105, 161, 0.9); }
+
+.gdf-toast-item .toast-body .fas {
+    opacity: 0.72;
+}
+
+.gdf-toast-item .gdf-toast-msg {
+    font-size: 0.9rem;
+    line-height: 1.45;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    color: rgba(30, 41, 59, 0.92);
+}
+
 /* Modal: alertas dentro do modal (mesmo estilo, menor destaque) */
 /* Garantir que modais fiquem acima da navbar e do offcanvas */
 .modal-backdrop { z-index: 1045 !important; }
@@ -307,15 +388,16 @@
     --gdf-sky: #0ea5e9;
     --gdf-emerald: #10b981;
     --gdf-ink-70: rgba(15, 23, 42, 0.7);
+    --gdf-layout-page-bg: radial-gradient(circle at 12% 12%, rgba(14, 165, 233, 0.18), transparent 45%),
+        radial-gradient(circle at 82% 12%, rgba(249, 115, 22, 0.16), transparent 45%),
+        radial-gradient(circle at 85% 78%, rgba(16, 185, 129, 0.12), transparent 50%),
+        linear-gradient(120deg, #0f172a 0%, #111827 45%, #1f2937 100%);
 }
 
 .layout-page {
     min-height: calc(100vh - 56px);
     padding: 2.5rem 2.2rem 3rem;
-    background: radial-gradient(circle at 12% 12%, rgba(14, 165, 233, 0.18), transparent 45%),
-        radial-gradient(circle at 82% 12%, rgba(249, 115, 22, 0.16), transparent 45%),
-        radial-gradient(circle at 85% 78%, rgba(16, 185, 129, 0.12), transparent 50%),
-        linear-gradient(120deg, #0f172a 0%, #111827 45%, #1f2937 100%);
+    background: var(--gdf-layout-page-bg);
     color: #f8fafc;
 }
 

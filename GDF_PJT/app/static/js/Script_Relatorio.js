@@ -889,6 +889,99 @@ function relatorioAplicar(resetarPagina) {
     else if (tab.id === 'rel-sped') relatorioCarregarSped();
 }
 
+/** Mensagem amigável quando a exportação Excel falha (evita tela branca do navegador em 502/504). */
+function relatorioMensagemErroExportacaoExcel(status) {
+    if (status === 401) {
+        return 'Sessão expirada ou não autenticado. Atualize a página e faça login novamente.';
+    }
+    if (status === 403) {
+        return 'Sem permissão para exportar o relatório.';
+    }
+    if (status === 400) {
+        return 'Parâmetros inválidos para a exportação.';
+    }
+    if (status === 502 || status === 503) {
+        return 'O servidor não respondeu ou está temporariamente indisponível (código ' + status + '). A geração do Excel pode estar demorando demais: reduza o período de datas ou tente novamente em alguns instantes.';
+    }
+    if (status === 504) {
+        return 'Tempo esgotado ao gerar o Excel (código ' + status + '). Reduza o intervalo de datas ou os filtros e tente de novo.';
+    }
+    if (status >= 500) {
+        return 'Erro no servidor ao gerar o Excel (código ' + status + '). Tente novamente mais tarde.';
+    }
+    return 'Não foi possível baixar o Excel (código ' + status + ').';
+}
+
+function relatorioNotificarErroExcel(mensagem) {
+    if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+        Notificacoes.pagina(mensagem, 'danger');
+    } else if (typeof alert === 'function') {
+        alert(mensagem);
+    }
+}
+
+/** Baixa o Excel via fetch para não substituir a página em caso de 502/5xx (antes: window.location). */
+function relatorioBaixarExcel() {
+    var btn = document.getElementById('relatorio-btn-excel');
+    var url = relatorioGetPrefix() + relatorioBuildUrl('/api/relatorio/excel/', relatorioParamsParaExcel());
+    if (btn) btn.disabled = true;
+    fetch(url, { method: 'GET', credentials: 'same-origin' })
+        .then(function (res) {
+            if (!res.ok) {
+                var ct = (res.headers.get('content-type') || '').toLowerCase();
+                if (ct.indexOf('application/json') >= 0) {
+                    return res.json().then(function (d) {
+                        var msg = (d && (d.mensagem || d.erro)) || relatorioMensagemErroExportacaoExcel(res.status);
+                        throw new Error(msg);
+                    });
+                }
+                throw new Error(relatorioMensagemErroExportacaoExcel(res.status));
+            }
+            var filename = 'relatorio_fiscal.xlsx';
+            var cd = res.headers.get('Content-Disposition') || '';
+            var m = /filename\*=UTF-8''([^;\s]+)|filename="([^"]+)"/i.exec(cd);
+            if (m) {
+                var raw = (m[1] || m[2] || '').trim();
+                try {
+                    filename = decodeURIComponent(raw) || filename;
+                } catch (e) {
+                    filename = raw || filename;
+                }
+            }
+            return res.blob().then(function (blob) {
+                return { blob: blob, filename: filename };
+            });
+        })
+        .then(function (pair) {
+            var blob = pair.blob;
+            if (!blob || blob.size === 0) {
+                throw new Error('Arquivo recebido está vazio. Tente novamente ou ajuste os filtros.');
+            }
+            var bct = (blob.type || '').toLowerCase();
+            if (bct.indexOf('json') >= 0 || bct.indexOf('text/html') >= 0) {
+                throw new Error('Resposta inesperada do servidor ao exportar. Tente novamente.');
+            }
+            var objUrl = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = objUrl;
+            a.download = pair.filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(objUrl);
+        })
+        .catch(function (err) {
+            var msg = (err && err.message) ? String(err.message) : 'Não foi possível baixar o Excel.';
+            if (msg === 'Failed to fetch' || (err && err.name === 'TypeError')) {
+                msg = 'Não foi possível conectar ao servidor. Verifique sua rede ou tente mais tarde.';
+            }
+            relatorioNotificarErroExcel(msg);
+        })
+        .finally(function () {
+            if (btn) btn.disabled = false;
+        });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     relatorioInicializarDatasMes();
     relatorioMostrarFiltrosTab();
@@ -904,8 +997,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var btnExcel = document.getElementById('relatorio-btn-excel');
     if (btnExcel) {
         btnExcel.addEventListener('click', function () {
-            var url = relatorioGetPrefix() + relatorioBuildUrl('/api/relatorio/excel/', relatorioParamsParaExcel());
-            window.location.href = url;
+            relatorioBaixarExcel();
         });
     }
     document.querySelectorAll('#tab-rel-nfe, #tab-rel-cte, #tab-rel-nfse, #tab-rel-sped').forEach(function (btn) {

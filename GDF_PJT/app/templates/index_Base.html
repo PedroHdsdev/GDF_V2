@@ -113,20 +113,8 @@
     </div>
 </div>
 
-<!-- ÁREA FIXA DE NOTIFICAÇÕES (erros, avisos, sucesso) - sempre visível abaixo da navbar -->
-<div id="notificacoes-global" class="notificacoes-fixa" role="region" aria-live="polite" aria-label="Notificações">
-    <div class="notificacoes-fixa-inner">
-        {% if messages %}
-        {% for message in messages %}
-        <div class="alert alert-padrao alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-            <span class="alert-padrao-rotulo">{% if message.tags == 'error' or message.tags == 'danger' %}Erro{% elif message.tags == 'success' %}Sucesso{% elif message.tags == 'warning' %}Aviso{% else %}Informação{% endif %}:</span>
-            <span class="alert-padrao-texto">{{ message }}</span>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
-        </div>
-        {% endfor %}
-        {% endif %}
-    </div>
-</div>
+<!-- Toasts globais (pagina + modal) — Bootstrap Toast, topo central -->
+<div id="notificacoes-toast-stack" class="toast-container position-fixed top-0 start-50 translate-middle-x p-3 gdf-toast-stack" role="region" aria-live="polite" aria-label="Notificações"></div>
 
 <!-- CONTEÚDO -->
 <main class="container-fluid p-0 m-0 ">
@@ -169,6 +157,16 @@
 <script src="{% static 'js/Script_Base.js' %}"></script>
 <!-- Padrão de notificações (erros/avisos/sucesso) - página e modal -->
 <script src="{% static 'js/NotificacoesPadrao.js' %}"></script>
+{% if messages %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof Notificacoes === 'undefined') return;
+{% for message in messages %}
+  Notificacoes.pagina('{{ message|escapejs }}', '{% if message.tags == "error" %}danger{% else %}{{ message.tags|default:"info" }}{% endif %}');
+{% endfor %}
+});
+</script>
+{% endif %}
 
 <!-- CSRF Protection for AJAX -->
 <script src="{% static 'js/csrf_protection.js' %}"></script>
