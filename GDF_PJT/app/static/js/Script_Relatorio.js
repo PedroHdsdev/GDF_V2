@@ -70,6 +70,12 @@ function relatorioParamsParaExcel() {
         params.order = sort.field;
         params.dir = sort.dir || 'desc';
     }
+    var excelTipo = 'todos';
+    var rad = document.querySelector('input[name="relatorio-modal-excel-tipo"]:checked');
+    if (rad && rad.value) excelTipo = String(rad.value).trim().toLowerCase();
+    var permitidos = ['todos', 'nfe', 'cte', 'nfse', 'sped'];
+    if (permitidos.indexOf(excelTipo) < 0) excelTipo = 'todos';
+    params.excel_tipo = excelTipo;
     return params;
 }
 
@@ -92,6 +98,7 @@ function relatorioBuildUrl(base, params) {
     if (params.tem_sap) q.set('tem_sap', params.tem_sap);
     if (params.order) q.set('order', params.order);
     if (params.dir) q.set('dir', params.dir);
+    if (params.excel_tipo && params.excel_tipo !== 'todos') q.set('excel_tipo', params.excel_tipo);
     if (params.page) q.set('page', String(params.page));
     if (params.page_size) q.set('page_size', String(params.page_size));
     var s = q.toString();
@@ -920,11 +927,33 @@ function relatorioNotificarErroExcel(mensagem) {
     }
 }
 
+function relatorioAbrirModalExcel() {
+    var el = document.getElementById('modalRelatorioExcel');
+    if (!el) {
+        relatorioBaixarExcel();
+        return;
+    }
+    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        bootstrap.Modal.getOrCreateInstance(el).show();
+    } else {
+        relatorioBaixarExcel();
+    }
+}
+
+function relatorioFecharModalExcel() {
+    var el = document.getElementById('modalRelatorioExcel');
+    if (!el || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+    var inst = bootstrap.Modal.getInstance(el);
+    if (inst) inst.hide();
+}
+
 /** Baixa o Excel via fetch para não substituir a página em caso de 502/5xx (antes: window.location). */
 function relatorioBaixarExcel() {
     var btn = document.getElementById('relatorio-btn-excel');
+    var btnConf = document.getElementById('relatorio-modal-excel-confirm');
     var url = relatorioGetPrefix() + relatorioBuildUrl('/api/relatorio/excel/', relatorioParamsParaExcel());
     if (btn) btn.disabled = true;
+    if (btnConf) btnConf.disabled = true;
     fetch(url, { method: 'GET', credentials: 'same-origin' })
         .then(function (res) {
             if (!res.ok) {
@@ -969,6 +998,7 @@ function relatorioBaixarExcel() {
             a.click();
             a.remove();
             URL.revokeObjectURL(objUrl);
+            relatorioFecharModalExcel();
         })
         .catch(function (err) {
             var msg = (err && err.message) ? String(err.message) : 'Não foi possível baixar o Excel.';
@@ -979,6 +1009,7 @@ function relatorioBaixarExcel() {
         })
         .finally(function () {
             if (btn) btn.disabled = false;
+            if (btnConf) btnConf.disabled = false;
         });
 }
 
@@ -997,6 +1028,12 @@ document.addEventListener('DOMContentLoaded', function () {
     var btnExcel = document.getElementById('relatorio-btn-excel');
     if (btnExcel) {
         btnExcel.addEventListener('click', function () {
+            relatorioAbrirModalExcel();
+        });
+    }
+    var btnExcelConfirm = document.getElementById('relatorio-modal-excel-confirm');
+    if (btnExcelConfirm) {
+        btnExcelConfirm.addEventListener('click', function () {
             relatorioBaixarExcel();
         });
     }

@@ -2821,8 +2821,11 @@ def fn_api_relatorio_sped(request):
 @require_http_methods(['GET'])
 def fn_api_relatorio_excel(request):
     """
-    Exporta planilha .xlsx com NFe, CTe, NFS-e e SPED (listagens completas),
-    usando os mesmos filtros das APIs de relatório (sem paginação).
+    Exporta planilha .xlsx (aba Resumo + dados) com os mesmos filtros das APIs
+    de relatório (sem paginação).
+
+    Query opcional ``excel_tipo``: ``todos`` (padrão), ``nfe``, ``cte``,
+    ``nfse`` ou ``sped`` — define quais abas de dados são geradas.
     """
     try:
         params = parse_relatorio_params(request, relatorio_empresas_queryset)
@@ -2843,8 +2846,17 @@ def fn_api_relatorio_excel(request):
         )
 
     MAX_ROWS = 100000
+    excel_tipo = (request.GET.get('excel_tipo') or 'todos').strip().lower()
+    if excel_tipo not in ('todos', 'nfe', 'cte', 'nfse', 'sped'):
+        excel_tipo = 'todos'
+    incluir_nfe = excel_tipo in ('todos', 'nfe')
+    incluir_cte = excel_tipo in ('todos', 'cte')
+    incluir_nfse = excel_tipo in ('todos', 'nfse')
+    incluir_sped = excel_tipo in ('todos', 'sped')
+
     wb = Workbook()
     bold = Font(bold=True)
+    sheets_widths = []
 
     def _style_header(ws_row1):
         for cell in ws_row1:
@@ -2870,6 +2882,7 @@ def fn_api_relatorio_excel(request):
         ('filial_id', (request.GET.get('filial_id') or '').strip()),
         ('order', (request.GET.get('order') or '').strip()),
         ('dir', (request.GET.get('dir') or '').strip()),
+        ('excel_tipo', excel_tipo),
         ('limite_linhas_por_aba', str(MAX_ROWS)),
     ]
     for k, v in filtros:
@@ -2879,165 +2892,164 @@ def fn_api_relatorio_excel(request):
 
     cod_cli_param = (params.cod_cliente or '').strip() or None
 
-    # --- NFe ---
-    ws_nfe = wb.create_sheet('NFe')
-    h_nfe = [
-        'id_nfe',
-        'Número',
-        'Série',
-        'Chave',
-        'Emissão',
-        'Tipo operação',
-        'Status',
-        'Empresa',
-        'Filial',
-        'Nome filial',
-        'Natureza',
-        'Condição pagamento SAP',
-        'Chave no SAP',
-        'Tabela SAP',
-    ]
-    ws_nfe.append(h_nfe)
-    _style_header(ws_nfe[1])
-    qs_nfe = queryset_relatorio_nfe(request, params).select_related('identificacao__pagamento').prefetch_related(
-        Prefetch(
-            'identificacao__cobranca__parcelas',
-            queryset=NFe_Parcela.objects.order_by('numero_parcela'),
+    if incluir_nfe:
+        ws_nfe = wb.create_sheet('NFe')
+        h_nfe = [
+            'id_nfe',
+            'Número',
+            'Série',
+            'Chave',
+            'Emissão',
+            'Tipo operação',
+            'Status',
+            'Empresa',
+            'Filial',
+            'Nome filial',
+            'Natureza',
+            'Condição pagamento SAP',
+            'Chave no SAP',
+            'Tabela SAP',
+        ]
+        ws_nfe.append(h_nfe)
+        _style_header(ws_nfe[1])
+        qs_nfe = queryset_relatorio_nfe(request, params).select_related('identificacao__pagamento').prefetch_related(
+            Prefetch(
+                'identificacao__cobranca__parcelas',
+                queryset=NFe_Parcela.objects.order_by('numero_parcela'),
+            )
         )
-    )
-    n_nfe = 0
-    for nfe in qs_nfe.iterator(chunk_size=500):
-        if n_nfe >= MAX_ROWS:
-            break
-        id_ = nfe.identificacao
-        cond_nfe = condicao_pagamento_da_nfe(id_)
-        tipo_pag = tipo_pagamento_da_nfe(id_)
-        cond_sap = (
-            _condicao_sap_da_param(cond_nfe, tipo_pagamento=tipo_pag, cod_cliente=cod_cli_param)
-            if cod_cli_param
-            else ''
-        )
-        tipo_txt = 'Saída' if (id_.tipo_operacao or '') == '1' else 'Entrada'
-        ws_nfe.append(
-            [
-                nfe.id_nfe,
-                id_.numero or '',
-                id_.serie or '',
-                id_.chave_acesso or '',
-                id_.emissao.isoformat() if id_.emissao else '',
-                tipo_txt,
-                nfe.status or '',
-                nfe.empresa.cod_empresa if nfe.empresa else '',
-                nfe.filial.cod_filial if nfe.filial else '',
-                (nfe.filial.nome or '') if nfe.filial else '',
-                id_.natureza_operacao or '',
-                cond_sap,
-                'Sim' if nfe.tem_sap else 'Não',
-                nfe.sap_nome_tabela or '',
-            ]
-        )
-        n_nfe += 1
+        n_nfe = 0
+        for nfe in qs_nfe.iterator(chunk_size=500):
+            if n_nfe >= MAX_ROWS:
+                break
+            id_ = nfe.identificacao
+            cond_nfe = condicao_pagamento_da_nfe(id_)
+            tipo_pag = tipo_pagamento_da_nfe(id_)
+            cond_sap = (
+                _condicao_sap_da_param(cond_nfe, tipo_pagamento=tipo_pag, cod_cliente=cod_cli_param)
+                if cod_cli_param
+                else ''
+            )
+            tipo_txt = 'Saída' if (id_.tipo_operacao or '') == '1' else 'Entrada'
+            ws_nfe.append(
+                [
+                    nfe.id_nfe,
+                    id_.numero or '',
+                    id_.serie or '',
+                    id_.chave_acesso or '',
+                    id_.emissao.isoformat() if id_.emissao else '',
+                    tipo_txt,
+                    nfe.status or '',
+                    nfe.empresa.cod_empresa if nfe.empresa else '',
+                    nfe.filial.cod_filial if nfe.filial else '',
+                    (nfe.filial.nome or '') if nfe.filial else '',
+                    id_.natureza_operacao or '',
+                    cond_sap,
+                    'Sim' if nfe.tem_sap else 'Não',
+                    nfe.sap_nome_tabela or '',
+                ]
+            )
+            n_nfe += 1
+        sheets_widths.append((ws_nfe, [9, 10, 6, 48, 20, 14, 14, 12, 10, 24, 36, 22, 12, 14]))
 
-    # --- CTe ---
-    ws_cte = wb.create_sheet('CTe')
-    h_cte = [
-        'id_cte',
-        'Número',
-        'Série',
-        'Chave',
-        'Emissão',
-        'Empresa',
-        'Filial',
-        'Nome filial',
-        'Chave no SAP',
-        'Tabela SAP',
-    ]
-    ws_cte.append(h_cte)
-    _style_header(ws_cte[1])
-    n_cte = 0
-    for cte in queryset_relatorio_cte(request, params).iterator(chunk_size=500):
-        if n_cte >= MAX_ROWS:
-            break
-        id_ = cte.identificacao
-        ws_cte.append(
-            [
-                cte.id_cte,
-                id_.numero or '',
-                id_.serie or '',
-                id_.chave_acesso or '',
-                id_.emissao.isoformat() if id_.emissao else '',
-                cte.empresa.cod_empresa if cte.empresa else '',
-                cte.filial.cod_filial if cte.filial else '',
-                (cte.filial.nome or '') if cte.filial else '',
-                'Sim' if cte.tem_sap else 'Não',
-                cte.sap_nome_tabela or '',
-            ]
-        )
-        n_cte += 1
+    if incluir_cte:
+        ws_cte = wb.create_sheet('CTe')
+        h_cte = [
+            'id_cte',
+            'Número',
+            'Série',
+            'Chave',
+            'Emissão',
+            'Empresa',
+            'Filial',
+            'Nome filial',
+            'Chave no SAP',
+            'Tabela SAP',
+        ]
+        ws_cte.append(h_cte)
+        _style_header(ws_cte[1])
+        n_cte = 0
+        for cte in queryset_relatorio_cte(request, params).iterator(chunk_size=500):
+            if n_cte >= MAX_ROWS:
+                break
+            id_ = cte.identificacao
+            ws_cte.append(
+                [
+                    cte.id_cte,
+                    id_.numero or '',
+                    id_.serie or '',
+                    id_.chave_acesso or '',
+                    id_.emissao.isoformat() if id_.emissao else '',
+                    cte.empresa.cod_empresa if cte.empresa else '',
+                    cte.filial.cod_filial if cte.filial else '',
+                    (cte.filial.nome or '') if cte.filial else '',
+                    'Sim' if cte.tem_sap else 'Não',
+                    cte.sap_nome_tabela or '',
+                ]
+            )
+            n_cte += 1
+        sheets_widths.append((ws_cte, [9, 10, 6, 48, 20, 12, 10, 24, 12, 14]))
 
-    # --- NFS-e ---
-    ws_nfse = wb.create_sheet('NFS-e')
-    h_nfse = [
-        'id_nfse',
-        'Número',
-        'Chave',
-        'Emissão',
-        'Empresa',
-        'Filial',
-        'Nome filial',
-        'Chave no SAP',
-        'Tabela SAP',
-    ]
-    ws_nfse.append(h_nfse)
-    _style_header(ws_nfse[1])
-    n_nfse = 0
-    for nfse in queryset_relatorio_nfse(request, params).iterator(chunk_size=500):
-        if n_nfse >= MAX_ROWS:
-            break
-        id_ = nfse.identificacao
-        ws_nfse.append(
-            [
-                nfse.id_nfse,
-                id_.numero or '',
-                id_.chave or '',
-                id_.emissao.isoformat() if id_.emissao else '',
-                nfse.empresa.cod_empresa if nfse.empresa else '',
-                nfse.filial.cod_filial if nfse.filial else '',
-                (nfse.filial.nome or '') if nfse.filial else '',
-                'Sim' if nfse.tem_sap else 'Não',
-                nfse.sap_nome_tabela or '',
-            ]
-        )
-        n_nfse += 1
+    if incluir_nfse:
+        ws_nfse = wb.create_sheet('NFS-e')
+        h_nfse = [
+            'id_nfse',
+            'Número',
+            'Chave',
+            'Emissão',
+            'Empresa',
+            'Filial',
+            'Nome filial',
+            'Chave no SAP',
+            'Tabela SAP',
+        ]
+        ws_nfse.append(h_nfse)
+        _style_header(ws_nfse[1])
+        n_nfse = 0
+        for nfse in queryset_relatorio_nfse(request, params).iterator(chunk_size=500):
+            if n_nfse >= MAX_ROWS:
+                break
+            id_ = nfse.identificacao
+            ws_nfse.append(
+                [
+                    nfse.id_nfse,
+                    id_.numero or '',
+                    id_.chave or '',
+                    id_.emissao.isoformat() if id_.emissao else '',
+                    nfse.empresa.cod_empresa if nfse.empresa else '',
+                    nfse.filial.cod_filial if nfse.filial else '',
+                    (nfse.filial.nome or '') if nfse.filial else '',
+                    'Sim' if nfse.tem_sap else 'Não',
+                    nfse.sap_nome_tabela or '',
+                ]
+            )
+            n_nfse += 1
+        sheets_widths.append((ws_nfse, [9, 12, 48, 20, 12, 10, 24, 12, 14]))
 
-    # --- SPED ---
-    ws_sped = wb.create_sheet('SPED')
-    h_sped = ['id_arquivo', 'Tipo', 'Tipo (texto)', 'Competência', 'Arquivo', 'Data carga', 'Empresa']
-    ws_sped.append(h_sped)
-    _style_header(ws_sped[1])
-    n_sped = 0
-    for it in list_relatorio_sped_items(request, params):
-        if n_sped >= MAX_ROWS:
-            break
-        ws_sped.append(
-            [
-                it.get('id_arquivo'),
-                it.get('tipo') or '',
-                it.get('tipo_display') or '',
-                it.get('competencia') or '',
-                it.get('nome_arquivo') or '',
-                it.get('data_carga') or '',
-                it.get('empresa') or '',
-            ]
-        )
-        n_sped += 1
+    if incluir_sped:
+        ws_sped = wb.create_sheet('SPED')
+        h_sped = ['id_arquivo', 'Tipo', 'Tipo (texto)', 'Competência', 'Arquivo', 'Data carga', 'Empresa']
+        ws_sped.append(h_sped)
+        _style_header(ws_sped[1])
+        n_sped = 0
+        for it in list_relatorio_sped_items(request, params):
+            if n_sped >= MAX_ROWS:
+                break
+            ws_sped.append(
+                [
+                    it.get('id_arquivo'),
+                    it.get('tipo') or '',
+                    it.get('tipo_display') or '',
+                    it.get('competencia') or '',
+                    it.get('nome_arquivo') or '',
+                    it.get('data_carga') or '',
+                    it.get('empresa') or '',
+                ]
+            )
+            n_sped += 1
+        sheets_widths.append((ws_sped, [12, 6, 18, 14, 48, 20, 12]))
 
-    for ws, widths in (
-        (ws_nfe, [9, 10, 6, 48, 20, 14, 14, 12, 10, 24, 36, 22, 12, 14]),
-        (ws_cte, [9, 10, 6, 48, 20, 12, 10, 24, 12, 14]),
-        (ws_nfse, [9, 12, 48, 20, 12, 10, 24, 12, 14]),
-        (ws_sped, [12, 6, 18, 14, 48, 20, 12]),
-    ):
+    for ws, widths in sheets_widths:
         for i, w in enumerate(widths, start=1):
             ws.column_dimensions[get_column_letter(i)].width = w
 
@@ -3045,7 +3057,10 @@ def fn_api_relatorio_excel(request):
     wb.save(buf)
     buf.seek(0)
     stamp = timezone.now().strftime('%Y%m%d_%H%M')
-    fname = f'relatorio_fiscal_{stamp}.xlsx'
+    if excel_tipo == 'todos':
+        fname = f'relatorio_fiscal_{stamp}.xlsx'
+    else:
+        fname = f'relatorio_fiscal_{excel_tipo}_{stamp}.xlsx'
     resp = HttpResponse(
         buf.getvalue(),
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

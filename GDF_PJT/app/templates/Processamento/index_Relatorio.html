@@ -72,6 +72,193 @@
     .relatorio-filtros-btn-aplicar { min-width: 11rem; }
 }
 .relatorio-filtros-wrap .relatorio-filial-hint { font-size: 0.75rem; line-height: 1.35; }
+/* Modal exportar Excel */
+#modalRelatorioExcel .modal-dialog {
+    max-width: 26rem;
+}
+@media (min-width: 576px) {
+    #modalRelatorioExcel .modal-dialog { max-width: 28rem; }
+}
+#modalRelatorioExcel .modal-content {
+    border: none;
+    border-radius: 1rem;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+#modalRelatorioExcel .modal-header {
+    border: none;
+    padding: 1.25rem 1.35rem 0.85rem;
+    background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 40%, #fff 100%);
+    border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+#modalRelatorioExcel .relatorio-excel-header-icon {
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.75rem;
+    background: linear-gradient(145deg, #22c55e, #16a34a);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    flex-shrink: 0;
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.35);
+}
+#modalRelatorioExcel .modal-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+}
+#modalRelatorioExcel .relatorio-excel-header-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #15803d;
+    background: rgba(22, 163, 74, 0.12);
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    margin-top: 0.25rem;
+    display: inline-block;
+}
+#modalRelatorioExcel .modal-body {
+    padding: 1.25rem 1.35rem 1.35rem;
+    background: #f1f5f9;
+}
+#modalRelatorioExcel .relatorio-excel-info {
+    background: #fff;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    padding: 0.85rem 1rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+#modalRelatorioExcel .relatorio-excel-info-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    padding: 0.45rem 0;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: #334155;
+}
+#modalRelatorioExcel .relatorio-excel-info-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+#modalRelatorioExcel .relatorio-excel-info-row:first-child { padding-top: 0; }
+#modalRelatorioExcel .relatorio-excel-info-row i {
+    width: 1.25rem;
+    text-align: center;
+    color: #0d6efd;
+    margin-top: 0.1rem;
+    flex-shrink: 0;
+}
+#modalRelatorioExcel .relatorio-excel-info-row strong { color: #0f172a; font-weight: 600; }
+#modalRelatorioExcel fieldset {
+    border: none;
+    margin: 0;
+    padding: 0;
+}
+#modalRelatorioExcel fieldset > legend {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 0.65rem;
+    padding: 0;
+    width: 100%;
+}
+#modalRelatorioExcel .relatorio-excel-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+#modalRelatorioExcel .relatorio-excel-option {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0;
+    margin: 0;
+    padding: 0.65rem 0.75rem 0.65rem 0.85rem;
+    border-radius: 0.65rem;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    background: #fff;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+#modalRelatorioExcel .relatorio-excel-option:hover {
+    border-color: rgba(13, 110, 253, 0.35);
+    box-shadow: 0 2px 8px rgba(13, 110, 253, 0.08);
+}
+#modalRelatorioExcel .relatorio-excel-option:has(.relatorio-excel-option-input:checked) {
+    border-color: rgba(22, 163, 74, 0.55);
+    background: linear-gradient(90deg, rgba(240, 253, 244, 0.9) 0%, #fff 55%);
+    box-shadow: 0 0 0 1px rgba(22, 163, 74, 0.15);
+}
+#modalRelatorioExcel .relatorio-excel-option-input {
+    margin: 0.35rem 0.65rem 0 0;
+    flex-shrink: 0;
+    width: 1.05rem;
+    height: 1.05rem;
+    border-color: #94a3b8;
+    cursor: pointer;
+}
+#modalRelatorioExcel .relatorio-excel-option-input:focus {
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.2);
+}
+#modalRelatorioExcel .relatorio-excel-option-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+#modalRelatorioExcel .relatorio-excel-option-ico {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+    background: #f1f5f9;
+    color: #475569;
+}
+#modalRelatorioExcel .relatorio-excel-option:has(.relatorio-excel-option-input:checked) .relatorio-excel-option-ico {
+    background: rgba(22, 163, 74, 0.12);
+    color: #15803d;
+}
+#modalRelatorioExcel .relatorio-excel-option-text { min-width: 0; }
+#modalRelatorioExcel .relatorio-excel-option-title {
+    display: block;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #0f172a;
+    line-height: 1.3;
+}
+#modalRelatorioExcel .relatorio-excel-option-sub {
+    display: block;
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 0.1rem;
+    line-height: 1.35;
+}
+#modalRelatorioExcel .modal-footer {
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
+    padding: 1rem 1.35rem;
+    background: #fff;
+}
+#modalRelatorioExcel .modal-footer .btn-success {
+    font-weight: 600;
+    padding: 0.5rem 1.15rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 8px rgba(22, 163, 74, 0.25);
+}
 </style>
 {% endblock %}
 
@@ -86,7 +273,7 @@
             <p class="layout-subtitle">Dados e filtros das tabelas carregadas: NFe, CTe, NFS e SPED. Clique na linha para ver o detalhe.</p>
         </div>
         <div class="layout-hero-actions">
-            <button type="button" class="btn btn-outline-light layout-btn" id="relatorio-btn-excel" title="Baixar Excel com todos os registros (NFe, CTe, NFS-e, SPED) conforme os filtros atuais, sem limite de página">
+            <button type="button" class="btn btn-outline-light layout-btn" id="relatorio-btn-excel" title="Abre opções de exportação em Excel (filtros atuais, sem limite de página)">
                 <i class="fas fa-file-excel"></i> Baixar Excel
             </button>
         </div>
@@ -285,6 +472,91 @@
             </div>
         </div>
     </section>
+</div>
+
+<!-- Modal exportar Excel -->
+<div class="modal fade" id="modalRelatorioExcel" tabindex="-1" aria-labelledby="modalRelatorioExcelLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header flex-column align-items-stretch">
+                <div class="d-flex align-items-start justify-content-between gap-2 w-100">
+                    <div class="d-flex align-items-start gap-3">
+                        <div class="relatorio-excel-header-icon" aria-hidden="true">
+                            <i class="fas fa-file-excel"></i>
+                        </div>
+                        <div>
+                            <h5 class="modal-title mb-0" id="modalRelatorioExcelLabel">Exportar para Excel</h5>
+                            <span class="relatorio-excel-header-badge">Relatório fiscal</span>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close mt-1" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <fieldset class="mb-0" role="radiogroup" aria-labelledby="relatorio-excel-legend">
+                    <legend id="relatorio-excel-legend">Conteúdo das abas de dados</legend>
+                    <div class="relatorio-excel-options">
+                        <label class="relatorio-excel-option" for="relatorio-modal-excel-todos">
+                            <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" id="relatorio-modal-excel-todos" value="todos" checked>
+                            <span class="relatorio-excel-option-body">
+                                <span class="relatorio-excel-option-ico" aria-hidden="true"><i class="fas fa-layer-group"></i></span>
+                                <span class="relatorio-excel-option-text">
+                                    <span class="relatorio-excel-option-title">Pacote completo</span>
+                                    <span class="relatorio-excel-option-sub">NFe, CTe, NFS-e e SPED num único arquivo</span>
+                                </span>
+                            </span>
+                        </label>
+                        <label class="relatorio-excel-option" for="relatorio-modal-excel-nfe">
+                            <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" id="relatorio-modal-excel-nfe" value="nfe">
+                            <span class="relatorio-excel-option-body">
+                                <span class="relatorio-excel-option-ico" aria-hidden="true"><i class="fas fa-file-invoice"></i></span>
+                                <span class="relatorio-excel-option-text">
+                                    <span class="relatorio-excel-option-title">Somente NFe</span>
+                                    <span class="relatorio-excel-option-sub">Notas fiscais eletrônicas de produto</span>
+                                </span>
+                            </span>
+                        </label>
+                        <label class="relatorio-excel-option" for="relatorio-modal-excel-cte">
+                            <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" id="relatorio-modal-excel-cte" value="cte">
+                            <span class="relatorio-excel-option-body">
+                                <span class="relatorio-excel-option-ico" aria-hidden="true"><i class="fas fa-truck"></i></span>
+                                <span class="relatorio-excel-option-text">
+                                    <span class="relatorio-excel-option-title">Somente CTe</span>
+                                    <span class="relatorio-excel-option-sub">Conhecimento de transporte eletrônico</span>
+                                </span>
+                            </span>
+                        </label>
+                        <label class="relatorio-excel-option" for="relatorio-modal-excel-nfse">
+                            <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" id="relatorio-modal-excel-nfse" value="nfse">
+                            <span class="relatorio-excel-option-body">
+                                <span class="relatorio-excel-option-ico" aria-hidden="true"><i class="fas fa-file-signature"></i></span>
+                                <span class="relatorio-excel-option-text">
+                                    <span class="relatorio-excel-option-title">Somente NFS-e</span>
+                                    <span class="relatorio-excel-option-sub">Notas fiscais de serviço eletrônicas</span>
+                                </span>
+                            </span>
+                        </label>
+                        <label class="relatorio-excel-option" for="relatorio-modal-excel-sped">
+                            <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" id="relatorio-modal-excel-sped" value="sped">
+                            <span class="relatorio-excel-option-body">
+                                <span class="relatorio-excel-option-ico" aria-hidden="true"><i class="fas fa-database"></i></span>
+                                <span class="relatorio-excel-option-text">
+                                    <span class="relatorio-excel-option-title">Somente SPED</span>
+                                    <span class="relatorio-excel-option-sub">Arquivos fiscais digitais carregados</span>
+                                </span>
+                            </span>
+                        </label>
+                    </div>
+                </fieldset>
+            </div>
+            <div class="modal-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" id="relatorio-modal-excel-confirm">
+                    <i class="fas fa-download me-1"></i> Gerar e baixar
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Modal Detalhe -->
