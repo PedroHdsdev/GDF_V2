@@ -185,7 +185,7 @@ class AcessoSolucaoCliente(models.Model):
 class Subsolucao(models.Model):
     """Subsolução (submódulo) vinculada a uma solução."""
     id = models.BigAutoField(primary_key=True)
-    cod_subsolucao = models.CharField(max_length=15, db_column='cod_subSolucoes')
+    cod_subsolucao = models.CharField(max_length=25, db_column='cod_subSolucoes')
     descricao = models.CharField(max_length=50, blank=True, null=True)
     solucao = models.ForeignKey(Solucao, models.CASCADE, blank=True, null=True)
 

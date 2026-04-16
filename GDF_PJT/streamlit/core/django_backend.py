@@ -7,12 +7,12 @@ import urllib.request
 from typing import Any, Dict
 
 
-def balanco_financeiro_api_url() -> str:
+def demonstrativos_contabeis_api_url() -> str:
     """
-    URL absoluta da API de balanço.
+    URL absoluta da API de demonstrativos contábeis.
 
     Por padrão **não** inclui FORCE_SCRIPT_NAME (/gdf): chamadas diretas ao Gunicorn usam
-    ``/api/sap/balanco-financeiro/``. Com ``STREAMLIT_DJANGO_API_USE_FORCE_SCRIPT_NAME=True``
+    ``/api/sap/demonstrativos-contabeis/``. Com ``STREAMLIT_DJANGO_API_USE_FORCE_SCRIPT_NAME=True``
     monta ``{base}{FORCE_SCRIPT_NAME}/api/...`` para deploys em que o PATH interno mantém o prefixo.
     """
     from django.conf import settings
@@ -22,8 +22,8 @@ def balanco_financeiro_api_url() -> str:
     if getattr(settings, "STREAMLIT_DJANGO_API_USE_FORCE_SCRIPT_NAME", False):
         prefix = (getattr(settings, "FORCE_SCRIPT_NAME", None) or "").strip().rstrip("/")
         if prefix:
-            return f"{base}{prefix}/api/sap/balanco-financeiro/"
-    return f"{base}/api/sap/balanco-financeiro/"
+            return f"{base}{prefix}/api/sap/demonstrativos-contabeis/"
+    return f"{base}/api/sap/demonstrativos-contabeis/"
 
 
 def post_json_bearer(

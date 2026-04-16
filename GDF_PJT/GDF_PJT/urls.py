@@ -41,9 +41,9 @@ urlpatterns = [
     path('dashboard/compras/', views.fn_view_dashboard_compras, name='Db_Compras'),
     path('dashboard/custo/', views.fn_view_dashboard_custo, name='Db_Custo'),
     path(
-        'dashboard/balanco-financeiro/',
-        views.fn_view_dashboard_balanco_financeiro,
-        name='Db_BalancoFin',
+        'dashboard/demonstrativos-contabeis/',
+        views.fn_view_dashboard_demonstrativos_contabeis,
+        name='Db_DemonstrContabeis',
     ),
 
     #Manifesto
@@ -110,9 +110,9 @@ urlpatterns = [
     path('integracao/rfc/', views.fn_view_Integracao_Rfc, name='Int_Rfc'),
     path('api/rfc/executar/', views.fn_api_rfc_executar, name='API_RfcExecutar'),
     path(
-        'api/sap/balanco-financeiro/',
-        views.fn_api_sap_balanco_financeiro,
-        name='API_SapBalancoFinanceiro',
+        'api/sap/demonstrativos-contabeis/',
+        views.fn_api_sap_demonstrativos_contabeis,
+        name='API_SapDemonstrativosContabeis',
     ),
 
         

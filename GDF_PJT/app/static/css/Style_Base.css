@@ -42,32 +42,69 @@
 }
 
 /* ==========================
-   Sidebar Geral
+   Sidebar Geral (mesma família de cor da navbar: bg-dark)
    ========================== */
-.sidebar {
-    background-color: #fff;
+.offcanvas.sidebar {
+    --sidebar-bg: var(--bs-dark, #212529);
+    --sidebar-ink: rgba(248, 250, 252, 0.92);
+    --sidebar-ink-muted: rgba(226, 232, 240, 0.72);
+    --sidebar-line: rgba(255, 255, 255, 0.1);
+    --sidebar-hover: rgba(255, 255, 255, 0.07);
+    --sidebar-accent: #7dd3fc;
+
+    background-color: var(--sidebar-bg);
+    color: var(--sidebar-ink);
     width: 250px;
     height: 100%;
-    box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+    box-shadow: 4px 0 28px rgba(0, 0, 0, 0.35);
     font-family: 'Poppins', sans-serif;
+}
+
+.sidebar .list-group-item {
+    background-color: transparent;
+    color: inherit;
+    border-color: var(--sidebar-line);
 }
 
 /* Seletor de cliente no topo do sidebar (superuser) */
 .sidebar-cliente-selector {
-    background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+    background: rgba(0, 0, 0, 0.18);
+    border-color: var(--sidebar-line) !important;
 }
+
+.sidebar-cliente-selector .form-label {
+    color: var(--sidebar-ink);
+}
+
+.sidebar-cliente-selector .text-muted {
+    color: var(--sidebar-ink-muted) !important;
+}
+
 .sidebar-cliente-form .form-select {
     font-size: 0.8125rem;
+    background-color: rgba(15, 23, 42, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: var(--sidebar-ink);
+}
+
+.sidebar-cliente-form .form-select:focus {
+    border-color: rgba(125, 211, 252, 0.55);
+    box-shadow: 0 0 0 0.2rem rgba(125, 211, 252, 0.2);
 }
 
 /* Header do Sidebar */
 .sidebar-header {
     padding: 1rem 1.5rem;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid var(--sidebar-line);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: #f8f9fa;
+    background-color: rgba(0, 0, 0, 0.12);
+    color: var(--sidebar-ink);
+}
+
+.sidebar-header .offcanvas-title {
+    color: inherit;
 }
 
 /* Lista Principal */
@@ -84,25 +121,25 @@
 }
 
 /* Link Principal */
-.sidebar-link {
+.sidebar .sidebar-link {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.75rem 1.5rem;
-    color: #333;
-    transition: all 0.3s ease;
-    border-radius: 0.25rem;
+    color: var(--sidebar-ink-muted);
+    transition: background-color 0.2s ease, color 0.2s ease;
+    border-radius: 0.35rem;
 }
 
-.sidebar-link:hover {
-    background-color: #f1f5f9;
-    color: #0d6efd;
+.sidebar .sidebar-link:hover {
+    background-color: var(--sidebar-hover);
+    color: var(--sidebar-ink);
 }
 
-.sidebar-link:focus-visible {
-    outline: 2px solid #0d6efd;
+.sidebar .sidebar-link:focus-visible {
+    outline: 2px solid var(--sidebar-accent);
     outline-offset: -2px;
-    background-color: #f1f5f9;
+    background-color: var(--sidebar-hover);
 }
 
 /* Chevron ao lado de itens com submenus */
@@ -111,6 +148,7 @@
     align-items: center;
     font-size: 0.65rem;
     opacity: 0.75;
+    color: var(--sidebar-ink-muted);
     transition: transform 0.25s ease;
 }
 
@@ -124,8 +162,8 @@
     padding-left: 1rem;
     margin-top: 0.25rem;
     transition: all 0.3s ease;
-    border-left: 2px solid #0d6efd22;
-    border-radius: 0 0.25rem 0.25rem 0;
+    border-left: 2px solid rgba(125, 211, 252, 0.35);
+    border-radius: 0 0.35rem 0.35rem 0;
 }
 
 /* Item do Submenu */
@@ -135,23 +173,23 @@
 }
 
 /* Link do Submenu */
-.sidebar-sublink {
+.sidebar .sidebar-sublink {
     display: block;
     padding: 0.5rem 1.5rem;
-    color: #555;
-    border-radius: 0.25rem;
-    transition: all 0.3s ease;
+    color: var(--sidebar-ink-muted);
+    border-radius: 0.35rem;
+    transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-.sidebar-sublink:hover {
-    background-color: #e9ecef;
-    color: #0d6efd;
+.sidebar .sidebar-sublink:hover {
+    background-color: var(--sidebar-hover);
+    color: var(--sidebar-accent);
 }
 
-.sidebar-sublink:focus-visible {
-    outline: 2px solid #0d6efd;
+.sidebar .sidebar-sublink:focus-visible {
+    outline: 2px solid var(--sidebar-accent);
     outline-offset: -2px;
-    background-color: #e9ecef;
+    background-color: var(--sidebar-hover);
 }
 
 /* Mensagens do Django ajustadas para sidebar */
@@ -372,7 +410,7 @@
 
 /* Responsividade: botão do offcanvas */
 @media (max-width: 992px) {
-    .sidebar {
+    .offcanvas.sidebar {
         width: 100%;
     }
 }

@@ -1,7 +1,7 @@
 """
-RFC /PRCIT/GDF_RFC_BALANCE – Balanço financeiro (equivalente lógico a ZF_ECF01).
+RFC /PRCIT/GDF_RFC_BALANCE – Demonstrativos contábeis (equivalente lógico a ZF_ECF01).
 
-O SAP devolve o balanço em ``R_RETURN`` (string JSON). Há dois formatos suportados após o parse:
+O SAP devolve o demonstrativo em ``R_RETURN`` (string JSON). Há dois formatos suportados após o parse:
 
 - **Árvore recursiva:** raízes com ``id``, ``text``, ``valor``, ``accounts``, ``children``;
   em ``accounts``, descrição em ``txt`` ou ``txt_acc``.
@@ -9,8 +9,8 @@ O SAP devolve o balanço em ``R_RETURN`` (string JSON). Há dois formatos suport
 
 A normalização em ``SapRfc`` unifica para ``id``, ``conta``, ``text``, ``valor``, ``children``,
 ``accounts`` (com ``txt_acc`` preenchido a partir de ``txt`` quando necessário).
-A normalização está em ``SapRfc.consultar_balanco_financeiro``.
-Este módulo mantém tipagem (TypedDict) e ``executar_balanco_financeiro`` para API/Streamlit.
+A normalização está em ``SapRfc.consultar_demonstrativos_contabeis``.
+Este módulo mantém tipagem (TypedDict) e ``executar_demonstrativos_contabeis`` para API/Streamlit.
 """
 from __future__ import annotations
 
@@ -47,11 +47,11 @@ class ZfEcf01Resultado(TypedDict, total=False):
     opcoes_arvore: dict[str, Any]
 
 
-def executar_balanco_financeiro(cod_cliente: str, **params: Any) -> ZfEcf01Resultado:
+def executar_demonstrativos_contabeis(cod_cliente: str, **params: Any) -> ZfEcf01Resultado:
     """
     Executa GDF_RFC_BALANCE e devolve ``arvore`` (JSON parseado de R_RETURN) e metadados.
 
     params: i_bukrs, i_ktopl, i_versn, i_year; intervalo i_month_b / i_month_v (RFC I_MONTH_B / I_MONTH_V)
     ou alias i_month_ini / i_month_fim; período único: i_month + i_year.
     """
-    return SapRfc.consultar_balanco_financeiro(cod_cliente, **params)
+    return SapRfc.consultar_demonstrativos_contabeis(cod_cliente, **params)

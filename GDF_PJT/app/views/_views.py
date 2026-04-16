@@ -887,19 +887,19 @@ def fn_view_dashboard_custo(request):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Db_BalancoFin')
-def fn_view_dashboard_balanco_financeiro(request):
-    """Dashboard Balanço financeiro (Streamlit); token tipo_relatorio BalancoFin."""
+@requer_acesso_subsolucao('Db_DemonstrContabeis')
+def fn_view_dashboard_demonstrativos_contabeis(request):
+    """Dashboard Demonstrativos contábeis (Streamlit); token tipo_relatorio DemonstrativosContabeis."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
-    token = ClGdf.gerar_token(request, request.user, tipo_relatorio='BalancoFin')
+    token = ClGdf.gerar_token(request, request.user, tipo_relatorio='DemonstrativosContabeis')
     if not token:
         return render(request, 'index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
     streamlit_url = _streamlit_iframe_url(request)
     return render(
         request,
-        "Dashboard/index_BalancoFinanceiro.html",
+        "Dashboard/index_DemonstrativosContabeis.html",
         {"token": token, "streamlit_iframe_url": streamlit_url},
     )
 
@@ -4535,9 +4535,9 @@ def fn_api_rfc_executar(request):
 
 @csrf_exempt
 @require_http_methods(["POST"])
-def fn_api_sap_balanco_financeiro(request):
+def fn_api_sap_demonstrativos_contabeis(request):
     """
-    Consulta RFC /PRCIT/GDF_RFC_BALANCE (balanço financeiro) no processo Django (PyRFC).
+    Consulta RFC /PRCIT/GDF_RFC_BALANCE (demonstrativos contábeis) no processo Django (PyRFC).
 
     Autenticação: sessão (navegador) ou ``Authorization: Bearer <JWT do dashboard>`` (Streamlit).
     Body JSON: ``i_bukrs``, ``i_ktopl``, ``i_versn``, ``i_year`` e ``i_month_b`` / ``i_month_v``
@@ -4547,7 +4547,7 @@ def fn_api_sap_balanco_financeiro(request):
     ``total_nos``, ``periodo``, ``opcoes_arvore``.
     Lista plana: ``parent_id`` na raiz/filhos; campo ``conta`` (conta razão SAP) preservado em cada nó.
     """
-    _user, cod_cliente, auth_err = autenticar_sessao_ou_jwt_dashboard(request, "Db_BalancoFin")
+    _user, cod_cliente, auth_err = autenticar_sessao_ou_jwt_dashboard(request, "Db_DemonstrContabeis")
     if auth_err is not None:
         return auth_err
 
@@ -4556,9 +4556,9 @@ def fn_api_sap_balanco_financeiro(request):
     except json.JSONDecodeError:
         return JsonResponse({'sucesso': False, 'mensagem': 'JSON inválido'}, status=400)
 
-    from app.integracao_sap.zf_ecf01_balanco import executar_balanco_financeiro
+    from app.integracao_sap.demonstrativos_contabeis_sap import executar_demonstrativos_contabeis
 
-    out = executar_balanco_financeiro(cod_cliente, **data)
+    out = executar_demonstrativos_contabeis(cod_cliente, **data)
     return JsonResponse(out)
 
 

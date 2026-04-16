@@ -7,7 +7,7 @@ Padrão de uso para cada função SAP via RFC:
   3. Chame a função RFC passando os parâmetros.
   4. A comunicação é fechada ao final (SapRfc.call já abre, chama e fecha).
 
-Exemplo: ver importar_relatorio_custo, consultar_balanco_financeiro (GDF_RFC_BALANCE), enviar_condicoes_pagamento_sap.
+Exemplo: ver importar_relatorio_custo, consultar_demonstrativos_contabeis (GDF_RFC_BALANCE), enviar_condicoes_pagamento_sap.
 """
 import json
 import re
@@ -27,7 +27,7 @@ except Exception as _pyrfc_exc:
     PYRFC_IMPORT_ERROR = str(_pyrfc_exc).strip() or repr(_pyrfc_exc)
 
 # Nomes de módulo de função no SAP (namespace /PRCIT/).
-_RFC_BALANCO_FINANCEIRO = "/PRCIT/GDF_RFC_BALANCE"  # balanço (equivalente lógico a ZF_ECF01)
+_RFC_DEMONSTRATIVOS_CONTABEIS = "/PRCIT/GDF_RFC_BALANCE"  # demonstrativos contábeis (equivalente lógico a ZF_ECF01)
 _RFC_RELATORIO_CUSTO = "/PRCIT/GDF_RFC_CUSTO"  # custo (equivalente a /BRGMN/CUSTR_IMP_CUSTO)
 _RFC_CONDICOES_PAGAMENTO = "/PRCIT/GDF_RFC_CONDICOES_PAG"  # condições pag. (equivalente a ZGDF_CONDICOES_PAGAMENTO)
 # Consulta de chave no SAP: entrada T_CONSULTA (CHAVE, …); retorno em R_RETURN = JSON (array de objetos).
@@ -289,7 +289,7 @@ def _zf_ecf01_buscar_chave_dict(d: Dict[str, Any], *nomes: str) -> Any:
 
 
 def _zf_ecf01_extrair_r_return(result: Optional[Dict[str, Any]]) -> str:
-    """Somente R_RETURN (string); o balanço vem como JSON dentro deste campo."""
+    """Somente R_RETURN (string); o demonstrativo vem como JSON dentro deste campo."""
     if not result or not isinstance(result, dict):
         return ""
     r_ret = _zf_ecf01_buscar_chave_dict(result, "R_RETURN", "E_RETURN", "EV_RETURN")
@@ -529,7 +529,7 @@ def _zf_ecf01_parse_arvore_r_return(
     reagregar_arvore_aninhada: bool = False,
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """
-    Interpreta o JSON em ``R_RETURN`` (GDF_RFC_BALANCE / balanço hierárquico).
+    Interpreta o JSON em ``R_RETURN`` (GDF_RFC_BALANCE / demonstrativo hierárquico).
 
     **Formato 1 — árvore recursiva (ex.: ``lcl_balance_tree``):** array de raízes; cada nó com
     ``id``, ``text``, ``valor``, ``accounts``[], ``children``[] (mesma forma recursiva). Contas:
@@ -789,16 +789,52 @@ class SapRfc:
     def config_from_connection(conn):
         """
         Monta o dicionário de configuração para o pyrfc a partir de um registro SapConnection.
+
+        Conexão **servidor de aplicação** (clássica): ``ashost`` + ``sysnr`` são obrigatórios.
+        Se estiverem vazios, o NW RFC SDK devolve rc=20 (RFC_INVALID_PARAMETER) sobre ASHOST/GWHOST/…;
+        isso indica **dados em falta na tabela conexao_sap**, não o nome da função RFC.
         """
         return {
-            "ashost": conn.ashost or "",
-            "sysnr": conn.sysnr or "",
-            "client": conn.client or "",
-            "user": conn.username or "",
-            "passwd": conn.passwd or "",
-            "lang": conn.lang or "",
+            "ashost": (conn.ashost or "").strip(),
+            "sysnr": (conn.sysnr or "").strip(),
+            "client": (conn.client or "").strip(),
+            "user": (conn.username or "").strip(),
+            "passwd": (conn.passwd or "").strip(),
+            "lang": (conn.lang or "").strip() or "PT",
             "decimal_output_as_string": "True",
         }
+
+    @staticmethod
+    def _config_conexao_sap_incompleta(config: Dict[str, Any], conn) -> Optional[str]:
+        """
+        Valida parâmetros mínimos para PyRFC (evita rc=20 genérico do SDK).
+        Retorna mensagem em português ou None se ok.
+        """
+        ashost = (config.get("ashost") or "").strip()
+        sysnr = (config.get("sysnr") or "").strip()
+        client = (config.get("client") or "").strip()
+        user = (config.get("user") or "").strip()
+        falta: list[str] = []
+        if not ashost:
+            falta.append("ASHOST (host do servidor SAP de aplicação)")
+        if not sysnr:
+            falta.append("SYSNR (número da instância, ex.: 00)")
+        if not client:
+            falta.append("CLIENT (mandante)")
+        if not user:
+            falta.append("USER (utilizador RFC)")
+        if falta:
+            cid = getattr(conn, "id", "?")
+            cod_cli = getattr(getattr(conn, "gdfcliente", None), "cod_cliente", None) or getattr(
+                conn, "gdfcliente_id", "?"
+            )
+            return (
+                "Configuração SAP incompleta na base de dados (tabela conexao_sap, registro "
+                f"id={cid}, cliente={cod_cli}). O PyRFC exige pelo menos host e instância. "
+                f"Preencha no Django Admin: {', '.join(falta)}. "
+                "O nome da RFC (/PRCIT/…) está correto; o erro ocorre **antes** da chamada à função."
+            )
+        return None
 
     @staticmethod
     def connect(conn):
@@ -810,6 +846,11 @@ class SapRfc:
             print("[SapRfc] connect: PyRFC não disponível")
             return None
         config = SapRfc.config_from_connection(conn)
+        cfg_err = SapRfc._config_conexao_sap_incompleta(config, conn)
+        if cfg_err:
+            SapRfc._last_connect_error = cfg_err
+            print(f"[SapRfc] connect: {cfg_err}")
+            return None
         print(f"[SapRfc] connect: abrindo conexão SAP (conn id={getattr(conn, 'id', '?')}, ashost={config.get('ashost', '')})")
         try:
             sap = PyRfcConnection(**config)
@@ -1239,9 +1280,9 @@ class SapRfc:
         }
 
     @staticmethod
-    def consultar_balanco_financeiro(cod_cliente, **params):
+    def consultar_demonstrativos_contabeis(cod_cliente, **params):
         """
-        RFC /PRCIT/GDF_RFC_BALANCE — balanço financeiro.
+        RFC /PRCIT/GDF_RFC_BALANCE — demonstrativos contábeis.
 
         O SAP devolve o resultado em ``R_RETURN`` (string) contendo JSON:
 
@@ -1301,14 +1342,14 @@ class SapRfc:
             i_bukrs, month_b, month_v, ref_year, i_ktopl, i_versn
         )
         print(
-            f"[SapRfc] consultar_balanco_financeiro: cod_cliente={cod_cliente!r} "
+            f"[SapRfc] consultar_demonstrativos_contabeis: cod_cliente={cod_cliente!r} "
             f"I_BUKRS={rfc_params['I_BUKRS']} I_MONTH_B={rfc_params['I_MONTH_B']} "
             f"I_MONTH_V={rfc_params['I_MONTH_V']} I_YEAR={rfc_params['I_YEAR']}"
         )
-        ok, result = SapRfc.call(cod_cliente, _RFC_BALANCO_FINANCEIRO, **rfc_params)
+        ok, result = SapRfc.call(cod_cliente, _RFC_DEMONSTRATIVOS_CONTABEIS, **rfc_params)
 
         if not ok:
-            err = str(result or f"Erro ao chamar RFC {_RFC_BALANCO_FINANCEIRO}.")
+            err = str(result or f"Erro ao chamar RFC {_RFC_DEMONSTRATIVOS_CONTABEIS}.")
             return _fail(err, periodo=periodo)
 
         r_return = _zf_ecf01_extrair_r_return(result if isinstance(result, dict) else None)
@@ -1346,7 +1387,7 @@ class SapRfc:
         else:
             msg_ok = f"Dados obtidos com sucesso."
 
-        print(f"[SapRfc] consultar_balanco_financeiro: {total_nos} nó(s) no JSON de R_RETURN")
+        print(f"[SapRfc] consultar_demonstrativos_contabeis: {total_nos} nó(s) no JSON de R_RETURN")
         return {
             "sucesso": True,
             "mensagem": msg_ok,

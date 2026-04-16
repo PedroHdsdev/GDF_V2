@@ -1,17 +1,17 @@
 {% extends 'index_Base.html' %}
 {% load static %}
 
-{% block title %}Balanço financeiro{% endblock %}
+{% block title %}Demonstrativos contábeis{% endblock %}
 
 {% block styles %}
 <link rel="stylesheet" href="{% static 'css/Style_Dashboard.css' %}">
 {% endblock %}
 
-{% block titlepage %}Balanço financeiro{% endblock %}
+{% block titlepage %}Demonstrativos contábeis{% endblock %}
 
 {% block container %}
 <div id="iframeWrapper" class="iframe-container">
-    <iframe src="{{ streamlit_iframe_url }}/?token={{ token }}" title="Balanço financeiro"></iframe>
+    <iframe src="{{ streamlit_iframe_url }}/?token={{ token }}" title="Demonstrativos contábeis"></iframe>
 </div>
 {% endblock %}
 

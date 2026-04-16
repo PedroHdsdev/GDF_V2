@@ -19,7 +19,7 @@ from app.views._views import (
     fn_view_dashboard_vendas,
     fn_view_dashboard_compras,
     fn_view_dashboard_custo,
-    fn_view_dashboard_balanco_financeiro,
+    fn_view_dashboard_demonstrativos_contabeis,
     fn_view_manifesto_painel,
     fn_view_inserir_empresa,
     fn_view_atualizar_empresa,
@@ -81,7 +81,7 @@ from app.views._views import (
     fn_api_sap_relatorio_custo_receber,
     fn_view_Integracao_Rfc,
     fn_api_rfc_executar,
-    fn_api_sap_balanco_financeiro,
+    fn_api_sap_demonstrativos_contabeis,
 )
 
 __all__ = [
@@ -100,7 +100,7 @@ __all__ = [
     'fn_view_dashboard_vendas',
     'fn_view_dashboard_compras',
     'fn_view_dashboard_custo',
-    'fn_view_dashboard_balanco_financeiro',
+    'fn_view_dashboard_demonstrativos_contabeis',
     'fn_view_manifesto_painel',
     'fn_view_inserir_empresa',
     'fn_view_atualizar_empresa',
@@ -162,5 +162,5 @@ __all__ = [
     'fn_api_sap_relatorio_custo_receber',
     'fn_view_Integracao_Rfc',
     'fn_api_rfc_executar',
-    'fn_api_sap_balanco_financeiro',
+    'fn_api_sap_demonstrativos_contabeis',
 ]
