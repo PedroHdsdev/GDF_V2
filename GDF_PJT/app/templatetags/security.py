@@ -47,20 +47,36 @@ def truncate_safe_filter(value, length=100):
     return escape(value_str)
 
 
+def _json_script_coerce_keys(obj):
+    """
+    Garante chaves de dict serializáveis em JSON (str/int/float/bool/None).
+    Evita TypeError em json.dumps (ex.: Decimal ou UUID como chave vindo do ORM).
+    """
+    if isinstance(obj, dict):
+        return {str(k): _json_script_coerce_keys(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_script_coerce_keys(x) for x in obj]
+    return obj
+
+
 @register.simple_tag(takes_context=True, name="json_script_nonce")
 def json_script_with_nonce(context, data, element_id):
     """
     Mesmo que o filtro |json_script do Django, com atributo nonce para CSP (script sem unsafe-inline).
     O nonce é obtido de request.csp_nonce (django-csp).
     """
+    data = _json_script_coerce_keys(data)
     html = django_json_script(data, element_id)
     request = context.get("request")
-    if not request:
+    if not request or not hasattr(request, "csp_nonce"):
         return html
-    nonce = getattr(request, "csp_nonce", None)
-    if not nonce:
+    # request.csp_nonce é CheckableLazyObject: bool(nonce) é False até avaliar — forçar str().
+    try:
+        nonce_val = str(request.csp_nonce)
+    except Exception:
         return html
-    nonce = str(nonce)
+    if not nonce_val:
+        return html
     s = str(html)
-    s = s.replace("<script", '<script nonce="' + escape(nonce) + '"', 1)
+    s = s.replace("<script", '<script nonce="' + escape(nonce_val) + '"', 1)
     return mark_safe(s)
