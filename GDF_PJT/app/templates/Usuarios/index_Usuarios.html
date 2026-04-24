@@ -4,8 +4,8 @@
 {% block title %}Usuário{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="{% static 'css/Style_Usuarios.css' %}">
-<link rel="stylesheet" href="{% static 'css/Style_Admin.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/Style_Usuarios.css' %}">
+<link rel="stylesheet" href="{% static 'css/shared/Style_Admin.css' %}">
 {% endblock %}
 
 {% block titlepage %}Usuários{% endblock %}
@@ -95,8 +95,8 @@
   </section>
 </div>
 
-{% include "Usuarios/modal_Usuario_ins.html" %}
-{% include "Usuarios/modal_Usuario_upd.html" %}
+{% include "Usuarios/modal_Usuario.html" %}
+
 {% endblock %}
 
 {% block scripts %}

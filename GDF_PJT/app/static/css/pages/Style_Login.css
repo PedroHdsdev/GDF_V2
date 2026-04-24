@@ -21,7 +21,7 @@ body {
   content: "";
   position: fixed;
   inset: 0;
-  background-image: url("../img/fundo_mont.png");
+  background-image: url("../../img/fundo_mont.png");
   background-size: cover;
   background-position: center;
   opacity: 0.12;

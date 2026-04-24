@@ -4,7 +4,7 @@
 {% block title %}Manifesto{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="{% static 'css/Style_Manifesto.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/Style_Manifesto.css' %}">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
 {% endblock %}
 
@@ -70,7 +70,6 @@
 </div>
 
 {% include 'Manifesto/modal_Manifesto.html' %}
-{% include 'Manifesto/modal_Item.html' %}
 
 {{ manifesto_data|json_script:"manifesto-data" }}
 {% endblock %}

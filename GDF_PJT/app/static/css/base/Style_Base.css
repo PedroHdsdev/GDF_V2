@@ -92,6 +92,8 @@
     box-shadow: 0 0 0 0.2rem rgba(125, 211, 252, 0.2);
 }
 
+/* #sidebarClienteMsg: estado inicial d-none; exibido com d-block + text-* (Script_Base.js) */
+
 /* Header do Sidebar */
 .sidebar-header {
     padding: 1rem 1.5rem;

@@ -4,8 +4,8 @@
 {% block title %}Empresas{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="{% static 'css/Style_Empresas.css' %}">
-<link rel="stylesheet" href="{% static 'css/Style_Admin.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/Style_Empresas.css' %}">
+<link rel="stylesheet" href="{% static 'css/shared/Style_Admin.css' %}">
 {% endblock %}
 
 {% block titlepage %}Empresas{% endblock %}
@@ -119,8 +119,7 @@
 </div>
 
 <!-- INCLUIR MODAIS -->
-{% include 'Empresas/modal_Empresa_ins.html' %}
-{% include 'Empresas/modal_Empresa_upd.html' %}
+{% include 'Empresas/modal_Empresas.html' %}
 
 {% endblock %}
 

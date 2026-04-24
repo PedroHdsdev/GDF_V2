@@ -694,12 +694,27 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    document.getElementById('btn-enviar-sped').addEventListener('click', function () {
-        const tabManual = document.getElementById('manual-sped');
-        if (tabManual && tabManual.classList.contains('show')) {
-            enviarArquivosManuais();
-        }
-    });
+    var btnEnviarSped = document.getElementById('btn-enviar-sped');
+    var tabNavManualSped = document.getElementById('tab-manual-sped');
+    var tabNavAutoSped = document.getElementById('tab-automatico-sped');
+    function ajustarBotaoEnvioSped() {
+        if (!btnEnviarSped) return;
+        var tabBtnManual = document.getElementById('tab-manual-sped');
+        var manualAtivo = tabBtnManual && tabBtnManual.classList.contains('active');
+        btnEnviarSped.style.display = manualAtivo ? '' : 'none';
+    }
+    if (tabNavManualSped) tabNavManualSped.addEventListener('shown.bs.tab', ajustarBotaoEnvioSped);
+    if (tabNavAutoSped) tabNavAutoSped.addEventListener('shown.bs.tab', ajustarBotaoEnvioSped);
+    ajustarBotaoEnvioSped();
+
+    if (btnEnviarSped) {
+        btnEnviarSped.addEventListener('click', function () {
+            const tabManual = document.getElementById('manual-sped');
+            if (tabManual && tabManual.classList.contains('show')) {
+                enviarArquivosManuais();
+            }
+        });
+    }
 
     var formParamSped = document.getElementById('form-parametros-sped');
     if (formParamSped) {

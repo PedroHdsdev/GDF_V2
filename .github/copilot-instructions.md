@@ -62,9 +62,9 @@ Main routes defined in [GDF_PJT/urls.py](GDF_PJT/urls.py):
 
 ## Static & Template Organization
 
-- **Static**: `app/static/css/`, `app/static/js/` (organized by feature: `Style_Usuarios.css`, `Script_Dashboard.js`)
+- **Static**: `app/static/js/` por funcionalidade (`Script_*.js`). **CSS** em `app/static/css/`: `base/` (casca global, ex. `Style_Base.css`), `shared/` (ex. modais admin `Style_Admin.css`), `pages/` (telas, ex. `Style_Home.css`, `Style_Usuarios.css`)
 - **Templates**: `app/templates/` with subdirectories mirroring URL paths (`Usuarios/`, `Empresas/`, `Dashboard/`)
-- CSS/JS naming convention: `Style_<Module>.css` and `Script_<Module>.js`
+- Convenção de nomes: `Style_<Module>.css` e `Script_<Module>.js` (caminho em templates: `{% static 'css/pages/...' %}` etc.)
 
 ## View & CRUD Patterns
 

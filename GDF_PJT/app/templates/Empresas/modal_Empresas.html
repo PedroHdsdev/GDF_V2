@@ -1,4 +1,197 @@
-{% load static %}
+<!-- Modal: Cadastrar Empresa -->
+<div class="modal fade admin-modal" id="modalEmpresaIns" tabindex="-1" aria-labelledby="modalEmpresaInsLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <form method="post" action="{% if url_prefix %}{{ url_prefix }}/empresa/inserir/{% else %}/empresa/inserir/{% endif %}" onsubmit="fn_validar_formulario_ins(event)">
+        {% csrf_token %}
+
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalEmpresaInsLabel">
+            <span class="modal-title-icon"><i class="fas fa-building"></i></span>
+            Cadastrar Empresa
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body">
+          <div id="modalEmpresaInsAlerts" class="admin-modal-alerts"></div>
+          <p class="admin-step-hint text-muted small mb-3">
+            <i class="fas fa-info-circle me-1"></i> Preencha os dados obrigatórios (código, CNPJ, razão e nome fantasia). Certificado pode ser enviado depois.
+          </p>
+
+          {% if is_superuser and lista_clientes %}
+          <div class="admin-modal-cliente-wrap">
+            <label for="ins_cod_cliente" class="form-label">* Cliente</label>
+            <select id="ins_cod_cliente" name="m_cod_cliente" class="form-select" required>
+              <option value="">-- Selecione o cliente --</option>
+              {% for c in lista_clientes %}
+              <option value="{{ c.cod_cliente }}" {% if cod_cliente == c.cod_cliente %}selected{% endif %}>{{ c.cod_cliente }} – {{ c.razao|default:"" }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endif %}
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="ins_codempresa" class="form-label">* Código da Empresa</label>
+              <input
+                type="text"
+                id="ins_codempresa"
+                name="m_codempresa"
+                class="form-control"
+                placeholder="Ex: 001"
+                required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="ins_cnpj" class="form-label">* CNPJ</label>
+              <input
+                type="text"
+                id="ins_cnpj"
+                name="m_cnpj"
+                class="form-control"
+                placeholder="00.000.000/0000-00"
+                required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="ins_razao" class="form-label">* Razão Social</label>
+              <input
+                type="text"
+                id="ins_razao"
+                name="m_razao"
+                class="form-control"
+                placeholder="Razão social"
+                required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="ins_fantasia" class="form-label">* Nome Fantasia</label>
+              <input
+                type="text"
+                id="ins_fantasia"
+                name="m_fantasia"
+                class="form-control"
+                placeholder="Nome fantasia"
+                required>
+            </div>
+
+
+            <div class="col-md-6">
+              <label class="form-label">Matriz</label>
+              <div class="form-check form-switch mt-1">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="ins_matriz"
+                  name="m_matriz">
+                <label class="form-check-label" for="ins_matriz">Empresa é matriz</label>
+              </div>
+            </div>
+
+            <div class="col-12 admin-form-section">
+              <div class="admin-form-section-title">Dados opcionais</div>
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_ie" class="form-label">Inscrição Estadual</label>
+              <input
+                type="text"
+                id="ins_ie"
+                name="m_ie"
+                class="form-control"
+                placeholder="IE">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_im" class="form-label">Inscrição Municipal</label>
+              <input
+                type="text"
+                id="ins_im"
+                name="m_im"
+                class="form-control"
+                placeholder="IM">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_iest" class="form-label">IE Substituto Tributário</label>
+              <input
+                type="text"
+                id="ins_iest"
+                name="m_iest"
+                class="form-control"
+                placeholder="IE ST">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_crt" class="form-label">CRT</label>
+              <input
+                type="text"
+                id="ins_crt"
+                name="m_crt"
+                class="form-control"
+                placeholder="CRT">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_cnae" class="form-label">CNAE</label>
+              <input
+                type="text"
+                id="ins_cnae"
+                name="m_cnae"
+                class="form-control"
+                placeholder="CNAE">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_suframa" class="form-label">SUFRAMA</label>
+              <input
+                type="text"
+                id="ins_suframa"
+                name="m_suframa"
+                class="form-control"
+                placeholder="SUFRAMA">
+            </div>
+
+            <div class="col-md-12">
+              <label for="ins_chave_acesso" class="form-label">Chave de Acesso</label>
+              <input
+                type="text"
+                id="ins_chave_acesso"
+                name="m_chave_acesso"
+                class="form-control"
+                placeholder="Chave de acesso">
+            </div>
+
+            {% if messages %}
+              {% for message in messages %}
+                {% if message.extra_tags == 'MODAL_INS' %}
+                  <div class="col-12">
+                    <div class="alert alert-{{ message.level_tag }} alert-dismissible fade show" role="alert">
+                      {{ message }}
+                      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success"><i class="fas fa-check me-1"></i> Cadastrar</button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar Empresa -->
 <div class="modal fade admin-modal" id="modalEmpresaUpd" tabindex="-1" aria-labelledby="modalEmpresaUpdLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">

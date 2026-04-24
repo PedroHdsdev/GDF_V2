@@ -4,8 +4,8 @@
 {% block title %}Filiais{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="{% static 'css/Style_Empresas.css' %}">
-<link rel="stylesheet" href="{% static 'css/Style_Admin.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/Style_Empresas.css' %}">
+<link rel="stylesheet" href="{% static 'css/shared/Style_Admin.css' %}">
 {% endblock %}
 
 {% block titlepage %}Filiais{% endblock %}
@@ -97,10 +97,9 @@
   </section>
 </div>
 
-{% include 'Filiais/modal_Filial_ins.html' %}
-{% include 'Filiais/modal_Filial_editar.html' %}
-{% endblock %}
+{% include 'Filiais/modal_Filiais.html' %}
 
+{% endblock %}
 {% block scripts %}
 <script>
 (function () {

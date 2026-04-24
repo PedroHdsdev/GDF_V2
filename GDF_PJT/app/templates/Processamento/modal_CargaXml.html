@@ -1,0 +1,343 @@
+<!-- MODAL - CARGA DE XML -->
+<div class="modal fade" id="modalCargaXml" tabindex="-1" aria-labelledby="modalCargaXmlLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalCargaXmlLabel">
+                    <i class="fas fa-upload"></i> Carregar Arquivos XML
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modalCargaXmlAlerts"></div>
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-manual" data-bs-toggle="tab" data-bs-target="#manual" type="button" role="tab" aria-controls="manual" aria-selected="true">
+                            <i class="fas fa-hand-paper"></i> Carga Manual
+                        </button>
+                    </li>
+                    {% if pode_gerenciar_carga_automatica %}
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-automatico" data-bs-toggle="tab" data-bs-target="#automatico" type="button" role="tab" aria-controls="automatico" aria-selected="false">
+                            <i class="fas fa-cogs"></i> Carga Automática
+                        </button>
+                    </li>
+                    {% endif %}
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="manual" role="tabpanel" aria-labelledby="tab-manual">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <div class="card-upload-xml">
+                                    <div class="drop-zone drop-zone-sped-option" id="drop-zone-xml-arquivo" role="button" tabindex="0">
+                                        <i class="fas fa-file-alt fa-3x text-muted mb-2"></i>
+                                        <div class="drop-zone-text">Clique para selecionar <strong>arquivos</strong> .xml ou .zip</div>
+                                    </div>
+                                </div>
+                                <input type="file" id="file-input-xml" multiple accept=".xml,.zip" style="display: none;">
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card-upload-xml">
+                                    <div class="drop-zone drop-zone-sped-option" id="drop-zone-xml-pasta" role="button" tabindex="0">
+                                        <i class="fas fa-folder-open fa-3x text-muted mb-2"></i>
+                                        <div class="drop-zone-text">Clique para selecionar uma <strong>pasta</strong></div>
+                                        <div class="drop-zone-hint small text-muted mt-1">Lê todos os .xml e .zip dentro da pasta e subpastas.</div>
+                                    </div>
+                                </div>
+                                <input type="file" id="file-input-diretorio" webkitdirectory directory multiple style="display: none;">
+                            </div>
+                        </div>
+                        <p class="text-muted small mt-2">Formatos: .xml, .zip. Tamanho máximo por arquivo: 50MB.</p>
+                        <div class="mt-3"><strong>Arquivos:</strong> <span id="contador-arquivos">0</span></div>
+                    </div>
+
+                    {% if pode_gerenciar_carga_automatica %}
+                    <div class="tab-pane fade" id="automatico" role="tabpanel" aria-labelledby="tab-automatico">
+                        <div class="layout-subcard mb-3">
+                            <form id="form-parametros" class="param-form">
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-600">Horario:</label>
+                                        <input type="time" id="param-horario" class="form-control" required>
+                                    </div>
+                                    <div class="col-md-4 d-flex align-items-end">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="param-ativo" checked>
+                                            <label class="form-check-label" for="param-ativo">Ativo</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label fw-600">Diretorio Base:</label>
+                                        <input type="text" id="param-diretorio" class="form-control" placeholder="C:\dados\xmls" required>
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-end mt-3">
+                                    <button type="submit" class="btn btn-primary" id="btn-salvar-param">
+                                        <i class="fas fa-save"></i> Salvar Parametros
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="layout-subcard">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="mb-0">Parametros Ativos</h6>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-recarregar-parametros">
+                                    <i class="fas fa-rotate"></i> Recarregar
+                                </button>
+                            </div>
+                            <div class="table-responsive">
+                                <table id="tabela-parametros" class="table table-sm table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Horario</th>
+                                            <th>Diretorio</th>
+                                            <th>Empresa</th>
+                                            <th>Status</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="5" class="text-center text-muted">Nenhum parametro ativo</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-enviar-xml">
+                    <i class="fas fa-check"></i> Carregar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if pode_gerenciar_carga_automatica %}
+<!-- MODAL - ENVIAR ZIP PARA PASTA DO JOB -->
+<div class="modal fade" id="modalUploadZip" tabindex="-1" aria-labelledby="modalUploadZipLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalUploadZipLabel">
+                    <i class="fas fa-file-archive me-2"></i> Enviar ZIP para pasta do job
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modalUploadZipAlerts"></div>
+                <p class="text-muted small">O arquivo ZIP será extraído na pasta do parâmetro. Apenas arquivos <strong>.xml</strong> serão extraídos.</p>
+                <input type="hidden" id="upload-zip-param-id" value="">
+                <div class="mb-3">
+                    <label class="form-label fw-600">Arquivo ZIP</label>
+                    <input type="file" id="upload-zip-file" class="form-control" accept=".zip">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-confirmar-upload-zip">
+                    <i class="fas fa-upload"></i> Enviar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- MODAL - DETALHES DO JOB -->
+<div class="modal fade" id="modalJobDetails" tabindex="-1" aria-labelledby="modalJobDetailsLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalJobDetailsLabel">
+                    <i class="fas fa-tasks me-2"></i> Detalhes do Job #<span id="modal-job-id"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-job-detalhes" data-bs-toggle="tab" data-bs-target="#job-detalhes" type="button" role="tab" aria-controls="job-detalhes" aria-selected="true">Parâmetros do Job</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-job-log" data-bs-toggle="tab" data-bs-target="#job-log" type="button" role="tab" aria-controls="job-log" aria-selected="false">Últimas execuções / Log</button>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="job-detalhes" role="tabpanel">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">Status:</label>
+                                <div class="form-control-plaintext" id="modal-job-status"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">Início:</label>
+                                <div class="form-control-plaintext" id="modal-job-started"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-600">Fim:</label>
+                                <div class="form-control-plaintext" id="modal-job-finished"></div>
+                            </div>
+                        </div>
+                        <hr>
+                        <h6 class="fw-600 mb-2">Parâmetros de execução</h6>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Horário</label>
+                                <input type="text" class="form-control" id="modal-param-horario" readonly>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label">Diretório</label>
+                                <input type="text" class="form-control" id="modal-param-diretorio" readonly>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Empresa</label>
+                                <input type="text" class="form-control" id="modal-param-empresa" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="job-log" role="tabpanel">
+                        <div class="table-responsive">
+                            <table id="tabela-log" class="table table-sm table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 80px;">Linha</th>
+                                        <th>Mensagem / Detalhe</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="2" class="text-center text-muted">Sem registros</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if pode_gerenciar_carga_automatica %}
+<!-- MODAL - DETALHES DO PARÂMETRO -->
+<div class="modal fade" id="modalParametroDetails" tabindex="-1" aria-labelledby="modalParametroDetailsLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalParametroDetailsLabel">
+                    <i class="fas fa-sliders-h me-2"></i> Parâmetro de Carga
+                    <small class="text-muted ms-2">#<span id="param-edit-id-label"></span></small>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modalParametroDetailsAlerts"></div>
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-param-edicao" data-bs-toggle="tab" data-bs-target="#param-edicao" type="button" role="tab" aria-controls="param-edicao" aria-selected="true">Parâmetro</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-param-jobs" data-bs-toggle="tab" data-bs-target="#param-jobs" type="button" role="tab" aria-controls="param-jobs" aria-selected="false">Últimos jobs</button>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="param-edicao" role="tabpanel">
+                        <form id="form-param-edit">
+                            <input type="hidden" id="param-edit-id" name="param-edit-id">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Horário</label>
+                                    <input type="time" class="form-control" id="param-edit-horario" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Empresa (opcional)</label>
+                                    <select id="param-edit-empresa" class="form-select">
+                                        <option value="">Nenhuma</option>
+                                        {% for emp in empresas_usuario %}
+                                            <option value="{{ emp.cod_empresa }}">
+                                                {{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4 d-flex align-items-end">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="param-edit-ativo">
+                                        <label class="form-check-label" for="param-edit-ativo">Ativo</label>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Diretório Base</label>
+                                    <input type="text" class="form-control" id="param-edit-diretorio" required>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="tab-pane fade" id="param-jobs" role="tabpanel">
+                        <div class="table-responsive">
+                            <table id="tabela-jobs-param" class="table table-sm table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 20%;">Job</th>
+                                        <th style="width: 25%;">Data / Hora</th>
+                                        <th style="width: 20%;">Status</th>
+                                        <th>Resumo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted">Nenhum job encontrado</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                <button type="submit" form="form-param-edit" class="btn btn-primary" id="btn-param-edit-salvar">
+                    <i class="fas fa-save"></i> Salvar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- MODAL - AVISOS (logs de cargas com erros) -->
+<div class="modal fade" id="modalAvisosCargaXml" tabindex="-1" aria-labelledby="modalAvisosCargaXmlLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content modal-avisos-cargaxml">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalAvisosCargaXmlLabel">
+                    <i class="fas fa-exclamation-triangle text-warning me-2"></i> Avisos – Logs de cargas com erros
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modal-avisos-cargaxml-empty" class="modal-avisos-empty text-center py-5">
+                    <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                    <p class="mb-0 text-muted">Nenhuma carga com erro no momento.</p>
+                </div>
+                <div id="modal-avisos-cargaxml-list" class="modal-avisos-list" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-primary me-auto" id="btn-avisos-ja-lido" title="Marcar estes avisos como já lidos (remove o contador do botão)">
+                    <i class="fas fa-check-double me-1"></i> Já lido
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>

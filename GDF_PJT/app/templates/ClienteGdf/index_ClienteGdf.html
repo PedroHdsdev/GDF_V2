@@ -4,8 +4,8 @@
 {% block title %}Clientes{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="{% static 'css/Style_Clientes.css' %}">
-<link rel="stylesheet" href="{% static 'css/Style_Admin.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/Style_Clientes.css' %}">
+<link rel="stylesheet" href="{% static 'css/shared/Style_Admin.css' %}">
 {% endblock %}
 
 {% block titlepage %}Clientes{% endblock %}
@@ -95,9 +95,8 @@
   </section>
 </div>
 
-<!-- INCLUIR MODAIS -->
-{% include 'ClienteGdf/modal_ClienteGdf_ins.html' %}
-{% include 'ClienteGdf/modal_ClienteGdf_upd.html' %}
+<!-- INCLUIR MODAIS (inserir + editar em um único template) -->
+{% include 'ClienteGdf/modal_ClienteGdf.html' %}
 
 {% endblock %}
 

@@ -6,7 +6,124 @@ function getUrlPrefix() {
     var p = window.location.pathname;
     if (p === '/gdf' || (p.length > 4 && p.indexOf('/gdf/') === 0)) return '/gdf';
   }
-  return prefix || '';
+  return prefix || "";
+}
+
+/**
+ * Garante abertura de modais se o Bootstrap não receber o evento (data-bs-toggle="modal").
+ */
+function initModalFallback() {
+  if (typeof bootstrap === "undefined" || !bootstrap.Modal) return;
+  document.querySelectorAll('[data-bs-toggle="modal"]').forEach(function (trigger) {
+    var targetId = trigger.getAttribute("data-bs-target");
+    if (!targetId || targetId.indexOf("#") !== 0) return;
+    var targetEl = document.getElementById(targetId.slice(1));
+    if (!targetEl) return;
+    trigger.addEventListener(
+      "click",
+      function () {
+        var el = targetEl;
+        setTimeout(function () {
+          if (el.classList.contains("show")) return;
+          try {
+            bootstrap.Modal.getOrCreateInstance(el).show();
+          } catch (err) {
+            console.warn("Modal fallback:", err);
+          }
+        }, 10);
+      },
+      false
+    );
+  });
+}
+
+/**
+ * Lê mensagens Django renderizadas em #gdf-page-messages (NotificacoesPadrao.js já carregado).
+ */
+function initGdfPageMessagesFromDom() {
+  if (typeof Notificacoes === "undefined" || !Notificacoes.pagina) return;
+  var root = document.getElementById("gdf-page-messages");
+  if (!root) return;
+  root.querySelectorAll(".gdf-initial-message").forEach(function (el) {
+    var raw = (el.getAttribute("data-tags") || "").trim();
+    var level = raw === "error" ? "danger" : raw || "info";
+    Notificacoes.pagina(el.textContent, level);
+  });
+  root.remove();
+}
+
+/**
+ * Troca de cliente ativo na sidebar (URL em data-gdf-api-sessao-cliente no <body>).
+ */
+function initSidebarSessaoCliente() {
+  var form = document.getElementById("formSidebarCliente");
+  if (!form) return;
+  var apiUrl = document.body.getAttribute("data-gdf-api-sessao-cliente");
+  if (!apiUrl) return;
+  var msgEl = document.getElementById("sidebarClienteMsg");
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var select = document.getElementById("sidebarSelectCliente");
+    var cod = select ? select.value.trim() : "";
+    if (!cod) {
+      if (msgEl) {
+        msgEl.textContent = "Selecione um cliente.";
+        msgEl.className = "small mt-2 d-block text-warning";
+      }
+      return;
+    }
+    var fd = new FormData();
+    fd.append("cod_cliente", cod);
+    var csrfToken = typeof getCsrfToken === "function" ? getCsrfToken() : "";
+    if (!csrfToken) {
+      var tok = document.querySelector("[name=csrfmiddlewaretoken]");
+      if (tok) csrfToken = tok.value;
+    }
+    var headers = { "X-Requested-With": "XMLHttpRequest" };
+    if (csrfToken) headers["X-CSRFToken"] = csrfToken;
+    fetch(apiUrl, {
+      method: "POST",
+      body: fd,
+      headers: headers,
+      credentials: "same-origin",
+      redirect: "manual"
+    })
+      .then(function (r) {
+        return r.text().then(function (text) {
+          var data = null;
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch (e) {}
+          return { ok: r.ok, status: r.status, data: data, raw: text };
+        });
+      })
+      .then(function (result) {
+        if (!msgEl) return;
+        if (result.ok && result.data && result.data.sucesso) {
+          msgEl.textContent = "Cliente alterado. Recarregando...";
+          msgEl.className = "small mt-2 d-block text-success";
+          setTimeout(function () {
+            window.location.reload();
+          }, 800);
+        } else if (result.data && result.data.erro) {
+          msgEl.textContent = result.data.erro;
+          msgEl.className = "small mt-2 d-block text-danger";
+        } else if (result.status === 302 || (result.raw && result.raw.indexOf("login") !== -1)) {
+          msgEl.textContent = "Sessão expirada. Faça login novamente.";
+          msgEl.className = "small mt-2 d-block text-danger";
+        } else {
+          msgEl.textContent = "Erro na requisição (status " + result.status + ").";
+          msgEl.className = "small mt-2 d-block text-danger";
+        }
+      })
+      .catch(function () {
+        if (msgEl) {
+          msgEl.textContent = "Erro na requisição. Verifique a conexão.";
+          msgEl.className = "small mt-2 d-block text-danger";
+        }
+      });
+  });
 }
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -53,6 +170,9 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   initSidebarHoverAndSubmenus();
+  initModalFallback();
+  initGdfPageMessagesFromDom();
+  initSidebarSessaoCliente();
 });
 
 /**

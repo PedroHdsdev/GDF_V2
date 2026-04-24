@@ -47,7 +47,7 @@ class StaticPrefixFixMiddleware(MiddlewareMixin):
             # Reescrever para o WhiteNoise reconhecer
             request.META["PATH_INFO"] = f"{prefix}/{path_info.lstrip('/')}"
 
-        # Fallback: servir direto de STATIC_ROOT (garante 200 para Style_Login.css, logo_Process.png, etc.)
+        # Fallback: servir direto de STATIC_ROOT (garante 200 para css em pages/base/shared, imagens, etc.)
         response = _serve_static_from_root(request, path_info)
         if response is not None:
             return response

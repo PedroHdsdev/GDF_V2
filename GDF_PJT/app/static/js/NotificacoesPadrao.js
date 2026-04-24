@@ -52,7 +52,7 @@
       .replace(/\n/g, '<br>');
   }
 
-  /** Variante visual suave (CSS em Style_Base — sem text-bg-* forte do Bootstrap). */
+  /** Variante visual suave (CSS em base/Style_Base — sem text-bg-* forte do Bootstrap). */
   function classesToastSkin(tipoNorm) {
     if (tipoNorm === 'success') return { skin: 'gdf-toast--success', btnClose: '' };
     if (tipoNorm === 'danger') return { skin: 'gdf-toast--danger', btnClose: '' };

@@ -10,10 +10,8 @@
     <link rel="icon" type="image/png" href="{% static 'img/logo.png' %}" />
     <title>{% block title %}Meu Site{% endblock %}</title>
 
-    <link rel="icon" type="image/png" href="{% static 'img/logo.png' %}">
-
     <!-- CSS BASE -->
-    <link rel="stylesheet" href="{% static 'css/Style_Base.css' %}">
+    <link rel="stylesheet" href="{% static 'css/base/Style_Base.css' %}">
 
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Montserrat:wght@700&display=swap" rel="stylesheet">
@@ -27,7 +25,7 @@
     {% block styles %}{% endblock %}
 </head>
 
-<body class="bg-light">
+<body class="bg-light" data-gdf-api-sessao-cliente="{% url 'API_SessaoCliente' %}">
 
 <!-- NAVBAR -->
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
@@ -70,7 +68,7 @@
                     {% endfor %}
                 </select>
                 <button type="submit" class="btn btn-primary btn-sm w-100">Usar este cliente</button>
-                <div id="sidebarClienteMsg" class="small mt-2" style="display:none;"></div>
+                <div id="sidebarClienteMsg" class="small mt-2 d-none" role="status" aria-live="polite"></div>
             </form>
             <!--<p class="text-muted small mb-0 mt-2">Superusuário ou cliente PRCIT (dona do projeto): gerencie qualquer cliente.</p>-->
         </div>
@@ -123,114 +121,19 @@
 
 <!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
-<!-- Garantir que modais abram: fallback se o Bootstrap não abrir (ex.: evento não disparado) -->
-<script>
-(function() {
-  function initModalFallback() {
-    if (typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
-    document.querySelectorAll('[data-bs-toggle="modal"]').forEach(function(trigger) {
-      var targetId = trigger.getAttribute('data-bs-target');
-      if (!targetId || targetId.indexOf('#') !== 0) return;
-      var targetEl = document.getElementById(targetId.slice(1));
-      if (!targetEl) return;
-      trigger.addEventListener('click', function() {
-        var el = targetEl;
-        setTimeout(function() {
-          if (el.classList.contains('show')) return;
-          try {
-            bootstrap.Modal.getOrCreateInstance(el).show();
-          } catch (err) { console.warn('Modal fallback:', err); }
-        }, 10);
-      }, false);
-    });
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initModalFallback);
-  } else {
-    initModalFallback();
-  }
-})();
-</script>
-
-<!-- Utilitários (getUrlPrefix para subpath /gdf) -->
-<script src="{% static 'js/Script_Base.js' %}"></script>
-<!-- Padrão de notificações (erros/avisos/sucesso) - página e modal -->
+<!-- Padrão de notificações (página e modal) — antes de Script_Base (mensagens iniciais usam Notificacoes) -->
 <script src="{% static 'js/NotificacoesPadrao.js' %}"></script>
 {% if messages %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  if (typeof Notificacoes === 'undefined') return;
-{% for message in messages %}
-  Notificacoes.pagina('{{ message|escapejs }}', '{% if message.tags == "error" %}danger{% else %}{{ message.tags|default:"info" }}{% endif %}');
-{% endfor %}
-});
-</script>
+<div id="gdf-page-messages" class="d-none" hidden aria-hidden="true">
+  {% for message in messages %}
+  <span class="gdf-initial-message" data-tags="{{ message.tags|default:''|escape }}">{{ message|escape }}</span>
+  {% endfor %}
+</div>
 {% endif %}
-
-<!-- CSRF Protection for AJAX -->
+<!-- CSRF para AJAX (getCsrfToken) — antes de Script_Base -->
 <script src="{% static 'js/csrf_protection.js' %}"></script>
-
-<!-- Sidebar: trocar cliente via AJAX (evita redirect para login) -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  var form = document.getElementById('formSidebarCliente');
-  if (!form) return;
-  form.addEventListener('submit', function(e) {
-    e.preventDefault();
-    var select = document.getElementById('sidebarSelectCliente');
-    var msgEl = document.getElementById('sidebarClienteMsg');
-    var cod = select ? select.value.trim() : '';
-    if (!cod) {
-      if (msgEl) { msgEl.textContent = 'Selecione um cliente.'; msgEl.style.display = 'block'; msgEl.className = 'small mt-2 text-warning'; }
-      return;
-    }
-    var fd = new FormData();
-    fd.append('cod_cliente', cod);
-    var csrfToken = (typeof getCsrfToken === 'function') ? getCsrfToken() : '';
-    if (!csrfToken) { var el = document.querySelector('[name=csrfmiddlewaretoken]'); if (el) csrfToken = el.value; }
-    var headers = { 'X-Requested-With': 'XMLHttpRequest' };
-    if (csrfToken) headers['X-CSRFToken'] = csrfToken;
-    fetch('{% url "API_SessaoCliente" %}', {
-      method: 'POST',
-      body: fd,
-      headers: headers,
-      credentials: 'same-origin',
-      redirect: 'manual'
-    }).then(function(r) {
-      return r.text().then(function(text) {
-        var data = null;
-        try { data = text ? JSON.parse(text) : {}; } catch (e) {}
-        return { ok: r.ok, status: r.status, data: data, raw: text };
-      });
-    }).then(function(result) {
-      if (msgEl) {
-        msgEl.style.display = 'block';
-        if (result.ok && result.data && result.data.sucesso) {
-          msgEl.textContent = 'Cliente alterado. Recarregando...';
-          msgEl.className = 'small mt-2 text-success';
-          setTimeout(function() { window.location.reload(); }, 800);
-        } else if (result.data && result.data.erro) {
-          msgEl.textContent = result.data.erro;
-          msgEl.className = 'small mt-2 text-danger';
-        } else if (result.status === 302 || (result.raw && result.raw.indexOf('login') !== -1)) {
-          msgEl.textContent = 'Sessão expirada. Faça login novamente.';
-          msgEl.className = 'small mt-2 text-danger';
-        } else {
-          msgEl.textContent = 'Erro na requisição (status ' + result.status + ').';
-          msgEl.className = 'small mt-2 text-danger';
-        }
-      }
-    }).catch(function(err) {
-      if (msgEl) {
-        msgEl.textContent = 'Erro na requisição. Verifique a conexão.';
-        msgEl.style.display = 'block';
-        msgEl.className = 'small mt-2 text-danger';
-      }
-    });
-  });
-});
-</script>
+<!-- utilitários: getUrlPrefix, sidebar, modais, mensagens Django, troca de cliente (static/js/Script_Base.js) -->
+<script src="{% static 'js/Script_Base.js' %}"></script>
 
 {% block scripts %}{% endblock %}
 </body>

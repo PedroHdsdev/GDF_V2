@@ -734,16 +734,28 @@ app/templates/
 
 ### **Arquivos Estáticos**
 
-#### CSS: `Style_[Modulo].css`
+#### CSS: `Style_[Modulo].css` (organização por pasta)
 ```
 app/static/css/
-├── Style_Base.css          # Estilos globais e layout
-├── Style_Login.css         # Específico da tela de login
-├── Style_Usuarios.css      # Específico do módulo Usuários
-├── Style_Empresas.css
-├── Style_Dashboard.css
-└── Style_CargaXml.css
+├── base/
+│   └── Style_Base.css          # Estilos globais, navbar, sidebar, toasts
+├── shared/
+│   └── Style_Admin.css         # Modais e layout “admin” reutilizados (CRUD)
+└── pages/
+    ├── Style_Login.css
+    ├── Style_Home.css
+    ├── Style_Usuarios.css
+    ├── Style_Empresas.css
+    ├── Style_Clientes.css
+    ├── Style_CargaXml.css
+    ├── Style_Dashboard.css
+    ├── Style_Manifesto.css
+    ├── Style_Reprocessamento.css
+    ├── Style_IntegracaoRfc.css
+    └── password_validator.css
 ```
+
+Nos templates: `{% static 'css/base/Style_Base.css' %}`, `css/shared/...`, `css/pages/...`.
 
 #### JavaScript: `Script_[Modulo].js`
 ```

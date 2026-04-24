@@ -1,4 +1,86 @@
-{% load static %}
+<!-- Modal: Cadastrar Cliente -->
+<div class="modal fade admin-modal" id="modalClienteIns" tabindex="-1" aria-labelledby="modalClienteInsLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <form method="post" action="{% if url_prefix %}{{ url_prefix }}/cliente/inserir/{% else %}/cliente/inserir/{% endif %}" onsubmit="fn_validar_formulario_ins(event)">
+        {% csrf_token %}
+
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalClienteInsLabel">
+            <span class="modal-title-icon"><i class="fas fa-handshake"></i></span>
+            Cadastrar Cliente
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body">
+          <div id="modalClienteInsAlerts" class="admin-modal-alerts"></div>
+          <p class="admin-step-hint text-muted small mb-3">
+            <i class="fas fa-info-circle me-1"></i> Preencha código, CNPJ e razão social para cadastrar o cliente.
+          </p>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="ins_codigo" class="form-label">* Código do Cliente</label>
+              <input
+                type="text"
+                id="ins_codigo"
+                name="m_cliente_id"
+                class="form-control"
+                placeholder="Ex: 001"
+                required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="ins_cnpj" class="form-label">* CNPJ</label>
+              <input
+                type="text"
+                id="ins_cnpj"
+                name="m_cnpj"
+                class="form-control"
+                placeholder="00.000.000/0000-00"
+                required>
+            </div>
+
+            <div class="col-md-12">
+              <label for="ins_razao" class="form-label">* Razão Social</label>
+              <input
+                type="text"
+                id="ins_razao"
+                name="m_razao"
+                class="form-control"
+                placeholder="Nome do cliente"
+                required>
+            </div>
+
+            {% if messages %}
+              {% for message in messages %}
+                {% if message.extra_tags == 'MODAL_INS' %}
+                  <div class="col-12">
+                    <div class="alert alert-{{ message.level_tag }} alert-dismissible fade show" role="alert">
+                      {{ message }}
+                      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success"><i class="fas fa-check me-1"></i> Cadastrar</button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar Cliente -->
 <div class="modal fade admin-modal" id="modalClienteUpd" tabindex="-1" aria-labelledby="modalClienteUpdLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
@@ -249,3 +331,4 @@
     </div>
   </div>
 </div>
+

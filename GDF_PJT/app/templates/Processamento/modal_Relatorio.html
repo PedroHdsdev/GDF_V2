@@ -1,0 +1,116 @@
+{# Modais do Relatório Fiscal: detalhe (NFe, CTe, NFS, SPED) e exportação Excel. IDs usados em Script_Relatorio.js #}
+<div class="modal fade" id="modalRelatorioDetalhe" tabindex="-1" aria-labelledby="modal-rel-titulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5 mb-0" id="modal-rel-titulo">Detalhe</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-rel-loading" class="text-center py-5">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Carregando detalhe…</span>
+          </div>
+          <p class="text-muted small mt-2 mb-0">Carregando…</p>
+        </div>
+        <div id="modal-rel-content" class="d-none">
+          <ul class="nav nav-tabs flex-wrap" id="modal-rel-tabs" role="tablist"></ul>
+          <div class="tab-content" id="modal-rel-tab-content"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalRelatorioExcel" tabindex="-1" aria-labelledby="modalRelatorioExcelLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="d-flex align-items-start gap-3 w-100">
+          <div class="relatorio-excel-header-icon" aria-hidden="true">
+            <i class="fas fa-file-excel"></i>
+          </div>
+          <div class="flex-grow-1 min-width-0">
+            <h2 class="modal-title" id="modalRelatorioExcelLabel">Exportar para Excel</h2>
+            <span class="relatorio-excel-header-badge">Filtros atuais</span>
+            <p class="text-muted small mb-0 mt-1">Exporta com os mesmos filtros da tela, sem limite de página.</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="relatorio-excel-info">
+          <div class="relatorio-excel-info-row">
+            <i class="fas fa-filter" aria-hidden="true"></i>
+            <div><strong>Período e busca</strong> aplicados acima valem na exportação.</div>
+          </div>
+          <div class="relatorio-excel-info-row">
+            <i class="fas fa-table" aria-hidden="true"></i>
+            <div>Escolha o <strong>tipo de planilha</strong> (abas NFe, CT-e, etc.).</div>
+          </div>
+        </div>
+        <fieldset>
+          <legend>O que incluir na planilha</legend>
+          <div class="relatorio-excel-options">
+            <label class="relatorio-excel-option">
+              <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" value="todos" checked>
+              <span class="relatorio-excel-option-body">
+                <span class="relatorio-excel-option-ico"><i class="fas fa-layer-group"></i></span>
+                <span class="relatorio-excel-option-text">
+                  <span class="relatorio-excel-option-title">Todas as abas</span>
+                  <span class="relatorio-excel-option-sub">NFe, CT-e, NFS e SPED no mesmo arquivo, conforme a API</span>
+                </span>
+              </span>
+            </label>
+            <label class="relatorio-excel-option">
+              <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" value="nfe">
+              <span class="relatorio-excel-option-body">
+                <span class="relatorio-excel-option-ico"><i class="fas fa-file-invoice"></i></span>
+                <span class="relatorio-excel-option-text">
+                  <span class="relatorio-excel-option-title">Apenas NFe</span>
+                  <span class="relatorio-excel-option-sub">Notas fiscais eletrônicas</span>
+                </span>
+              </span>
+            </label>
+            <label class="relatorio-excel-option">
+              <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" value="cte">
+              <span class="relatorio-excel-option-body">
+                <span class="relatorio-excel-option-ico"><i class="fas fa-truck"></i></span>
+                <span class="relatorio-excel-option-text">
+                  <span class="relatorio-excel-option-title">Apenas CT-e</span>
+                  <span class="relatorio-excel-option-sub">Conhecimentos de transporte</span>
+                </span>
+              </span>
+            </label>
+            <label class="relatorio-excel-option">
+              <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" value="nfse">
+              <span class="relatorio-excel-option-body">
+                <span class="relatorio-excel-option-ico"><i class="fas fa-receipt"></i></span>
+                <span class="relatorio-excel-option-text">
+                  <span class="relatorio-excel-option-title">Apenas NFS-e</span>
+                  <span class="relatorio-excel-option-sub">Notas fiscais de serviço</span>
+                </span>
+              </span>
+            </label>
+            <label class="relatorio-excel-option">
+              <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" value="sped">
+              <span class="relatorio-excel-option-body">
+                <span class="relatorio-excel-option-ico"><i class="fas fa-archive"></i></span>
+                <span class="relatorio-excel-option-text">
+                  <span class="relatorio-excel-option-title">Apenas SPED</span>
+                  <span class="relatorio-excel-option-sub">Arquivos fiscais / contribuição</span>
+                </span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-success" id="relatorio-modal-excel-confirm">
+          <i class="fas fa-download me-1"></i> Baixar Excel
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
