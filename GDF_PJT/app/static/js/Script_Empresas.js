@@ -11,6 +11,13 @@ const og_estado_empresas = {
     modalAberto: null     // ✅ Controlar qual modal está aberto
 };
 
+function fn_empresas_escAttr(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     // ✅ Carregar dados da tabela no HTML e armazenar em memória
     fn_extrair_empresas_html();
@@ -142,7 +149,7 @@ function fn_atualizar_tabela_filtrada() {
     } else {
         // ✅ Renderizar apenas empresas da página atual usando HTML guardado
         tbody.innerHTML = paginacao.itemsNoInterval
-            .map(empresa => `<tr class="empresa-row" data-empresa-id="${empresa.id}">${empresa.html}</tr>`)
+            .map(empresa => `<tr class="empresa-row" data-empresa-id="${fn_empresas_escAttr(empresa.id)}">${empresa.html}</tr>`)
             .join('');
         
         // Nota: Listeners de clique são gerenciados via delegação em fn_init_empresa_upd()

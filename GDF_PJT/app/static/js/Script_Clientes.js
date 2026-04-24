@@ -15,6 +15,19 @@ const og_estado_clientes = {
     gruposClienteDisponiveis: []    // Grupos disponíveis para adicionar
 };
 
+function fn_cli_escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+}
+
+function fn_cli_escAttr(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     // ✅ Carregar dados da tabela no HTML e armazenar em memória
     fn_extrair_clientes_html();
@@ -163,7 +176,7 @@ function fn_atualizar_tabela_filtrada() {
     } else {
         // ✅ Renderizar apenas clientes da página atual usando HTML guardado
         tbody.innerHTML = paginacao.itemsNoInterval
-            .map(cliente => `<tr class="cliente-row" data-cliente-id="${cliente.id}">${cliente.html}</tr>`)
+            .map(cliente => `<tr class="cliente-row" data-cliente-id="${fn_cli_escAttr(cliente.id)}">${cliente.html}</tr>`)
             .join('');
         
         // Nota: Listeners de clique são gerenciados via delegação em fn_init_cliente_upd()
@@ -630,23 +643,24 @@ function fn_renderizar_solucoes() {
   // ✅ Adicionar linhas
   og_estado_clientes.solucoesSelecionadas.forEach(sol => {
     const row = document.createElement('tr');
+    const codJs = JSON.stringify(sol.cod_solucao);
     row.innerHTML = `
-      <td>${sol.cod_solucao}</td>
-      <td>${sol.descricao}</td>
+      <td>${fn_cli_escHtml(sol.cod_solucao)}</td>
+      <td>${fn_cli_escHtml(sol.descricao)}</td>
       <td class="text-center">
         <div class="form-check form-switch d-flex justify-content-center">
           <input 
             class="form-check-input" 
             type="checkbox" 
             ${sol.is_active ? 'checked' : ''}
-            onchange="fn_toggle_solucao_status('${sol.cod_solucao}')">
+            onchange="fn_toggle_solucao_status(${codJs})">
         </div>
       </td>
       <td class="text-center">
         <button 
           type="button" 
           class="btn btn-sm btn-danger" 
-          onclick="fn_remover_solucao('${sol.cod_solucao}')">
+          onclick="fn_remover_solucao(${codJs})">
           Remover
         </button>
       </td>
@@ -694,7 +708,7 @@ function fn_renderizar_grupos_cliente() {
   og_estado_clientes.gruposClienteSelecionados.forEach(g => {
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td>${(g.name || '').replace(/</g, '&lt;')}</td>
+      <td>${fn_cli_escHtml(g.name || '')}</td>
       <td class="text-center">
         <button type="button" class="btn btn-sm btn-danger" onclick="fn_remover_grupo_cliente(${g.id})">Remover</button>
       </td>

@@ -23,6 +23,19 @@ function formatJobDateTimeLocal(iso, detailed) {
     }
 }
 
+function cargaSpedEscHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+}
+
+function cargaSpedEscAttr(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+}
+
 function obterCsrfToken() {
     const t = document.querySelector('[name=csrfmiddlewaretoken]');
     return t ? t.value : '';
@@ -277,12 +290,12 @@ function renderizarEmExecucaoSped() {
         li.style.cursor = 'pointer';
         li.setAttribute('data-job-id', carga.id);
         var dataStr = carga.started_at ? formatJobDateTimeLocal(carga.started_at, false) : '-';
-        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + (carga.tipo || 'SPED') + '</span>' +
+        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + cargaSpedEscHtml(carga.tipo || 'SPED') + '</span>' +
             '<div class="home-activity-detail">' +
             '<span class="home-activity-status home-activity-status-running">Em execução</span>' +
-            '<span class="home-activity-meta">' + (carga.resumo || '') + '</span></div>' +
-            '<div class="home-activity-time">' + dataStr + '</div>' +
-            '<a href="#" class="home-activity-link" data-job-id="' + carga.id + '" title="Ver detalhes">\u2192</a>';
+            '<span class="home-activity-meta">' + cargaSpedEscHtml(carga.resumo || '') + '</span></div>' +
+            '<div class="home-activity-time">' + cargaSpedEscHtml(dataStr) + '</div>' +
+            '<a href="#" class="home-activity-link" data-job-id="' + cargaSpedEscAttr(carga.id) + '" title="Ver detalhes">\u2192</a>';
         li.addEventListener('click', function (e) {
             e.preventDefault();
             abrirModalJobSped(carga.id);
@@ -311,12 +324,12 @@ function renderizarJaExecutadoSped() {
         li.style.cursor = 'pointer';
         var statusClass = (carga.status || '').toUpperCase() === 'ERROR' ? 'home-activity-status-error' : 'home-activity-status-success';
         var dataStr = carga.started_at ? formatJobDateTimeLocal(carga.started_at, false) : '-';
-        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + (carga.tipo || 'SPED') + '</span>' +
+        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + cargaSpedEscHtml(carga.tipo || 'SPED') + '</span>' +
             '<div class="home-activity-detail">' +
             '<span class="home-activity-status ' + statusClass + '">' + (carga.status === 'SUCCESS' ? 'Concluído' : 'Erro') + '</span>' +
-            '<span class="home-activity-meta">' + (carga.resumo || '') + '</span></div>' +
-            '<div class="home-activity-time">' + dataStr + '</div>' +
-            '<a href="#" class="home-activity-link" data-job-id="' + carga.id + '" title="Ver log">\u2192</a>';
+            '<span class="home-activity-meta">' + cargaSpedEscHtml(carga.resumo || '') + '</span></div>' +
+            '<div class="home-activity-time">' + cargaSpedEscHtml(dataStr) + '</div>' +
+            '<a href="#" class="home-activity-link" data-job-id="' + cargaSpedEscAttr(carga.id) + '" title="Ver log">\u2192</a>';
         li.addEventListener('click', function (e) {
             e.preventDefault();
             abrirModalJobSped(carga.id);
@@ -339,9 +352,6 @@ function renderizarLogsResumoSped(items) {
     }
     emptyEl.style.display = 'none';
     contentEl.style.display = 'block';
-    function escapeHtml(s) {
-        return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
     function classLog(line) {
         var t = (line || '').trim();
         if (t.indexOf('ERRO:') === 0) return 'aviso-log-erro';
@@ -361,7 +371,7 @@ function renderizarLogsResumoSped(items) {
             html += '<div class="small text-muted">Sem linhas de log</div>';
         } else {
             logLines.forEach(function (l) {
-                html += '<div class="cargaxml-log-line ' + classLog(l) + '">' + escapeHtml(l) + '</div>';
+                html += '<div class="cargaxml-log-line ' + classLog(l) + '">' + cargaSpedEscHtml(l) + '</div>';
             });
         }
         html += '</div>';
@@ -455,9 +465,9 @@ function renderizarTabelaParametrosSped() {
 
     tbody.innerHTML = page.map(p => `
         <tr class="align-middle">
-            <td>${p.horario}</td>
-            <td class="text-truncate" style="max-width:200px" title="${(p.diretorio || '').replace(/"/g, '&quot;')}">${p.diretorio || '-'}</td>
-            <td>${p.empresa_nome || '-'}</td>
+            <td>${cargaSpedEscHtml(p.horario)}</td>
+            <td class="text-truncate" style="max-width:200px" title="${cargaSpedEscAttr(p.diretorio || '')}">${cargaSpedEscHtml(p.diretorio) || '—'}</td>
+            <td>${cargaSpedEscHtml(p.empresa_nome) || '—'}</td>
             <td><span class="badge ${p.ativo ? 'bg-success' : 'bg-secondary'}">${p.ativo ? 'Ativo' : 'Inativo'}</span></td>
         </tr>
     `).join('');
@@ -487,11 +497,11 @@ function carregarParametrosModal() {
             }
             tbody.innerHTML = items.map(p => `
                 <tr>
-                    <td>${p.horario || ''}</td>
-                    <td class="text-truncate" style="max-width:120px">${p.diretorio || '-'}</td>
-                    <td>${p.empresa_nome || '-'}</td>
+                    <td>${cargaSpedEscHtml(p.horario || '')}</td>
+                    <td class="text-truncate" style="max-width:120px">${cargaSpedEscHtml(p.diretorio) || '—'}</td>
+                    <td>${cargaSpedEscHtml(p.empresa_nome) || '—'}</td>
                     <td><span class="badge ${p.ativo ? 'bg-success' : 'bg-secondary'}">${p.ativo ? 'Ativo' : 'Inativo'}</span></td>
-                    <td><button type="button" class="btn btn-sm btn-outline-primary upload-zip-sped" data-param-id="${p.id}">ZIP</button></td>
+                    <td><button type="button" class="btn btn-sm btn-outline-primary upload-zip-sped" data-param-id="${cargaSpedEscAttr(p.id)}">ZIP</button></td>
                 </tr>
             `).join('');
             tbody.querySelectorAll('.upload-zip-sped').forEach(btn => {

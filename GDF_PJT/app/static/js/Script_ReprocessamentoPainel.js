@@ -262,7 +262,7 @@
     function formatarValorMonetario(v) {
         if (v == null || v === '' || v === undefined) return '—';
         const n = parseFloat(v);
-        return isNaN(n) ? v : 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return isNaN(n) ? escapeHtml(String(v)) : 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     function preencherSubAbasDetalhe(payload) {
@@ -528,7 +528,7 @@
             ERRO: '<span class="badge bg-danger">Erro</span>',
             CANCELADO: '<span class="badge bg-dark">Cancelado</span>',
         };
-        return m[status] || '<span class="badge bg-light text-dark">' + (status || '-') + '</span>';
+        return m[status] || '<span class="badge bg-light text-dark">' + escapeHtml(String(status != null && status !== '' ? status : '-')) + '</span>';
     }
 
     function abrirModalDivergencias(idLote) {

@@ -4423,8 +4423,14 @@ def fn_view_Integracao_Rfc(request):
         )
         filiais_por_empresa[cod_emp] = filiais
 
+    url_prefix = (request.META.get("SCRIPT_NAME") or getattr(settings, "FORCE_SCRIPT_NAME", "") or "").strip()
+    if url_prefix and not url_prefix.startswith("/"):
+        url_prefix = "/" + url_prefix
+    url_prefix = url_prefix.rstrip("/")  # '' ou '/gdf'
+
     context = {
         'cod_cliente': cod_cliente,
+        'url_prefix': url_prefix,
         'rfc_handlers': [
             {
                 'codigo': h.codigo,

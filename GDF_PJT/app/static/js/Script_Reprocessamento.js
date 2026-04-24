@@ -17,6 +17,12 @@ const estadoReprocessamento = {
     modalAberto: null
 };
 
+function reprocessamentoEsc(s) {
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+}
+
 /* ===============================
    INICIALIZAR
 ================================ */
@@ -217,10 +223,10 @@ function renderizarTabela() {
         }
 
         linha.innerHTML = `
-            <td><strong>#${item.id}</strong></td>
-            <td>${item.numero || '-'}</td>
-            <td>${item.empresa || '-'}</td>
-            <td>${formatarData(item.data_criacao)}</td>
+            <td><strong>#${reprocessamentoEsc(item.id)}</strong></td>
+            <td>${reprocessamentoEsc(item.numero) || '—'}</td>
+            <td>${reprocessamentoEsc(item.empresa) || '—'}</td>
+            <td>${reprocessamentoEsc(formatarData(item.data_criacao))}</td>
             <td>${statusBadge}</td>
             <td>
                 <div class="acoes-cell">
@@ -333,21 +339,21 @@ function exibirDetalhes(id) {
 
     conteudo.innerHTML = `
         <div class="modal-reprocessamento-header">
-            <h5>Detalhes do Reprocessamento #${item.id}</h5>
+            <h5>Detalhes do Reprocessamento #${reprocessamentoEsc(item.id)}</h5>
             <button class="close-modal" onclick="fecharModal('modal-detalhes')">&times;</button>
         </div>
         <div class="modal-reprocessamento-body">
             <div class="detalhe-item">
                 <label>ID:</label>
-                <div class="detalhe-item-value">${item.id}</div>
+                <div class="detalhe-item-value">${reprocessamentoEsc(item.id)}</div>
             </div>
             <div class="detalhe-item">
                 <label>Número:</label>
-                <div class="detalhe-item-value">${item.numero || '-'}</div>
+                <div class="detalhe-item-value">${reprocessamentoEsc(item.numero) || '—'}</div>
             </div>
             <div class="detalhe-item">
                 <label>Empresa:</label>
-                <div class="detalhe-item-value">${item.empresa || '-'}</div>
+                <div class="detalhe-item-value">${reprocessamentoEsc(item.empresa) || '—'}</div>
             </div>
             <div class="detalhe-item">
                 <label>Status:</label>
@@ -355,11 +361,11 @@ function exibirDetalhes(id) {
             </div>
             <div class="detalhe-item">
                 <label>Data Criação:</label>
-                <div class="detalhe-item-value">${formatarDataCompleta(item.data_criacao)}</div>
+                <div class="detalhe-item-value">${reprocessamentoEsc(formatarDataCompleta(item.data_criacao))}</div>
             </div>
             <div class="detalhe-item">
                 <label>Descrição:</label>
-                <div class="detalhe-item-value">${item.descricao || '-'}</div>
+                <div class="detalhe-item-value">${reprocessamentoEsc(item.descricao) || '—'}</div>
             </div>
         </div>
         <div style="text-align: right; gap: 10px; display: flex; justify-content: flex-end;">

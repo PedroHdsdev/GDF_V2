@@ -767,7 +767,8 @@ app/static/js/
 ├── Script_Empresas.js
 ├── Script_Dashboard.js
 ├── Script_CargaXml.js
-└── Script_Relatorio.js
+├── Script_Relatorio.js
+└── Script_IntegracaoRfc.js
 ```
 
 #### Funções JavaScript: `fn_[ação]_[recurso]`

@@ -4,319 +4,97 @@
 {% block title %}Integração SAP – RFC{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="{% static 'css/pages/Style_Home.css' %}">
 <link rel="stylesheet" href="{% static 'css/pages/Style_IntegracaoRfc.css' %}">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 {% endblock %}
 
 {% block titlepage %}Integração SAP – RFC{% endblock %}
 
 {% block container %}
 {{ filiais_por_empresa|json_script:"filiais-por-empresa-data" }}
-<div class="home-page rfc-page layout-page" data-api-rfc-executar="{% url 'API_RfcExecutar' %}">
-    {% csrf_token %}
+<div class="layout-page rfc-sap" data-url-prefix="{{ url_prefix|default:'' }}" data-api-rfc-executar="{% url 'API_RfcExecutar' %}">
+  {% csrf_token %}
 
-    <section class="home-welcome">
-        <div class="home-welcome-main">
-            <h2 class="home-welcome-title">Integração SAP via RFC</h2>
-            <p class="home-welcome-meta">
-                Execute RFCs para alimentar o schema <code>sap</code> ou consultar dados no SAP (ex.: <code>/PRCIT/GDF_RFC_CONSULTA</code>).
-                Configure a conexão SAP em Clientes → Conexão SAP.
-                <br><small class="opacity-75">Se o SAP exige VPN, o servidor deve estar conectado à VPN (não o seu navegador).</small>
-            </p>
-        </div>
-    </section>
-
-    <section class="home-grid rfc-grid">
-        {% for rfc in rfc_handlers %}
-        <article class="home-card rfc-card" data-cod-rfc="{{ rfc.codigo }}">
-            <div class="home-card-head">
-                <div>
-                    <p class="home-card-eyebrow">{{ rfc.tabela_sap }}</p>
-                    <h3>{{ rfc.nome }}</h3>
-                </div>
-            </div>
-            <p class="text-muted small mb-3">{{ rfc.descricao }}</p>
-
-            <form class="rfc-form" data-cod-rfc="{{ rfc.codigo }}">
-                {% if not rfc.params %}
-                <p class="text-muted small mb-2"><i class="fas fa-info-circle"></i> Nenhum parâmetro — clique em executar para rodar a RFC.</p>
-                {% endif %}
-                {% for p in rfc.params %}
-                <div class="mb-2">
-                    <label class="form-label small">{{ p.label }}{% if p.required %} *{% endif %}</label>
-                    {% if p.param_type == "string" %}
-                        {% if p.key == "bukrs" and empresas %}
-                        <select name="{{ p.key }}" class="form-select form-select-sm" {% if p.required %}required{% endif %}>
-                            <option value="">-- Selecione --</option>
-                            {% for emp in empresas %}
-                            <option value="{{ emp.cod_empresa }}">{{ emp.cod_empresa }} – {{ emp.fantasia|default:emp.razao|truncatechars:30 }}</option>
-                            {% endfor %}
-                        </select>
-                        {% elif p.key == "branch" and empresas %}
-                        <select name="{{ p.key }}" class="form-select form-select-sm rfc-branch-select" {% if p.required %}required{% endif %}>
-                            <option value="">Todas as filiais</option>
-                        </select>
-                        {% else %}
-                        <input type="text" name="{{ p.key }}" class="form-control form-control-sm" placeholder="{{ p.help_text|default:'' }}" {% if p.required %}required{% endif %} value="{{ p.default|default:'' }}">
-                        {% endif %}
-                    {% elif p.param_type == "date" %}
-                    <input type="date" name="{{ p.key }}" class="form-control form-control-sm" {% if p.required %}required{% endif %} value="{{ p.default|default:'' }}">
-                    {% elif p.param_type == "boolean" %}
-                    <div class="form-check">
-                        <input type="checkbox" name="{{ p.key }}" class="form-check-input" value="1" {% if p.default %}checked{% endif %}>
-                        <label class="form-check-label small">{{ p.help_text|default:"Sim" }}</label>
-                    </div>
-                    {% elif p.param_type == "textarea" %}
-                    <textarea name="{{ p.key }}" class="form-control form-control-sm font-monospace" rows="5" placeholder="{{ p.help_text|default:'' }}" {% if p.required %}required{% endif %}></textarea>
-                    {% else %}
-                    <input type="text" name="{{ p.key }}" class="form-control form-control-sm" {% if p.required %}required{% endif %} value="{{ p.default|default:'' }}">
-                    {% endif %}
-                    {% if p.help_text and p.param_type != "boolean" and p.param_type != "textarea" %}<small class="text-muted">{{ p.help_text }}</small>{% endif %}
-                </div>
-                {% endfor %}
-                <button type="submit" class="btn btn-primary btn-sm mt-2">
-                    <i class="fas fa-play"></i> Executar RFC
-                </button>
-            </form>
-            <div class="rfc-result mt-3" style="display:none;"></div>
-        </article>
-        {% empty %}
-        <article class="home-card rfc-card" style="grid-column: 1 / -1;">
-            <div class="home-card-head">
-                <h3>Nenhum RFC registrado</h3>
-            </div>
-            <p class="text-muted">Registre handlers em <code>app/integracao_sap/handlers.py</code>.</p>
-        </article>
-        {% endfor %}
-    </section>
-
-    <!-- Modal: resultado completo da RFC GDF_RFC_CONSULTA (Integração SAP) -->
-    <div class="modal fade" id="modalRfcConsultaSap" tabindex="-1" aria-labelledby="modalRfcConsultaSapLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
-            <div class="modal-content text-dark">
-                <div class="modal-header border-secondary">
-                    <div>
-                        <h5 class="modal-title mb-0" id="modalRfcConsultaSapLabel">Resultado da consulta SAP</h5>
-                        <p class="small text-muted mb-0 mt-1" id="modalRfcConsultaSapSub">/PRCIT/GDF_RFC_CONSULTA — retorno em R_RETURN (JSON); uma linha por chave consultada.</p>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-                </div>
-                <div class="modal-body p-0">
-                    <div class="table-responsive" style="max-height: min(70vh, 720px);">
-                        <table class="table table-sm table-striped table-hover mb-0 align-middle small" id="modalRfcConsultaSapTable">
-                            <thead class="table-light sticky-top shadow-sm">
-                                <tr>
-                                    <th scope="col">Chave</th>
-                                    <th scope="col">Tipos (GDF)</th>
-                                    <th scope="col" class="text-center">Docs</th>
-                                    <th scope="col">No SAP</th>
-                                    <th scope="col">STATUS</th>
-                                    <th scope="col">NAME_TABLE</th>
-                                    <th scope="col" class="text-center">Atual. GDF</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="modal-footer border-secondary">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                </div>
-            </div>
-        </div>
+  <section class="layout-hero rfc-sap-hero">
+    <div class="layout-hero-content">
+      <p class="layout-eyebrow">Processamento / Integração</p>
+      <h1 class="layout-title">Integração SAP via RFC</h1>
+      <p class="layout-subtitle rfc-sap-hero">
+        Execute RFCs para alimentar o schema <code>sap</code> ou consultar dados no SAP (ex.: <code>/PRCIT/GDF_RFC_CONSULTA</code>).
+        Configure a conexão SAP em Clientes → Conexão SAP.
+        <span class="d-block mt-2 rfc-sap-vpn-hint">Se o SAP exige VPN, o servidor deve estar conectado à VPN (não o seu navegador).</span>
+      </p>
     </div>
+  </section>
+
+  <section class="layout-panel">
+    <div class="rfc-sap-grid">
+      {% for rfc in rfc_handlers %}
+      <article class="rfc-sap-card layout-subcard" data-cod-rfc="{{ rfc.codigo }}">
+        <div class="rfc-sap-card-head">
+          <p class="rfc-sap-eyebrow">{{ rfc.tabela_sap }}</p>
+          <h3 class="rfc-sap-card-title">{{ rfc.nome }}</h3>
+        </div>
+        <p class="text-muted small mb-3">{{ rfc.descricao }}</p>
+
+        <form class="rfc-form" data-cod-rfc="{{ rfc.codigo }}">
+          {% if not rfc.params %}
+          <p class="text-muted small mb-2"><i class="fas fa-info-circle"></i> Nenhum parâmetro — clique em executar para rodar a RFC.</p>
+          {% endif %}
+          {% for p in rfc.params %}
+          <div class="mb-2">
+            <label class="form-label small">{{ p.label }}{% if p.required %} *{% endif %}</label>
+            {% if p.param_type == "string" %}
+                {% if p.key == "bukrs" and empresas %}
+                <select name="{{ p.key }}" class="form-select form-select-sm" {% if p.required %}required{% endif %}>
+                    <option value="">-- Selecione --</option>
+                    {% for emp in empresas %}
+                    <option value="{{ emp.cod_empresa }}">{{ emp.cod_empresa }} – {{ emp.fantasia|default:emp.razao|truncatechars:30 }}</option>
+                    {% endfor %}
+                </select>
+                {% elif p.key == "branch" and empresas %}
+                <select name="{{ p.key }}" class="form-select form-select-sm rfc-branch-select" {% if p.required %}required{% endif %}>
+                    <option value="">Todas as filiais</option>
+                </select>
+                {% else %}
+                <input type="text" name="{{ p.key }}" class="form-control form-control-sm" placeholder="{{ p.help_text|default:'' }}" {% if p.required %}required{% endif %} value="{{ p.default|default:'' }}">
+                {% endif %}
+            {% elif p.param_type == "date" %}
+            <input type="date" name="{{ p.key }}" class="form-control form-control-sm" {% if p.required %}required{% endif %} value="{{ p.default|default:'' }}">
+            {% elif p.param_type == "boolean" %}
+            <div class="form-check">
+                <input type="checkbox" name="{{ p.key }}" class="form-check-input" value="1" {% if p.default %}checked{% endif %}>
+                <label class="form-check-label small">{{ p.help_text|default:"Sim" }}</label>
+            </div>
+            {% elif p.param_type == "textarea" %}
+            <textarea name="{{ p.key }}" class="form-control form-control-sm font-monospace" rows="5" placeholder="{{ p.help_text|default:'' }}" {% if p.required %}required{% endif %}></textarea>
+            {% else %}
+            <input type="text" name="{{ p.key }}" class="form-control form-control-sm" {% if p.required %}required{% endif %} value="{{ p.default|default:'' }}">
+            {% endif %}
+            {% if p.help_text and p.param_type != "boolean" and p.param_type != "textarea" %}<small class="text-muted">{{ p.help_text }}</small>{% endif %}
+          </div>
+          {% endfor %}
+          <button type="submit" class="btn btn-primary btn-sm mt-2">
+            <i class="fas fa-play"></i> Executar RFC
+          </button>
+        </form>
+        <div class="rfc-result mt-3 d-none"></div>
+      </article>
+      {% empty %}
+      <article class="rfc-sap-card rfc-sap-card--empty layout-subcard">
+        <div class="rfc-sap-card-head">
+          <h3 class="rfc-sap-card-title">Nenhum RFC registrado</h3>
+        </div>
+        <p class="text-muted mb-0">Registre handlers em <code>app/integracao_sap/handlers.py</code>.</p>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
 </div>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  var pageEl = document.querySelector('[data-api-rfc-executar]');
-  var apiUrl = pageEl ? (pageEl.getAttribute('data-api-rfc-executar') || pageEl.dataset.apiRfcExecutar) : '';
-  if (!apiUrl) return;
+{% include 'IntegracaoSap/modal_Rfc.html' %}
 
-  var csrfEl = document.querySelector('[name=csrfmiddlewaretoken]');
-  function getCookie(name) {
-    var m = document.cookie.match('(?:^|; )' + name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&') + '=([^;]*)');
-    return m ? decodeURIComponent(m[1]) : '';
-  }
-  var getCsrf = function() {
-    if (csrfEl && csrfEl.value) return csrfEl.value;
-    return getCookie('csrftoken') || '';
-  };
+{% endblock %}
 
-  var lastConsultaSapLinhas = null;
-
-  function escHtml(s) {
-    var d = document.createElement('div');
-    d.textContent = s == null ? '' : String(s);
-    return d.innerHTML;
-  }
-
-  function preencherModalConsultaSap(linhas) {
-    var tb = document.querySelector('#modalRfcConsultaSapTable tbody');
-    var titleEl = document.getElementById('modalRfcConsultaSapLabel');
-    if (!tb) return;
-    var n = (linhas && linhas.length) ? linhas.length : 0;
-    if (titleEl) titleEl.textContent = 'Resultado da consulta SAP — ' + n + ' chave(s)';
-    var html = '';
-    (linhas || []).forEach(function(l) {
-      var ts = l.tem_sap
-        ? '<span class="text-success fw-semibold">Sim</span>'
-        : '<span class="text-secondary">Não</span>';
-      var ag = (l.atualizado_gdf && Number(l.atualizado_gdf) > 0)
-        ? '<span class="text-success fw-semibold">' + escHtml(l.atualizado_gdf) + '</span>'
-        : '<span class="text-muted">0</span>';
-      html += '<tr><td class="font-monospace text-break">' + escHtml(l.chave) + '</td>' +
-        '<td>' + escHtml(l.tipos) + '</td><td class="text-center">' + escHtml(l.qtd_docs) + '</td><td>' + ts + '</td>' +
-        '<td>' + escHtml(l.status) + '</td><td class="text-break font-monospace">' + escHtml(l.name_table) + '</td><td class="text-center">' + ag + '</td></tr>';
-    });
-    tb.innerHTML = html;
-  }
-
-  function abrirModalConsultaSap(linhas) {
-    var el = document.getElementById('modalRfcConsultaSap');
-    if (!el || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
-    preencherModalConsultaSap(linhas);
-    bootstrap.Modal.getOrCreateInstance(el).show();
-  }
-
-  if (pageEl) {
-    pageEl.addEventListener('click', function(ev) {
-      var t = ev.target && ev.target.closest ? ev.target.closest('#btnRfcReabrirModalConsulta') : null;
-      if (t && lastConsultaSapLinhas && lastConsultaSapLinhas.length) {
-        abrirModalConsultaSap(lastConsultaSapLinhas);
-      }
-    });
-  }
-
-  document.querySelectorAll('.rfc-form').forEach(function(form) {
-    form.addEventListener('submit', function(e) {
-      e.preventDefault();
-      var codRfc = form.getAttribute('data-cod-rfc') || form.dataset.codRfc || '';
-      var params = {};
-      form.querySelectorAll('input, select, textarea').forEach(function(el) {
-        if (!el.name) return;
-        if (el.type === 'checkbox') {
-          params[el.name] = el.checked;
-        } else {
-          var v = el.tagName === 'TEXTAREA' ? (el.value || '') : (el.value || '').trim();
-          if (v || el.tagName === 'TEXTAREA') params[el.name] = v;
-        }
-      });
-      var card = form.closest('.rfc-card');
-      var resultEl = card ? card.querySelector('.rfc-result') : null;
-      var btn = form.querySelector('button[type="submit"]');
-      if (!resultEl) return;
-      if (btn) btn.disabled = true;
-      resultEl.style.display = 'block';
-      resultEl.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin"></i> Executando...</span>';
-
-      fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCsrf(),
-          'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: JSON.stringify({ cod_rfc: codRfc, params: params }),
-        credentials: 'same-origin'
-      })
-      .then(function(r) {
-        return r.text().then(function(text) {
-          var data = null;
-          try {
-            data = text ? JSON.parse(text) : {};
-          } catch (parseErr) {
-            var head = (text || '').replace(/^\s+/, '').slice(0, 1);
-            var hint;
-            if (r.status === 502 || r.status === 503 || r.status === 504) {
-              hint = 'Gateway ou tempo esgotado: a RFC pode demorar muito e o proxy ou o Gunicorn encerrou a conexão. '
-                + 'Aumente GUNICORN_TIMEOUT (ex.: 600) e no Nginx proxy_read_timeout para /api/; confira logs do Gunicorn. '
-                + 'Se não for timeout, pode ser página HTML de erro do proxy.';
-            } else if (head === '<') {
-              hint = 'O servidor devolveu HTML (login, CSRF ou erro), não JSON. Atualize a página, faça login de novo; '
-                + 'se persistir, confira se o cookie csrftoken está sendo enviado.';
-            } else {
-              hint = (text || '').replace(/\s+/g, ' ').trim().slice(0, 180);
-            }
-            throw new Error('Resposta não é JSON (HTTP ' + r.status + '). ' + hint);
-          }
-          return { ok: r.ok, status: r.status, data: data };
-        });
-      })
-      .then(function(resp) {
-        var data = resp.data;
-        if (!resp.ok) {
-          var errMsg = (data && (data.mensagem || data.erro || data.detail)) || ('HTTP ' + resp.status);
-          resultEl.innerHTML = '<div class="alert alert-danger small mb-0">' + escHtml(errMsg) + '</div>';
-          return;
-        }
-        if (data.sucesso) {
-          var msg = (data.mensagem || 'OK');
-          if (data.total_pendentes !== undefined) msg += ' <br><span class="d-inline-block mt-1">Documentos pendentes: ' + data.total_pendentes + '</span>';
-          if (data.total_chaves_unicas !== undefined) msg += ' | Chaves únicas consultadas: ' + data.total_chaves_unicas;
-          if (data.total_atualizados !== undefined) msg += ' | Atualizados no GDF: ' + data.total_atualizados;
-          if (data.total_linhas !== undefined && data.total_atualizados === undefined) msg += ' Linhas: ' + data.total_linhas;
-          if (data.total_gravados !== undefined) msg += ' | Gravados: ' + data.total_gravados;
-          var html = '<div class="alert alert-success small mb-2">' + msg + '</div>';
-          lastConsultaSapLinhas = null;
-          if (data.linhas_consulta_sap && data.linhas_consulta_sap.length) {
-            lastConsultaSapLinhas = data.linhas_consulta_sap;
-            html += '<p class="small mb-2 opacity-90">A tabela completa foi aberta em um modal. Use o botão abaixo para abrir novamente.</p>' +
-              '<button type="button" class="btn btn-sm btn-outline-light" id="btnRfcReabrirModalConsulta">' +
-              '<i class="fas fa-table me-1"></i>Ver resultados completos (' + data.linhas_consulta_sap.length + ' chave(s))</button>';
-            abrirModalConsultaSap(data.linhas_consulta_sap);
-          } else if (data.linhas && data.linhas.length) {
-            var hasTipo = data.linhas.some(function(l) { return l.tipo; });
-            html += '<div class="table-responsive"><table class="table table-sm table-bordered mb-0 small"><thead><tr>' +
-              (hasTipo ? '<th>Tipo</th>' : '') + '<th>Chave</th><th>No SAP</th><th>STATUS</th><th>NAME_TABLE</th></tr></thead><tbody>';
-            data.linhas.forEach(function(l) {
-              var ts = l.tem_sap ? '<span class="text-success">Sim</span>' : '<span class="text-muted">Não</span>';
-              var ch = (l.chave != null ? String(l.chave) : '');
-              var st = (l.status != null ? String(l.status) : '');
-              var nt = (l.name_table != null ? String(l.name_table) : '');
-              var tipoTd = hasTipo ? '<td>' + escHtml(l.tipo != null ? String(l.tipo) : '') + '</td>' : '';
-              html += '<tr>' + tipoTd + '<td class="font-monospace text-break">' + escHtml(ch) + '</td><td>' + ts + '</td><td>' + escHtml(st) + '</td><td class="text-break">' + escHtml(nt) + '</td></tr>';
-            });
-            html += '</tbody></table></div>';
-          }
-          resultEl.innerHTML = html;
-        } else {
-          var failMsg = (data.mensagem || data.erro || 'Erro');
-          resultEl.innerHTML = '<div class="alert alert-danger small mb-0">' + escHtml(failMsg) + '</div>';
-        }
-      })
-      .catch(function(err) {
-        resultEl.innerHTML = '<div class="alert alert-danger small mb-0">' + escHtml(err.message || 'Erro na requisição') + '</div>';
-      })
-      .finally(function() {
-        if (btn) btn.disabled = false;
-      });
-    });
-  });
-
-  var filiaisEl = document.getElementById('filiais-por-empresa-data');
-  var filiaisData = {};
-  try {
-    if (filiaisEl && filiaisEl.textContent) filiaisData = JSON.parse(filiaisEl.textContent);
-  } catch (e) {}
-  document.querySelectorAll('select[name=bukrs]').forEach(function(selEmp) {
-    var card = selEmp.closest('.rfc-card');
-    var selFilial = card ? card.querySelector('select[name=branch].rfc-branch-select') : null;
-    if (!selFilial) return;
-    selEmp.addEventListener('change', function() {
-      var cod = this.value;
-      selFilial.innerHTML = '<option value="">Todas as filiais</option>';
-      if (cod && filiaisData[cod]) {
-        filiaisData[cod].forEach(function(f) {
-          var opt = document.createElement('option');
-          opt.value = f.cod_filial;
-          opt.textContent = f.cod_filial + (f.nome ? ' – ' + f.nome : '');
-          selFilial.appendChild(opt);
-        });
-      }
-    });
-  });
-});
-</script>
+{% block scripts %}
+<script src="{% static 'js/Script_IntegracaoRfc.js' %}"></script>
 {% endblock %}

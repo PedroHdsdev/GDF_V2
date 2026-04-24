@@ -1,0 +1,35 @@
+{# Modal: resultado completo da RFC GDF_RFC_CONSULTA (tabela R_RETURN). IDs usados em Script_IntegracaoRfc.js #}
+<div class="modal fade rfc-sap-modal" id="modalRfcConsultaSap" tabindex="-1" aria-labelledby="modalRfcConsultaSapLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content text-dark">
+      <div class="modal-header border-secondary">
+        <div>
+          <h5 class="modal-title mb-0" id="modalRfcConsultaSapLabel">Resultado da consulta SAP</h5>
+          <p class="small text-muted mb-0 mt-1" id="modalRfcConsultaSapSub">/PRCIT/GDF_RFC_CONSULTA — retorno em R_RETURN (JSON); uma linha por chave consultada.</p>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div class="table-responsive rfc-sap-modal-table-wrap">
+          <table class="table table-sm table-striped table-hover mb-0 align-middle small" id="modalRfcConsultaSapTable">
+            <thead class="table-light sticky-top shadow-sm">
+              <tr>
+                <th scope="col">Chave</th>
+                <th scope="col">Tipos (GDF)</th>
+                <th scope="col" class="text-center">Docs</th>
+                <th scope="col">No SAP</th>
+                <th scope="col">STATUS</th>
+                <th scope="col">NAME_TABLE</th>
+                <th scope="col" class="text-center">Atual. GDF</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer border-secondary">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>

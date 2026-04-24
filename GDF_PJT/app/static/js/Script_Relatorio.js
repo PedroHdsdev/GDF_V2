@@ -265,6 +265,19 @@ function escapeHtml(s) {
     return div.innerHTML;
 }
 
+function escapeAttr(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+}
+
+/** Célula de tabela: texto vindo da API, ou traço. */
+function relTxt(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    return escapeHtml(String(v));
+}
+
 function relatorioFmtFilialCelula(x) {
     if (!x || !x.filial) return '—';
     return escapeHtml(String(x.filial));
@@ -770,15 +783,15 @@ function relatorioCarregarNFe() {
                 return;
             }
             tbody.innerHTML = items.map(function (x) {
-                return '<tr class="tr-relatorio-click" data-tipo="nfe" data-id="' + (x.id_nfe || '') + '">' +
-                    '<td>' + (x.numero || '-') + '</td><td>' + (x.serie || '-') + '</td>' +
-                    '<td class="small text-truncate" style="max-width:120px" title="' + (x.chave || '').replace(/"/g, '&quot;') + '">' + (x.chave || '-') + '</td>' +
-                    '<td>' + (x.emissao ? x.emissao.slice(0, 10) : '-') + '</td>' +
-                    '<td>' + (x.tipo_operacao === '1' ? 'Saída' : 'Entrada') + '</td><td>' + (x.status || '-') + '</td>' +
-                    '<td>' + (x.empresa || '-') + '</td>' +
+                return '<tr class="tr-relatorio-click" data-tipo="nfe" data-id="' + escapeAttr(x.id_nfe) + '">' +
+                    '<td>' + relTxt(x.numero) + '</td><td>' + relTxt(x.serie) + '</td>' +
+                    '<td class="small text-truncate" style="max-width:120px" title="' + escapeAttr(x.chave || '') + '">' + relTxt(x.chave) + '</td>' +
+                    '<td>' + (x.emissao ? escapeHtml(String(x.emissao.slice(0, 10))) : '—') + '</td>' +
+                    '<td>' + (x.tipo_operacao === '1' ? 'Saída' : 'Entrada') + '</td><td>' + relTxt(x.status) + '</td>' +
+                    '<td>' + relTxt(x.empresa) + '</td>' +
                     '<td class="text-truncate" style="max-width:140px">' + relatorioFmtFilialCelula(x) + '</td>' +
-                    '<td class="text-truncate" style="max-width:150px" title="' + (x.natureza || '').replace(/"/g, '&quot;') + '">' + (x.natureza || '-') + '</td>' +
-                    '<td class="text-truncate small" style="max-width:140px" title="' + (String(x.condicao_pagamento_sap || '')).replace(/"/g, '&quot;') + '">' + (x.condicao_pagamento_sap || '-') + '</td>' +
+                    '<td class="text-truncate" style="max-width:150px" title="' + escapeAttr(x.natureza || '') + '">' + relTxt(x.natureza) + '</td>' +
+                    '<td class="text-truncate small" style="max-width:140px" title="' + escapeAttr(x.condicao_pagamento_sap != null ? String(x.condicao_pagamento_sap) : '') + '">' + relTxt(x.condicao_pagamento_sap) + '</td>' +
                     '<td class="text-center">' + relatorioFmtSapCelula(x) + '</td></tr>';
             }).join('');
             tbody.querySelectorAll('tr[data-id]').forEach(function (tr) {
@@ -806,10 +819,10 @@ function relatorioCarregarCTe() {
                 return;
             }
             tbody.innerHTML = items.map(function (x) {
-                return '<tr class="tr-relatorio-click" data-tipo="cte" data-id="' + (x.id_cte || '') + '">' +
-                    '<td>' + (x.numero || '-') + '</td><td>' + (x.serie || '-') + '</td>' +
-                    '<td class="small text-truncate" style="max-width:120px">' + (x.chave || '-') + '</td>' +
-                    '<td>' + (x.emissao ? x.emissao.slice(0, 10) : '-') + '</td><td>' + (x.empresa || '-') + '</td>' +
+                return '<tr class="tr-relatorio-click" data-tipo="cte" data-id="' + escapeAttr(x.id_cte) + '">' +
+                    '<td>' + relTxt(x.numero) + '</td><td>' + relTxt(x.serie) + '</td>' +
+                    '<td class="small text-truncate" style="max-width:120px">' + relTxt(x.chave) + '</td>' +
+                    '<td>' + (x.emissao ? escapeHtml(String(x.emissao.slice(0, 10))) : '—') + '</td><td>' + relTxt(x.empresa) + '</td>' +
                     '<td class="text-truncate" style="max-width:140px">' + relatorioFmtFilialCelula(x) + '</td>' +
                     '<td class="text-center">' + relatorioFmtSapCelula(x) + '</td></tr>';
             }).join('');
@@ -838,10 +851,10 @@ function relatorioCarregarNFSe() {
                 return;
             }
             tbody.innerHTML = items.map(function (x) {
-                return '<tr class="tr-relatorio-click" data-tipo="nfse" data-id="' + (x.id_nfse || '') + '">' +
-                    '<td>' + (x.numero || '-') + '</td>' +
-                    '<td class="small text-truncate" style="max-width:120px">' + (x.chave || '-') + '</td>' +
-                    '<td>' + (x.emissao ? x.emissao.slice(0, 10) : '-') + '</td><td>' + (x.empresa || '-') + '</td>' +
+                return '<tr class="tr-relatorio-click" data-tipo="nfse" data-id="' + escapeAttr(x.id_nfse) + '">' +
+                    '<td>' + relTxt(x.numero) + '</td>' +
+                    '<td class="small text-truncate" style="max-width:120px">' + relTxt(x.chave) + '</td>' +
+                    '<td>' + (x.emissao ? escapeHtml(String(x.emissao.slice(0, 10))) : '—') + '</td><td>' + relTxt(x.empresa) + '</td>' +
                     '<td class="text-truncate" style="max-width:140px">' + relatorioFmtFilialCelula(x) + '</td>' +
                     '<td class="text-center">' + relatorioFmtSapCelula(x) + '</td></tr>';
             }).join('');
@@ -869,11 +882,11 @@ function relatorioCarregarSped() {
                 return;
             }
             tbody.innerHTML = items.map(function (x) {
-                return '<tr class="tr-relatorio-click" data-tipo="sped" data-id="' + (x.id_arquivo || '') + '" data-tipo-sped="' + (x.tipo || 'F') + '">' +
-                    '<td>' + (x.tipo_display || x.tipo || '-') + '</td>' +
-                    '<td>' + (x.competencia ? x.competencia.slice(0, 10) : '-') + '</td>' +
-                    '<td class="text-truncate" style="max-width:200px">' + (x.nome_arquivo || '-') + '</td>' +
-                    '<td>' + (x.data_carga ? x.data_carga.slice(0, 16) : '-') + '</td><td>' + (x.empresa || '-') + '</td></tr>';
+                return '<tr class="tr-relatorio-click" data-tipo="sped" data-id="' + escapeAttr(x.id_arquivo) + '" data-tipo-sped="' + escapeAttr(x.tipo || 'F') + '">' +
+                    '<td>' + relTxt(x.tipo_display != null && x.tipo_display !== '' ? x.tipo_display : x.tipo) + '</td>' +
+                    '<td>' + (x.competencia ? escapeHtml(String(x.competencia.slice(0, 10))) : '—') + '</td>' +
+                    '<td class="text-truncate" style="max-width:200px">' + relTxt(x.nome_arquivo) + '</td>' +
+                    '<td>' + (x.data_carga ? escapeHtml(String(x.data_carga.slice(0, 16))) : '—') + '</td><td>' + relTxt(x.empresa) + '</td></tr>';
             }).join('');
             tbody.querySelectorAll('tr[data-id]').forEach(function (tr) {
                 var t = tr.getAttribute('data-tipo');

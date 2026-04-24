@@ -14,6 +14,13 @@ const og_estado_usuarios = {
     modalAberto: null          // ✅ Controlar qual modal está aberto
 };
 
+function fn_usuarios_escAttr(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+}
+
 /* ===============================
    VALIDAÇÃO DO FORMULÁRIO INSERT
 ================================ */
@@ -312,7 +319,7 @@ function fn_atualizar_tabela_filtrada() {
     } else {
         // ✅ Renderizar apenas usuários da página atual usando HTML guardado
         tbody.innerHTML = paginacao.itemsNoInterval
-            .map(user => `<tr class="user-row" data-user-id="${user.id}">${user.html}</tr>`)
+            .map(user => `<tr class="user-row" data-user-id="${fn_usuarios_escAttr(user.id)}">${user.html}</tr>`)
             .join('');
         
         // ✅ Re-adicionar listeners de clique após renderizar

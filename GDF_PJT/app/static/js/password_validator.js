@@ -67,6 +67,12 @@ class PasswordValidator {
         return /012|123|234|345|456|567|678|789|890|abc|bcd|cde/.test(password);
     }
 
+    static esc(s) {
+        const d = document.createElement('div');
+        d.textContent = s == null ? '' : String(s);
+        return d.innerHTML;
+    }
+
     updateFeedback(checks, strength, length) {
         if (!this.feedback) return;
 
@@ -87,17 +93,17 @@ class PasswordValidator {
                     </div>
                 </div>
                 <p class="strength-text" style="color: ${this.getStrengthColor(strength)};">
-                    Força: ${this.getStrengthLabel(strength)}
+                    Força: ${PasswordValidator.esc(this.getStrengthLabel(strength))}
                 </p>
         `;
 
         if (unmet.length > 0) {
             html += '<ul class="requirements">';
             unmet.forEach(req => {
-                html += `<li class="unmet">❌ ${req.text}</li>`;
+                html += '<li class="unmet">❌ ' + PasswordValidator.esc(req.text) + '</li>';
             });
             requirements.filter(r => r.met).forEach(req => {
-                html += `<li class="met">${req.text}</li>`;
+                html += '<li class="met">' + PasswordValidator.esc(req.text) + '</li>';
             });
             html += '</ul>';
         } else {

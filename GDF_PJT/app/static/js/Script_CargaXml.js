@@ -65,6 +65,31 @@ function partesDataLocalDeIso(iso) {
     }
 }
 
+function cargaXmlBadgeDefinirConteudo(statusCell, badgeClass, statusTexto, iconHtml, tituloOpt) {
+    if (!statusCell) return;
+    var span = document.createElement('span');
+    span.className = 'badge-status ' + badgeClass;
+    if (tituloOpt != null && tituloOpt !== '') {
+        span.setAttribute('title', String(tituloOpt));
+    }
+    if (iconHtml) {
+        var w = document.createElement('span');
+        w.innerHTML = iconHtml;
+        while (w.firstChild) {
+            span.appendChild(w.firstChild);
+        }
+    }
+    span.appendChild(document.createTextNode(String(statusTexto)));
+    statusCell.textContent = '';
+    statusCell.appendChild(span);
+}
+
+function cargaXmlEscHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+}
+
 /* ===============================
    INICIALIZAR ELEMENTOS
 ================================ */
@@ -788,12 +813,12 @@ function renderizarEmExecucao() {
         li.setAttribute('data-job-id', carga.id);
         var isoEm = (carga.detalhes && carga.detalhes.started_at) ? carga.detalhes.started_at : null;
         var dataStr = isoEm ? formatJobDateTimeLocal(isoEm, false) : ((carga.data && carga.hora) ? (carga.data + ' ' + carga.hora) : '-');
-        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + (carga.tipo || 'XML') + '</span>' +
+        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + cargaXmlEscHtml(carga.tipo || 'XML') + '</span>' +
             '<div class="home-activity-detail">' +
             '<span class="home-activity-status home-activity-status-running">Em execução</span>' +
-            '<span class="home-activity-meta">' + (carga.resumo || '') + '</span></div>' +
-            '<div class="home-activity-time">' + dataStr + '</div>' +
-            '<a href="#" class="home-activity-link" data-job-id="' + carga.id + '" title="Ver detalhes">→</a>';
+            '<span class="home-activity-meta">' + cargaXmlEscHtml(carga.resumo || '') + '</span></div>' +
+            '<div class="home-activity-time">' + cargaXmlEscHtml(dataStr) + '</div>' +
+            '<a href="#" class="home-activity-link" data-job-id="' + cargaXmlEscHtml(carga.id) + '" title="Ver detalhes">→</a>';
         li.addEventListener('click', function (e) {
             e.preventDefault();
             abrirModalJob(carga.id);
@@ -826,12 +851,12 @@ function renderizarJaExecutado() {
         var statusClass = (carga.status || '').toUpperCase() === 'ERROR' ? 'home-activity-status-error' : 'home-activity-status-success';
         var isoJa = (carga.detalhes && carga.detalhes.started_at) ? carga.detalhes.started_at : null;
         var dataStr = isoJa ? formatJobDateTimeLocal(isoJa, false) : ((carga.data && carga.hora) ? (carga.data + ' ' + carga.hora) : '-');
-        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + (carga.tipo || 'XML') + '</span>' +
+        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + cargaXmlEscHtml(carga.tipo || 'XML') + '</span>' +
             '<div class="home-activity-detail">' +
             '<span class="home-activity-status ' + statusClass + '">' + (carga.status === 'SUCCESS' ? 'Concluído' : 'Erro') + '</span>' +
-            '<span class="home-activity-meta">' + (carga.resumo || '') + '</span></div>' +
-            '<div class="home-activity-time">' + dataStr + '</div>' +
-            '<a href="#" class="home-activity-link" data-job-id="' + carga.id + '" title="Ver log">→</a>';
+            '<span class="home-activity-meta">' + cargaXmlEscHtml(carga.resumo || '') + '</span></div>' +
+            '<div class="home-activity-time">' + cargaXmlEscHtml(dataStr) + '</div>' +
+            '<a href="#" class="home-activity-link" data-job-id="' + cargaXmlEscHtml(carga.id) + '" title="Ver log">→</a>';
         li.addEventListener('click', function (e) {
             e.preventDefault();
             abrirModalJob(carga.id);
@@ -964,7 +989,7 @@ function atualizarConteudoModalJob(data, expectedJobId) {
                 else if (t.indexOf('PENDENTES') === 0) rowClass = 'aviso-log-pendente';
                 else if (t.indexOf('OK:') === 0) rowClass = 'aviso-log-ok';
                 if (rowClass) tr.className = rowClass;
-                var text = (line || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                var text = cargaXmlEscHtml(line || '');
                 tr.innerHTML = '<td>' + (idx + 1) + '</td><td>' + text + '</td>';
                 tbodyLog.appendChild(tr);
             });
@@ -1661,15 +1686,21 @@ function atualizarStatusUpload(index, status, mensagem) {
                 iconHtml = '<span class="spinner-carga" style="margin-right: 5px;"></span>';
             } else if (status === 'success') {
                 badgeClass = 'badge-success';
-                statusTexto = mensagem || '✓ Concluído';
+                statusTexto = mensagem != null && mensagem !== '' ? mensagem : '✓ Concluído';
                 iconHtml = '';
             } else if (status === 'error') {
                 badgeClass = 'badge-danger';
-                statusTexto = mensagem || '✗ Concluído com erros';
+                statusTexto = mensagem != null && mensagem !== '' ? mensagem : '✗ Concluído com erros';
                 iconHtml = '';
             }
 
-            if (statusCell) statusCell.innerHTML = '<span class="badge-status ' + badgeClass + '" title="' + (mensagem || '') + '">' + iconHtml + statusTexto + '</span>';
+            cargaXmlBadgeDefinirConteudo(
+                statusCell,
+                badgeClass,
+                statusTexto,
+                iconHtml,
+                mensagem != null && mensagem !== '' ? mensagem : statusTexto
+            );
         }
         return;
     }
@@ -1684,19 +1715,25 @@ function atualizarStatusUpload(index, status, mensagem) {
 
         if (status === 'processing') {
             badgeClass = 'badge-warning';
-            statusTexto = mensagem || 'Processando...';
+            statusTexto = mensagem != null && mensagem !== '' ? mensagem : 'Processando...';
             iconHtml = '<span class="spinner-carga" style="margin-right: 5px;"></span>';
         } else if (status === 'success') {
             badgeClass = 'badge-success';
-            statusTexto = mensagem || '✓ Sucesso';
+            statusTexto = mensagem != null && mensagem !== '' ? mensagem : '✓ Sucesso';
             iconHtml = '';
         } else if (status === 'error') {
             badgeClass = 'badge-danger';
-            statusTexto = mensagem || '✗ Erro';
+            statusTexto = mensagem != null && mensagem !== '' ? mensagem : '✗ Erro';
             iconHtml = '';
         }
 
-        if (statusCell) statusCell.innerHTML = '<span class="badge-status ' + badgeClass + '" title="' + (mensagem || '') + '">' + iconHtml + statusTexto + '</span>';
+        cargaXmlBadgeDefinirConteudo(
+            statusCell,
+            badgeClass,
+            statusTexto,
+            iconHtml,
+            mensagem != null && mensagem !== '' ? mensagem : statusTexto
+        );
     }
     } catch (e) { console.warn('atualizarStatusUpload:', e); }
 }

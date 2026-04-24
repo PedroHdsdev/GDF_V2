@@ -9,6 +9,12 @@ function fn_filial_url_prefix() {
   return (el && el.getAttribute("data-url-prefix")) || "";
 }
 
+function fn_filial_escHtml(s) {
+  var d = document.createElement("div");
+  d.textContent = s == null ? "" : String(s);
+  return d.innerHTML;
+}
+
 function fn_abrir_editar_filial(filialId) {
   var urlPrefix = fn_filial_url_prefix();
   var alertEl = document.getElementById("modalFilialEditarAlerts");
@@ -76,12 +82,18 @@ function fn_submit_editar_filial(event) {
     })
     .then(function (result) {
       if (result.ok && result.data.success) {
-        if (alertEl) alertEl.innerHTML = '<div class="alert alert-success py-2">' + (result.data.message || "Filial atualizada.") + "</div>";
+        if (alertEl) {
+          alertEl.innerHTML =
+            '<div class="alert alert-success py-2">' + fn_filial_escHtml(result.data.message || "Filial atualizada.") + "</div>";
+        }
         setTimeout(function () {
           window.location.reload();
         }, 1000);
       } else {
-        if (alertEl) alertEl.innerHTML = '<div class="alert alert-danger py-2">' + (result.data.erro || "Erro ao atualizar.") + "</div>";
+        if (alertEl) {
+          alertEl.innerHTML =
+            '<div class="alert alert-danger py-2">' + fn_filial_escHtml(result.data.erro || "Erro ao atualizar.") + "</div>";
+        }
       }
     })
     .catch(function () {
@@ -129,12 +141,18 @@ function fn_validar_formulario_filial_ins(event) {
     .then(function (result) {
       var al = document.getElementById("modalFilialInsAlerts");
       if (result.ok && result.data.success) {
-        if (al) al.innerHTML = '<div class="alert alert-success py-2">' + (result.data.message || "Filial cadastrada.") + "</div>";
+        if (al) {
+          al.innerHTML =
+            '<div class="alert alert-success py-2">' + fn_filial_escHtml(result.data.message || "Filial cadastrada.") + "</div>";
+        }
         setTimeout(function () {
           window.location.reload();
         }, 1000);
       } else {
-        if (al) al.innerHTML = '<div class="alert alert-danger py-2">' + (result.data.erro || "Erro ao cadastrar.") + "</div>";
+        if (al) {
+          al.innerHTML =
+            '<div class="alert alert-danger py-2">' + fn_filial_escHtml(result.data.erro || "Erro ao cadastrar.") + "</div>";
+        }
       }
     })
     .catch(function () {

@@ -6,6 +6,19 @@ const manifestoState = {
     itemsPerPage: 50
 };
 
+function fn_manifesto_escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+}
+
+function fn_manifesto_escAttr(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+}
+
 function fn_manifesto_status_class(status) {
     const normalized = (status || '').toLowerCase();
     if (normalized.includes('autorizada')) return 'autorizada';
@@ -15,7 +28,9 @@ function fn_manifesto_status_class(status) {
 
 function fn_manifesto_format_currency(value) {
     const parsed = Number(value);
-    if (Number.isNaN(parsed)) return value;
+    if (Number.isNaN(parsed)) {
+        return fn_manifesto_escHtml(String(value == null ? '' : value));
+    }
     return parsed.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
@@ -133,16 +148,17 @@ function fn_manifesto_render_notas() {
 
     tbody.innerHTML = paginacao.itemsNoInterval.map((nota) => {
         const badgeClass = fn_manifesto_status_class(nota.status);
+        const stLabel = String((nota.status || '').replace('_', ' '));
         return `
-            <tr data-nota-id="${nota.id}">
-                <td>${nota.tipo}</td>
-                <td>${nota.numero}</td>
-                <td>${nota.serie}</td>
-                <td>${nota.emissao}</td>
-                <td>${nota.emitente}</td>
-                <td>${nota.destinatario}</td>
+            <tr data-nota-id="${fn_manifesto_escAttr(nota.id)}">
+                <td>${fn_manifesto_escHtml(nota.tipo)}</td>
+                <td>${fn_manifesto_escHtml(nota.numero)}</td>
+                <td>${fn_manifesto_escHtml(nota.serie)}</td>
+                <td>${fn_manifesto_escHtml(nota.emissao)}</td>
+                <td>${fn_manifesto_escHtml(nota.emitente)}</td>
+                <td>${fn_manifesto_escHtml(nota.destinatario)}</td>
                 <td class="text-end">${fn_manifesto_format_currency(nota.valor)}</td>
-                <td><span class="manifesto-badge ${badgeClass}">${nota.status.replace('_', ' ')}</span></td>
+                <td><span class="manifesto-badge ${badgeClass}">${fn_manifesto_escHtml(stLabel)}</span></td>
             </tr>
         `;
     }).join('');
@@ -164,11 +180,11 @@ function fn_manifesto_render_documentos(documentos) {
         const itensHtml = (doc.itens || []).map((item) => {
             return `
                 <tr>
-                    <td>${item.seq}</td>
-                    <td>${item.material}</td>
-                    <td>${item.descricao}</td>
-                    <td class="text-end">${item.qtd}</td>
-                    <td>${item.un}</td>
+                    <td>${fn_manifesto_escHtml(item.seq)}</td>
+                    <td>${fn_manifesto_escHtml(item.material)}</td>
+                    <td>${fn_manifesto_escHtml(item.descricao)}</td>
+                    <td class="text-end">${fn_manifesto_escHtml(item.qtd)}</td>
+                    <td>${fn_manifesto_escHtml(item.un)}</td>
                     <td class="text-end">${fn_manifesto_format_currency(item.valor)}</td>
                 </tr>
             `;
@@ -176,15 +192,15 @@ function fn_manifesto_render_documentos(documentos) {
 
         return `
             <div class="manifesto-doc-card">
-                <div class="manifesto-doc-header manifesto-doc-toggle" data-doc-id="${docId}">
+                <div class="manifesto-doc-header manifesto-doc-toggle" data-doc-id="${fn_manifesto_escAttr(docId)}">
                     <div class="manifesto-doc-header-content">
                         <span class="manifesto-doc-toggle-icon">▶</span>
                         <div>
-                            <div class="manifesto-doc-title">${doc.tipo} ${doc.numero}</div>
-                            <div class="manifesto-doc-meta">Data ${doc.data} • Status ${doc.status}</div>
+                            <div class="manifesto-doc-title">${fn_manifesto_escHtml(doc.tipo)} ${fn_manifesto_escHtml(doc.numero)}</div>
+                            <div class="manifesto-doc-meta">Data ${fn_manifesto_escHtml(doc.data)} • Status ${fn_manifesto_escHtml(doc.status)}</div>
                         </div>
                     </div>
-                    <span class="manifesto-badge ${fn_manifesto_status_class(doc.status)}">${doc.status}</span>
+                    <span class="manifesto-badge ${fn_manifesto_status_class(doc.status)}">${fn_manifesto_escHtml(doc.status)}</span>
                 </div>
                 <div class="manifesto-doc-content" id="${docId}" style="display: none;">
                     <div class="table-responsive">
@@ -257,12 +273,12 @@ function fn_manifesto_render_itens(itens, documentos = []) {
         const isLinked = linkedSeqs.has(String(item.seq));
         const rowClass = isLinked ? 'manifesto-item-linked' : '';
         return `
-            <tr class="${rowClass}" data-item-seq="${item.seq}">
-                <td>${item.seq}</td>
-                <td>${item.codigo}</td>
-                <td>${item.descricao}</td>
-                <td class="text-end">${item.qtd}</td>
-                <td>${item.un}</td>
+            <tr class="${rowClass}" data-item-seq="${fn_manifesto_escAttr(item.seq)}">
+                <td>${fn_manifesto_escHtml(item.seq)}</td>
+                <td>${fn_manifesto_escHtml(item.codigo)}</td>
+                <td>${fn_manifesto_escHtml(item.descricao)}</td>
+                <td class="text-end">${fn_manifesto_escHtml(item.qtd)}</td>
+                <td>${fn_manifesto_escHtml(item.un)}</td>
                 <td class="text-end">${fn_manifesto_format_currency(item.valor)}</td>
             </tr>
         `;
@@ -324,11 +340,11 @@ function fn_manifesto_render_item_details(item) {
     const container = document.getElementById('manifesto-item-details');
     if (!container) return;
     container.innerHTML = `
-        <p><strong>Sequência:</strong> ${item.seq}</p>
-        <p><strong>Código:</strong> ${item.codigo}</p>
-        <p><strong>Descrição:</strong> ${item.descricao}</p>
-        <p><strong>Quantidade:</strong> ${item.qtd}</p>
-        <p><strong>Unidade:</strong> ${item.un}</p>
+        <p><strong>Sequência:</strong> ${fn_manifesto_escHtml(item.seq)}</p>
+        <p><strong>Código:</strong> ${fn_manifesto_escHtml(item.codigo)}</p>
+        <p><strong>Descrição:</strong> ${fn_manifesto_escHtml(item.descricao)}</p>
+        <p><strong>Quantidade:</strong> ${fn_manifesto_escHtml(item.qtd)}</p>
+        <p><strong>Unidade:</strong> ${fn_manifesto_escHtml(item.un)}</p>
         <p><strong>Valor:</strong> ${fn_manifesto_format_currency(item.valor)}</p>
     `;
 }
