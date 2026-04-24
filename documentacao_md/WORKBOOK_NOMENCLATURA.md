@@ -748,6 +748,7 @@ app/static/css/
     ├── Style_Empresas.css
     ├── Style_Clientes.css
     ├── Style_CargaXml.css
+    ├── Style_Relatorio.css
     ├── Style_Dashboard.css
     ├── Style_Manifesto.css
     ├── Style_Reprocessamento.css
@@ -765,7 +766,8 @@ app/static/js/
 ├── Script_Usuarios.js      # CRUD e interações de usuários
 ├── Script_Empresas.js
 ├── Script_Dashboard.js
-└── Script_CargaXml.js
+├── Script_CargaXml.js
+└── Script_Relatorio.js
 ```
 
 #### Funções JavaScript: `fn_[ação]_[recurso]`
