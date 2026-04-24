@@ -1,5 +1,5 @@
 {% extends 'index_Base.html' %}
-{% load static %}
+{% load static security csp %}
 
 {% block title %}Reprocessamento – Painel{% endblock %}
 
@@ -490,9 +490,9 @@
 
 {% include "Reprocessamento/modal_Painel.html" %}
 
-{{ tipo_pagamento_desc|json_script:"tipo-pagamento-desc" }}
-<script>
+{% json_script_nonce tipo_pagamento_desc "tipo-pagamento-desc" %}
+{% script %}
 (function(){ var el = document.getElementById('tipo-pagamento-desc'); window.TIPO_PAGAMENTO_DESC = el ? JSON.parse(el.textContent) : {}; })();
-</script>
-<script src="{% static 'js/Script_ReprocessamentoPainel.js' %}"></script>
+{% endscript %}
+<script src="{% static 'js/Script_ReprocessamentoPainel.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% endblock %}

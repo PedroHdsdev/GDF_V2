@@ -1,5 +1,5 @@
 {% extends 'index_Base.html' %}
-{% load static %}
+{% load static csp %}
 
 {% block title %}Usuário{% endblock %}
 
@@ -100,10 +100,10 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+{% script %}
   window.APP_URLS = window.APP_URLS || {};
   window.APP_URLS.usuarioUpd = "{% if url_prefix %}{{ url_prefix }}/usuario/__ID__/{% else %}/usuario/__ID__/{% endif %}";
   window.APP_URLS.usuarioInserir = "{% if url_prefix %}{{ url_prefix }}/usuario/inserir/{% else %}/usuario/inserir/{% endif %}";
-</script>
-<script src="{% static 'js/Script_Usuarios.js' %}"></script>
+{% endscript %}
+<script src="{% static 'js/Script_Usuarios.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% endblock %}

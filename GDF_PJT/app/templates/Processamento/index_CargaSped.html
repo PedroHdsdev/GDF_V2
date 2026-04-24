@@ -152,5 +152,5 @@
 <!-- MODAL -->
 {% include "Processamento/modal_CargaSped.html" %}
 
-<script src="{% static 'js/Script_CargaSped.js' %}"></script>
+<script src="{% static 'js/Script_CargaSped.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% endblock %}

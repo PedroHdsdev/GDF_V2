@@ -1,5 +1,5 @@
 {% extends 'index_Base.html' %}
-{% load static %}
+{% load static security %}
 
 {% block title %}Integração SAP – RFC{% endblock %}
 
@@ -10,7 +10,7 @@
 {% block titlepage %}Integração SAP – RFC{% endblock %}
 
 {% block container %}
-{{ filiais_por_empresa|json_script:"filiais-por-empresa-data" }}
+{% json_script_nonce filiais_por_empresa "filiais-por-empresa-data" %}
 <div class="layout-page rfc-sap" data-url-prefix="{{ url_prefix|default:'' }}" data-api-rfc-executar="{% url 'API_RfcExecutar' %}">
   {% csrf_token %}
 
@@ -96,5 +96,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/Script_IntegracaoRfc.js' %}"></script>
+<script src="{% static 'js/Script_IntegracaoRfc.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% endblock %}

@@ -151,5 +151,5 @@
 
 {% include "Processamento/modal_CargaXml.html" %}
 
-<script src="{% static 'js/Script_CargaXml.js' %}"></script>
+<script src="{% static 'js/Script_CargaXml.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% endblock %}

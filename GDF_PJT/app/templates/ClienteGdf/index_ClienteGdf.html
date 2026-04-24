@@ -1,5 +1,5 @@
 {% extends 'index_Base.html' %}
-{% load static %}
+{% load static csp %}
 
 {% block title %}Clientes{% endblock %}
 
@@ -101,12 +101,12 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+{% script %}
   window.APP_URLS = window.APP_URLS || {};
   window.APP_URLS.clienteUpd = "{% if url_prefix %}{{ url_prefix }}/cliente/__ID__/{% else %}/cliente/__ID__/{% endif %}";
   window.APP_URLS.clienteAcesso = "{% if url_prefix %}{{ url_prefix }}/cliente/Acesso/{% else %}/cliente/Acesso/{% endif %}";
   window.APP_URLS.clienteGrupos = "{% if url_prefix %}{{ url_prefix }}/cliente/Grupos/{% else %}/cliente/Grupos/{% endif %}";
   window.APP_URLS.clienteSap = "{% if url_prefix %}{{ url_prefix }}/cliente/__ID__/sap/{% else %}/cliente/__ID__/sap/{% endif %}";
-</script>
-<script src="{% static 'js/Script_Clientes.js' %}"></script>
+{% endscript %}
+<script src="{% static 'js/Script_Clientes.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% endblock %}

@@ -1,5 +1,5 @@
 {% extends 'index_Base.html' %}
-{% load static %}
+{% load static csp %}
 
 {% block title %}Empresas{% endblock %}
 
@@ -124,10 +124,10 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+{% script %}
   window.APP_URLS = window.APP_URLS || {};
   window.APP_URLS.empresaUpd = "{% if url_prefix %}{{ url_prefix }}/empresa/__ID__/{% else %}/empresa/__ID__/{% endif %}";
   window.APP_URLS.empresaInserir = "{% if url_prefix %}{{ url_prefix }}/empresa/inserir/{% else %}/empresa/inserir/{% endif %}";
-</script>
-<script src="{% static 'js/Script_Empresas.js' %}"></script>
+{% endscript %}
+<script src="{% static 'js/Script_Empresas.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% endblock %}

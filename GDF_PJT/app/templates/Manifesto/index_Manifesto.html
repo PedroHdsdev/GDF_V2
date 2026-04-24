@@ -1,5 +1,5 @@
 {% extends 'index_Base.html' %}
-{% load static %}
+{% load static security %}
 
 {% block title %}Manifesto{% endblock %}
 
@@ -71,9 +71,9 @@
 
 {% include 'Manifesto/modal_Manifesto.html' %}
 
-{{ manifesto_data|json_script:"manifesto-data" }}
+{% json_script_nonce manifesto_data "manifesto-data" %}
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/Script_Manifesto.js' %}"></script>
+<script src="{% static 'js/Script_Manifesto.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% endblock %}

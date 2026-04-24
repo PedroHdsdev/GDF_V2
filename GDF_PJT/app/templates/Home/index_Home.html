@@ -167,5 +167,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/Script_Home.js' %}"></script>
+<script src="{% static 'js/Script_Home.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% endblock %}

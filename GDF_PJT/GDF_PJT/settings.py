@@ -393,13 +393,49 @@ DATA_UPLOAD_MAX_NUMBER_FILES = CARGAXML_MAX_ARCHIVOS_POR_REQUISICAO
 # Tamanho do chunk no processamento em background (arquivos por vez; menor = menos memória, mais updates).
 CARGAXML_CHUNK_SIZE = env.int('CARGAXML_CHUNK_SIZE', default=50)
 
+# ---------------------------------------------------------------------------
+# Content-Security-Policy (django-csp)
+# - script-src: NONCE em templates (nonce="{{ request.csp_nonce }}", {% script %} do pacote csp, json_script_nonce).
+#   Não usamos 'unsafe-inline' em scripts: reduz XSS; inline só com nonce.
+# - style-src: 'unsafe-inline' ainda necessário a vários estilos dinâmicos/Bloco Bootstrap.
+# - connect-src: apenas same-origin; origens extra via CSP_CONNECT_SRC_EXTRA (CSV no .env).
+# - frame-src: em DEBUG permite http a Streamlit local; com DEBUG=False só https nos defaults.
+#   Sobrescreva tudo com CSP_FRAME_SRC_EXTRA se precisar.
+# ---------------------------------------------------------------------------
+_CSP_FRAME_DEBUG = [
+    "http://localhost:8600",
+    "http://127.0.0.1:8600",
+    "https://localhost:8600",
+    "https://127.0.0.1:8600",
+    "https://homo.processit.com.br",
+]
+_CSP_FRAME_PROD = [
+    "https://localhost:8600",
+    "https://127.0.0.1:8600",
+    "https://homo.processit.com.br",
+]
+if DEBUG:
+    _CSP_FRAME_DEFAULTS = _CSP_FRAME_DEBUG
+else:
+    _CSP_FRAME_DEFAULTS = _CSP_FRAME_PROD
+_CSP_FRAME_SRC = ("'self'",) + tuple(
+    env.list("CSP_FRAME_SRC_EXTRA", default=_CSP_FRAME_DEFAULTS)
+)
+
+_CSP_CONNECT_EXTRA = env.list("CSP_CONNECT_SRC_EXTRA", default=[])
+# Produção: só same-origin + lista explícita. DEBUG: inclui https: amplo para não quebrar ferramentas locais.
+if DEBUG:
+    _CSP_CONNECT = ("'self'", "https:") + tuple(_CSP_CONNECT_EXTRA)
+else:
+    _CSP_CONNECT = ("'self'",) + tuple(_CSP_CONNECT_EXTRA)
+
 CONTENT_SECURITY_POLICY = {
     "DIRECTIVES": {
         "default-src": ("'self'",),
 
         "script-src": (
             "'self'",
-            "'unsafe-inline'",
+            NONCE,
             "https://cdn.jsdelivr.net",
             "https://code.jquery.com",
             "https://cdnjs.cloudflare.com",
@@ -421,21 +457,9 @@ CONTENT_SECURITY_POLICY = {
             "https://cdnjs.cloudflare.com",
         ),
 
-        "connect-src": ("'self'", "https:"),
+        "connect-src": _CSP_CONNECT,
 
-        # frame-src: 'self' + origens do .env (CSP_FRAME_SRC_EXTRA) para iframe do Dashboard (Streamlit).
-        # Inclui http para desenvolvimento local (Streamlit em http://127.0.0.1:8600).
-        # Ex. no .env: CSP_FRAME_SRC_EXTRA=https://homo.processit.com.br,https://localhost:8600
-        "frame-src": ("'self'",) + tuple(env.list(
-            "CSP_FRAME_SRC_EXTRA",
-            default=[
-                "http://localhost:8600",
-                "http://127.0.0.1:8600",
-                "https://localhost:8600",
-                "https://127.0.0.1:8600",
-                "https://homo.processit.com.br",
-            ],
-        )),
+        "frame-src": _CSP_FRAME_SRC,
 
         "frame-ancestors": ("'none'",),
     }

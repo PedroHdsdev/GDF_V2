@@ -101,5 +101,5 @@
 
 {% endblock %}
 {% block scripts %}
-<script src="{% static 'js/Script_Filiais.js' %}"></script>
+<script src="{% static 'js/Script_Filiais.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% endblock %}
