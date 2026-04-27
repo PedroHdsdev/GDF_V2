@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Celery Beat — agenda scan_carga_automatica (CELERY_BEAT_SCHEDULE em settings).
+# Celery Beat — tarefas periódicas conforme CELERY_BEAT_SCHEDULE em settings.
 # Arquivo de estado do beat persiste entre reinícios (evita tarefas duplicadas).
 
 VENV_PATH="${VENV_PATH:-/var/www/gdf_v2/venv}"

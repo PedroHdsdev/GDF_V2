@@ -13,10 +13,6 @@ from app.db_GDF.Public.models import Empresa, AcessoSubsolucaoGrupo
 # Cliente dono do projeto (ex.: IT Process). Acesso total ao painel.
 COD_CLIENTE_PROJETO = "PRCIT"
 
-# Grupo nativo Django (auth_group) para criar/editar/ativar parâmetros de carga automática XML/SPED.
-# Criado pela migração 0070; atribua o usuário a este grupo no Admin.
-GRUPO_DJANGO_CARGA_AUTOMATICA = "CargaAutomatica"
-
 # Dicionário tipo de pagamento (código XML → descrição) para relatório fiscal
 _path_tipo_pagamento = getattr(settings, "BASE_DIR", None)
 if _path_tipo_pagamento is not None:
@@ -75,31 +71,6 @@ def get_subsolucoes_usuario(user):
         subsolucao__isnull=False,
     ).values_list("subsolucao__cod_subsolucao", flat=True).distinct()
     return set(c for c in codigos if c)
-
-
-def usuario_pode_gerenciar_carga_automatica(user):
-    """True se o usuário pode criar/editar/ativar parâmetros de carga automática (XML e SPED)."""
-    if not user or not user.is_authenticated:
-        return False
-    if getattr(user, "is_superuser", False):
-        return True
-    if usuario_vinculado_cliente_1000(user):
-        return True
-    return user.groups.filter(name=GRUPO_DJANGO_CARGA_AUTOMATICA).exists()
-
-
-def json_negado_gerenciar_carga_automatica():
-    """403 JSON padronizado para APIs de parâmetros de carga automática."""
-    return JsonResponse(
-        {
-            "sucesso": False,
-            "mensagem": (
-                "Acesso negado: você não tem permissão para gerenciar cargas automáticas "
-                "(parâmetros agendados XML/SPED)."
-            ),
-        },
-        status=403,
-    )
 
 
 def relatorio_empresas_queryset(request):

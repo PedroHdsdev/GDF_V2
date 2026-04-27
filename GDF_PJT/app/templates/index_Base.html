@@ -41,10 +41,44 @@
         <a class="navbar-brand fw-bold" href="{% url 'Home' %}">
             {% block titlepage %}Page{% endblock %}
         </a>
-        <!-- Logo -->
-        <a class="navbar-brand ms-auto" href="{% url 'Home' %}">
-            <img src="{% static 'img/logo.png' %}" alt="logo" height="40">
-        </a>
+        <div class="d-flex align-items-center gap-2 ms-auto">
+            {% if user.is_authenticated %}
+            <div class="dropdown navbar-menu-admin">
+                <button type="button"
+                        id="navbarMenuAdmin"
+                        class="navbar-gear-btn d-inline-flex align-items-center justify-content-center"
+                        data-bs-toggle="dropdown"
+                        data-bs-offset="0,6"
+                        aria-expanded="false"
+                        aria-haspopup="true"
+                        aria-label="Configuração e sair"
+                        title="Configuração">
+                    <i class="fa-solid fa-gear" aria-hidden="true"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark border-secondary shadow" aria-labelledby="navbarMenuAdmin">
+                    {% for sub in t_subsolucoes_admin %}
+                    <li>
+                        <a class="dropdown-item" href="{% url 'get_subsolucao' sub.cod_subsolucao %}">
+                            {{ sub.descricao }}
+                        </a>
+                    </li>
+                    {% endfor %}
+                    {% if t_subsolucoes_admin %}
+                    <li><hr class="dropdown-divider border-secondary m-0"></li>
+                    {% endif %}
+                    <li>
+                        <a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'Logout' %}">
+                            <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+                            <span>Sair</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            {% endif %}
+            <a class="navbar-brand p-0 m-0" href="{% url 'Home' %}">
+                <img src="{% static 'img/logo.png' %}" alt="logo" height="40">
+            </a>
+        </div>
     </div>
 </nav>
 <!-- SIDEBAR (Offcanvas): sem backdrop para o ponteiro ir do botão ao painel no hover -->

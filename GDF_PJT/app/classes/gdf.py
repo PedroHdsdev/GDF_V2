@@ -17,6 +17,19 @@ from django.db                      import transaction
 from dataclasses                    import dataclass
 from typing                         import List, Dict
 import time
+import unicodedata
+
+
+def _norm_desc_solucao_ordenacao(text):
+    if not text:
+        return ""
+    s = "".join(
+        c
+        for c in unicodedata.normalize("NFD", str(text).strip())
+        if unicodedata.category(c) != "Mn"
+    )
+    return s.lower()
+
 
 # ✅ PyJWT import com fallback
 try:
@@ -233,13 +246,14 @@ class ClGdf:
                     "sub_solucoes": list(l_v_queryset_subsolucoes)
                 })
 
-            #Ordenação customizada: "Soluções ADM" primeiro, "Dashboard" último
+            # Ordenação: Configuração/Administração (legado) primeiro, "Dashboard" último
             def sort_key(sol):
-                if sol["descricao"].lower() == "Adiministração":
-                    return -1  # menor que tudo → primeiro
-                elif sol["descricao"].lower() == "dashboard":
-                    return 9999  # maior que tudo → último
-                return 0  # o resto fica no meio
+                d = _norm_desc_solucao_ordenacao(sol.get("descricao", ""))
+                if d in ("administracao", "adiministracao", "configuracao"):
+                    return -1
+                if d == "dashboard":
+                    return 9999
+                return 0
 
             lsl_dados_solucoes.sort(key=sort_key)
             return lsl_dados_solucoes
@@ -269,11 +283,13 @@ class ClGdf:
                     "sub_solucoes": list(l_v_queryset_subsolucoes)
                 })
             def sort_key(sol):
-                if sol["descricao"].lower() == "adiministração":
+                d = _norm_desc_solucao_ordenacao(sol.get("descricao", ""))
+                if d in ("administracao", "adiministracao", "configuracao"):
                     return -1
-                elif sol["descricao"].lower() == "dashboard":
+                if d == "dashboard":
                     return 9999
                 return 0
+
             lsl_dados_solucoes.sort(key=sort_key)
             return lsl_dados_solucoes
         except Exception as e:

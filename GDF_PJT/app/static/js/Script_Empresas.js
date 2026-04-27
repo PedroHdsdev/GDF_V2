@@ -8,7 +8,9 @@ const og_estado_empresas = {
     currentPage: 1,
     searchQuery: '',
     originalFormData: {},
-    modalAberto: null     // ✅ Controlar qual modal está aberto
+    modalAberto: null,    // ✅ Controlar qual modal está aberto
+    codEmpresaAtual: '',  // empresa aberta no modal (aba Filiais)
+    filiaisCache: []      // última lista de filiais carregada (metadados)
 };
 
 function fn_empresas_escAttr(s) {
@@ -26,6 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
     fn_init_busca();
     fn_init_empresa_ins();
     fn_init_empresa_upd();
+    fn_init_emp_tab_filiais();
 });
 
 /* ===============================
@@ -440,6 +443,19 @@ function fn_preencher_formulario(data) {
   document.getElementById('upd_chave_acesso').value = data.chave_acesso || '';
   document.getElementById('upd_cliente_id').value = data.cod_cliente || '';
     document.getElementById('upd_cert_codempresa').value = data.cod_empresa || '';
+
+  var codE = (data && data.cod_empresa != null) ? String(data.cod_empresa).trim() : '';
+  if (!codE) {
+    var u = document.getElementById('upd_empresa_id');
+    if (u && u.value) codE = String(u.value).trim();
+  }
+  og_estado_empresas.codEmpresaAtual = codE;
+  const hidFilEmp = document.getElementById('modal_emp_tab_fil_empresa');
+  if (hidFilEmp) hidFilEmp.value = codE;
+  const tabFil = document.getElementById('tab-filiais-emp');
+  if (tabFil && tabFil.classList.contains('active') && codE) {
+    if (typeof fn_emp_tab_filiais_carregar === 'function') fn_emp_tab_filiais_carregar();
+  }
   
   // Checkbox de matriz
   const matrizCheckbox = document.getElementById('upd_matriz');
@@ -482,6 +498,22 @@ function fn_resetar_formulario() {
   if (firstTab) {
     firstTab.click();
   }
+  og_estado_empresas.codEmpresaAtual = '';
+  if (typeof fn_emp_tab_filiais_resetForm === 'function') {
+    fn_emp_tab_filiais_resetForm(true);
+  }
+  const tb = document.getElementById('empTabFiliaisTbody');
+  if (tb) {
+    tb.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Abra uma empresa e carregue a aba Filiais.</td></tr>';
+  }
+  const alF = document.getElementById('empTabFilialAlerts');
+  if (alF) alF.innerHTML = '';
+  const hidE = document.getElementById('modal_emp_tab_fil_empresa');
+  if (hidE) hidE.value = '';
+  if (typeof fn_emp_tab_filiais_fecharModal === 'function') {
+    fn_emp_tab_filiais_fecharModal();
+  }
+  og_estado_empresas.filiaisCache = [];
   
   // Limpar arquivo de certificado
   const fileInput = document.getElementById('upd_cert_file');
@@ -713,3 +745,378 @@ function fn_submit_form_ajax(form, tipo) {
 }
 
 // ✅ Alertas no modal: Notificacoes.modal (ver PADRAO_ALERTAS.md)
+
+/* ===============================
+   ABA Filiais — lista na tab; criação/edição no modal #modalFilialEmpForm
+================================ */
+
+/** Sincroniza og_estado_empresas + hidden a partir do JSON do modal (upd_empresa_id como fallback). */
+function fn_emp_tab_sincronizar_cod_empresa() {
+  var c = (og_estado_empresas.codEmpresaAtual || "").trim();
+  if (!c) {
+    var u = document.getElementById("upd_empresa_id");
+    if (u && u.value) c = String(u.value).trim();
+  }
+  if (!c) {
+    var h = document.getElementById("modal_emp_tab_fil_empresa");
+    if (h && h.value) c = String(h.value).trim();
+  }
+  if (c) {
+    og_estado_empresas.codEmpresaAtual = c;
+    var hid = document.getElementById("modal_emp_tab_fil_empresa");
+    if (hid) hid.value = c;
+  }
+  return c;
+}
+
+function fn_emp_mover_modal_filial_para_body() {
+  var el = document.getElementById("modalFilialEmpForm");
+  if (!el || el.parentNode === document.body) return;
+  try {
+    document.body.appendChild(el);
+  } catch (e) {}
+}
+
+function fn_emp_tab_filiais_fecharModal() {
+  var el = document.getElementById('modalFilialEmpForm');
+  if (!el || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+  var m = bootstrap.Modal.getInstance(el);
+  if (m) m.hide();
+}
+
+function fn_emp_tab_filiais_urlFiliais(codEmp) {
+  var c = (codEmp || fn_emp_tab_sincronizar_cod_empresa() || og_estado_empresas.codEmpresaAtual || '').trim();
+  if (!c) return '';
+  if (window.APP_URLS && window.APP_URLS.empresaFiliais) {
+    return String(window.APP_URLS.empresaFiliais).split('__COD__').join(encodeURIComponent(c));
+  }
+  var p = (typeof getUrlPrefix === 'function' ? getUrlPrefix() : '') || '';
+  return p + '/empresa/' + encodeURIComponent(c) + '/filiais/';
+}
+
+function fn_emp_tab_filiais_resetForm(silent) {
+  var idH = document.getElementById('modal_emp_tab_fil_id');
+  if (idH) idH.value = '';
+  var c = document.getElementById('modal_emp_tab_fil_cod');
+  if (c) c.value = '';
+  var n = document.getElementById('modal_emp_tab_fil_nome');
+  if (n) n.value = '';
+  var cnpj = document.getElementById('modal_emp_tab_fil_cnpj');
+  if (cnpj) cnpj.value = '';
+  var a = document.getElementById('modal_emp_tab_fil_ativo');
+  if (a) a.checked = true;
+  var tl = document.getElementById('modalFilialEmpFormLabel');
+  if (tl) tl.textContent = 'Nova filial';
+  var btnS = document.getElementById('btn_modal_emp_tab_fil_salvar');
+  if (btnS) btnS.textContent = 'Salvar';
+  if (!silent) {
+    var al = document.getElementById('empTabFilialAlerts');
+    if (al) al.innerHTML = '';
+  }
+  var mAl = document.getElementById('modalFilialEmpFormAlerts');
+  if (mAl) mAl.innerHTML = '';
+}
+
+function fn_emp_tab_filiais_abrirModalNova() {
+  var al = document.getElementById('modalFilialEmpFormAlerts');
+  if (al) al.innerHTML = '';
+  var codE = fn_emp_tab_sincronizar_cod_empresa();
+  if (!codE) {
+    var tAl = document.getElementById('empTabFilialAlerts');
+    if (tAl) tAl.innerHTML = '<div class="alert alert-warning py-2">Selecione e carregue uma empresa antes (clique em uma linha da lista de empresas).</div>';
+    return;
+  }
+  fn_emp_tab_filiais_resetForm(true);
+  var hidE = document.getElementById('modal_emp_tab_fil_empresa');
+  if (hidE) hidE.value = codE;
+  var tit = document.getElementById('modalFilialEmpFormLabel');
+  if (tit) tit.textContent = 'Nova filial';
+  var btnS = document.getElementById('btn_modal_emp_tab_fil_salvar');
+  if (btnS) btnS.textContent = 'Cadastrar';
+  var el = document.getElementById('modalFilialEmpForm');
+  if (el && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+    fn_emp_mover_modal_filial_para_body();
+    var inst = bootstrap.Modal.getOrCreateInstance(el, { backdrop: 'static', keyboard: true, focus: true });
+    inst.show();
+  }
+  setTimeout(function () {
+    var c = document.getElementById('modal_emp_tab_fil_cod');
+    if (c) c.focus();
+  }, 500);
+}
+
+function fn_emp_tab_filiais_abrirModalEditar(it) {
+  if (!it) return;
+  var al = document.getElementById('modalFilialEmpFormAlerts');
+  if (al) al.innerHTML = '';
+  var codE = fn_emp_tab_sincronizar_cod_empresa();
+  var hidE = document.getElementById('modal_emp_tab_fil_empresa');
+  if (hidE) hidE.value = codE || '';
+  var idH = document.getElementById('modal_emp_tab_fil_id');
+  if (idH) idH.value = it.id != null ? String(it.id) : '';
+  var c = document.getElementById('modal_emp_tab_fil_cod');
+  if (c) c.value = it.cod_filial || '';
+  var n = document.getElementById('modal_emp_tab_fil_nome');
+  if (n) n.value = it.nome || '';
+  var cnpj = document.getElementById('modal_emp_tab_fil_cnpj');
+  if (cnpj) cnpj.value = it.cnpj || '';
+  var atv = document.getElementById('modal_emp_tab_fil_ativo');
+  if (atv) atv.checked = !!it.ativo;
+  var tit = document.getElementById('modalFilialEmpFormLabel');
+  if (tit) tit.textContent = 'Editar filial';
+  var btnS = document.getElementById('btn_modal_emp_tab_fil_salvar');
+  if (btnS) btnS.textContent = 'Salvar alterações';
+  var el = document.getElementById('modalFilialEmpForm');
+  if (el && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+    fn_emp_mover_modal_filial_para_body();
+    bootstrap.Modal.getOrCreateInstance(el, { backdrop: 'static', keyboard: true, focus: true }).show();
+  }
+}
+
+function fn_emp_tab_filiais_carregar() {
+  fn_emp_tab_sincronizar_cod_empresa();
+  var al = document.getElementById('empTabFilialAlerts');
+  var url = fn_emp_tab_filiais_urlFiliais('');
+  if (!url) {
+    if (al) {
+      al.innerHTML = '<div class="alert alert-warning py-2">Selecione a empresa (carregue o modal) antes de gerenciar filiais.</div>';
+    }
+    return;
+  }
+  if (al) al.innerHTML = '<div class="text-muted small py-1">Carregando filiais…</div>';
+  fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, credentials: 'same-origin' })
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d, st: r.status }; }); })
+    .then(function (o) {
+      if (al) al.innerHTML = '';
+      if (!o.ok || o.d.erro) {
+        if (al) {
+          al.innerHTML = '<div class="alert alert-danger py-2">' + (o.d.erro || 'Não foi possível carregar as filiais.') + '</div>';
+        }
+        return;
+      }
+      var list = o.d.filiais || [];
+      og_estado_empresas.filiaisCache = list;
+      var tb = document.getElementById('empTabFiliaisTbody');
+      if (!tb) return;
+      if (!list.length) {
+        tb.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Nenhuma filial cadastrada para esta empresa.</td></tr>';
+        return;
+      }
+      tb.innerHTML = list
+        .map(function (f) {
+          return (
+            '<tr class="emp-tab-fil-tr" data-filial-id="' + fn_empresas_escAttr(f.id) + '">' +
+            '<td><code>' + fn_empresas_escAttr(f.cod_filial) + '</code></td>' +
+            '<td>' + fn_empresas_escAttr(f.nome || '—') + '</td>' +
+            '<td>' + fn_empresas_escAttr(f.cnpj || '—') + '</td>' +
+            '<td class="text-center">' + (f.ativo ? 'Sim' : 'Não') + '</td>' +
+            '<td class="text-end text-nowrap">' +
+            '<button type="button" class="btn btn-sm btn-outline-primary me-1 btn-emp-fil-edt" data-filial-id="' + fn_empresas_escAttr(f.id) + '">Editar</button>' +
+            '<button type="button" class="btn btn-sm btn-outline-danger btn-emp-fil-excl" data-filial-id="' + fn_empresas_escAttr(f.id) + '">Excluir</button>' +
+            '</td></tr>'
+          );
+        })
+        .join('');
+    })
+    .catch(function () {
+      if (al) {
+        al.innerHTML = '<div class="alert alert-danger py-2">Erro de conexão ao listar filiais.</div>';
+      }
+    });
+}
+
+function fn_emp_tab_filiais_salvar(event) {
+  event.preventDefault();
+  var alM = document.getElementById('modalFilialEmpFormAlerts');
+  if (alM) alM.innerHTML = '';
+  var al = document.getElementById('empTabFilialAlerts');
+  if (al) al.innerHTML = '';
+  var codE = (document.getElementById('modal_emp_tab_fil_empresa') && document.getElementById('modal_emp_tab_fil_empresa').value) || og_estado_empresas.codEmpresaAtual;
+  if (!codE) {
+    if (alM) {
+      alM.innerHTML = '<div class="alert alert-warning py-2">Código da empresa indisponível.</div>';
+    }
+    return false;
+  }
+  var cod = document.getElementById('modal_emp_tab_fil_cod');
+  if (!cod || !String(cod.value).trim()) {
+    if (alM) {
+      alM.innerHTML = '<div class="alert alert-danger py-2">Código da filial é obrigatório.</div>';
+    }
+    return false;
+  }
+  var pk = (document.getElementById('modal_emp_tab_fil_id') && document.getElementById('modal_emp_tab_fil_id').value.trim()) || '';
+  var form = document.getElementById('formModalFilialEmp');
+  if (!form) return false;
+  var formData = new FormData(form);
+  formData.set('m_empresa', codE);
+  if (!document.getElementById('modal_emp_tab_fil_ativo').checked) {
+    formData.delete('m_ativo');
+  }
+  var h = { 'X-Requested-With': 'XMLHttpRequest' };
+  if (typeof getCsrfToken === 'function') {
+    var tok = getCsrfToken();
+    if (tok) h['X-CSRFToken'] = tok;
+  }
+  var inserir = (window.APP_URLS && window.APP_URLS.filialInserir) ? window.APP_URLS.filialInserir : ((typeof getUrlPrefix === 'function' ? getUrlPrefix() : '') + '/filial/inserir/');
+  var updT = (window.APP_URLS && window.APP_URLS.filialUpd) ? String(window.APP_URLS.filialUpd).split('__ID__').join(encodeURIComponent(pk)) : ((typeof getUrlPrefix === 'function' ? getUrlPrefix() : '') + '/filial/' + encodeURIComponent(pk) + '/atualizar/');
+  var action = pk ? updT : inserir;
+  fetch(action, { method: 'POST', body: formData, headers: h, credentials: 'same-origin' })
+    .then(function (r) {
+      return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+    })
+    .then(function (o) {
+      if (o.ok && o.d.success) {
+        fn_emp_tab_filiais_resetForm(true);
+        fn_emp_tab_filiais_fecharModal();
+        if (al) {
+          al.innerHTML = '<div class="alert alert-success py-2">' + (o.d.message || 'Operação concluída.') + '</div>';
+        }
+        fn_emp_tab_filiais_carregar();
+        return;
+      }
+      if (alM) {
+        alM.innerHTML = '<div class="alert alert-danger py-2">' + (o.d.erro || 'Falha ao salvar filial.') + '</div>';
+      }
+    })
+    .catch(function () {
+      if (alM) {
+        alM.innerHTML = '<div class="alert alert-danger py-2">Erro de conexão.</div>';
+      }
+    });
+  return false;
+}
+
+function fn_emp_tab_filiais_excluir(filialId) {
+  if (!window.confirm('Excluir esta filial? A operação não poderá ser desfeita se houver vínculos fiscais/SAP.')) return;
+  var al = document.getElementById('empTabFilialAlerts');
+  if (al) al.innerHTML = '';
+  var u =
+    (window.APP_URLS && window.APP_URLS.filialDel) ?
+      String(window.APP_URLS.filialDel).split('__ID__').join(encodeURIComponent(filialId)) :
+      ((typeof getUrlPrefix === 'function' ? getUrlPrefix() : '') + '/filial/' + encodeURIComponent(filialId) + '/excluir/');
+  var fd = new FormData();
+  var csrfF = document.querySelector('#formModalFilialEmp [name=csrfmiddlewaretoken], #formEmpresaUpd [name=csrfmiddlewaretoken]');
+  if (csrfF) {
+    fd.append('csrfmiddlewaretoken', csrfF.value);
+  }
+  var h = { 'X-Requested-With': 'XMLHttpRequest' };
+  if (typeof getCsrfToken === 'function') {
+    var tok = getCsrfToken();
+    if (tok) h['X-CSRFToken'] = tok;
+  }
+  fetch(u, { method: 'POST', body: fd, headers: h, credentials: 'same-origin' })
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+    .then(function (o) {
+      if (o.ok && o.d.success) {
+        if (al) {
+          al.innerHTML = '<div class="alert alert-success py-2">' + (o.d.message || 'Excluída.') + '</div>';
+        }
+        fn_emp_tab_filiais_resetForm(true);
+        fn_emp_tab_filiais_carregar();
+        return;
+      }
+      if (al) {
+        al.innerHTML = '<div class="alert alert-danger py-2">' + (o.d.erro || 'Não foi possível excluir.') + '</div>';
+      }
+    })
+    .catch(function () {
+      if (al) {
+        al.innerHTML = '<div class="alert alert-danger py-2">Erro de conexão.</div>';
+      }
+    });
+}
+
+function fn_init_emp_tab_filiais() {
+  // Não exigir #formModalFilialEmp: sem tabela+aba, não há nada a fazer; botão e lista ainda registo.
+  var abaBtn = document.getElementById('tab-filiais-emp-btn');
+  var abaFiliais = document.getElementById('empTabFiliaisTbody');
+  var form = document.getElementById('formModalFilialEmp');
+  if (!abaBtn && !abaFiliais) return;
+
+  if (abaBtn) {
+    abaBtn.addEventListener('click', function () {
+      setTimeout(function () {
+        fn_emp_tab_sincronizar_cod_empresa();
+        if (og_estado_empresas.codEmpresaAtual) {
+          fn_emp_tab_filiais_carregar();
+        }
+      }, 200);
+    });
+  }
+  if (abaBtn) {
+    abaBtn.addEventListener('shown.bs.tab', function () {
+      fn_emp_tab_sincronizar_cod_empresa();
+      if (og_estado_empresas.codEmpresaAtual) {
+        fn_emp_tab_filiais_carregar();
+      }
+    });
+  }
+  var nav = document.getElementById('empresaTabs');
+  if (nav) {
+    nav.addEventListener('shown.bs.tab', function (e) {
+      var trg = e.target;
+      if (!trg) return;
+      if (trg.getAttribute('data-bs-target') !== '#tab-filiais-emp' && trg.id !== 'tab-filiais-emp-btn') return;
+      setTimeout(function () {
+        fn_emp_tab_sincronizar_cod_empresa();
+        if (og_estado_empresas.codEmpresaAtual) {
+          fn_emp_tab_filiais_carregar();
+        }
+      }, 0);
+    });
+  }
+
+  var btnA = document.getElementById('btn_emp_tab_fil_abrir_modal');
+  if (btnA) {
+    btnA.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof fn_emp_tab_filiais_abrirModalNova === 'function') {
+        fn_emp_tab_filiais_abrirModalNova();
+      }
+    });
+  }
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      fn_emp_tab_filiais_salvar(e);
+    });
+  }
+  var mEl = document.getElementById('modalFilialEmpForm');
+  if (mEl) {
+    mEl.addEventListener('hidden.bs.modal', function () {
+      fn_emp_tab_filiais_resetForm(true);
+    });
+  }
+  if (abaFiliais) {
+    abaFiliais.addEventListener('click', function (e) {
+      var edt = e.target.closest('.btn-emp-fil-edt');
+      if (edt) {
+        e.preventDefault();
+        var fid = edt.getAttribute('data-filial-id');
+        var it = (og_estado_empresas.filiaisCache || []).find(function (x) {
+          return String(x.id) === String(fid);
+        });
+        if (!it) {
+          var aw = document.getElementById('empTabFilialAlerts');
+          if (aw) {
+            aw.innerHTML = '<div class="alert alert-warning py-2">Dados indisponíveis. Mude de aba e reabra Filiais.</div>';
+          }
+          return;
+        }
+        fn_emp_tab_filiais_abrirModalEditar(it);
+        return;
+      }
+      var ex = e.target.closest('.btn-emp-fil-excl');
+      if (ex) {
+        e.preventDefault();
+        var idEx = ex.getAttribute('data-filial-id');
+        if (idEx) {
+          fn_emp_tab_filiais_excluir(idEx);
+        }
+      }
+    });
+  }
+}
+
+window.fn_emp_tab_filiais_salvar = fn_emp_tab_filiais_salvar;

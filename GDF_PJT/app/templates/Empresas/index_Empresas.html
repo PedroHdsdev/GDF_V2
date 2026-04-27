@@ -128,6 +128,10 @@
   window.APP_URLS = window.APP_URLS || {};
   window.APP_URLS.empresaUpd = "{% if url_prefix %}{{ url_prefix }}/empresa/__ID__/{% else %}/empresa/__ID__/{% endif %}";
   window.APP_URLS.empresaInserir = "{% if url_prefix %}{{ url_prefix }}/empresa/inserir/{% else %}/empresa/inserir/{% endif %}";
+  window.APP_URLS.empresaFiliais = "{% if url_prefix %}{{ url_prefix }}/empresa/__COD__/filiais/{% else %}/empresa/__COD__/filiais/{% endif %}";
+  window.APP_URLS.filialInserir = "{% if url_prefix %}{{ url_prefix }}/filial/inserir/{% else %}/filial/inserir/{% endif %}";
+  window.APP_URLS.filialUpd = "{% if url_prefix %}{{ url_prefix }}/filial/__ID__/atualizar/{% else %}/filial/__ID__/atualizar/{% endif %}";
+  window.APP_URLS.filialDel = "{% if url_prefix %}{{ url_prefix }}/filial/__ID__/excluir/{% else %}/filial/__ID__/excluir/{% endif %}";
 {% endscript %}
 <script src="{% static 'js/Script_Empresas.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% endblock %}

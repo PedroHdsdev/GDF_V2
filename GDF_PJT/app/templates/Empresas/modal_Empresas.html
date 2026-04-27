@@ -214,6 +214,11 @@
           <li class="nav-item">
             <button type="button" class="nav-link" id="tab-certificado-btn" data-bs-toggle="tab" data-bs-target="#tab-certificado" role="tab"><i class="fas fa-certificate"></i> Certificado Digital</button>
           </li>
+          {% if pode_gerir_filiais %}
+          <li class="nav-item">
+            <button type="button" class="nav-link" id="tab-filiais-emp-btn" data-bs-toggle="tab" data-bs-target="#tab-filiais-emp" role="tab"><i class="fas fa-sitemap"></i> Filiais</button>
+          </li>
+          {% endif %}
         </ul>
 
         <!-- REMOVER MENSAGENS ANTIGAS DO DJANGO -->
@@ -477,8 +482,88 @@
             </form>
           </div>
 
+          {% if pode_gerir_filiais %}
+          <!-- TAB: Filiais (mesma empresa do modal) — cadastro/edição no modal secundário -->
+          <div class="tab-pane fade" id="tab-filiais-emp" role="tabpanel" aria-labelledby="tab-filiais-emp-btn">
+            <div id="empTabFilialAlerts" class="admin-modal-alerts mb-2"></div>
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <p class="text-muted small mb-0">
+                <i class="fas fa-info-circle me-1"></i> Filiais vinculadas a esta empresa (Cadastros — Empresas).
+              </p>
+              <button type="button" class="btn btn-sm btn-primary" id="btn_emp_tab_fil_abrir_modal" title="Abrir cadastro de filial">
+                <i class="fas fa-plus me-1"></i> Cadastrar filial
+              </button>
+            </div>
+
+            <div class="table-responsive border rounded">
+              <table class="table table-sm table-hover align-middle mb-0 emp-tab-filiais-table">
+                <thead class="table-light">
+                  <tr>
+                    <th>Código</th>
+                    <th>Nome</th>
+                    <th>CNPJ</th>
+                    <th class="text-center">Ativo</th>
+                    <th class="text-end" style="width:1%">Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="empTabFiliaisTbody">
+                  <tr>
+                    <td colspan="5" class="text-center text-muted py-3">Abra a aba com uma empresa selecionada para carregar as filiais.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {% endif %}
+
         </div>
       </div>
     </div>
   </div>
 </div>
+
+<!-- Modal: Nova / Editar Filial (sobre o modal Editar Empresa) -->
+{% if pode_gerir_filiais %}
+<div class="modal fade admin-modal" id="modalFilialEmpForm" tabindex="-1" aria-labelledby="modalFilialEmpFormLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="formModalFilialEmp" novalidate>
+        {% csrf_token %}
+        <input type="hidden" id="modal_emp_tab_fil_empresa" name="m_empresa" value="" autocomplete="off">
+        <input type="hidden" id="modal_emp_tab_fil_id" value="" autocomplete="off">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalFilialEmpFormLabel">Nova filial</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="modalFilialEmpFormAlerts" class="admin-modal-alerts mb-2"></div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label for="modal_emp_tab_fil_cod" class="form-label">* Código da filial</label>
+              <input type="text" class="form-control" id="modal_emp_tab_fil_cod" name="m_cod_filial" maxlength="10" required placeholder="Ex.: 01">
+            </div>
+            <div class="col-md-8">
+              <label for="modal_emp_tab_fil_nome" class="form-label">Nome</label>
+              <input type="text" class="form-control" id="modal_emp_tab_fil_nome" name="m_nome" maxlength="120" placeholder="Nome ou descrição">
+            </div>
+            <div class="col-md-6">
+              <label for="modal_emp_tab_fil_cnpj" class="form-label">CNPJ</label>
+              <input type="text" class="form-control" id="modal_emp_tab_fil_cnpj" name="m_cnpj" maxlength="18" placeholder="Apenas números ou formatado">
+            </div>
+            <div class="col-md-6 d-flex align-items-end">
+              <div class="form-check form-switch mb-2 w-100">
+                <input class="form-check-input" type="checkbox" id="modal_emp_tab_fil_ativo" name="m_ativo" checked>
+                <label class="form-check-label" for="modal_emp_tab_fil_ativo">Filial ativa</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn_modal_emp_tab_fil_salvar">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}

@@ -33,7 +33,7 @@ urlpatterns = [
     path('CargaSped/', views.fn_view_CargaSped, name='Pro_CargaSped'),
     path('Relatorio/', views.fn_view_Relatorio_Fiscal, name='Pro_Relatorio'),
 
-    # REPROCESSAMENTO (solução própria: confronto SPED x NFe, painel)
+    # FERRAMENTAS (subsolução Reproc_Painel: painel de reprocessamento, confronto SPED x NFe)
     path('Reprocessamento/Painel/', views.fn_view_Reprocessamento_Painel, name='Reproc_Painel'),
 
     #Dashboard
@@ -51,11 +51,6 @@ urlpatterns = [
     
     #APIs
     path('api/processar-xml/', views.fn_api_processar_xml, name='API_ProcessarXml'),
-    path('api/cargaxml/parametros/', views.fn_api_cargaxml_parametros, name='API_CargaXmlParams'),
-    path('api/cargaxml/parametros/<int:param_id>/', views.fn_api_cargaxml_parametro_detail, name='API_CargaXmlParamDetail'),
-    path('api/cargaxml/parametros/<int:param_id>/toggle/', views.fn_api_cargaxml_param_toggle, name='API_CargaXmlParamsToggle'),
-    path('api/cargaxml/parametros/<int:param_id>/upload-zip/', views.fn_api_cargaxml_upload_zip, name='API_CargaXmlUploadZip'),
-    path('api/cargaxml/relatorio/', views.fn_api_cargaxml_relatorio, name='API_CargaXmlRelatorio'),
     path('api/debug-session/', views.fn_api_debug_session, name='API_DebugSession'),
     path('api/sessao/cliente/', views.fn_api_sessao_cliente, name='API_SessaoCliente'),
     path('api/cargaxml/avisos/', views.fn_api_cargaxml_avisos, name='API_CargaXmlAvisos'),
@@ -63,10 +58,6 @@ urlpatterns = [
     path('api/cargaxml/jobs/<int:job_id>/', views.fn_api_cargaxml_job_details, name='API_CargaXmlJobDetails'),
     path('api/cargaxml/resumo/', views.fn_api_cargaxml_resumo, name='API_CargaXmlResumo'),
 
-    path('api/cargasped/parametros/', views.fn_api_cargasped_parametros, name='API_CargaSpedParams'),
-    path('api/cargasped/parametros/<int:param_id>/', views.fn_api_cargasped_parametro_detail, name='API_CargaSpedParamDetail'),
-    path('api/cargasped/parametros/<int:param_id>/toggle/', views.fn_api_cargasped_param_toggle, name='API_CargaSpedParamToggle'),
-    path('api/cargasped/parametros/<int:param_id>/upload-zip/', views.fn_api_cargasped_upload_zip, name='API_CargaSpedUploadZip'),
     path('api/cargasped/resumo/', views.fn_api_cargasped_resumo, name='API_CargaSpedResumo'),
     path('api/cargasped/avisos/', views.fn_api_cargasped_avisos, name='API_CargaSpedAvisos'),
     path('api/cargasped/jobs/', views.fn_api_cargasped_jobs, name='API_CargaSpedJobs'),
@@ -126,10 +117,12 @@ urlpatterns = [
     # Empresas
     path('empresa/inserir/', views.fn_view_inserir_empresa, name='Empresa_ins'),
     path('empresa/Cert/', views.fn_view_atualizar_certificado, name='Cert_upd'),
+    path('empresa/<str:cod_empresa>/filiais/', views.fn_view_listar_filiais_empresa, name='Empresa_filiais_list'),
     path('empresa/<str:cod_empresa>/', views.fn_view_atualizar_empresa, name='Empresa_upd'),
 
     # Filiais
     path('filial/inserir/', views.fn_view_inserir_filial, name='Filial_ins'),
+    path('filial/<int:pk>/excluir/', views.fn_view_excluir_filial, name='Filial_del'),
     path('filial/<int:pk>/atualizar/', views.fn_view_atualizar_filial, name='Filial_upd'),
 
     # Clientes

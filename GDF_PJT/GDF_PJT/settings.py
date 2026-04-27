@@ -34,7 +34,6 @@ if _NWRFC_PATH.exists():
 import environ
 from csp.constants import NONCE
 from django.urls import reverse_lazy
-from celery.schedules import crontab
 
 env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
@@ -378,13 +377,8 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
-CELERY_BEAT_SCHEDULE = {
-    # Uma tarefa: Carga XML + SPED (regras em app.api.carga_automatica).
-    'carga-automatica-scan-minuto': {
-        'task': 'app.api.tasks.scan_carga_automatica',
-        'schedule': crontab(minute='*'),
-    },
-}
+# Sem agendamento periódico: cargas XML/SPED são apenas manuais (upload).
+CELERY_BEAT_SCHEDULE = {}
 
 # Carga XML manual – máximo de arquivos por requisição (um envio = um job)
 CARGAXML_MAX_ARCHIVOS_POR_REQUISICAO = env.int('CARGAXML_MAX_ARCHIVOS_POR_REQUISICAO', default=5000)

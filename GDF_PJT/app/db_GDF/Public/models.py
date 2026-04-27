@@ -214,31 +214,8 @@ class AcessoSubsolucaoGrupo(models.Model):
 
 
 # ---------------------------------------------------------------------------
-# Parâmetros e jobs de carga XML (NFe, CTe, NFSe)
+# Jobs de carga XML (NFe, CTe, NFSe) — somente carga manual (upload)
 # ---------------------------------------------------------------------------
-class ParametroCargaXml(models.Model):
-    """Parâmetros de carga automática de XML por cliente GDF."""
-    id = models.BigAutoField(primary_key=True)
-    gdfcliente = models.ForeignKey(
-        ClienteGdf, models.CASCADE, db_column='gdfcliente_id'
-    )
-    empresa = models.ForeignKey(Empresa, models.CASCADE, null=True, blank=True)
-    ativo = models.BooleanField(default=True)
-    horario = models.TimeField()
-    diretorio = models.CharField(max_length=500)
-    usuario_criacao = models.ForeignKey(
-        User, models.SET_NULL, null=True, blank=True, related_name='cargaxml_params'
-    )
-    data_criacao = models.DateTimeField(auto_now_add=True)
-    data_atualizacao = models.DateTimeField(auto_now=True)
-    ultima_execucao = models.DateTimeField(blank=True, null=True)
-
-    class Meta:
-        managed = True
-        db_table = 'parametro_carga_xml'
-        verbose_name = 'Parâmetro carga XML'
-        verbose_name_plural = 'Parâmetros carga XML'
-        indexes = [models.Index(fields=['gdfcliente', 'ativo'])]
 
 
 class JobCargaXml(models.Model):
@@ -252,9 +229,6 @@ class JobCargaXml(models.Model):
     id = models.BigAutoField(primary_key=True)
     gdfcliente = models.ForeignKey(
         ClienteGdf, models.CASCADE, db_column='gdfcliente_id'
-    )
-    parametro = models.ForeignKey(
-        ParametroCargaXml, models.SET_NULL, null=True, blank=True
     )
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
     total_arquivos = models.IntegerField(default=0)
@@ -279,41 +253,8 @@ class JobCargaXml(models.Model):
 
 
 # ---------------------------------------------------------------------------
-# Parâmetros e jobs de carga SPED (EFD ICMS, EFD Contribuições, etc.)
+# Jobs de carga SPED (EFD ICMS, EFD Contribuições, etc.) — somente carga manual
 # ---------------------------------------------------------------------------
-class ParametroCargaSped(models.Model):
-    """Parâmetros de carga automática de SPED por cliente GDF."""
-    id = models.BigAutoField(primary_key=True)
-    gdfcliente = models.ForeignKey(
-        ClienteGdf, models.CASCADE, db_column='gdfcliente_id'
-    )
-    empresa = models.ForeignKey(Empresa, models.CASCADE, null=True, blank=True)
-    ativo = models.BooleanField(default=True)
-    horario = models.TimeField()
-    tipo_sped = models.CharField(
-        max_length=20,
-        choices=[
-            ('EFD_ICMS', 'EFD ICMS/IPI'),
-            ('EFD_CONTRIB', 'EFD Contribuições'),
-            ('ECD', 'ECD'),
-            ('OUTROS', 'Outros'),
-        ],
-        default='EFD_ICMS',
-    )
-    diretorio = models.CharField(max_length=500)
-    usuario_criacao = models.ForeignKey(
-        User, models.SET_NULL, null=True, blank=True, related_name='cargasped_params'
-    )
-    data_criacao = models.DateTimeField(auto_now_add=True)
-    data_atualizacao = models.DateTimeField(auto_now=True)
-    ultima_execucao = models.DateTimeField(blank=True, null=True)
-
-    class Meta:
-        managed = True
-        db_table = 'parametro_carga_sped'
-        verbose_name = 'Parâmetro carga SPED'
-        verbose_name_plural = 'Parâmetros carga SPED'
-        indexes = [models.Index(fields=['gdfcliente', 'ativo'])]
 
 
 class JobCargaSped(models.Model):
@@ -327,9 +268,6 @@ class JobCargaSped(models.Model):
     id = models.BigAutoField(primary_key=True)
     gdfcliente = models.ForeignKey(
         ClienteGdf, models.CASCADE, db_column='gdfcliente_id'
-    )
-    parametro = models.ForeignKey(
-        ParametroCargaSped, models.SET_NULL, null=True, blank=True
     )
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
     total_arquivos = models.IntegerField(default=0)

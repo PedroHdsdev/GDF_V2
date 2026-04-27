@@ -24,6 +24,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.paginator import Paginator
 from django.db.models import Count, Prefetch, Q
+from django.db.models.deletion import ProtectedError
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
@@ -46,8 +47,6 @@ from app.db_GDF.Public.models import (
     Filial,
     JobCargaSped,
     JobCargaXml,
-    ParametroCargaSped,
-    ParametroCargaXml,
     UsuarioEmpresa,
 )
 from app.db_GDF.CTe.models import (
@@ -114,12 +113,10 @@ from app.utils.view_helpers import (
     autenticar_sessao_ou_jwt_dashboard,
     descricao_tipo_pagamento,
     get_subsolucoes_usuario,
-    json_negado_gerenciar_carga_automatica,
     relatorio_empresas_queryset,
     reprocessamento_empresas_cliente,
     superuser_acesso_total_painel,
     usuario_acesso_total_painel,
-    usuario_pode_gerenciar_carga_automatica,
     usuario_vinculado_cliente_1000,
 )
 from app.utils.relatorio_params import (
@@ -211,6 +208,12 @@ def fn_view_csrf_failure(request, reason=''):
 @login_required(login_url='Login')
 def fn_view_obter_subsolucao(request, cod_sub):
     """Redireciona para a URL da subsolução apenas se o usuário tem acesso via grupo."""
+    if str(cod_sub) == 'Dm_Filiais':
+        s = get_subsolucoes_usuario(request.user)
+        ok = s is None or 'Dm_Filiais' in s or 'Dm_Empresas' in s
+        if not ok:
+            return redirect('Home')
+        return redirect('Dm_Empresas')
     # Valida acesso pela fonte de verdade (grupos), não apenas pela sessão
     subsolucoes = get_subsolucoes_usuario(request.user)
     if subsolucoes is not None and str(cod_sub) not in {str(c) for c in subsolucoes}:
@@ -295,7 +298,7 @@ def fn_view_home(request):
                 context['alertas'].append({
                     'tipo': 'critical',
                     'titulo': f'{len(xml_erro_ids)} carga(s) XML com erro nas últimas 24h',
-                    'meta': 'Processamento Fiscal',
+                    'meta': 'Importação',
                     'tag': 'Urgente',
                     'url': 'Pro_CargaXml',
                     'ids': xml_erro_ids,
@@ -314,14 +317,14 @@ def fn_view_home(request):
                 context['alertas'].append({
                     'tipo': 'critical',
                     'titulo': f'{len(sped_erro_ids)} carga(s) SPED com erro nas últimas 24h',
-                    'meta': 'Processamento Fiscal',
+                    'meta': 'Importação',
                     'tag': 'Urgente',
                     'url': 'Pro_CargaSped',
                     'ids': sped_erro_ids,
                     'fonte': 'cargasped',
                 })
 
-        # 4. Divergências abertas no reprocessamento (requer Reproc_Painel)
+        # 4. Divergências abertas no painel de reprocessamento (requer Reproc_Painel)
         if _tem_acesso('Reproc_Painel'):
             divergencias = Divergencia.objects.filter(
                 lote__empresa__gdfcliente_id=cod_cliente,
@@ -331,7 +334,7 @@ def fn_view_home(request):
                 context['alertas'].append({
                     'tipo': 'warning',
                     'titulo': f'{divergencias} divergência(s) aberta(s) no confronto SPED x NFe',
-                    'meta': 'Reprocessamento',
+                    'meta': 'Ferramentas',
                     'tag': 'Revisar',
                     'url': 'Reproc_Painel',
                 })
@@ -357,7 +360,7 @@ def fn_view_home(request):
             context['alertas'].append({
                 'tipo': 'info',
                 'titulo': 'Confronto SPED x NFe',
-                'meta': 'Reprocessamento',
+                'meta': 'Ferramentas',
                 'tag': 'Acessar',
                 'url': 'Reproc_Painel',
             })
@@ -402,14 +405,12 @@ def fn_view_home(request):
     context['atalhos'] = []
     context['tem_mnf'] = _tem_acesso('Mnf_Painel')
     context['tem_empresas'] = _tem_acesso('Dm_Empresas')
-    context['tem_filiais'] = _tem_acesso('Dm_Filiais')
     _atalhos_config = [
         ('Pro_CargaXml', 'Importar XML', 'Carga diária'),
         ('Pro_CargaSped', 'Carga SPED', 'Arquivos SPED'),
         ('Pro_Relatorio', 'Relatório Fiscal', 'NFe, CTe, NFS, SPED'),
-        ('Int_Rfc', 'RFC SAP', 'Integração schema sap'),
-        ('Dm_Empresas', 'Empresas', 'Cadastros'),
-        ('Dm_Filiais', 'Filiais', 'Cadastros'),
+        ('Int_Rfc', 'RFC SAP', 'Ferramentas · integração schema SAP'),
+        ('Dm_Empresas', 'Empresas (e filiais)', 'Cadastros'),
         ('Dm_Usuarios', 'Usuários', 'Acessos'),
     ]
     for cod, titulo, desc in _atalhos_config:
@@ -498,7 +499,7 @@ def fn_view_sair(request):
     return redirect('Login')
 
 #--------------------------------------------------------------------
-#       Sub-soluções Views (Administração)
+#       Sub-soluções Views (Configuração)
 #--------------------------------------------------------------------
 # Usuarios
 @login_required(login_url='Login')
@@ -542,6 +543,8 @@ def fn_view_listar_empresas(request):
         't_empresas': t_empresas,
         'cod_cliente': cod_cliente,
         'is_superuser': is_superuser,
+        # Filiais: só no modal de empresa; quem acessa esta tela já tem Dm_Empresas
+        'pode_gerir_filiais': True,
     }
     if is_superuser and superuser_acesso_total_painel(request):
         context['lista_clientes'] = cl_gdf.get_clientes()
@@ -562,40 +565,19 @@ def fn_view_listar_clientes(request):
     return render(request, 'ClienteGdf/index_ClienteGdf.html', context)
 
 
-# Filiais (subsolução Administração)
+# Rota Dm_Filiais mantida por compat.; filiais passam a ser gestas só no modal de Empresas
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Dm_Filiais')
+@requer_acesso_subsolucao('Dm_Empresas')
 def fn_view_listar_filiais(request):
-    cod_cliente = request.session.get('cod_cliente', None)
-    is_superuser = request.session.get('is_superuser', False)
-    if not cod_cliente:
-        if is_superuser:
-            messages.info(request, 'Selecione um cliente na Home para gerenciar filiais.')
-            return redirect('Home')
-        return redirect('Login')
-    filiais = (
-        Filial.objects.filter(empresa__gdfcliente__cod_cliente=cod_cliente)
-        .select_related('empresa')
-        .order_by('empresa__cod_empresa', 'cod_filial')
+    messages.info(
+        request,
+        'Filiais: use Cadastros → Empresas, clique na linha da empresa e aba Filiais no modal.',
     )
-    empresas = list(
-        Empresa.objects.filter(gdfcliente_id=cod_cliente)
-        .order_by('fantasia', 'razao')
-        .values('cod_empresa', 'razao', 'fantasia')
-    )
-    context = {
-        'filiais': filiais,
-        'empresas': empresas,
-        'cod_cliente': cod_cliente,
-        'is_superuser': is_superuser,
-    }
-    if is_superuser and superuser_acesso_total_painel(request):
-        context['lista_clientes'] = ClGdf().get_clientes()
-    return render(request, 'Filiais/index_Filiais.html', context)
+    return redirect('Dm_Empresas')
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Dm_Filiais')
+@requer_acesso_subsolucao('Dm_Empresas')
 @require_http_methods(["POST"])
 def fn_view_inserir_filial(request):
     """Cadastrar nova filial (empresa do cliente na sessão)."""
@@ -634,7 +616,7 @@ def fn_view_inserir_filial(request):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Dm_Filiais')
+@requer_acesso_subsolucao('Dm_Empresas')
 @require_http_methods(["GET", "POST"])
 def fn_view_atualizar_filial(request, pk):
     """Retorna dados da filial (GET) ou atualiza (POST). Filial deve pertencer ao cliente da sessão."""
@@ -679,6 +661,67 @@ def fn_view_atualizar_filial(request, pk):
     filial.ativo = ativo
     filial.save(update_fields=["cod_filial", "nome", "cnpj", "ativo"])
     return JsonResponse({"success": True, "message": "Filial atualizada com sucesso"})
+
+
+@login_required(login_url="Login")
+@requer_acesso_subsolucao("Dm_Empresas")
+@require_http_methods(["GET"])
+def fn_view_listar_filiais_empresa(request, cod_empresa):
+    """Lista filiais (JSON) da empresa, desde que pertença ao cliente da sessão."""
+    cod_cliente = request.session.get("cod_cliente", None)
+    if not cod_cliente:
+        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+    empresa = Empresa.objects.filter(
+        cod_empresa=cod_empresa,
+        gdfcliente__cod_cliente=cod_cliente,
+    ).first()
+    if not empresa:
+        return JsonResponse({"erro": "Empresa não encontrada ou sem permissão"}, status=404)
+    filiais = (
+        Filial.objects.filter(empresa=empresa)
+        .order_by("cod_filial")
+    )
+    data = [
+        {
+            "id": f.id,
+            "cod_filial": f.cod_filial,
+            "nome": f.nome or "",
+            "cnpj": f.cnpj or "",
+            "ativo": f.ativo,
+        }
+        for f in filiais
+    ]
+    return JsonResponse({"filiais": data})
+
+
+@login_required(login_url="Login")
+@requer_acesso_subsolucao("Dm_Empresas")
+@require_http_methods(["POST"])
+def fn_view_excluir_filial(request, pk):
+    """Exclui filial do cliente (POST). Pode falhar com PROTECT (ex.: SAP)."""
+    cod_cliente = request.session.get("cod_cliente", None)
+    if not cod_cliente:
+        return JsonResponse({"erro": "Cliente não identificado"}, status=403)
+    filial = (
+        Filial.objects.filter(
+            id=pk,
+            empresa__gdfcliente__cod_cliente=cod_cliente,
+        )
+        .select_related("empresa")
+        .first()
+    )
+    if not filial:
+        return JsonResponse({"erro": "Filial não encontrada ou sem permissão"}, status=404)
+    try:
+        filial.delete()
+    except ProtectedError:
+        return JsonResponse(
+            {
+                "erro": "Não é possível excluir: existem registros vinculados a esta filial (ex.: integração SAP).",
+            },
+            status=400,
+        )
+    return JsonResponse({"success": True, "message": "Filial excluída com sucesso."})
 
 
 #--------------------------------------------------------------------
@@ -1484,23 +1527,8 @@ def fn_view_CargaXml(request):
             .select_related("gdfcliente")
             .order_by("-started_at")
         )
-        parametros = (
-            ParametroCargaXml.objects.filter(gdfcliente=cliente)
-            .select_related("empresa")
-            .order_by("-data_criacao")
-        )
-        empresas_usuario = (
-            Empresa.objects.filter(
-                gdfcliente=cliente,
-                usuarioempresa__user=request.user,
-            )
-            .order_by("fantasia", "razao", "cod_empresa")
-            .distinct()
-        )
     except ClienteGdf.DoesNotExist:
         jobs = []
-        parametros = []
-        empresas_usuario = []
     url_prefix = (request.META.get("SCRIPT_NAME") or getattr(settings, "FORCE_SCRIPT_NAME", "") or "").strip()
     if url_prefix and not url_prefix.startswith("/"):
         url_prefix = "/" + url_prefix
@@ -1509,10 +1537,7 @@ def fn_view_CargaXml(request):
     context = {
         "cod_cliente": cod_cliente,
         "jobs": jobs,
-        "parametros": parametros,
-        "empresas_usuario": empresas_usuario,
         "url_prefix": url_prefix,
-        "pode_gerenciar_carga_automatica": usuario_pode_gerenciar_carga_automatica(request.user),
     }
     return render(request, "Processamento/index_CargaXml.html", context)
 
@@ -1631,7 +1656,6 @@ def fn_api_processar_xml(request):
         # Um envio = um job: criar job, salvar arquivos na pasta temp e disparar processamento
         job = JobCargaXml.objects.create(
             gdfcliente=cliente,
-            parametro=None,
             status='RUNNING',
             total_arquivos=len(expanded),
             total_sucesso=0,
@@ -1669,319 +1693,6 @@ def fn_api_processar_xml(request):
     except Exception as e:
         return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao processar: {str(e)}'}, status=500)
 
-
-@login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
-@require_http_methods(["GET", "POST"])
-def fn_api_cargaxml_parametros(request):
-    cod_cliente = request.session.get('cod_cliente', None)
-
-    if not cod_cliente:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
-
-    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
-
-    if not usuario_pode_gerenciar_carga_automatica(request.user):
-        return json_negado_gerenciar_carga_automatica()
-
-    if request.method == "GET":
-        apenas_ativos = request.GET.get('ativo')
-        parametros = ParametroCargaXml.objects.filter(gdfcliente=cliente)
-
-        if apenas_ativos in ['1', 'true', 'True', 'yes', 'sim']:
-            parametros = parametros.filter(ativo=True)
-
-        items = []
-        for param in parametros.order_by('-data_criacao'):
-            items.append({
-                'id': param.id,
-                'ativo': param.ativo,
-                'horario': param.horario.strftime('%H:%M'),
-                'diretorio': param.diretorio,
-                'empresa_id': param.empresa.cod_empresa if param.empresa else None,
-                'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
-                'ultima_execucao': isoformat_brasilia(param.ultima_execucao),
-            })
-
-        return JsonResponse({'sucesso': True, 'items': items}, status=200)
-    
-    elif request.method == "POST":
-        # Processar criação de novo parâmetro
-        payload = None
-        if request.content_type and 'application/json' in request.content_type:
-            payload = json.loads(request.body.decode('utf-8'))
-        else:
-            payload = request.POST
-
-        horario_raw = (payload.get('horario') or '').strip()
-        diretorio = (payload.get('diretorio') or '').strip()
-        empresa_id = (payload.get('empresa_id') or '').strip()
-        ativo_raw = payload.get('ativo', True)
-
-        if not horario_raw or not diretorio:
-            return JsonResponse({'sucesso': False, 'mensagem': 'Horario e diretorio sao obrigatorios'}, status=400)
-
-        try:
-            horario = datetime.strptime(horario_raw, '%H:%M').time()
-        except ValueError:
-            return JsonResponse({'sucesso': False, 'mensagem': 'Horario invalido. Use HH:MM'}, status=400)
-
-        ativo = True
-        if isinstance(ativo_raw, str):
-            ativo = ativo_raw.lower() in ['1', 'true', 'yes', 'sim', 'on']
-        else:
-            ativo = bool(ativo_raw)
-
-        empresa = None
-        if empresa_id:
-            try:
-                empresa = Empresa.objects.get(cod_empresa=empresa_id, gdfcliente=cliente)
-            except Empresa.DoesNotExist:
-                return JsonResponse({'sucesso': False, 'mensagem': 'Empresa nao encontrada'}, status=404)
-
-        param = ParametroCargaXml.objects.create(
-            gdfcliente=cliente,
-            empresa=empresa,
-            ativo=ativo,
-            horario=horario,
-            diretorio=diretorio,
-            usuario_criacao=request.user,
-            data_atualizacao=timezone.localtime(),
-        )
-
-        return JsonResponse({
-            'sucesso': True,
-            'mensagem': 'Parametro salvo com sucesso',
-            'item': {
-                'id': param.id,
-                'ativo': param.ativo,
-                'horario': param.horario.strftime('%H:%M'),
-                'diretorio': param.diretorio,
-                'empresa_id': param.empresa.cod_empresa if param.empresa else None,
-                'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
-            }
-        }, status=201)
-
-
-@login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
-@require_http_methods(["GET", "PUT"])
-def fn_api_cargaxml_parametro_detail(request, param_id):
-    """Endpoint para obter ou atualizar um parâmetro específico (GET / PUT)."""
-    cod_cliente = request.session.get('cod_cliente', None)
-
-    if not cod_cliente:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
-
-    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
-    param = get_object_or_404(ParametroCargaXml, id=param_id, gdfcliente=cliente)
-
-    if not usuario_pode_gerenciar_carga_automatica(request.user):
-        return json_negado_gerenciar_carga_automatica()
-
-    if request.method == 'GET':
-        param_data = {
-            'id': param.id,
-            'ativo': param.ativo,
-            'horario': param.horario.strftime('%H:%M'),
-            'diretorio': param.diretorio,
-            'empresa_id': param.empresa.cod_empresa if param.empresa else None,
-            'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
-            'ultima_execucao': isoformat_brasilia(param.ultima_execucao),
-        }
-        return JsonResponse({'sucesso': True, 'parametro': param_data}, status=200)
-
-    # PUT -> atualizar parâmetro
-    payload = None
-    if request.content_type and 'application/json' in request.content_type:
-        try:
-            payload = json.loads(request.body.decode('utf-8'))
-        except Exception:
-            return JsonResponse({'sucesso': False, 'mensagem': 'Payload JSON invalido'}, status=400)
-    else:
-        payload = request.POST
-
-    horario_raw = (payload.get('horario') or '').strip()
-    diretorio = (payload.get('diretorio') or param.diretorio).strip()
-    empresa_id = (payload.get('empresa_id') or (param.empresa.cod_empresa if param.empresa else '')).strip()
-    ativo_raw = payload.get('ativo', param.ativo)
-
-    if not horario_raw or not diretorio:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Horario e diretorio sao obrigatorios'}, status=400)
-
-    try:
-        horario = datetime.strptime(horario_raw, '%H:%M').time()
-    except ValueError:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Horario invalido. Use HH:MM'}, status=400)
-
-    ativo = True
-    if isinstance(ativo_raw, str):
-        ativo = ativo_raw.lower() in ['1', 'true', 'yes', 'sim', 'on']
-    else:
-        ativo = bool(ativo_raw)
-
-    if empresa_id:
-        try:
-            param.empresa = Empresa.objects.get(cod_empresa=empresa_id, gdfcliente=cliente)
-        except Empresa.DoesNotExist:
-            return JsonResponse({'sucesso': False, 'mensagem': 'Empresa nao encontrada'}, status=404)
-    else:
-        param.empresa = None
-
-    # Aplicar alterações
-    param.horario = horario
-    param.diretorio = diretorio
-    param.ativo = ativo
-    param.data_atualizacao = timezone.localtime()
-    param.save(update_fields=['horario', 'diretorio', 'empresa', 'ativo', 'data_atualizacao'])
-
-    return JsonResponse({'sucesso': True, 'mensagem': 'Parametro atualizado com sucesso'}, status=200)
-
-
-@login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
-@require_http_methods(["POST"])
-def fn_api_cargaxml_upload_zip(request, param_id):
-    """Envia um arquivo ZIP para a pasta do parâmetro; extrai apenas .xml para o diretório do job."""
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
-
-    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
-    param = get_object_or_404(ParametroCargaXml, id=param_id, gdfcliente=cliente)
-
-    if not usuario_pode_gerenciar_carga_automatica(request.user):
-        return json_negado_gerenciar_carga_automatica()
-
-    arquivo_zip = request.FILES.get('arquivo_zip')
-    if not arquivo_zip:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Nenhum arquivo ZIP enviado'}, status=400)
-    if not (arquivo_zip.name or '').lower().endswith('.zip'):
-        return JsonResponse({'sucesso': False, 'mensagem': 'Arquivo deve ser .zip'}, status=400)
-    if arquivo_zip.size > 100 * 1024 * 1024:
-        return JsonResponse({'sucesso': False, 'mensagem': 'ZIP muito grande (max 100MB)'}, status=400)
-
-    base_dir = Path(param.diretorio)
-    try:
-        base_dir.mkdir(parents=True, exist_ok=True)
-        base_dir = base_dir.resolve()
-    except OSError as e:
-        return JsonResponse({'sucesso': False, 'mensagem': f'Diretorio invalido ou inacessivel: {e}'}, status=400)
-
-    extraidos = 0
-    try:
-        with zipfile.ZipFile(arquivo_zip, 'r') as zf:
-            for name in zf.namelist():
-                if name.endswith('/') or not name.lower().endswith('.xml'):
-                    continue
-                # Evitar path traversal: extrair apenas o nome do arquivo na pasta base
-                safe_name = Path(name).name
-                if not safe_name or '..' in safe_name:
-                    continue
-                dest_path = base_dir / safe_name
-                try:
-                    dest_path = dest_path.resolve()
-                    if not str(dest_path).startswith(str(base_dir)):
-                        continue
-                except Exception:
-                    continue
-                try:
-                    with zf.open(name, 'r') as src:
-                        dest_path.write_bytes(src.read())
-                    extraidos += 1
-                except Exception:
-                    pass
-    except zipfile.BadZipFile:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Arquivo ZIP invalido ou corrompido'}, status=400)
-    except Exception as e:
-        return JsonResponse({'sucesso': False, 'mensagem': f'Erro ao extrair ZIP: {str(e)}'}, status=500)
-
-    return JsonResponse({
-        'sucesso': True,
-        'mensagem': f'ZIP processado: {extraidos} arquivo(s) XML extraido(s) para a pasta do job.',
-        'extraidos': extraidos
-    }, status=200)
-
-
-@login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
-@require_http_methods(["GET"])
-def fn_api_cargaxml_relatorio(request):
-    """Relatório de ajuste para parâmetros de carga (diretório existe, último job)."""
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
-
-    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
-
-    if not usuario_pode_gerenciar_carga_automatica(request.user):
-        return json_negado_gerenciar_carga_automatica()
-
-    parametros = ParametroCargaXml.objects.filter(gdfcliente=cliente)
-    items = []
-
-    import os
-    for param in parametros.order_by('horario'):
-        dir_exists = os.path.isdir(param.diretorio)
-        last_job = JobCargaXml.objects.filter(parametro=param).order_by('-started_at').first()
-        items.append({
-            'id': param.id,
-            'ativo': param.ativo,
-            'horario': param.horario.strftime('%H:%M'),
-            'diretorio': param.diretorio,
-            'empresa_id': param.empresa.cod_empresa if param.empresa else None,
-            'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
-            'dir_exists': dir_exists,
-            'ultima_execucao': isoformat_brasilia(param.ultima_execucao),
-            'last_job_status': last_job.status if last_job else None,
-            'last_job_total': last_job.total_arquivos if last_job else None,
-            'last_job_success': last_job.total_sucesso if last_job else None,
-            'last_job_error': last_job.total_erro if last_job else None,
-            'last_job_msg': last_job.mensagem if last_job else None,
-            'last_job_started': isoformat_brasilia(last_job.started_at if last_job else None),
-            'last_job_finished': isoformat_brasilia(last_job.finished_at if last_job else None),
-        })
-
-    return JsonResponse({'sucesso': True, 'items': items}, status=200)
-
-
-@login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
-@require_http_methods(["POST"])
-def fn_api_cargaxml_param_toggle(request, param_id):
-    cod_cliente = request.session.get('cod_cliente', None)
-
-    if not cod_cliente:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
-
-    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
-    param = get_object_or_404(ParametroCargaXml, id=param_id, gdfcliente=cliente)
-
-    if not usuario_pode_gerenciar_carga_automatica(request.user):
-        return json_negado_gerenciar_carga_automatica()
-
-    ativo_raw = None
-    if request.content_type and 'application/json' in request.content_type:
-        body = json.loads(request.body.decode('utf-8'))
-        ativo_raw = body.get('ativo')
-    else:
-        ativo_raw = request.POST.get('ativo')
-
-    if ativo_raw is None:
-        param.ativo = not param.ativo
-    else:
-        if isinstance(ativo_raw, str):
-            param.ativo = ativo_raw.lower() in ['1', 'true', 'yes', 'sim', 'on']
-        else:
-            param.ativo = bool(ativo_raw)
-
-    param.save(update_fields=['ativo', 'data_atualizacao'])
-
-    return JsonResponse({
-        'sucesso': True,
-        'id': param.id,
-        'ativo': param.ativo,
-    }, status=200)
 
 
 @login_required(login_url='Login')
@@ -2082,7 +1793,6 @@ def fn_api_cargaxml_jobs(request):
             'mensagem': (job.mensagem or '')[:500],
             'started_at': isoformat_brasilia(job.started_at),
             'finished_at': isoformat_brasilia(job.finished_at),
-            'parametro_id': job.parametro.id if job.parametro else None,
         })
     return JsonResponse({'sucesso': True, 'items': items}, status=200)
 
@@ -2132,19 +1842,6 @@ def fn_api_cargaxml_job_details(request, job_id):
         return 3
     log_lines = sorted(log_lines, key=_prioridade_log)
 
-    param_data = None
-    if job.parametro:
-        p = job.parametro
-        pode_auto = usuario_pode_gerenciar_carga_automatica(request.user)
-        param_data = {
-            'id': p.id,
-            'ativo': p.ativo,
-            'horario': p.horario.strftime('%H:%M'),
-            'diretorio': p.diretorio if pode_auto else '',
-            'empresa_id': p.empresa.cod_empresa if p.empresa else None,
-            'empresa_nome': p.empresa.fantasia or p.empresa.razao if p.empresa else '',
-            'ultima_execucao': isoformat_brasilia(p.ultima_execucao),
-        }
     return JsonResponse({
         'sucesso': True,
         'job': {
@@ -2156,7 +1853,7 @@ def fn_api_cargaxml_job_details(request, job_id):
             'started_at': isoformat_brasilia(job.started_at),
             'finished_at': isoformat_brasilia(job.finished_at),
         },
-        'parametro': param_data,
+        'parametro': None,
         'log': log_lines,
     }, status=200)
 
@@ -2239,7 +1936,6 @@ def fn_api_processar_sped(request):
 
     job = JobCargaSped.objects.create(
         gdfcliente=cliente,
-        parametro=None,
         status='PENDING',
         total_arquivos=len(arquivos),
         total_sucesso=0,
@@ -2289,207 +1985,6 @@ def fn_api_processar_sped(request):
     }, status=200)
 
 
-@login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
-@require_http_methods(["GET", "POST"])
-def fn_api_cargasped_parametros(request):
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
-
-    if not usuario_pode_gerenciar_carga_automatica(request.user):
-        return json_negado_gerenciar_carga_automatica()
-
-    if request.method == "GET":
-        parametros = ParametroCargaSped.objects.filter(gdfcliente=cliente)
-        items = []
-        for param in parametros.order_by('-data_criacao'):
-            items.append({
-                'id': param.id,
-                'ativo': param.ativo,
-                'horario': param.horario.strftime('%H:%M'),
-                'tipo_sped': param.tipo_sped,
-                'diretorio': param.diretorio,
-                'empresa_id': param.empresa.cod_empresa if param.empresa else None,
-                'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
-                'ultima_execucao': isoformat_brasilia(param.ultima_execucao),
-            })
-        return JsonResponse({'sucesso': True, 'items': items}, status=200)
-
-    elif request.method == "POST":
-        payload = json.loads(request.body.decode('utf-8')) if request.content_type and 'application/json' in request.content_type else request.POST
-        horario_raw = (payload.get('horario') or '').strip()
-        tipo_sped = (payload.get('tipo_sped') or 'EFD_ICMS').strip()  # mantido para compatibilidade; tipo é detectado automaticamente na carga
-        diretorio = (payload.get('diretorio') or '').strip()
-        empresa_id = (payload.get('empresa_id') or '').strip()
-        ativo = payload.get('ativo', True)
-        if isinstance(ativo, str):
-            ativo = ativo.lower() in ['1', 'true', 'yes', 'sim', 'on']
-        else:
-            ativo = bool(ativo)
-        if not horario_raw or not diretorio:
-            return JsonResponse({'sucesso': False, 'mensagem': 'Horário e diretório são obrigatórios'}, status=400)
-        try:
-            from datetime import datetime
-            horario = datetime.strptime(horario_raw, '%H:%M').time()
-        except ValueError:
-            return JsonResponse({'sucesso': False, 'mensagem': 'Horário inválido. Use HH:MM'}, status=400)
-        empresa = None
-        if empresa_id:
-            try:
-                empresa = Empresa.objects.get(cod_empresa=empresa_id, gdfcliente=cliente)
-            except Empresa.DoesNotExist:
-                return JsonResponse({'sucesso': False, 'mensagem': 'Empresa não encontrada'}, status=404)
-        param = ParametroCargaSped.objects.create(
-            gdfcliente=cliente,
-            empresa=empresa,
-            ativo=ativo,
-            horario=horario,
-            tipo_sped=tipo_sped,
-            diretorio=diretorio,
-            usuario_criacao=request.user,
-        )
-        return JsonResponse({
-            'sucesso': True,
-            'mensagem': 'Parâmetro salvo com sucesso',
-            'item': {
-                'id': param.id,
-                'ativo': param.ativo,
-                'horario': param.horario.strftime('%H:%M'),
-                'tipo_sped': param.tipo_sped,
-                'diretorio': param.diretorio,
-                'empresa_id': param.empresa.cod_empresa if param.empresa else None,
-                'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
-            }
-        }, status=201)
-
-
-@login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
-@require_http_methods(["GET", "PUT"])
-def fn_api_cargasped_parametro_detail(request, param_id):
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    param = get_object_or_404(ParametroCargaSped, id=param_id, gdfcliente__cod_cliente=cod_cliente)
-
-    if not usuario_pode_gerenciar_carga_automatica(request.user):
-        return json_negado_gerenciar_carga_automatica()
-
-    if request.method == "GET":
-        return JsonResponse({
-            'sucesso': True,
-            'item': {
-                'id': param.id,
-                'ativo': param.ativo,
-                'horario': param.horario.strftime('%H:%M'),
-                'tipo_sped': param.tipo_sped,
-                'diretorio': param.diretorio,
-                'empresa_id': param.empresa.cod_empresa if param.empresa else None,
-                'empresa_nome': param.empresa.fantasia or param.empresa.razao if param.empresa else '',
-                'ultima_execucao': isoformat_brasilia(param.ultima_execucao),
-            }
-        }, status=200)
-
-    elif request.method == "PUT":
-        payload = json.loads(request.body.decode('utf-8'))
-        if 'horario' in payload:
-            try:
-                param.horario = datetime.strptime((payload['horario'] or '').strip(), '%H:%M').time()
-            except ValueError:
-                pass
-        if 'tipo_sped' in payload:
-            param.tipo_sped = (payload['tipo_sped'] or param.tipo_sped).strip() or 'EFD_ICMS'
-        if 'diretorio' in payload:
-            param.diretorio = (payload['diretorio'] or '').strip()
-        if 'empresa_id' in payload:
-            if payload.get('empresa_id'):
-                try:
-                    param.empresa = Empresa.objects.get(cod_empresa=payload['empresa_id'], gdfcliente__cod_cliente=cod_cliente)
-                except Empresa.DoesNotExist:
-                    pass
-            else:
-                param.empresa = None
-        if 'ativo' in payload:
-            param.ativo = payload['ativo'] in [True, 'true', '1', 'yes', 'sim']
-        param.save(update_fields=['horario', 'tipo_sped', 'diretorio', 'empresa', 'ativo', 'data_atualizacao'])
-        return JsonResponse({'sucesso': True, 'mensagem': 'Parâmetro atualizado'}, status=200)
-
-
-@login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
-@require_http_methods(["POST"])
-def fn_api_cargasped_upload_zip(request, param_id):
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    cliente = get_object_or_404(ClienteGdf, cod_cliente=cod_cliente)
-    param = get_object_or_404(ParametroCargaSped, id=param_id, gdfcliente=cliente)
-
-    if not usuario_pode_gerenciar_carga_automatica(request.user):
-        return json_negado_gerenciar_carga_automatica()
-
-    arquivo_zip = request.FILES.get('arquivo_zip')
-    if not arquivo_zip or not (arquivo_zip.name or '').lower().endswith('.zip'):
-        return JsonResponse({'sucesso': False, 'mensagem': 'Envie um arquivo .zip'}, status=400)
-    if arquivo_zip.size > 100 * 1024 * 1024:
-        return JsonResponse({'sucesso': False, 'mensagem': 'ZIP muito grande (máx 100MB)'}, status=400)
-    base_dir = Path(param.diretorio)
-    try:
-        base_dir.mkdir(parents=True, exist_ok=True)
-        base_dir = base_dir.resolve()
-    except OSError as e:
-        return JsonResponse({'sucesso': False, 'mensagem': f'Diretório inválido: {e}'}, status=400)
-    extraidos = 0
-    try:
-        with zipfile.ZipFile(arquivo_zip, 'r') as zf:
-            for name in zf.namelist():
-                if name.endswith('/') or not name.lower().endswith('.txt'):
-                    continue
-                safe_name = Path(name).name
-                if not safe_name or '..' in safe_name:
-                    continue
-                dest_path = base_dir / safe_name
-                try:
-                    dest_path = dest_path.resolve()
-                    if not str(dest_path).startswith(str(base_dir)):
-                        continue
-                except Exception:
-                    continue
-                try:
-                    with zf.open(name, 'r') as src:
-                        dest_path.write_bytes(src.read())
-                    extraidos += 1
-                except Exception:
-                    pass
-    except zipfile.BadZipFile:
-        return JsonResponse({'sucesso': False, 'mensagem': 'ZIP inválido'}, status=400)
-    except Exception as e:
-        return JsonResponse({'sucesso': False, 'mensagem': str(e)}, status=500)
-    return JsonResponse({'sucesso': True, 'mensagem': f'{extraidos} arquivo(s) SPED (.txt) extraído(s).', 'extraidos': extraidos}, status=200)
-
-
-@login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
-@require_http_methods(["POST"])
-def fn_api_cargasped_param_toggle(request, param_id):
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
-        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
-    param = get_object_or_404(ParametroCargaSped, id=param_id, gdfcliente__cod_cliente=cod_cliente)
-
-    if not usuario_pode_gerenciar_carga_automatica(request.user):
-        return json_negado_gerenciar_carga_automatica()
-
-    body = json.loads(request.body.decode('utf-8')) if request.content_type and 'application/json' in request.content_type else {}
-    ativo_raw = body.get('ativo', request.POST.get('ativo'))
-    if ativo_raw is None:
-        param.ativo = not param.ativo
-    else:
-        param.ativo = ativo_raw in [True, 'true', '1', 'yes', 'sim', 'on'] if isinstance(ativo_raw, str) else bool(ativo_raw)
-    param.save(update_fields=['ativo', 'data_atualizacao'])
-    return JsonResponse({'sucesso': True, 'id': param.id, 'ativo': param.ativo}, status=200)
 
 
 @login_required(login_url='Login')
@@ -2561,7 +2056,6 @@ def fn_api_cargasped_jobs(request):
         'total_erro': j.total_erro,
         'started_at': isoformat_brasilia(j.started_at),
         'finished_at': isoformat_brasilia(j.finished_at),
-        'parametro_id': j.parametro.id if j.parametro else None,
     } for j in jobs]
     return JsonResponse({'sucesso': True, 'items': items}, status=200)
 
@@ -2575,19 +2069,6 @@ def fn_api_cargasped_job_details(request, job_id):
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
     job = get_object_or_404(JobCargaSped, id=job_id, gdfcliente__cod_cliente=cod_cliente)
     log_lines = [line.strip() for line in (job.mensagem or '').splitlines() if line.strip()]
-    param_data = None
-    if job.parametro:
-        p = job.parametro
-        pode_auto = usuario_pode_gerenciar_carga_automatica(request.user)
-        param_data = {
-            'id': p.id, 'ativo': p.ativo,
-            'horario': p.horario.strftime('%H:%M'),
-            'tipo_sped': p.tipo_sped,
-            'diretorio': p.diretorio if pode_auto else '',
-            'empresa_id': p.empresa.cod_empresa if p.empresa else None,
-            'empresa_nome': p.empresa.fantasia or p.empresa.razao if p.empresa else '',
-            'ultima_execucao': isoformat_brasilia(p.ultima_execucao),
-        }
     return JsonResponse({
         'sucesso': True,
         'job': {
@@ -2598,7 +2079,7 @@ def fn_api_cargasped_job_details(request, job_id):
             'started_at': isoformat_brasilia(job.started_at),
             'finished_at': isoformat_brasilia(job.finished_at),
         },
-        'parametro': param_data,
+        'parametro': None,
         'log': log_lines,
     }, status=200)
 
@@ -2618,23 +2099,8 @@ def fn_view_CargaSped(request):
             .select_related("gdfcliente")
             .order_by("-started_at")
         )
-        parametros = (
-            ParametroCargaSped.objects.filter(gdfcliente=cliente)
-            .select_related("empresa")
-            .order_by("-data_criacao")
-        )
-        empresas_usuario = (
-            Empresa.objects.filter(
-                gdfcliente=cliente,
-                usuarioempresa__user=request.user,
-            )
-            .order_by("fantasia", "razao", "cod_empresa")
-            .distinct()
-        )
     except ClienteGdf.DoesNotExist:
         jobs = []
-        parametros = []
-        empresas_usuario = []
     url_prefix = (request.META.get("SCRIPT_NAME") or getattr(settings, "FORCE_SCRIPT_NAME", "") or "").strip()
     if url_prefix and not url_prefix.startswith("/"):
         url_prefix = "/" + url_prefix
@@ -2642,10 +2108,7 @@ def fn_view_CargaSped(request):
     context = {
         "cod_cliente": cod_cliente,
         "jobs": jobs,
-        "parametros": parametros,
-        "empresas_usuario": empresas_usuario,
         "url_prefix": url_prefix,
-        "pode_gerenciar_carga_automatica": usuario_pode_gerenciar_carga_automatica(request.user),
     }
     return render(request, "Processamento/index_CargaSped.html", context)
 
@@ -3436,7 +2899,7 @@ def fn_view_Relatorio_Fiscal(request):
 
 
 # -------------------------------------------------------------------------
-# Reprocessamento – Solução com subsolução Painel (confronto SPED x NFe)
+# Ferramentas – subsolução Reproc_Painel (painel de reprocessamento, confronto SPED x NFe)
 # -------------------------------------------------------------------------
 @login_required(login_url='Login')
 @requer_acesso_subsolucao('Reproc_Painel')

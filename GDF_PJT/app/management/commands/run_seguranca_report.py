@@ -78,7 +78,7 @@ class Command(BaseCommand):
         # --- 3. APIs que exigem cod_cliente na sessão (403 sem cliente)
         apis_sessao = [
             ('/api/cargaxml/jobs/', 'API CargaXml Jobs'),
-            ('/api/cargaxml/parametros/', 'API CargaXml Parâmetros'),
+            ('/api/cargaxml/resumo/', 'API CargaXml Resumo'),
             ('/api/reprocessamento/lotes/', 'API Reprocessamento Lotes'),
         ]
         for path, label in apis_sessao:

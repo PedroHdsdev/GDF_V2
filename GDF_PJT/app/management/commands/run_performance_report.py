@@ -79,7 +79,7 @@ class Command(BaseCommand):
             ('GET', '/api/relatorio/nfse/', 'API Relatório NFSe', True),
             ('GET', '/api/relatorio/sped/', 'API Relatório SPED', True),
             ('GET', '/api/cargaxml/jobs/', 'API CargaXml Jobs', True),
-            ('GET', '/api/cargaxml/parametros/', 'API CargaXml Parâmetros', True),
+            ('GET', '/api/cargaxml/resumo/', 'API CargaXml Resumo', True),
             ('GET', '/api/reprocessamento/lotes/', 'API Reprocessamento Lotes', True),
             ('GET', '/usuarios/', 'View Listar Usuários', True),
             ('GET', '/empresas/', 'View Listar Empresas', True),

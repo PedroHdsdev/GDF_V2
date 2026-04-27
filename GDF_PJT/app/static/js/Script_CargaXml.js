@@ -10,8 +10,7 @@ const estadoCargaXml = {
     todasCargas: [],
     cargasFiltradas: [],
     filtros: {
-        busca: '',
-        tipos: ['Automático', 'Manual']
+        busca: ''
     },
     currentPage: 1,
     itemsPerPage: 10,
@@ -22,18 +21,6 @@ const estadoCargaXml = {
     modalJobIdAberto: null
 };
 
-// Estado para a tabela principal de parâmetros
-const estadoParametros = {
-    todos: [],
-    filtrados: [],
-    filtros: {
-        busca: '',
-        mostrarAtivos: true,
-        mostrarInativos: true,
-    },
-    currentPage: 1,
-    itemsPerPage: 10,
-};
 
 /** API envia datas em ISO com offset UTC; exibe no fuso do navegador (ex.: America/Sao_Paulo). */
 function formatJobDateTimeLocal(iso, detailed) {
@@ -96,13 +83,6 @@ function cargaXmlEscHtml(s) {
 var intervaloResumoCargaXml = null;
 
 document.addEventListener('DOMContentLoaded', function () {
-    // Tabela principal: parâmetros + filtros ativo/inativo (somente com grupo CargaAutomatica)
-    if (podeGerenciarCargaAutomatica()) {
-        carregarParametrosPrincipais();
-        inicializarEventosFiltroParametrosPrincipais();
-        inicializarEventosParametros();
-        carregarParametrosAtivos();
-    }
     inicializarDragDropInputFiles();
     inicializarEventosJobsRenderizados();
     carregarAvisosCargaXml();
@@ -140,24 +120,12 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // a aba automática carrega parâmetros sempre que for mostrada
-    const tabAutomatico = document.getElementById('tab-automatico');
-    if (tabAutomatico) {
-        tabAutomatico.addEventListener('shown.bs.tab', function () {
-            carregarParametrosAtivos();
+    var modalCargaEl = document.getElementById('modalCargaXml');
+    if (modalCargaEl) {
+        modalCargaEl.addEventListener('show.bs.modal', function () {
+            if (typeof Notificacoes !== 'undefined') Notificacoes.limparModal('modalCargaXmlAlerts');
         });
     }
-
-    // Limpar alertas ao abrir cada modal (erros/avisos exibidos dentro do modal)
-    ['modalCargaXml', 'modalUploadZip', 'modalParametroDetails'].forEach(function (modalId) {
-        var el = document.getElementById(modalId);
-        if (el) {
-            el.addEventListener('show.bs.modal', function () {
-                var alertsId = modalId + 'Alerts';
-                if (typeof Notificacoes !== 'undefined') Notificacoes.limparModal(alertsId);
-            });
-        }
-    });
 });
 
 function obterCsrfToken() {
@@ -171,12 +139,6 @@ function getApiBase() {
     var prefix = (el && el.getAttribute('data-url-prefix')) || '';
     if (!prefix && typeof getUrlPrefix === 'function') prefix = getUrlPrefix();
     return prefix || '';
-}
-
-/** Parâmetros de carga automática (API + UI) exigem grupo Django "CargaAutomatica" no servidor. */
-function podeGerenciarCargaAutomatica() {
-    var el = document.querySelector('.cargaxml-page[data-pode-carga-automatica]');
-    return !!(el && el.getAttribute('data-pode-carga-automatica') === '1');
 }
 
 /* ===============================
@@ -435,285 +397,6 @@ function inicializarEventosJobsRenderizados() {
 }
 
 /* ===============================
-   PARÂMETROS - TABELA PRINCIPAL
-================================ */
-
-function carregarParametrosPrincipais() {
-    if (!podeGerenciarCargaAutomatica()) return;
-    const tbody = document.querySelector('#tabela-parametros-main tbody');
-    if (!tbody) return;
-
-    fetch(getApiBase() + '/api/cargaxml/parametros/')
-        .then(response => response.json())
-        .then(data => {
-            const items = data.items || [];
-            if (!data.sucesso || items.length === 0) {
-                estadoParametros.todos = [];
-                estadoParametros.filtrados = [];
-                renderizarTabelaParametrosPrincipais();
-                return;
-            }
-
-            estadoParametros.todos = items.map(item => ({
-                id: item.id,
-                horario: item.horario || '',
-                diretorio: item.diretorio || '',
-                empresa_id: item.empresa_id || '',
-                empresa_nome: item.empresa_nome || '',
-                ativo: !!item.ativo,
-            }));
-
-            aplicarFiltrosParametrosPrincipais();
-            renderizarTabelaParametrosPrincipais();
-        })
-        .catch(() => {
-            estadoParametros.todos = [];
-            estadoParametros.filtrados = [];
-            renderizarTabelaParametrosPrincipais();
-        });
-}
-
-function inicializarEventosFiltroParametrosPrincipais() {
-    const inputBusca = document.getElementById('filtro-param-busca');
-    if (inputBusca) {
-        inputBusca.addEventListener('keyup', function (e) {
-            estadoParametros.filtros.busca = e.target.value.toLowerCase();
-            estadoParametros.currentPage = 1;
-            aplicarFiltrosParametrosPrincipais();
-            renderizarTabelaParametrosPrincipais();
-        });
-    }
-
-    const chkAtivos = document.getElementById('filtro-param-ativos');
-    const chkInativos = document.getElementById('filtro-param-inativos');
-
-    if (chkAtivos) {
-        chkAtivos.addEventListener('change', function () {
-            estadoParametros.filtros.mostrarAtivos = this.checked;
-            estadoParametros.currentPage = 1;
-            aplicarFiltrosParametrosPrincipais();
-            renderizarTabelaParametrosPrincipais();
-        });
-    }
-
-    if (chkInativos) {
-        chkInativos.addEventListener('change', function () {
-            estadoParametros.filtros.mostrarInativos = this.checked;
-            estadoParametros.currentPage = 1;
-            aplicarFiltrosParametrosPrincipais();
-            renderizarTabelaParametrosPrincipais();
-        });
-    }
-}
-
-function aplicarFiltrosParametrosPrincipais() {
-    estadoParametros.filtrados = estadoParametros.todos.filter(p => {
-        const { busca, mostrarAtivos, mostrarInativos } = estadoParametros.filtros;
-
-        // filtro status
-        if (p.ativo && !mostrarAtivos) return false;
-        if (!p.ativo && !mostrarInativos) return false;
-
-        // filtro texto
-        if (busca) {
-            const texto = `${p.horario} ${p.diretorio} ${p.empresa_nome}`.toLowerCase();
-            if (!texto.includes(busca)) return false;
-        }
-
-        return true;
-    });
-}
-
-function renderizarTabelaParametrosPrincipais() {
-    const tbody = document.querySelector('#tabela-parametros-main tbody');
-    const paginacao = document.getElementById('paginacao-cargas');
-
-    if (!tbody) return;
-
-    tbody.innerHTML = '';
-
-    if (!estadoParametros.filtrados.length) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="4" class="text-center text-muted py-4">
-                    <i class="fas fa-list" style="font-size: 32px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
-                    Nenhum parâmetro cadastrado
-                </td>
-            </tr>
-        `;
-
-        if (paginacao) paginacao.innerHTML = '';
-        return;
-    }
-
-    const inicio = (estadoParametros.currentPage - 1) * estadoParametros.itemsPerPage;
-    const fim = inicio + estadoParametros.itemsPerPage;
-    const pagina = estadoParametros.filtrados.slice(inicio, fim);
-
-    pagina.forEach(p => {
-        const tr = document.createElement('tr');
-        tr.style.cursor = 'pointer';
-        tr.innerHTML = `
-            <td>${p.horario || '-'}</td>
-            <td>${p.diretorio || '-'}</td>
-            <td>${p.empresa_nome || '-'}</td>
-            <td>
-                <span class="badge-status ${p.ativo ? 'badge-success' : 'badge-warning'}">
-                    ${p.ativo ? 'Ativo' : 'Inativo'}
-                </span>
-            </td>
-        `;
-        tr.addEventListener('click', function () {
-            abrirModalParametro(p.id);
-        });
-        tbody.appendChild(tr);
-    });
-
-    if (paginacao) {
-        const totalPages = Math.ceil(estadoParametros.filtrados.length / estadoParametros.itemsPerPage);
-        paginacao.innerHTML = '';
-
-        if (totalPages > 1) {
-            for (let i = 1; i <= totalPages; i++) {
-                const li = document.createElement('li');
-                li.className = 'page-item' + (i === estadoParametros.currentPage ? ' active' : '');
-
-                const btn = document.createElement('button');
-                btn.className = 'page-link';
-                btn.textContent = i;
-                btn.onclick = () => {
-                    estadoParametros.currentPage = i;
-                    renderizarTabelaParametrosPrincipais();
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                };
-
-                li.appendChild(btn);
-                paginacao.appendChild(li);
-            }
-        }
-    }
-}
-
-/* ===============================
-   MODAL DETALHES DO PARÂMETRO
-================================ */
-
-function preencherFormularioParametro(param) {
-    if (!param) return;
-    const id = param.id;
-    const horario = param.horario || '';
-    const diretorio = param.diretorio || '';
-    const empresa_id = param.empresa_id || '';
-    const ativo = !!param.ativo;
-
-    const idInput = document.getElementById('param-edit-id');
-    const idLabel = document.getElementById('param-edit-id-label');
-    const inputHorario = document.getElementById('param-edit-horario');
-    const inputDiretorio = document.getElementById('param-edit-diretorio');
-    const selectEmpresa = document.getElementById('param-edit-empresa');
-    const chkAtivo = document.getElementById('param-edit-ativo');
-
-    if (idInput) idInput.value = id || '';
-    if (idLabel) idLabel.textContent = id || '';
-    if (inputHorario) inputHorario.value = horario;
-    if (inputDiretorio) inputDiretorio.value = diretorio;
-    if (selectEmpresa) selectEmpresa.value = empresa_id || '';
-    if (chkAtivo) chkAtivo.checked = ativo;
-}
-
-function carregarJobsDoParametro(paramId) {
-    const tbody = document.querySelector('#tabela-jobs-param tbody');
-    if (!tbody) return;
-
-    tbody.innerHTML = `
-        <tr>
-            <td colspan="4" class="text-center text-muted py-3">
-                Carregando jobs...
-            </td>
-        </tr>
-    `;
-
-    fetch(getApiBase() + `/api/cargaxml/jobs/?parametro_id=${paramId}`)
-        .then(resp => resp.json())
-        .then(data => {
-            const items = data.items || [];
-            tbody.innerHTML = '';
-
-            if (!data.sucesso || items.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="4" class="text-center text-muted py-3">
-                            Nenhum job encontrado para este parâmetro
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-
-            items.forEach(j => {
-                const totalArq = j.total_arquivos || 0;
-                const sucesso = j.total_sucesso || 0;
-                const erro = j.total_erro || 0;
-                const resumo = totalArq > 0 ? `${totalArq} arq(s) - ${sucesso}✓/${erro}✗` : '-';
-                const loc = partesDataLocalDeIso(j.started_at);
-                const dataStr = loc.data;
-                const horaStr = loc.hora;
-
-                const tr = document.createElement('tr');
-                tr.style.cursor = 'pointer';
-                tr.innerHTML = `
-                    <td>Job #${j.id}</td>
-                    <td>${dataStr} ${horaStr}</td>
-                    <td>${obterBadgeStatusCarga(j.status)}</td>
-                    <td>${resumo}</td>
-                `;
-                tr.addEventListener('click', function (e) {
-                    e.stopPropagation();
-                    abrirModalJob(j.id);
-                });
-                tbody.appendChild(tr);
-            });
-        })
-        .catch(() => {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="4" class="text-center text-muted py-3">
-                        Erro ao carregar jobs deste parâmetro
-                    </td>
-                </tr>
-            `;
-        });
-}
-
-function abrirModalParametro(paramId) {
-    // Tenta usar dados já carregados em memória
-    const paramLocal = estadoParametros.todos.find(p => p.id === paramId);
-    if (paramLocal) {
-        preencherFormularioParametro(paramLocal);
-    }
-
-    // Recarrega dados detalhados do parâmetro (caso backend forneça)
-    fetch(getApiBase() + `/api/cargaxml/parametros/${paramId}/`)
-        .then(resp => resp.json())
-        .then(data => {
-            if (data.sucesso && data.parametro) {
-                preencherFormularioParametro(data.parametro);
-            }
-        })
-        .catch(() => {
-            // Se der erro, segue com os dados locais já preenchidos
-        });
-
-    carregarJobsDoParametro(paramId);
-
-    const modalEl = document.getElementById('modalParametroDetails');
-    if (modalEl) {
-        const modal = new bootstrap.Modal(modalEl);
-        modal.show();
-    }
-}
-
-/* ===============================
    CARREGAR TODAS AS CARGAS
 ================================ */
 function carregarTodasAsCargas() {
@@ -757,7 +440,7 @@ function carregarTodasAsCargas() {
                         id: j.id,
                         arquivo: `Job #${j.id}`,
                         resumo: resumo,
-                        tipo: j.parametro_id ? 'Automático' : 'Manual',
+                        tipo: 'Manual',
                         numero: '',
                         empresa: '',
                         data: locJH.data,
@@ -916,18 +599,12 @@ function renderizarLogsResumo(items) {
     contentEl.innerHTML = html;
 }
 
-/* ===============================
-   EVENTOS DE FILTROS
-================================ */
-
-
 function atualizarConteudoModalJob(data, expectedJobId) {
     if (!data || !data.sucesso || !data.job) return;
     if (expectedJobId != null && Number(data.job.id) !== Number(expectedJobId)) {
         return;
     }
     const job = data.job;
-    const param = data.parametro;
     const log = data.log || [];
     const modalRoot = document.getElementById('modalJobDetails');
     if (!modalRoot) return;
@@ -944,18 +621,6 @@ function atualizarConteudoModalJob(data, expectedJobId) {
     if (elFinished) {
         elFinished.textContent = formatJobDateTimeLocal(job.finished_at, true);
         elFinished.title = job.finished_at ? ('Registro em UTC (API): ' + job.finished_at) : '';
-    }
-    const ph = modalRoot.querySelector('#modal-param-horario');
-    const pd = modalRoot.querySelector('#modal-param-diretorio');
-    const pe = modalRoot.querySelector('#modal-param-empresa');
-    if (param) {
-        if (ph) ph.value = param.horario || '';
-        if (pd) pd.value = param.diretorio || '';
-        if (pe) pe.value = param.empresa_nome || param.empresa_id || '';
-    } else {
-        if (ph) ph.value = '';
-        if (pd) pd.value = '';
-        if (pe) pe.value = '';
     }
     const tbodyLog = modalRoot.querySelector('#tabela-log tbody');
     if (tbodyLog) {
@@ -1055,64 +720,17 @@ function abrirModalJob(jobId) {
         });
 }
 
-
-function inicializarEventosFiltros() {
-    // Filtro de busca
-    const inputBusca = document.getElementById('filtro-busca');
-    if (inputBusca) {
-        inputBusca.addEventListener('keyup', function (e) {
-            estadoCargaXml.filtros.busca = e.target.value.toLowerCase();
-            estadoCargaXml.currentPage = 1;
-            aplicarFiltrosCarga();
-            renderizarTabelaCargas();
-        });
-    }
-
-    // Checkboxes de tipo
-    const checkboxAutomatico = document.getElementById('filtro-automatico');
-    const checkboxManual = document.getElementById('filtro-manual');
-
-    if (checkboxAutomatico) {
-        checkboxAutomatico.addEventListener('change', atualizarFiltrosTipo);
-    }
-    if (checkboxManual) {
-        checkboxManual.addEventListener('change', atualizarFiltrosTipo);
-    }
-}
-
-function atualizarFiltrosTipo() {
-    estadoCargaXml.filtros.tipos = [];
-
-    if (document.getElementById('filtro-automatico')?.checked) {
-        estadoCargaXml.filtros.tipos.push('Automático');
-    }
-    if (document.getElementById('filtro-manual')?.checked) {
-        estadoCargaXml.filtros.tipos.push('Manual');
-    }
-
-    estadoCargaXml.currentPage = 1;
-    aplicarFiltrosCarga();
-    renderizarTabelaCargas();
-}
-
 /* ===============================
    APLICAR FILTROS
 ================================ */
 function aplicarFiltrosCarga() {
-    estadoCargaXml.cargasFiltradas = estadoCargaXml.todasCargas.filter(carga => {
-        // Filtro de busca
+    estadoCargaXml.cargasFiltradas = estadoCargaXml.todasCargas.filter(function (carga) {
         if (estadoCargaXml.filtros.busca) {
-            const busca = estadoCargaXml.filtros.busca;
+            var busca = estadoCargaXml.filtros.busca;
             if (!carga.arquivo.toLowerCase().includes(busca)) {
                 return false;
             }
         }
-
-        // Filtro de tipo
-        if (!estadoCargaXml.filtros.tipos.includes(carga.tipo)) {
-            return false;
-        }
-
         return true;
     });
 }
@@ -1204,261 +822,6 @@ function renderizarPaginacaoCarga(totalItems) {
         link.appendChild(btn);
         container.appendChild(link);
     }
-}
-
-/* ===============================
-   PARAMETROS DE CARGA
-================================ */
-function inicializarEventosParametros() {
-    const form = document.getElementById('form-parametros');
-    if (form) {
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();
-            criarParametroCarga();
-        });
-    }
-
-    const btnRecarregar = document.getElementById('btn-recarregar-parametros');
-    if (btnRecarregar) {
-        btnRecarregar.addEventListener('click', function () {
-            carregarParametrosAtivos();
-        });
-    }
-
-    const modalCarga = document.getElementById('modalCargaXml');
-    if (modalCarga) {
-        modalCarga.addEventListener('shown.bs.modal', function () {
-            if (podeGerenciarCargaAutomatica()) carregarParametrosAtivos();
-        });
-    }
-
-    const btnConfirmarUploadZip = document.getElementById('btn-confirmar-upload-zip');
-    if (btnConfirmarUploadZip) {
-        btnConfirmarUploadZip.addEventListener('click', enviarZipParaPasta);
-    }
-
-    // show/hide upload button depending on active tab
-    const btnEnviar = document.getElementById('btn-enviar-xml');
-    const tabManual = document.getElementById('tab-manual');
-    const tabAutomatico = document.getElementById('tab-automatico');
-    function ajustarBotaoEnvio() {
-        if (!btnEnviar) return;
-        const manualActive = document.querySelector('#tab-manual').classList.contains('active');
-        btnEnviar.style.display = manualActive ? '' : 'none';
-    }
-    if (tabManual) {
-        tabManual.addEventListener('shown.bs.tab', ajustarBotaoEnvio);
-    }
-    if (tabAutomatico) {
-        tabAutomatico.addEventListener('shown.bs.tab', ajustarBotaoEnvio);
-    }
-    // initial state when script loads
-    ajustarBotaoEnvio();
-
-    // salvar edição de parâmetro (modal principal)
-    const formEdit = document.getElementById('form-param-edit');
-    if (formEdit) {
-        formEdit.addEventListener('submit', function (e) {
-            e.preventDefault();
-            atualizarParametroCarga();
-        });
-    }
-}
-
-function criarParametroCarga() {
-    const horario = document.getElementById('param-horario')?.value || '';
-    const diretorio = document.getElementById('param-diretorio')?.value || '';
-    const ativo = document.getElementById('param-ativo')?.checked || false;
-
-    if (!horario || !diretorio) {
-        Notificacoes.modal('Preencha horário e diretório', 'warning', 'modalCargaXmlAlerts');
-        return;
-    }
-
-    fetch(getApiBase() + '/api/cargaxml/parametros/', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': obterCsrfToken(),
-        },
-        body: JSON.stringify({
-            horario: horario,
-            diretorio: diretorio,
-            empresa_id: '',
-            ativo: ativo,
-        })
-    })
-        .then(response => response.json().then(data => ({ ok: response.ok, data })))
-        .then(({ ok, data }) => {
-            if (!ok || !data.sucesso) {
-                Notificacoes.modal(data.mensagem || 'Erro ao salvar parametros', 'danger', 'modalCargaXmlAlerts');
-                return;
-            }
-            Notificacoes.modal('Parametros salvos com sucesso', 'success', 'modalCargaXmlAlerts');
-            carregarParametrosAtivos();
-            carregarParametrosPrincipais();
-        })
-        .catch(() => {
-            Notificacoes.modal('Falha ao salvar parametros', 'danger', 'modalCargaXmlAlerts');
-        });
-}
-
-function carregarParametrosAtivos() {
-    if (!podeGerenciarCargaAutomatica()) return;
-    const tabela = document.querySelector('#tabela-parametros tbody');
-    if (!tabela) return;
-
-    fetch(getApiBase() + '/api/cargaxml/parametros/?ativo=1')
-        .then(response => response.json())
-        .then(data => {
-            tabela.innerHTML = '';
-            const items = data.items || [];
-
-            if (!data.sucesso || items.length === 0) {
-                tabela.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum parametro ativo</td></tr>';
-                return;
-            }
-
-            items.forEach(item => {
-                const linha = document.createElement('tr');
-                linha.innerHTML = `
-                    <td>${item.horario}</td>
-                    <td>${item.diretorio}</td>
-                    <td>${item.empresa_nome || '-'}</td>
-                    <td>
-                        <span class="badge-status ${item.ativo ? 'badge-success' : 'badge-warning'}">
-                            ${item.ativo ? 'Ativo' : 'Inativo'}
-                        </span>
-                    </td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-secondary me-1" onclick="toggleParametro(${item.id}, ${item.ativo})">
-                            ${item.ativo ? 'Desativar' : 'Ativar'}
-                        </button>
-                        <button class="btn btn-sm btn-outline-primary" onclick="abrirModalUploadZip(${item.id})" title="Enviar ZIP para pasta do job">
-                            <i class="fas fa-file-archive"></i> Enviar ZIP
-                        </button>
-                    </td>
-                `;
-                tabela.appendChild(linha);
-            });
-        })
-        .catch(() => {
-            tabela.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Erro ao carregar parametros</td></tr>';
-        });
-}
-
-function abrirModalUploadZip(paramId) {
-    document.getElementById('upload-zip-param-id').value = paramId;
-    document.getElementById('upload-zip-file').value = '';
-    const modal = new bootstrap.Modal(document.getElementById('modalUploadZip'));
-    modal.show();
-}
-
-function enviarZipParaPasta() {
-    const paramId = document.getElementById('upload-zip-param-id').value;
-    const fileInput = document.getElementById('upload-zip-file');
-    if (!paramId || !fileInput || !fileInput.files || !fileInput.files.length) {
-        Notificacoes.modal('Selecione um arquivo ZIP', 'warning', 'modalUploadZipAlerts');
-        return;
-    }
-    const file = fileInput.files[0];
-    if (!file.name.toLowerCase().endsWith('.zip')) {
-        Notificacoes.modal('O arquivo deve ser .zip', 'warning', 'modalUploadZipAlerts');
-        return;
-    }
-    const formData = new FormData();
-    formData.append('arquivo_zip', file);
-    formData.append('csrfmiddlewaretoken', obterCsrfToken());
-
-    const btn = document.getElementById('btn-confirmar-upload-zip');
-    btn.disabled = true;
-
-    fetch(getApiBase() + `/api/cargaxml/parametros/${paramId}/upload-zip/`, {
-        method: 'POST',
-        body: formData
-    })
-        .then(response => response.json())
-        .then(data => {
-            btn.disabled = false;
-            if (data.sucesso) {
-                Notificacoes.modal(data.mensagem || 'ZIP enviado com sucesso.', 'success', 'modalUploadZipAlerts');
-                bootstrap.Modal.getInstance(document.getElementById('modalUploadZip')).hide();
-                fileInput.value = '';
-            } else {
-                Notificacoes.modal(data.mensagem || 'Erro ao enviar ZIP', 'danger', 'modalUploadZipAlerts');
-            }
-        })
-        .catch(() => {
-            btn.disabled = false;
-            Notificacoes.modal('Erro ao enviar ZIP', 'danger', 'modalUploadZipAlerts');
-        });
-}
-
-function atualizarParametroCarga() {
-    const id = document.getElementById('param-edit-id')?.value;
-    if (!id) {
-        Notificacoes.modal('Parâmetro não identificado para edição', 'warning', 'modalParametroDetailsAlerts');
-        return;
-    }
-
-    const horario = document.getElementById('param-edit-horario')?.value || '';
-    const diretorio = document.getElementById('param-edit-diretorio')?.value || '';
-    const empresaId = document.getElementById('param-edit-empresa')?.value || '';
-    const ativo = document.getElementById('param-edit-ativo')?.checked || false;
-
-    if (!horario || !diretorio) {
-        Notificacoes.modal('Preencha horário e diretório', 'warning', 'modalParametroDetailsAlerts');
-        return;
-    }
-
-    fetch(getApiBase() + `/api/cargaxml/parametros/${id}/`, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': obterCsrfToken(),
-        },
-        body: JSON.stringify({
-            horario: horario,
-            diretorio: diretorio,
-            empresa_id: empresaId,
-            ativo: ativo,
-        })
-    })
-        .then(response => response.json().then(data => ({ ok: response.ok, data })))
-        .then(({ ok, data }) => {
-            if (!ok || !data.sucesso) {
-                Notificacoes.modal(data.mensagem || 'Erro ao atualizar parâmetro', 'danger', 'modalParametroDetailsAlerts');
-                return;
-            }
-            Notificacoes.modal('Parâmetro atualizado com sucesso', 'success', 'modalParametroDetailsAlerts');
-            carregarParametrosPrincipais();
-            carregarParametrosAtivos();
-        })
-        .catch(() => {
-            Notificacoes.modal('Falha ao atualizar parâmetro', 'danger', 'modalParametroDetailsAlerts');
-        });
-}
-
-function toggleParametro(paramId, ativoAtual) {
-    fetch(getApiBase() + `/api/cargaxml/parametros/${paramId}/toggle/`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': obterCsrfToken(),
-        },
-        body: JSON.stringify({ ativo: !ativoAtual })
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (!data.sucesso) {
-                Notificacoes.pagina('Erro ao atualizar parametro', 'danger');
-                return;
-            }
-            carregarParametrosAtivos();
-        })
-        .catch(() => {
-            Notificacoes.pagina('Erro ao atualizar parametro', 'danger');
-        });
 }
 
 /* ===============================
@@ -1837,7 +1200,6 @@ function obterIconeTipo(tipo) {
         'NFe': '<i class="fas fa-file-invoice" style="color: #007bff; margin-right: 8px;"></i>',
         'CTe': '<i class="fas fa-truck" style="color: #28a745; margin-right: 8px;"></i>',
         'NFSe': '<i class="fas fa-receipt" style="color: #fd7e14; margin-right: 8px;"></i>',
-        'Automático': '<i class="fas fa-cogs" style="color: #17a2b8; margin-right: 8px;"></i>',
         'Manual': '<i class="fas fa-hand-paper" style="color: #6c757d; margin-right: 8px;"></i>'
     };
     return ícones[tipo] || '<i class="fas fa-file-code" style="margin-right: 8px;"></i>';

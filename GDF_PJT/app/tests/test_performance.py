@@ -125,13 +125,13 @@ class PerformanceTestCase(TestCase):
         self.client.logout()
         self.result_api_cargaxml_jobs = result
 
-    def test_api_cargaxml_parametros(self):
-        """API parâmetros CargaXml."""
+    def test_api_cargaxml_resumo(self):
+        """API resumo CargaXml."""
         self.client.force_login(self.user)
-        path = self._url('API_CargaXmlParams')
+        path = self._url('API_CargaXmlResumo')
         result = self._measure_n('GET', path, n=3)
         self.client.logout()
-        self.result_api_cargaxml_params = result
+        self.result_api_cargaxml_resumo = result
 
     def test_api_reprocessamento_lotes(self):
         """API lotes reprocessamento."""

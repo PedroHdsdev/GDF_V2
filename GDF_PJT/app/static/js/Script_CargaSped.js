@@ -1,11 +1,6 @@
 /* Carga SPED - mesma linha de raciocínio da Carga XML */
 const estadoSped = {
-    todos: [],
-    filtrados: [],
     todosJobs: [],
-    filtros: { busca: '', mostrarAtivos: true, mostrarInativos: true },
-    currentPage: 1,
-    itemsPerPage: 10,
     arquivosManuais: [],
     avisosAtuaisIds: []
 };
@@ -46,11 +41,6 @@ function getApiBase() {
     var prefix = (el && el.getAttribute('data-url-prefix')) || '';
     if (!prefix && typeof getUrlPrefix === 'function') prefix = getUrlPrefix();
     return prefix || '';
-}
-
-function podeGerenciarCargaAutomatica() {
-    var el = document.querySelector('.cargaxml-page[data-pode-carga-automatica]');
-    return !!(el && el.getAttribute('data-pode-carga-automatica') === '1');
 }
 
 var intervaloResumoSped = null;
@@ -255,7 +245,7 @@ function carregarJobsCargaSped() {
                         id: j.id,
                         status: j.status,
                         resumo: totalArq + ' arquivo(s) - ' + resumo,
-                        tipo: j.parametro_id ? 'Automático' : 'Manual',
+                        tipo: 'Manual',
                         started_at: j.started_at
                     };
                 });
@@ -411,108 +401,6 @@ function abrirModalJobSped(jobId) {
         .catch(function () {});
 }
 
-function carregarParametrosPrincipais() {
-    if (!podeGerenciarCargaAutomatica()) return;
-    const tbody = document.querySelector('#tabela-parametros-main tbody');
-    if (!tbody) return;
-    fetch(getApiBase() + '/api/cargasped/parametros/')
-        .then(r => r.json())
-        .then(data => {
-            estadoSped.todos = (data.items || []).map(item => ({
-                id: item.id,
-                horario: item.horario || '',
-                tipo_sped: item.tipo_sped || '',
-                diretorio: item.diretorio || '',
-                empresa_nome: item.empresa_nome || '',
-                ativo: !!item.ativo
-            }));
-            aplicarFiltrosSped();
-            renderizarTabelaParametrosSped();
-        })
-        .catch(() => {
-            estadoSped.todos = [];
-            estadoSped.filtrados = [];
-            renderizarTabelaParametrosSped();
-        });
-}
-
-function aplicarFiltrosSped() {
-    let list = estadoSped.todos.filter(p => {
-        const ativoOk = (p.ativo && estadoSped.filtros.mostrarAtivos) || (!p.ativo && estadoSped.filtros.mostrarInativos);
-        const busca = estadoSped.filtros.busca;
-        if (!ativoOk) return false;
-        if (!busca) return true;
-        const s = (p.diretorio + ' ' + p.horario + ' ' + p.empresa_nome).toLowerCase();
-        return s.indexOf(busca) !== -1;
-    });
-    estadoSped.filtrados = list;
-    estadoSped.currentPage = 1;
-}
-
-function renderizarTabelaParametrosSped() {
-    const tbody = document.querySelector('#tabela-parametros-main tbody');
-    if (!tbody) return;
-    const pagEl = document.getElementById('paginacao-cargas');
-    const total = estadoSped.filtrados.length;
-    const start = (estadoSped.currentPage - 1) * estadoSped.itemsPerPage;
-    const page = estadoSped.filtrados.slice(start, start + estadoSped.itemsPerPage);
-
-    if (page.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4"><i class="fas fa-list fa-2x mb-2 d-block opacity-50"></i>Nenhum parâmetro cadastrado</td></tr>';
-        if (pagEl) pagEl.innerHTML = '';
-        return;
-    }
-
-    tbody.innerHTML = page.map(p => `
-        <tr class="align-middle">
-            <td>${cargaSpedEscHtml(p.horario)}</td>
-            <td class="text-truncate" style="max-width:200px" title="${cargaSpedEscAttr(p.diretorio || '')}">${cargaSpedEscHtml(p.diretorio) || '—'}</td>
-            <td>${cargaSpedEscHtml(p.empresa_nome) || '—'}</td>
-            <td><span class="badge ${p.ativo ? 'bg-success' : 'bg-secondary'}">${p.ativo ? 'Ativo' : 'Inativo'}</span></td>
-        </tr>
-    `).join('');
-
-    const totalPages = Math.max(1, Math.ceil(total / estadoSped.itemsPerPage));
-    let pagHtml = '';
-    for (let i = 1; i <= totalPages; i++) {
-        pagHtml += `<li class="page-item ${i === estadoSped.currentPage ? 'active' : ''}"><a class="page-link" href="#" data-page="${i}">${i}</a></li>`;
-    }
-    pagEl.innerHTML = pagHtml;
-    pagEl.querySelectorAll('.page-link').forEach(link => {
-        link.addEventListener('click', e => { e.preventDefault(); estadoSped.currentPage = parseInt(link.dataset.page, 10); renderizarTabelaParametrosSped(); });
-    });
-}
-
-function carregarParametrosModal() {
-    if (!podeGerenciarCargaAutomatica()) return;
-    const tbody = document.querySelector('#tabela-parametros-sped tbody');
-    if (!tbody) return;
-    fetch(getApiBase() + '/api/cargasped/parametros/')
-        .then(r => r.json())
-        .then(data => {
-            const items = data.items || [];
-            if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum parâmetro</td></tr>';
-                return;
-            }
-            tbody.innerHTML = items.map(p => `
-                <tr>
-                    <td>${cargaSpedEscHtml(p.horario || '')}</td>
-                    <td class="text-truncate" style="max-width:120px">${cargaSpedEscHtml(p.diretorio) || '—'}</td>
-                    <td>${cargaSpedEscHtml(p.empresa_nome) || '—'}</td>
-                    <td><span class="badge ${p.ativo ? 'bg-success' : 'bg-secondary'}">${p.ativo ? 'Ativo' : 'Inativo'}</span></td>
-                    <td><button type="button" class="btn btn-sm btn-outline-primary upload-zip-sped" data-param-id="${cargaSpedEscAttr(p.id)}">ZIP</button></td>
-                </tr>
-            `).join('');
-            tbody.querySelectorAll('.upload-zip-sped').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    document.getElementById('upload-zip-sped-param-id').value = btn.dataset.paramId;
-                    new bootstrap.Modal(document.getElementById('modalUploadZipSped')).show();
-                });
-            });
-        });
-}
-
 var TAMANHO_LOTE_CARGA_SPED = 100;
 
 function enviarUmLoteSped(arquivosLote, apiUrl, csrfToken, jobId, ultimoLote) {
@@ -545,9 +433,6 @@ function fecharModalELimparArquivosSped() {
     if (modal && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
         var inst = bootstrap.Modal.getInstance(modal);
         if (inst) inst.hide();
-    }
-    if (podeGerenciarCargaAutomatica()) {
-        carregarParametrosPrincipais();
     }
     carregarResumoCargaSped();
     carregarJobsCargaSped();
@@ -636,9 +521,6 @@ function enviarArquivosManuais() {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    if (podeGerenciarCargaAutomatica()) {
-        carregarParametrosPrincipais();
-    }
     carregarResumoCargaSped();
     carregarJobsCargaSped();
     carregarAvisosCargaSped();
@@ -673,22 +555,12 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    if (podeGerenciarCargaAutomatica()) {
-        const filtroBusca = document.getElementById('filtro-param-busca');
-        if (filtroBusca) filtroBusca.addEventListener('keyup', function () { estadoSped.filtros.busca = this.value.toLowerCase(); aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
-
-        const chkAtivos = document.getElementById('filtro-param-ativos');
-        const chkInativos = document.getElementById('filtro-param-inativos');
-        if (chkAtivos) chkAtivos.addEventListener('change', function () { estadoSped.filtros.mostrarAtivos = this.checked; aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
-        if (chkInativos) chkInativos.addEventListener('change', function () { estadoSped.filtros.mostrarInativos = this.checked; aplicarFiltrosSped(); renderizarTabelaParametrosSped(); });
-    }
-
-    const fileInput = document.getElementById('file-input-sped');
-    const fileInputPasta = document.getElementById('file-input-sped-pasta');
+    var fileInput = document.getElementById('file-input-sped');
+    var fileInputPasta = document.getElementById('file-input-sped-pasta');
     if (fileInput) {
         fileInput.addEventListener('click', function () { this.value = ''; });
         fileInput.addEventListener('change', function () {
-            const files = Array.from(this.files || []).filter(f => (f.name || '').toLowerCase().endsWith('.txt'));
+            var files = Array.from(this.files || []).filter(function (f) { return (f.name || '').toLowerCase().endsWith('.txt'); });
             estadoSped.arquivosManuais = files;
             var cont = document.getElementById('contador-sped');
             if (cont) cont.textContent = files.length;
@@ -697,7 +569,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (fileInputPasta) {
         fileInputPasta.addEventListener('click', function () { this.value = ''; });
         fileInputPasta.addEventListener('change', function () {
-            const files = Array.from(this.files || []).filter(f => (f.name || '').toLowerCase().endsWith('.txt'));
+            var files = Array.from(this.files || []).filter(function (f) { return (f.name || '').toLowerCase().endsWith('.txt'); });
             estadoSped.arquivosManuais = files;
             var cont = document.getElementById('contador-sped');
             if (cont) cont.textContent = files.length;
@@ -705,82 +577,16 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     var btnEnviarSped = document.getElementById('btn-enviar-sped');
-    var tabNavManualSped = document.getElementById('tab-manual-sped');
-    var tabNavAutoSped = document.getElementById('tab-automatico-sped');
-    function ajustarBotaoEnvioSped() {
-        if (!btnEnviarSped) return;
-        var tabBtnManual = document.getElementById('tab-manual-sped');
-        var manualAtivo = tabBtnManual && tabBtnManual.classList.contains('active');
-        btnEnviarSped.style.display = manualAtivo ? '' : 'none';
-    }
-    if (tabNavManualSped) tabNavManualSped.addEventListener('shown.bs.tab', ajustarBotaoEnvioSped);
-    if (tabNavAutoSped) tabNavAutoSped.addEventListener('shown.bs.tab', ajustarBotaoEnvioSped);
-    ajustarBotaoEnvioSped();
-
     if (btnEnviarSped) {
         btnEnviarSped.addEventListener('click', function () {
-            const tabManual = document.getElementById('manual-sped');
-            if (tabManual && tabManual.classList.contains('show')) {
-                enviarArquivosManuais();
-            }
+            enviarArquivosManuais();
         });
     }
 
-    var formParamSped = document.getElementById('form-parametros-sped');
-    if (formParamSped) {
-        formParamSped.addEventListener('submit', function (e) {
-            e.preventDefault();
-            const payload = {
-                horario: document.getElementById('param-sped-horario').value,
-                diretorio: document.getElementById('param-sped-diretorio').value.trim(),
-                empresa_id: document.getElementById('param-sped-empresa').value,
-                ativo: document.getElementById('param-sped-ativo').checked
-            };
-            if (!payload.horario || !payload.diretorio) { Notificacoes.modal('Preencha horário e diretório.', 'warning', 'modalCargaSpedAlerts'); return; }
-            fetch(getApiBase() + '/api/cargasped/parametros/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': obterCsrfToken() },
-                body: JSON.stringify(payload)
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.sucesso) { carregarParametrosModal(); carregarParametrosPrincipais(); this.reset(); }
-                    else Notificacoes.modal(data.mensagem || 'Erro', 'danger', 'modalCargaSpedAlerts');
-                })
-                .catch(() => Notificacoes.modal('Erro na requisição.', 'danger', 'modalCargaSpedAlerts'));
+    var modalCargaSpedEl = document.getElementById('modalCargaSped');
+    if (modalCargaSpedEl) {
+        modalCargaSpedEl.addEventListener('show.bs.modal', function () {
+            if (typeof Notificacoes !== 'undefined') Notificacoes.limparModal('modalCargaSpedAlerts');
         });
     }
-
-    var tabAutoSped = document.getElementById('tab-automatico-sped');
-    if (tabAutoSped) tabAutoSped.addEventListener('shown.bs.tab', carregarParametrosModal);
-
-    var btnZipSped = document.getElementById('btn-confirmar-upload-zip-sped');
-    if (btnZipSped) {
-        btnZipSped.addEventListener('click', function () {
-            const paramId = document.getElementById('upload-zip-sped-param-id').value;
-            const fileInput = document.getElementById('upload-zip-sped-file');
-            if (!paramId || !fileInput.files || !fileInput.files[0]) { Notificacoes.modal('Selecione um arquivo ZIP.', 'warning', 'modalUploadZipSpedAlerts'); return; }
-            const fd = new FormData();
-            fd.append('arquivo_zip', fileInput.files[0]);
-            fd.append('csrfmiddlewaretoken', obterCsrfToken());
-            fetch(getApiBase() + `/api/cargasped/parametros/${paramId}/upload-zip/`, { method: 'POST', body: fd })
-                .then(r => r.json())
-                .then(data => {
-                    Notificacoes.modal(data.mensagem || (data.sucesso ? 'OK' : 'Erro'), data.sucesso ? 'success' : 'danger', 'modalUploadZipSpedAlerts');
-                    if (data.sucesso) { fileInput.value = ''; bootstrap.Modal.getInstance(document.getElementById('modalUploadZipSped')).hide(); carregarParametrosPrincipais(); carregarParametrosModal(); }
-                })
-                .catch(() => Notificacoes.modal('Erro na requisição.', 'danger', 'modalUploadZipSpedAlerts'));
-        });
-    }
-
-    // Limpar alertas ao abrir cada modal
-    ['modalCargaSped', 'modalUploadZipSped'].forEach(function (modalId) {
-        var el = document.getElementById(modalId);
-        if (el) {
-            el.addEventListener('show.bs.modal', function () {
-                var alertsId = modalId + 'Alerts';
-                if (typeof Notificacoes !== 'undefined') Notificacoes.limparModal(alertsId);
-            });
-        }
-    });
 });

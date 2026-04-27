@@ -69,3 +69,8 @@
     max-height: 70vh;
     overflow-y: auto;
 }
+
+/* Filial: modal secundário sobre o modal Editar Empresa (Bootstrap 5) */
+#modalFilialEmpForm {
+    z-index: 1060;
+}
