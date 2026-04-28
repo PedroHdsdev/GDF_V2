@@ -1,4 +1,4 @@
-{# Modais do Relatório Fiscal: detalhe (NFe, CTe, NFS, SPED) e exportação Excel. IDs usados em Script_Relatorio.js #}
+{# detalhe NFe/CTe/NFS/SPED + exportação Excel (variantes: painel em Carga XML ou Carga SPED) #}
 <div class="modal fade" id="modalRelatorioDetalhe" tabindex="-1" aria-labelledby="modal-rel-titulo" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
@@ -46,19 +46,31 @@
           </div>
           <div class="relatorio-excel-info-row">
             <i class="fas fa-table" aria-hidden="true"></i>
-            <div>Escolha o <strong>tipo de planilha</strong> (abas NFe, CT-e, etc.).</div>
+            <div>Escolha o <strong>conteúdo</strong> da planilha.</div>
           </div>
         </div>
         <fieldset>
           <legend>O que incluir na planilha</legend>
           <div class="relatorio-excel-options">
+            {% if relatorio_painel == 'sped' %}
             <label class="relatorio-excel-option">
-              <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" value="todos" checked>
+              <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" value="sped" checked>
+              <span class="relatorio-excel-option-body">
+                <span class="relatorio-excel-option-ico"><i class="fas fa-archive"></i></span>
+                <span class="relatorio-excel-option-text">
+                  <span class="relatorio-excel-option-title">Apenas SPED</span>
+                  <span class="relatorio-excel-option-sub">Listagem de arquivos fiscais / contribuição</span>
+                </span>
+              </span>
+            </label>
+            {% else %}
+            <label class="relatorio-excel-option">
+              <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" value="importacao" checked>
               <span class="relatorio-excel-option-body">
                 <span class="relatorio-excel-option-ico"><i class="fas fa-layer-group"></i></span>
                 <span class="relatorio-excel-option-text">
-                  <span class="relatorio-excel-option-title">Todas as abas</span>
-                  <span class="relatorio-excel-option-sub">NFe, CT-e, NFS e SPED no mesmo arquivo, conforme a API</span>
+                  <span class="relatorio-excel-option-title">NFe, CT-e e NFS-e (todas)</span>
+                  <span class="relatorio-excel-option-sub">Múltiplas abas: importação via XML, sem SPED</span>
                 </span>
               </span>
             </label>
@@ -92,16 +104,7 @@
                 </span>
               </span>
             </label>
-            <label class="relatorio-excel-option">
-              <input class="form-check-input relatorio-excel-option-input" type="radio" name="relatorio-modal-excel-tipo" value="sped">
-              <span class="relatorio-excel-option-body">
-                <span class="relatorio-excel-option-ico"><i class="fas fa-archive"></i></span>
-                <span class="relatorio-excel-option-text">
-                  <span class="relatorio-excel-option-title">Apenas SPED</span>
-                  <span class="relatorio-excel-option-sub">Arquivos fiscais / contribuição</span>
-                </span>
-              </span>
-            </label>
+            {% endif %}
           </div>
         </fieldset>
       </div>

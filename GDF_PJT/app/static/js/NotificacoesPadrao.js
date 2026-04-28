@@ -12,7 +12,7 @@
 
   const TIPOS_VALIDOS = ['success', 'danger', 'warning', 'info'];
   const CONTAINER_PAGINA_PADRAO = 'alertas-container';
-  /** Pilha fixa topo central (id do elemento em index_Base.html). */
+  /** Pilha fixa topo central (id do elemento em comum/base.html). */
   const TOAST_STACK_ID = 'notificacoes-toast-stack';
   const CONTAINER_FIXO_ID = TOAST_STACK_ID;
   const AUTO_CLOSE_SUCESSO_MS = 5000;

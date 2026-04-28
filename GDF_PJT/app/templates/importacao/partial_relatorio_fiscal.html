@@ -1,31 +1,18 @@
-{% extends 'index_Base.html' %}
-{% load static security csp %}
-
-{% block title %}Relatório Fiscal{% endblock %}
-
-{% block styles %}
-<link rel="stylesheet" href="{% static 'css/pages/Style_Relatorio.css' %}">
-{% endblock %}
-
-{% block titlepage %}Relatório Fiscal{% endblock %}
-
-{% block container %}
-<div class="layout-page" data-url-prefix="{{ url_prefix|default:'' }}">
-    <section class="layout-hero">
-        <div class="layout-hero-content">
-            <p class="layout-eyebrow">Importação</p>
-            <h1 class="layout-title">Relatório Fiscal</h1>
-            <p class="layout-subtitle">Dados e filtros das tabelas carregadas: NFe, CTe, NFS e SPED. Clique na linha para ver o detalhe.</p>
-        </div>
-        <div class="layout-hero-actions">
-            <button type="button" class="btn btn-outline-light layout-btn" id="relatorio-btn-excel" title="Abre opções de exportação em Excel (filtros atuais, sem limite de página)">
-                <i class="fas fa-file-excel"></i> Baixar Excel
-            </button>
-        </div>
-    </section>
-
-    <section class="layout-panel">
-        <div class="layout-card">
+{# Painel de relatório embutido em Carga XML (NFe, CT-e, NFS) ou Carga SPED (SPED). O botão Baixar Excel fica no hero da página. #}
+<div id="relatorio-fiscal-root" class="relatorio-fiscal-embed mt-3" data-relatorio-modo="{{ relatorio_painel|default:'xml' }}">
+    <section class="layout-panel mb-4">
+        <div class="layout-card border rounded-3 p-3 bg-white shadow-sm">
+            <h2 class="h4 fw-bold mb-3">
+                <span class="text-secondary small d-block mb-1">Relatórios</span>
+                <span class="text-dark">
+                    {% if relatorio_painel == 'sped' %}
+                        Arquivos SPED
+                    {% else %}
+                        NFe, CT-e e NFS-e
+                    {% endif %}
+                </span>
+            </h2>
+            <p class="text-muted small mb-3 mb-0 relatorio-fiscal-cabecalho-hint">{% if relatorio_painel == 'sped' %}Filtre por empresa e período. Clique numa linha para ver o detalhe dos registros.{% else %}Use os filtros abaixo sobre os dados importados. Clique numa linha para abrir o detalhe.{% endif %}</p>
             <div class="layout-subcard mb-3 relatorio-filtros-wrap">
                 <h6 class="fw-600 mb-3">Filtros</h6>
                 <div class="row g-3 align-items-start relatorio-filtros-row-periodo">
@@ -38,7 +25,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-12 col-md-6 col-xl-4">
+                    <div class="col-12 col-md-6 col-xl-4 {% if relatorio_painel == 'sped' %}d-none{% endif %}">
                         <label class="form-label" for="relatorio-filial">Filial</label>
                         <select id="relatorio-filial" class="form-select">
                             <option value="">Todas as filiais</option>
@@ -46,7 +33,7 @@
                             <option value="{{ f.id }}" data-cod-empresa="{{ f.empresa.cod_empresa }}">{{ f.empresa.cod_empresa }} — {{ f.cod_filial }}{% if f.nome %}: {{ f.nome }}{% endif %}</option>
                             {% endfor %}
                         </select>
-                        <p class="text-muted relatorio-filial-hint mb-0 mt-1">Aplica-se a NFe, CT-e e NFS-e. SPED não usa filial.</p>
+                        <p class="text-muted relatorio-filial-hint mb-0 mt-1">{% if relatorio_painel == 'sped' %}<span class="d-none">Filtro de filial.</span>{% else %}Aplica-se a NFe, CT-e e NFS-e.{% endif %}</p>
                     </div>
                     <div class="col-6 col-sm-6 col-md-3 col-xl-2">
                         <label class="form-label" for="relatorio-data-inicio">Data início</label>
@@ -62,7 +49,7 @@
                         <label class="form-label" for="relatorio-busca">Buscar</label>
                         <input type="text" id="relatorio-busca" class="form-control" placeholder="Chave, número, nome de arquivo…">
                     </div>
-                    <div class="d-none flex-shrink-0 relatorio-filtro-sap-col" id="relatorio-filtros-xml-sap-wrap">
+                    <div class="{% if relatorio_painel == 'sped' %}d-none{% endif %} flex-shrink-0 relatorio-filtro-sap-col" id="relatorio-filtros-xml-sap-wrap">
                         <label class="form-label" for="relatorio-tem-sap" title="Filtro por chave encontrada no SAP (NFe, CT-e e NFS-e)">Chave no SAP</label>
                         <select id="relatorio-tem-sap" class="form-select">
                             <option value="">Todos</option>
@@ -77,7 +64,7 @@
                     </div>
                 </div>
                 <div class="relatorio-filtros-extras">
-                    <div id="relatorio-filtros-nfe" class="filtros-por-tab">
+                    <div id="relatorio-filtros-nfe" class="filtros-por-tab {% if relatorio_painel == 'sped' %}d-none{% endif %}">
                         <label class="form-label">Filtros específicos — NFe</label>
                         <div class="d-flex gap-2 flex-wrap align-items-center">
                             <select id="relatorio-tipo-operacao" class="form-select" style="min-width:120px;max-width:200px">
@@ -110,7 +97,7 @@
                             </select>
                         </div>
                     </div>
-                    <div id="relatorio-filtros-sped" class="filtros-por-tab d-none mt-2">
+                    <div id="relatorio-filtros-sped" class="filtros-por-tab mt-2 {% if relatorio_painel != 'sped' %}d-none{% endif %}">
                         <label class="form-label" for="relatorio-tipo-sped">Tipo SPED</label>
                         <select id="relatorio-tipo-sped" class="form-select" style="max-width:320px">
                             <option value="">Todos</option>
@@ -121,18 +108,20 @@
                 </div>
             </div>
 
+            {% if relatorio_painel == 'xml' %}
             <ul class="nav nav-tabs mb-2" role="tablist">
                 <li class="nav-item"><button class="nav-link active" id="tab-rel-nfe" data-bs-toggle="tab" data-bs-target="#rel-nfe" type="button">NFe</button></li>
                 <li class="nav-item"><button class="nav-link" id="tab-rel-cte" data-bs-toggle="tab" data-bs-target="#rel-cte" type="button">CTe</button></li>
                 <li class="nav-item"><button class="nav-link" id="tab-rel-nfse" data-bs-toggle="tab" data-bs-target="#rel-nfse" type="button">NFS</button></li>
-                <li class="nav-item"><button class="nav-link" id="tab-rel-sped" data-bs-toggle="tab" data-bs-target="#rel-sped" type="button">SPED</button></li>
             </ul>
+            {% endif %}
             <p id="relatorio-contador" class="mb-2 text-muted small"><span id="relatorio-contador-num">—</span></p>
             <nav id="relatorio-paginacao" class="mb-3 d-none" aria-label="Paginação do relatório">
                 <ul class="pagination pagination-sm mb-0 flex-wrap"></ul>
             </nav>
 
             <div class="tab-content">
+                {% if relatorio_painel == 'xml' %}
                 <div class="tab-pane fade show active" id="rel-nfe" role="tabpanel">
                     <div class="table-responsive">
                         <table class="table table-hover layout-table" id="tabela-rel-nfe">
@@ -196,7 +185,8 @@
                         </table>
                     </div>
                 </div>
-                <div class="tab-pane fade" id="rel-sped" role="tabpanel">
+                {% else %}
+                <div class="tab-pane fade show active" id="rel-sped" role="tabpanel">
                     <div class="table-responsive">
                         <table class="table table-hover layout-table" id="tabela-rel-sped">
                             <thead class="table-light">
@@ -214,19 +204,8 @@
                         </table>
                     </div>
                 </div>
+                {% endif %}
             </div>
         </div>
     </section>
 </div>
-
-{% include "Processamento/modal_Relatorio.html" %}
-
-{% json_script_nonce tipo_pagamento_desc "tipo-pagamento-desc" %}
-{% script %}
-(function(){
-  var el = document.getElementById('tipo-pagamento-desc');
-  window.TIPO_PAGAMENTO_DESC = el ? JSON.parse(el.textContent) : {};
-})();
-{% endscript %}
-<script src="{% static 'js/Script_Relatorio.js' %}" nonce="{{ request.csp_nonce }}"></script>
-{% endblock %}

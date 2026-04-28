@@ -1,6 +1,6 @@
 /**
- * Relatório Fiscal — tabela, filtros, modais de detalhe (NFe/CTe/NFS/SPED) e exportação Excel.
- * HTML: Processamento/index_Relatorio.html · JS: Script_Relatorio.js
+ * Relatório fiscal (embutido nas páginas de importação) — tabela, filtros, modais e Excel.
+ * Templates: importacao/partial_relatorio_fiscal.html · JS: js/relatorio_fiscal.js
  */
 
 .tr-relatorio-click { cursor: pointer; }

@@ -525,13 +525,6 @@ document.addEventListener('DOMContentLoaded', function () {
     carregarJobsCargaSped();
     carregarAvisosCargaSped();
 
-    var btnAtualizarResumo = document.getElementById('btn-atualizar-resumo-sped');
-    if (btnAtualizarResumo) btnAtualizarResumo.addEventListener('click', function () {
-        carregarResumoCargaSped();
-        carregarJobsCargaSped();
-        carregarAvisosCargaSped();
-    });
-
     var modalAvisos = document.getElementById('modalAvisosCargaSped');
     if (modalAvisos) {
         modalAvisos.addEventListener('show.bs.modal', function () {

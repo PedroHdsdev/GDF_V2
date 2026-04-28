@@ -1,11 +1,12 @@
-{% extends 'index_Base.html' %}
-{% load static %}
+{% extends 'comum/base.html' %}
+{% load static security csp %}
 
 {% block title %}Carga XML{% endblock %}
 
 {% block styles %}
 <link rel="stylesheet" href="{% static 'css/pages/Style_Home.css' %}">
-<link rel="stylesheet" href="{% static 'css/pages/Style_CargaXml.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/pagina_carga.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/relatorio_fiscal.css' %}">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 {% endblock %}
 
@@ -29,8 +30,8 @@
             <button class="btn btn-light" data-bs-toggle="modal" data-bs-target="#modalCargaXml">
                 <i class="fas fa-folder-open"></i> Carregar XMLs
             </button>
-            <button type="button" class="btn btn-outline-light btn-sm" id="btn-atualizar-resumo-cargaxml" title="Atualizar tudo">
-                <i class="fas fa-sync-alt"></i> Atualizar
+            <button type="button" class="btn btn-outline-light" id="relatorio-btn-excel" title="Exportar relatório em Excel (filtros atuais)">
+                <i class="fas fa-file-excel"></i> Baixar Excel
             </button>
         </div>
     </section>
@@ -98,9 +99,20 @@
             </ul>
         </article>
     </section>
+
+    {% include "importacao/partial_relatorio_fiscal.html" with relatorio_painel="xml" %}
 </div>
 
-{% include "Processamento/modal_CargaXml.html" %}
+{% include "importacao/modal_carga_xml.html" %}
+{% include "importacao/modal_relatorio_fiscal.html" with relatorio_painel="xml" %}
 
-<script src="{% static 'js/Script_CargaXml.js' %}" nonce="{{ request.csp_nonce }}"></script>
+{% json_script_nonce tipo_pagamento_desc "tipo-pagamento-desc" %}
+{% script %}
+(function(){
+  var el = document.getElementById('tipo-pagamento-desc');
+  window.TIPO_PAGAMENTO_DESC = el ? JSON.parse(el.textContent) : {};
+})();
+{% endscript %}
+<script src="{% static 'js/carga_xml.js' %}" nonce="{{ request.csp_nonce }}"></script>
+<script src="{% static 'js/relatorio_fiscal.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% endblock %}

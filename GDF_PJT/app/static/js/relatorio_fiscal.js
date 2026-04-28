@@ -1,7 +1,19 @@
 /* Relatório Fiscal - Filtro mês ao abrir, clique na linha abre modal com abas (cabeçalho, itens, pagamento/parcelas, etc.) */
 
+function relatorioModoPagina() {
+    var r = document.getElementById('relatorio-fiscal-root');
+    if (!r) {
+        return 'full';
+    }
+    return r.getAttribute('data-relatorio-modo') || 'xml';
+}
+
 function relatorioTabAtivo() {
-    var tab = document.querySelector('.tab-pane.active');
+    if (relatorioModoPagina() === 'sped') {
+        return 'rel-sped';
+    }
+    var root = document.getElementById('relatorio-fiscal-root');
+    var tab = (root && root.querySelector('.tab-pane.active')) || document.querySelector('.tab-pane.active');
     return tab ? tab.id : 'rel-nfe';
 }
 
@@ -73,8 +85,10 @@ function relatorioParamsParaExcel() {
     var excelTipo = 'todos';
     var rad = document.querySelector('input[name="relatorio-modal-excel-tipo"]:checked');
     if (rad && rad.value) excelTipo = String(rad.value).trim().toLowerCase();
-    var permitidos = ['todos', 'nfe', 'cte', 'nfse', 'sped'];
-    if (permitidos.indexOf(excelTipo) < 0) excelTipo = 'todos';
+    var permitidos = ['todos', 'importacao', 'nfe', 'cte', 'nfse', 'sped'];
+    if (permitidos.indexOf(excelTipo) < 0) {
+        excelTipo = relatorioModoPagina() === 'sped' ? 'sped' : 'importacao';
+    }
     params.excel_tipo = excelTipo;
     return params;
 }
@@ -127,7 +141,8 @@ function relatorioFiltrarFilialPorEmpresa() {
 }
 
 function relatorioAtualizarIndicadoresSort() {
-    ['rel-nfe', 'rel-cte', 'rel-nfse', 'rel-sped'].forEach(function (tid) {
+    var ids = relatorioModoPagina() === 'sped' ? ['rel-sped'] : ['rel-nfe', 'rel-cte', 'rel-nfse', 'rel-sped'];
+    ids.forEach(function (tid) {
         var pane = document.getElementById(tid);
         if (!pane) return;
         var st = relatorioSortState[tid] || { field: '', dir: 'desc' };
@@ -171,14 +186,27 @@ function relatorioRegistrarSortHeaders() {
 }
 
 function relatorioMostrarFiltrosTab() {
+    if (relatorioModoPagina() === 'sped') {
+        document.querySelectorAll('.filtros-por-tab').forEach(function (el) {
+            el.classList.add('d-none');
+        });
+        var spedF = document.getElementById('relatorio-filtros-sped');
+        if (spedF) spedF.classList.remove('d-none');
+        var sapW = document.getElementById('relatorio-filtros-xml-sap-wrap');
+        if (sapW) sapW.classList.add('d-none');
+        return;
+    }
     var tab = relatorioTabAtivo();
     document.querySelectorAll('.filtros-por-tab').forEach(function (el) {
         el.classList.add('d-none');
     });
     var sapWrap = document.getElementById('relatorio-filtros-xml-sap-wrap');
     if (sapWrap) {
-        if (tab === 'rel-nfe' || tab === 'rel-cte' || tab === 'rel-nfse') sapWrap.classList.remove('d-none');
-        else sapWrap.classList.add('d-none');
+        if (tab === 'rel-nfe' || tab === 'rel-cte' || tab === 'rel-nfse') {
+            sapWrap.classList.remove('d-none');
+        } else {
+            sapWrap.classList.add('d-none');
+        }
     }
     if (tab === 'rel-nfe') {
         var nfe = document.getElementById('relatorio-filtros-nfe');
@@ -1050,10 +1078,19 @@ document.addEventListener('DOMContentLoaded', function () {
             relatorioBaixarExcel();
         });
     }
-    document.querySelectorAll('#tab-rel-nfe, #tab-rel-cte, #tab-rel-nfse, #tab-rel-sped').forEach(function (btn) {
-        btn.addEventListener('shown.bs.tab', function () {
-            relatorioMostrarFiltrosTab();
-            relatorioAplicar();
+    if (relatorioModoPagina() === 'sped') {
+        relatorioMostrarFiltrosTab();
+        relatorioAplicar();
+    } else {
+        var rroot = document.getElementById('relatorio-fiscal-root');
+        var seletor = rroot
+            ? rroot.querySelectorAll('button[data-bs-toggle="tab"]')
+            : document.querySelectorAll('#tab-rel-nfe, #tab-rel-cte, #tab-rel-nfse, #tab-rel-sped');
+        seletor.forEach(function (btn) {
+            btn.addEventListener('shown.bs.tab', function () {
+                relatorioMostrarFiltrosTab();
+                relatorioAplicar();
+            });
         });
-    });
+    }
 });

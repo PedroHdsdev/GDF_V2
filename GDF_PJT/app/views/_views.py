@@ -1,6 +1,6 @@
 """
 Views do app GDF – ponto único: telas e APIs.
-- Telas (fn_view_*): login, home, CRUD usuários/empresas/clientes, CargaXml, CargaSped, Relatório, Reprocessamento.
+- Telas (fn_view_*): login, home, CRUD usuários/empresas/clientes, importação (Carga XML, Carga SPED), Reprocessamento.
 - APIs (fn_api_*): CargaXml, CargaSped, Relatórios, Reprocessamento, SAP, Sessão.
 - Usa app.classes (ClGdf, CargaXml, CargaSped) e app.utils.view_helpers. Jobs em app.api.jobs.
 """
@@ -145,7 +145,7 @@ def fn_view_login(request):
         if user is not None:
             if not getattr(user, 'is_active', True):
                 SecurityLogger.log_login_attempt(request, False, reason='Usuário inativo')
-                return render(request, 'index_Login.html', {'error_message': 'Usuário inativo.'})
+                return render(request, 'comum/login.html', {'error_message': 'Usuário inativo.'})
             login(request, user)
             SecurityLogger.log_login_attempt(request, True)
             cl_gdf_instance = ClGdf()
@@ -185,7 +185,7 @@ def fn_view_login(request):
                     request.session['cod_cliente'] = cod_cliente
                     return redirect('Home')
                 SecurityLogger.log_login_attempt(request, False, reason='Problema de Acesso (sem cliente/subsoluções)')
-                return render(request, 'index_Login.html', {
+                return render(request, 'comum/login.html', {
                     'error_message': 'Problema de Acesso. Garanta que: (1) as empresas do usuário tenham um cliente vinculado (campo Cliente na empresa) ou que os grupos do usuário estejam vinculados a um cliente (Permissão grupo-cliente); (2) o cliente tenha soluções ativas (AcessoSolucaoCliente); (3) os grupos tenham subsoluções (AcessoSubsolucaoGrupo) no Admin.'
                 })
             # Redirecionamento sem solucoes (ex.: Retorn True): manter cliente dono do projeto (PRCIT) como padrão
@@ -194,9 +194,9 @@ def fn_view_login(request):
             return redirect('Home')
         else:
             SecurityLogger.log_login_attempt(request, False, reason='Usuário ou senha inválidos')
-            return render(request, 'index_Login.html', {'error_message': 'Usuário ou senha inválidos.'})
+            return render(request, 'comum/login.html', {'error_message': 'Usuário ou senha inválidos.'})
 
-    return render(request, 'index_Login.html')
+    return render(request, 'comum/login.html')
 
 
 def fn_view_csrf_failure(request, reason=''):
@@ -223,7 +223,7 @@ def fn_view_obter_subsolucao(request, cod_sub):
         for sub in sol.get('sub_solucoes', []):
             if str(sub.get('cod_subsolucao')) == str(cod_sub):
                 return redirect(sub.get('cod_subsolucao'))
-    return render(request, 'index_home.html')
+    return render(request, 'home/inicio.html')
 
 @login_required(login_url='Login')
 def fn_view_home(request):
@@ -406,9 +406,8 @@ def fn_view_home(request):
     context['tem_mnf'] = _tem_acesso('Mnf_Painel')
     context['tem_empresas'] = _tem_acesso('Dm_Empresas')
     _atalhos_config = [
-        ('Pro_CargaXml', 'Importar XML', 'Carga diária'),
-        ('Pro_CargaSped', 'Carga SPED', 'Arquivos SPED'),
-        ('Pro_Relatorio', 'Relatório Fiscal', 'NFe, CTe, NFS, SPED'),
+        ('Pro_CargaXml', 'Importar XML', 'Carga e relatórios NFe, CT-e, NFS'),
+        ('Pro_CargaSped', 'Carga SPED', 'Arquivos e relatório SPED'),
         ('Int_Rfc', 'RFC SAP', 'Ferramentas · integração schema SAP'),
         ('Dm_Empresas', 'Empresas (e filiais)', 'Cadastros'),
         ('Dm_Usuarios', 'Usuários', 'Acessos'),
@@ -434,8 +433,8 @@ def fn_view_home(request):
             context['cliente_nome'] = cliente_obj.razao or cod_cliente
         context['qtd_empresas'] = Empresa.objects.filter(gdfcliente__cod_cliente=cod_cliente).count()
 
-        # Documentos no mês atual (para quem tem Pro_Relatorio ou Reproc_Painel)
-        if _tem_acesso('Pro_Relatorio') or _tem_acesso('Reproc_Painel'):
+        # Documentos no mês atual (importação XML/SPED ou reprocessamento)
+        if _tem_acesso('Pro_CargaXml') or _tem_acesso('Pro_CargaSped') or _tem_acesso('Reproc_Painel'):
             hoje = timezone.now()
             nfe_mes = NFe.objects.filter(
                 gdfcliente__cod_cliente=cod_cliente,
@@ -491,7 +490,7 @@ def fn_view_home(request):
             atividades.sort(key=lambda x: x['data'] or _epoch, reverse=True)
             context['ultima_atividade'] = atividades[:5]
 
-    return render(request, "Home/index_Home.html", context)
+    return render(request, "home/inicio.html", context)
 
 @login_required
 def fn_view_sair(request):   
@@ -511,7 +510,7 @@ def fn_view_listar_usuarios(request):
         if is_superuser:
             messages.info(request, 'Selecione um cliente na Home para gerenciar usuários.')
             return redirect('Home')
-        return render(request, 'index_Login.html', {'error_message': 'Acesso negado: cliente não identificado'})
+        return render(request, 'comum/login.html', {'error_message': 'Acesso negado: cliente não identificado'})
     
     cl_gdf = ClGdf()
     t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
@@ -523,7 +522,7 @@ def fn_view_listar_usuarios(request):
     }
     if is_superuser and superuser_acesso_total_painel(request):
         context['lista_clientes'] = cl_gdf.get_clientes()
-    return render(request, 'Usuarios/index_Usuarios.html', context)
+    return render(request, 'usuarios/index.html', context)
 
 # Empresas
 @login_required(login_url='Login')
@@ -548,7 +547,7 @@ def fn_view_listar_empresas(request):
     }
     if is_superuser and superuser_acesso_total_painel(request):
         context['lista_clientes'] = cl_gdf.get_clientes()
-    return render(request, 'Empresas/index_Empresas.html', context)
+    return render(request, 'empresas/index.html', context)
 
 # Clientes
 @login_required(login_url='Login')
@@ -562,7 +561,7 @@ def fn_view_listar_clientes(request):
     context = {'t_clientes': t_clientes, 'cod_cliente': cod_cliente}
     if usuario_acesso_total_painel(request):
         context['is_superuser'] = request.session.get('is_superuser', False)
-    return render(request, 'ClienteGdf/index_ClienteGdf.html', context)
+    return render(request, 'mandantes/index.html', context)
 
 
 # Rota Dm_Filiais mantida por compat.; filiais passam a ser gestas só no modal de Empresas
@@ -775,7 +774,7 @@ def fn_view_inserir_usuario(request):
             ctx = {'t_user': t_user, 'error_message': ' | '.join(errors), 'cod_cliente': cod_cliente, 'is_superuser': is_superuser}
             if is_superuser and superuser_acesso_total_painel(request):
                 ctx['lista_clientes'] = cl_gdf.get_clientes()
-            return render(request, 'Usuarios/index_Usuarios.html', ctx)
+            return render(request, 'usuarios/index.html', ctx)
 
         resultado = cl_gdf.set_usuario(
             i_v_username=username,
@@ -792,7 +791,7 @@ def fn_view_inserir_usuario(request):
             ctx = {'t_user': t_user, 'error_message': resultado.get("message", "Erro ao criar usuário"), 'cod_cliente': cod_cliente, 'is_superuser': is_superuser}
             if is_superuser and superuser_acesso_total_painel(request):
                 ctx['lista_clientes'] = cl_gdf.get_clientes()
-            return render(request, 'Usuarios/index_Usuarios.html', ctx)
+            return render(request, 'usuarios/index.html', ctx)
         return redirect('Dm_Usuarios')
 
 @login_required(login_url='Login')
@@ -905,18 +904,18 @@ def _streamlit_iframe_url(request):
 def fn_view_dashboard_vendas(request):
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Vendas')
     if not token:
-        return render(request, 'index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
+        return render(request, 'comum/login.html', {'error_message': 'Erro ao gerar token de acesso'})
     streamlit_url = _streamlit_iframe_url(request)
-    return render(request, "Dashboard/index_Vendas.html", {"token": token, "streamlit_iframe_url": streamlit_url})
+    return render(request, "dashboard/vendas.html", {"token": token, "streamlit_iframe_url": streamlit_url})
 
 @login_required(login_url='Login')
 @requer_acesso_subsolucao('Db_Compras')
 def fn_view_dashboard_compras(request):
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Compras')
     if not token:
-        return render(request, 'index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
+        return render(request, 'comum/login.html', {'error_message': 'Erro ao gerar token de acesso'})
     streamlit_url = _streamlit_iframe_url(request)
-    return render(request, "Dashboard/index_Compras.html", {"token": token, "streamlit_iframe_url": streamlit_url})
+    return render(request, "dashboard/compras.html", {"token": token, "streamlit_iframe_url": streamlit_url})
 
 
 @login_required(login_url='Login')
@@ -924,9 +923,9 @@ def fn_view_dashboard_compras(request):
 def fn_view_dashboard_custo(request):
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Custo')
     if not token:
-        return render(request, 'index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
+        return render(request, 'comum/login.html', {'error_message': 'Erro ao gerar token de acesso'})
     streamlit_url = _streamlit_iframe_url(request)
-    return render(request, "Dashboard/index_Custo.html", {"token": token, "streamlit_iframe_url": streamlit_url})
+    return render(request, "dashboard/custo.html", {"token": token, "streamlit_iframe_url": streamlit_url})
 
 
 @login_required(login_url='Login')
@@ -935,14 +934,14 @@ def fn_view_dashboard_demonstrativos_contabeis(request):
     """Dashboard Demonstrativos contábeis (Streamlit); token tipo_relatorio DemonstrativosContabeis."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
-        return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
+        return render(request, 'comum/login.html', {'error_message': 'Cliente não identificado'})
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='DemonstrativosContabeis')
     if not token:
-        return render(request, 'index_Login.html', {'error_message': 'Erro ao gerar token de acesso'})
+        return render(request, 'comum/login.html', {'error_message': 'Erro ao gerar token de acesso'})
     streamlit_url = _streamlit_iframe_url(request)
     return render(
         request,
-        "Dashboard/index_DemonstrativosContabeis.html",
+        "dashboard/demonstrativos_contabeis.html",
         {"token": token, "streamlit_iframe_url": streamlit_url},
     )
 
@@ -1035,7 +1034,7 @@ def fn_view_manifesto_painel(request):
         ]
     }
 
-    return render(request, "Manifesto/index_Manifesto.html", {"manifesto_data": manifesto_data})
+    return render(request, "manifesto/index.html", {"manifesto_data": manifesto_data})
 
 #--------------------------------------------------------------------
 #       Empresas - Modais
@@ -1509,6 +1508,73 @@ def fn_view_cliente_sap(request, cod_cliente):
     return JsonResponse({"erro": "Método não permitido"}, status=405)
 
 
+def _contexto_painel_relatorio_fiscal(request):
+    """
+    Dados de filtros e opções do painel de relatório (NFe, CTe, NFS, SPED).
+    Usado nas páginas Carga XML e Carga SPED; sem cliente na sessão retorna dict mínimo.
+    """
+    cod_cliente = request.session.get("cod_cliente", None)
+    if not cod_cliente:
+        return {
+            "empresas_usuario": [],
+            "filiais_usuario": Filial.objects.none(),
+            "meio_pagamento_choices": [],
+            "relatorio_condicao_sap_opcoes": [],
+        }
+    try:
+        cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
+        if usuario_acesso_total_painel(request):
+            empresas_usuario = Empresa.objects.filter(gdfcliente=cliente).order_by("fantasia", "razao", "cod_empresa").distinct()
+        else:
+            empresas_usuario = Empresa.objects.filter(
+                gdfcliente=cliente, usuarioempresa__user=request.user
+            ).order_by("fantasia", "razao", "cod_empresa").distinct()
+    except ClienteGdf.DoesNotExist:
+        return {
+            "empresas_usuario": [],
+            "filiais_usuario": Filial.objects.none(),
+            "meio_pagamento_choices": [],
+            "relatorio_condicao_sap_opcoes": [],
+        }
+    relatorio_condicao_sap_opcoes = list(
+        CondicaoParam.objects.filter(gdfcliente_id=cod_cliente)
+        .exclude(condicao_pagamento_sap__isnull=True)
+        .exclude(condicao_pagamento_sap="")
+        .values_list("condicao_pagamento_sap", flat=True)
+        .distinct()
+        .order_by("condicao_pagamento_sap")[:200]
+    )
+    try:
+        meio_pagamento_choices = list(NFe_Pagamento._meta.get_field("meio_pagamento").choices)
+    except Exception:
+        meio_pagamento_choices = []
+    filiais_usuario = (
+        Filial.objects.filter(empresa__in=empresas_usuario)
+        .select_related("empresa")
+        .order_by("empresa__fantasia", "empresa__razao", "empresa__cod_empresa", "cod_filial")
+    )
+    return {
+        "empresas_usuario": empresas_usuario,
+        "filiais_usuario": filiais_usuario,
+        "meio_pagamento_choices": meio_pagamento_choices,
+        "relatorio_condicao_sap_opcoes": relatorio_condicao_sap_opcoes,
+    }
+
+
+def _usuario_pode_relatorio_excel_nfe_cte_nfse(request):
+    subs = get_subsolucoes_usuario(request.user)
+    if subs is None:
+        return True
+    return "Pro_CargaXml" in subs
+
+
+def _usuario_pode_relatorio_excel_sped(request):
+    subs = get_subsolucoes_usuario(request.user)
+    if subs is None:
+        return True
+    return "Pro_CargaSped" in subs
+
+
 @login_required(login_url='Login')
 @requer_acesso_subsolucao('Pro_CargaXml')
 @require_http_methods(["GET"])
@@ -1517,7 +1583,7 @@ def fn_view_CargaXml(request):
     cod_cliente = request.session.get('cod_cliente', None)
     
     if not cod_cliente:
-        return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
+        return render(request, 'comum/login.html', {'error_message': 'Cliente não identificado'})
     
     # Buscar jobs do cliente (todos os registros)
     try:
@@ -1538,8 +1604,11 @@ def fn_view_CargaXml(request):
         "cod_cliente": cod_cliente,
         "jobs": jobs,
         "url_prefix": url_prefix,
+        "tipo_pagamento_desc": TIPO_PAGAMENTO_DESC,
+        "relatorio_painel": "xml",
     }
-    return render(request, "Processamento/index_CargaXml.html", context)
+    context.update(_contexto_painel_relatorio_fiscal(request))
+    return render(request, "importacao/index_carga_xml.html", context)
 
 
 @login_required(login_url='Login')
@@ -2091,7 +2160,7 @@ def fn_view_CargaSped(request):
     """View para carregamento de arquivos SPED (mesma linha de raciocínio da Carga XML)."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
-        return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
+        return render(request, 'comum/login.html', {'error_message': 'Cliente não identificado'})
     try:
         cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
         jobs = (
@@ -2109,14 +2178,17 @@ def fn_view_CargaSped(request):
         "cod_cliente": cod_cliente,
         "jobs": jobs,
         "url_prefix": url_prefix,
+        "tipo_pagamento_desc": TIPO_PAGAMENTO_DESC,
+        "relatorio_painel": "sped",
     }
-    return render(request, "Processamento/index_CargaSped.html", context)
+    context.update(_contexto_painel_relatorio_fiscal(request))
+    return render(request, "importacao/index_carga_sped.html", context)
 
 
 # ========== APIs Relatório Fiscal (NFe, CTe, NFS, SPED nível cabeçalho) ==========
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfe(request):
     """Lista NFe nível cabeçalho com filtros empresa, grupo de empresa e período."""
@@ -2173,7 +2245,7 @@ def fn_api_relatorio_nfe(request):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_cte(request):
     """Lista CTe nível cabeçalho com filtros empresa, grupo de empresa e período."""
@@ -2212,7 +2284,7 @@ def fn_api_relatorio_cte(request):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfse(request):
     """Lista NFSe nível cabeçalho com filtros empresa, grupo de empresa e período."""
@@ -2250,7 +2322,7 @@ def fn_api_relatorio_nfse(request):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
+@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_sped(request):
     """Lista SPED nível cabeçalho. tipo_sped: C=Contribuição, F=Fiscal. Busca em sped_fiscal e sped_contribuicao."""
@@ -2280,14 +2352,14 @@ def fn_api_relatorio_sped(request):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
 @require_http_methods(['GET'])
 def fn_api_relatorio_excel(request):
     """
     Exporta planilha .xlsx (aba Resumo + dados) com os mesmos filtros das APIs
     de relatório (sem paginação).
 
-    Query opcional ``excel_tipo``: ``todos`` (padrão), ``nfe``, ``cte``,
+    Query opcional ``excel_tipo``: ``todos`` (padrão, todas as abas),
+    ``importacao`` (NFe, CT-e e NFS-e, sem SPED), ``nfe``, ``cte``,
     ``nfse`` ou ``sped`` — define quais abas de dados são geradas.
     """
     try:
@@ -2310,12 +2382,22 @@ def fn_api_relatorio_excel(request):
 
     MAX_ROWS = 100000
     excel_tipo = (request.GET.get('excel_tipo') or 'todos').strip().lower()
-    if excel_tipo not in ('todos', 'nfe', 'cte', 'nfse', 'sped'):
+    if excel_tipo not in ('todos', 'nfe', 'cte', 'nfse', 'sped', 'importacao'):
         excel_tipo = 'todos'
-    incluir_nfe = excel_tipo in ('todos', 'nfe')
-    incluir_cte = excel_tipo in ('todos', 'cte')
-    incluir_nfse = excel_tipo in ('todos', 'nfse')
+    incluir_nfe = excel_tipo in ('todos', 'nfe', 'importacao')
+    incluir_cte = excel_tipo in ('todos', 'cte', 'importacao')
+    incluir_nfse = excel_tipo in ('todos', 'nfse', 'importacao')
     incluir_sped = excel_tipo in ('todos', 'sped')
+    if (incluir_nfe or incluir_cte or incluir_nfse) and not _usuario_pode_relatorio_excel_nfe_cte_nfse(request):
+        return JsonResponse(
+            {"sucesso": False, "mensagem": "Sem permissão para exportar NFe, CT-e ou NFS-e."},
+            status=403,
+        )
+    if incluir_sped and not _usuario_pode_relatorio_excel_sped(request):
+        return JsonResponse(
+            {"sucesso": False, "mensagem": "Sem permissão para exportar SPED."},
+            status=403,
+        )
 
     wb = Workbook()
     bold = Font(bold=True)
@@ -2522,6 +2604,8 @@ def fn_api_relatorio_excel(request):
     stamp = timezone.now().strftime('%Y%m%d_%H%M')
     if excel_tipo == 'todos':
         fname = f'relatorio_fiscal_{stamp}.xlsx'
+    elif excel_tipo == 'importacao':
+        fname = f'relatorio_fiscal_importacao_{stamp}.xlsx'
     else:
         fname = f'relatorio_fiscal_{excel_tipo}_{stamp}.xlsx'
     resp = HttpResponse(
@@ -2551,7 +2635,7 @@ def _serialize_model(inst, exclude=None):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfe_detalhe(request, id_nfe):
     """Detalhe completo da NFe para modal: cabeçalho, itens, total, cobrança/parcelas, pagamento, transporte, info adicionais."""
@@ -2640,7 +2724,7 @@ def fn_api_relatorio_nfe_detalhe(request, id_nfe):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_cte_detalhe(request, id_cte):
     """Detalhe completo do CTe para modal: cabeçalho, valor, transporte, carga, serviço, veículo, motorista, percurso, fiscal."""
@@ -2693,7 +2777,7 @@ def fn_api_relatorio_cte_detalhe(request, id_cte):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_nfse_detalhe(request, id_nfse):
     """Detalhe completo da NFSe para modal: cabeçalho, prestador, tomador, serviços, RPS, retenção, pagamento."""
@@ -2741,7 +2825,7 @@ def fn_api_relatorio_nfse_detalhe(request, id_nfse):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_Relatorio', redirect_on_deny=False)
+@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_relatorio_sped_detalhe(request, tipo, id_arquivo):
     """Detalhe do arquivo SPED: cabeçalho e registros. tipo: F=Fiscal, C=Contribuição."""
@@ -2846,56 +2930,13 @@ def fn_api_relatorio_sped_detalhe(request, tipo, id_arquivo):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Pro_Relatorio')
 @require_http_methods(["GET"])
 def fn_view_Relatorio_Fiscal(request):
-    """Relatório com dados e filtros das tabelas carregadas: NFe, CTe, NFS e SPED (nível cabeçalho).
-    Superuser ou cliente PRCIT: vê todas as empresas do cliente selecionado (igual Painel Reprocessamento)."""
-    cod_cliente = request.session.get('cod_cliente', None)
-    if not cod_cliente:
-        return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
-    try:
-        cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
-        if usuario_acesso_total_painel(request):
-            empresas_usuario = Empresa.objects.filter(gdfcliente=cliente).order_by('fantasia', 'razao', 'cod_empresa').distinct()
-        else:
-            empresas_usuario = Empresa.objects.filter(
-                gdfcliente=cliente,
-                usuarioempresa__user=request.user
-            ).order_by('fantasia', 'razao', 'cod_empresa').distinct()
-    except ClienteGdf.DoesNotExist:
-        empresas_usuario = []
-        relatorio_condicao_sap_opcoes = []
-    else:
-        relatorio_condicao_sap_opcoes = list(
-            CondicaoParam.objects.filter(gdfcliente_id=cod_cliente)
-            .exclude(condicao_pagamento_sap__isnull=True)
-            .exclude(condicao_pagamento_sap='')
-            .values_list('condicao_pagamento_sap', flat=True)
-            .distinct()
-            .order_by('condicao_pagamento_sap')[:200]
-        )
-    # Opções de tipo de pagamento (NFe) para o filtro do relatório (código 2 dígitos = valor no XML tPag)
-    try:
-        meio_pagamento_choices = list(
-            NFe_Pagamento._meta.get_field('meio_pagamento').choices
-        )
-    except Exception:
-        meio_pagamento_choices = []
-    filiais_usuario = (
-        Filial.objects.filter(empresa__in=empresas_usuario)
-        .select_related('empresa')
-        .order_by('empresa__fantasia', 'empresa__razao', 'empresa__cod_empresa', 'cod_filial')
-    )
-    context = {
-        'cod_cliente': cod_cliente,
-        'empresas_usuario': empresas_usuario,
-        'filiais_usuario': filiais_usuario,
-        'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC,
-        'meio_pagamento_choices': meio_pagamento_choices,
-        'relatorio_condicao_sap_opcoes': relatorio_condicao_sap_opcoes,
-    }
-    return render(request, 'Processamento/index_Relatorio.html', context)
+    """
+    Rota legada: o relatório fiscal integrou-se à Carga de XML (NFe, CT-e, NFS) e Carga SPED (SPED).
+    Redireciona para a Carga de XML.
+    """
+    return redirect("Pro_CargaXml")
 
 
 # -------------------------------------------------------------------------
@@ -2915,7 +2956,7 @@ def fn_view_Reprocessamento_Painel(request):
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         context = {'cod_cliente': None, 'empresas': [], 'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC}
-        return render(request, 'Reprocessamento/index_Painel.html', context)
+        return render(request, 'Ferramentas/painel.html', context)
     empresas = list(
         Empresa.objects.filter(gdfcliente_id=cod_cliente).values('cod_empresa', 'razao', 'fantasia').order_by('razao')
     )
@@ -2924,7 +2965,7 @@ def fn_view_Reprocessamento_Painel(request):
         'empresas': empresas,
         'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC,
     }
-    return render(request, 'Reprocessamento/index_Painel.html', context)
+    return render(request, 'Ferramentas/painel.html', context)
 
 
 @login_required(login_url='Login')
@@ -3859,7 +3900,7 @@ def fn_view_Integracao_Rfc(request):
     """View da subsolução Int_Rfc: executa RFCs que alimentam tabelas do schema sap."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
-        return render(request, 'index_Login.html', {'error_message': 'Cliente não identificado'})
+        return render(request, 'comum/login.html', {'error_message': 'Cliente não identificado'})
 
     from app.integracao_sap import get_rfc_registry
     registry = get_rfc_registry()
@@ -3917,7 +3958,7 @@ def fn_view_Integracao_Rfc(request):
         'empresas': empresas,
         'filiais_por_empresa': filiais_por_empresa,
     }
-    return render(request, 'IntegracaoSap/index_Rfc.html', context)
+    return render(request, 'Ferramentas/rfc.html', context)
 
 @login_required(login_url='Login')
 @ensure_csrf_cookie 

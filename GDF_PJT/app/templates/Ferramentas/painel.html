@@ -1,4 +1,4 @@
-{% extends 'index_Base.html' %}
+{% extends 'comum/base.html' %}
 {% load static security csp %}
 
 {% block title %}Ferramentas – Reprocessamento{% endblock %}
@@ -488,7 +488,7 @@
     </div>
 </div>
 
-{% include "Reprocessamento/modal_Painel.html" %}
+{% include "Ferramentas/modal_painel.html" %}
 
 {% json_script_nonce tipo_pagamento_desc "tipo-pagamento-desc" %}
 {% script %}

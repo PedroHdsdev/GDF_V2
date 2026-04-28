@@ -111,6 +111,42 @@ def requer_acesso_subsolucao(cod_subsolucao, redirect_on_deny=True):
     return decorator
 
 
+def requer_acesso_um_de(*cod_subsolucoes, redirect_on_deny=True):
+    """
+    Acesso se o usuário tiver qualquer uma das subsoluções listadas
+    (ex.: duas soluções que abrem a mesma API compartilhada).
+    Uso: @requer_acesso_um_de('Reproc_Painel', 'OutroCod', redirect_on_deny=False)
+    """
+    from app.utils.view_helpers import get_subsolucoes_usuario
+
+    cods = tuple(cod_subsolucoes)
+    if not cods:
+        raise ValueError("requer_acesso_um_de: informe ao menos um código de subsolução")
+
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapper(request, *args, **kwargs):
+            if not request.user.is_authenticated:
+                if redirect_on_deny:
+                    return redirect("Login")
+                return JsonResponse({"erro": "Não autenticado"}, status=403)
+            subsolucoes = get_subsolucoes_usuario(request.user)
+            if subsolucoes is None:
+                return view_func(request, *args, **kwargs)
+            if any(c in subsolucoes for c in cods):
+                return view_func(request, *args, **kwargs)
+            if redirect_on_deny:
+                return redirect("Home")
+            return JsonResponse(
+                {"erro": "Acesso negado: você não tem permissão para esta subsolução"},
+                status=403,
+            )
+
+        return wrapper
+
+    return decorator
+
+
 def requer_acesso_total_painel(redirect_on_deny=True):
     """
     Decorador que exige usuário com acesso total ao painel (superuser ou cliente dono do projeto).

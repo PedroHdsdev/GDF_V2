@@ -89,12 +89,6 @@ document.addEventListener('DOMContentLoaded', function () {
     carregarResumoCargaXml();
     carregarTodasAsCargas();
 
-    var btnAtualizarResumo = document.getElementById('btn-atualizar-resumo-cargaxml');
-    if (btnAtualizarResumo) btnAtualizarResumo.addEventListener('click', function () {
-        carregarResumoCargaXml();
-        carregarTodasAsCargas();
-    });
-
     // Modal Avisos: ao abrir, recarrega lista de logs
     const modalAvisos = document.getElementById('modalAvisosCargaXml');
     if (modalAvisos) {

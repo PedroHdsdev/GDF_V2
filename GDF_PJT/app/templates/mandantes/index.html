@@ -1,4 +1,4 @@
-{% extends 'index_Base.html' %}
+{% extends 'comum/base.html' %}
 {% load static csp %}
 
 {% block title %}Clientes{% endblock %}
@@ -96,7 +96,7 @@
 </div>
 
 <!-- INCLUIR MODAIS (inserir + editar em um único template) -->
-{% include 'ClienteGdf/modal_ClienteGdf.html' %}
+{% include 'mandantes/modal_mandante.html' %}
 
 {% endblock %}
 

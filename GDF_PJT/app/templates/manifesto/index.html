@@ -1,4 +1,4 @@
-{% extends 'index_Base.html' %}
+{% extends 'comum/base.html' %}
 {% load static security %}
 
 {% block title %}Manifesto{% endblock %}
@@ -69,7 +69,7 @@
   </section>
 </div>
 
-{% include 'Manifesto/modal_Manifesto.html' %}
+{% include 'manifesto/modal_manifesto.html' %}
 
 {% json_script_nonce manifesto_data "manifesto-data" %}
 {% endblock %}

@@ -83,7 +83,7 @@ class Command(BaseCommand):
             ('GET', '/api/reprocessamento/lotes/', 'API Reprocessamento Lotes', True),
             ('GET', '/usuarios/', 'View Listar Usuários', True),
             ('GET', '/empresas/', 'View Listar Empresas', True),
-            ('GET', '/Relatorio/', 'View Relatório Fiscal', True),
+            ('GET', '/CargaXml/', 'View Carga XML (incl. relat. NFe/CTe/NFS)', True),
             ('GET', '/Reprocessamento/Painel/', 'View Painel Reprocessamento', True),
         ]
 

@@ -1,8 +1,9 @@
 /* ===============================
-   ESTILO - CARGA XML
+   Importação (solução) — layout partilhado: Carga XML e Carga SPED
+   Templates: importacao/index_carga_*.html
 ================================ */
 
-/* Página CargaXml – layout tipo Home (vários containers) */
+/* Página (classes .cargaxml-page legadas) — layout tipo Home */
 .cargaxml-page {
     min-height: calc(100vh - 56px);
     padding: 2.5rem 2.2rem 3rem;

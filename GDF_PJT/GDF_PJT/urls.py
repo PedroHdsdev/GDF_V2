@@ -28,7 +28,7 @@ urlpatterns = [
     path('filiais/', views.fn_view_listar_filiais, name='Dm_Filiais'),
     path('clientes/', views.fn_view_listar_clientes, name='Dm_Clientes'),
     
-    # PROCESSAMENTO FISCAL (Carga XML, Carga SPED, Relatório)
+    # PROCESSAMENTO FISCAL (Carga XML / Carga SPED; /Relatorio/ legado redireciona a CargaXml)
     path('CargaXml/', views.fn_view_CargaXml, name='Pro_CargaXml'),
     path('CargaSped/', views.fn_view_CargaSped, name='Pro_CargaSped'),
     path('Relatorio/', views.fn_view_Relatorio_Fiscal, name='Pro_Relatorio'),

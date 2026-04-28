@@ -157,13 +157,13 @@ class PerformanceTestCase(TestCase):
         self.client.logout()
         self.result_view_empresas = result
 
-    def test_view_relatorio_fiscal(self):
-        """View relatório fiscal (página)."""
+    def test_view_carga_xml(self):
+        """View Carga XML (página, inclui painel de relatórios NFe/CTe/NFS)."""
         self.client.force_login(self.user)
-        path = self._url('Pro_Relatorio')
+        path = self._url('Pro_CargaXml')
         result = self._measure_n('GET', path, n=3)
         self.client.logout()
-        self.result_view_relatorio = result
+        self.result_view_carga_xml = result
 
     def test_view_reprocessamento_painel(self):
         """View painel reprocessamento."""

@@ -46,7 +46,7 @@ class Command(BaseCommand):
             ('/Home/', 'Home'),
             ('/usuarios/', 'Usuários'),
             ('/empresas/', 'Empresas'),
-            ('/Relatorio/', 'Relatório Fiscal'),
+            ('/CargaXml/', 'Carga XML (incl. relatórios)'),
             ('/api/relatorio/nfe/', 'API Relatório NFe'),
             ('/Reprocessamento/Painel/', 'Painel Reprocessamento'),
         ]
