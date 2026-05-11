@@ -1,0 +1,75 @@
+/**
+ * Seções expansíveis nas páginas Carga XML / SPED (Relatórios + Registros no período).
+ */
+
+.gdf-carga-secao {
+    --gdf-sec-toggle-border: rgba(148, 163, 184, 0.28);
+    --gdf-sec-eyebrow: rgba(186, 230, 253, 0.88);
+    --gdf-sec-title: #f8fafc;
+}
+
+.gdf-carga-secao-toggle {
+    background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+    border: 1px solid var(--gdf-sec-toggle-border) !important;
+    color: var(--gdf-sec-title);
+    padding: 1rem 1.25rem;
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.2);
+    backdrop-filter: blur(8px);
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gdf-carga-secao-toggle:hover {
+    filter: brightness(1.08);
+    color: var(--gdf-sec-title);
+}
+
+.gdf-carga-secao-toggle:focus-visible {
+    outline: 2px solid rgba(56, 189, 248, 0.6);
+    outline-offset: 2px;
+}
+
+.gdf-carga-secao-eyebrow {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--gdf-sec-eyebrow);
+    margin-bottom: 0.25rem;
+}
+
+.gdf-carga-secao-title {
+    display: block;
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.gdf-carga-secao-chevron {
+    font-size: 0.85rem;
+    opacity: 0.85;
+    transition: transform 0.28s ease;
+}
+
+.gdf-carga-secao-toggle[aria-expanded="false"] .gdf-carga-secao-chevron {
+    transform: rotate(-90deg);
+}
+
+.gdf-carga-secao-collapse.collapsing {
+    transition: height 0.32s ease;
+}
+
+.gdf-carga-secao-collapse.collapse:not(.show) {
+    display: none;
+}
+
+.reg-periodo-card .form-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+.reg-periodo-wrap-status.d-none-nfe .form-label,
+.reg-periodo-wrap-status.d-none-nfe select {
+    opacity: 0.55;
+}

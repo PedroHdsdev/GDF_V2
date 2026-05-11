@@ -57,8 +57,18 @@ urlpatterns = [
     path('api/cargaxml/jobs/', views.fn_api_cargaxml_jobs, name='API_CargaXmlJobs'),
     path('api/cargaxml/jobs/<int:job_id>/', views.fn_api_cargaxml_job_details, name='API_CargaXmlJobDetails'),
     path('api/cargaxml/resumo/', views.fn_api_cargaxml_resumo, name='API_CargaXmlResumo'),
+    path(
+        'api/cargaxml/registros-mensais/',
+        views.fn_api_cargaxml_registros_mensais,
+        name='API_CargaXmlRegistrosMensais',
+    ),
 
     path('api/cargasped/resumo/', views.fn_api_cargasped_resumo, name='API_CargaSpedResumo'),
+    path(
+        'api/cargasped/registros-mensais/',
+        views.fn_api_cargasped_registros_mensais,
+        name='API_CargaSpedRegistrosMensais',
+    ),
     path('api/cargasped/avisos/', views.fn_api_cargasped_avisos, name='API_CargaSpedAvisos'),
     path('api/cargasped/jobs/', views.fn_api_cargasped_jobs, name='API_CargaSpedJobs'),
     path('api/cargasped/jobs/<int:job_id>/', views.fn_api_cargasped_job_details, name='API_CargaSpedJobDetails'),

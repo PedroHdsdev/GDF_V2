@@ -2,7 +2,10 @@
 Querysets e listas completas para o Relatório Fiscal (mesmos filtros das APIs JSON).
 Usado pela exportação Excel e pelas views de listagem para evitar divergência de regras.
 """
+from collections import defaultdict
+
 from django.db.models import Count, Q
+from django.db.models.functions import TruncMonth
 from django.http import HttpRequest
 from django.utils import timezone
 
@@ -75,6 +78,10 @@ def queryset_relatorio_nfe(request: HttpRequest, params: RelatorioParams):
         qs = qs.filter(tem_sap=True)
     elif params.tem_sap == 'nao':
         qs = qs.filter(tem_sap=False)
+
+    status_doc = (request.GET.get('status') or '').strip()
+    if status_doc:
+        qs = qs.filter(status=status_doc)
 
     filtro_cond_sap = (request.GET.get('condicao_pagamento_sap') or '').strip()[:60]
     cod_cli_filtro = (params.cod_cliente or '').strip() or None
@@ -306,3 +313,139 @@ def list_relatorio_sped_items(request: HttpRequest, params: RelatorioParams):
     if order_key_sped in _sped_sort_keys:
         items.sort(key=_sped_sort_keys[order_key_sped], reverse=(dir_sped == 'desc'))
     return items
+
+
+_MESES_PT = (
+    '',
+    'Janeiro',
+    'Fevereiro',
+    'Março',
+    'Abril',
+    'Maio',
+    'Junho',
+    'Julho',
+    'Agosto',
+    'Setembro',
+    'Outubro',
+    'Novembro',
+    'Dezembro',
+)
+
+
+def _label_mes_ref(d) -> str:
+    if d is None:
+        return ''
+    y = getattr(d, 'year', None)
+    m = getattr(d, 'month', None)
+    if y is not None and m is not None and 1 <= m <= 12:
+        return f'{_MESES_PT[m]} de {y}'
+    s = str(d)
+    return s[:7] if len(s) >= 7 else s
+
+
+def agregado_mensal_xml(request: HttpRequest, params: RelatorioParams, tipo: str) -> list:
+    """Contagem por mês de calendário (emissão), mesmos filtros das APIs de relatório XML."""
+    tipo = (tipo or 'nfe').lower()
+    if tipo == 'nfe':
+        qs = queryset_relatorio_nfe(request, params)
+        pk_field = 'id_nfe'
+    elif tipo == 'cte':
+        qs = queryset_relatorio_cte(request, params)
+        pk_field = 'id_cte'
+    elif tipo == 'nfse':
+        qs = queryset_relatorio_nfse(request, params)
+        pk_field = 'id_nfse'
+    else:
+        return []
+
+    qs = qs.order_by().exclude(identificacao__emissao__isnull=True)
+    rows = (
+        qs.annotate(mes=TruncMonth('identificacao__emissao'))
+        .values('mes')
+        .annotate(quantidade=Count(pk_field, distinct=True))
+        .order_by('mes')
+    )
+    out = []
+    for r in rows:
+        m = r['mes']
+        if m is None:
+            continue
+        d = m.date() if hasattr(m, 'date') else m
+        out.append(
+            {
+                'mes': d.isoformat() if hasattr(d, 'isoformat') else str(d),
+                'mes_label': _label_mes_ref(d),
+                'quantidade': r['quantidade'],
+            }
+        )
+    return out
+
+
+def agregado_mensal_sped(request: HttpRequest, params: RelatorioParams) -> list:
+    """Contagem por mês de competência; tipo_sped F/C ou vazio (ambos somados por mês)."""
+    cod_empresas = params.cod_empresas
+    cod_cliente = params.cod_cliente
+    if not cod_empresas and not cod_cliente:
+        return []
+
+    q_sped_base = Q(empresa__cod_empresa__in=cod_empresas)
+    if cod_cliente:
+        q_sped_base |= Q(empresa__isnull=True, gdfcliente__cod_cliente=cod_cliente)
+
+    tipo_sped = request.GET.get('tipo_sped', '').strip().upper()
+    busca = (params.busca or '').strip()
+    data_inicio = params.data_inicio
+    data_fim = params.data_fim
+
+    def _apply_dates(qs):
+        if data_inicio:
+            dt = parse_date_safe(data_inicio)
+            if dt:
+                qs = qs.filter(competencia__gte=dt)
+        if data_fim:
+            dt = parse_date_safe(data_fim)
+            if dt:
+                qs = qs.filter(competencia__lte=dt)
+        return qs
+
+    def _agg_rows(Model):
+        qs = Model.objects.filter(q_sped_base)
+        if busca:
+            qs = qs.filter(Q(nome_arquivo__icontains=busca))
+        qs = _apply_dates(qs)
+        qs = qs.exclude(competencia__isnull=True)
+        return (
+            qs.order_by()
+            .annotate(mes=TruncMonth('competencia'))
+            .values('mes')
+            .annotate(quantidade=Count('id_arquivo'))
+        )
+
+    counts_by_mes = defaultdict(int)
+
+    if tipo_sped == 'F':
+        models = (SpedFiscalArquivo,)
+    elif tipo_sped == 'C':
+        models = (SpedContribuicaoArquivo,)
+    else:
+        models = (SpedFiscalArquivo, SpedContribuicaoArquivo)
+
+    for Model in models:
+        for r in _agg_rows(Model):
+            m = r['mes']
+            if m is None:
+                continue
+            key = m.date() if hasattr(m, 'date') else m
+            counts_by_mes[key] += r['quantidade']
+
+    out = []
+    for d in sorted(counts_by_mes.keys()):
+        qtd = counts_by_mes[d]
+        out.append(
+            {
+                'mes': d.isoformat() if hasattr(d, 'isoformat') else str(d),
+                'mes_label': _label_mes_ref(d),
+                'quantidade': qtd,
+            }
+        )
+    return out

@@ -1,17 +1,16 @@
-{# Painel de relatório embutido em Carga XML (NFe, CT-e, NFS) ou Carga SPED (SPED). O botão Baixar Excel fica no hero da página. #}
-<div id="relatorio-fiscal-root" class="relatorio-fiscal-embed mt-3" data-relatorio-modo="{{ relatorio_painel|default:'xml' }}">
+{# Painel de relatório embutido em Carga XML / SPED — seção expansível. Excel no hero da página. #}
+<div class="gdf-carga-secao relatorio-fiscal-secao mt-3 mb-4">
+    <button type="button" class="gdf-carga-secao-toggle d-flex align-items-center justify-content-between w-100 gap-2 rounded-3 border-0 text-start" data-bs-toggle="collapse" data-bs-target="#relatorio-fiscal-collapse-body" aria-expanded="false" aria-controls="relatorio-fiscal-collapse-body" id="relatorio-fiscal-collapse-toggle">
+        <span class="gdf-carga-secao-toggle-text flex-grow-1 min-width-0">
+            <span class="gdf-carga-secao-eyebrow">Relatórios</span>
+            <span class="gdf-carga-secao-title">{% if relatorio_painel == 'sped' %}Arquivos SPED{% else %}NFe, CT-e e NFS-e{% endif %}</span>
+        </span>
+        <i class="fas fa-chevron-down gdf-carga-secao-chevron flex-shrink-0" aria-hidden="true"></i>
+    </button>
+    <div id="relatorio-fiscal-collapse-body" class="collapse gdf-carga-secao-collapse">
+        <div id="relatorio-fiscal-root" class="relatorio-fiscal-embed pt-2 pb-1" data-relatorio-modo="{{ relatorio_painel|default:'xml' }}">
     <section class="layout-panel mb-4">
         <div class="layout-card border rounded-3 p-3 bg-white shadow-sm">
-            <h2 class="h4 fw-bold mb-3">
-                <span class="text-secondary small d-block mb-1">Relatórios</span>
-                <span class="text-dark">
-                    {% if relatorio_painel == 'sped' %}
-                        Arquivos SPED
-                    {% else %}
-                        NFe, CT-e e NFS-e
-                    {% endif %}
-                </span>
-            </h2>
             <p class="text-muted small mb-3 mb-0 relatorio-fiscal-cabecalho-hint">{% if relatorio_painel == 'sped' %}Filtre por empresa e período. Clique numa linha para ver o detalhe dos registros.{% else %}Use os filtros abaixo sobre os dados importados. Clique numa linha para abrir o detalhe.{% endif %}</p>
             <div class="layout-subcard mb-3 relatorio-filtros-wrap">
                 <h6 class="fw-600 mb-3">Filtros</h6>
@@ -208,4 +207,6 @@
             </div>
         </div>
     </section>
+        </div>
+    </div>
 </div>

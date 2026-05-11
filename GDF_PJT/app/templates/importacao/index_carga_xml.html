@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="{% static 'css/pages/Style_Home.css' %}">
 <link rel="stylesheet" href="{% static 'css/pages/pagina_carga.css' %}">
 <link rel="stylesheet" href="{% static 'css/pages/relatorio_fiscal.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/carga_painel_secoes.css' %}">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 {% endblock %}
 
@@ -100,10 +101,12 @@
         </article>
     </section>
 
+    {% include "importacao/partial_registros_periodo.html" with reg_panel_modo="xml" %}
     {% include "importacao/partial_relatorio_fiscal.html" with relatorio_painel="xml" %}
 </div>
 
 {% include "importacao/modal_carga_xml.html" %}
+
 {% include "importacao/modal_relatorio_fiscal.html" with relatorio_painel="xml" %}
 
 {% json_script_nonce tipo_pagamento_desc "tipo-pagamento-desc" %}
@@ -113,6 +116,7 @@
   window.TIPO_PAGAMENTO_DESC = el ? JSON.parse(el.textContent) : {};
 })();
 {% endscript %}
-<script src="{% static 'js/carga_xml.js' %}" nonce="{{ request.csp_nonce }}"></script>
 <script src="{% static 'js/relatorio_fiscal.js' %}" nonce="{{ request.csp_nonce }}"></script>
+<script src="{% static 'js/carga_registros_periodo.js' %}" nonce="{{ request.csp_nonce }}"></script>
+<script src="{% static 'js/carga_xml.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% endblock %}

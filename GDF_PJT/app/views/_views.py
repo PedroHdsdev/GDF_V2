@@ -13,6 +13,7 @@ import shutil
 import tempfile
 import threading
 import zipfile
+from calendar import monthrange
 from datetime import datetime, timedelta, timezone as _py_tz
 from io import BytesIO
 from pathlib import Path
@@ -88,6 +89,7 @@ from app.db_GDF.NFSe.models import (
     NFSe_Servico,
     NFSe_Tomador,
 )
+from app.db_GDF.sped_contribuicao.models import SpedContribuicaoArquivo
 from app.db_GDF.sped_fiscal.models import SpedFiscalArquivo, SpedFiscalReg_C100, SpedFiscalReg_C170
 from app.db_GDF.reprocessamento.models import (
     CondicaoPagamentoLote,
@@ -127,6 +129,8 @@ from app.utils.relatorio_params import (
     parse_relatorio_params,
 )
 from app.utils.relatorio_querysets import (
+    agregado_mensal_sped,
+    agregado_mensal_xml,
     list_relatorio_sped_items,
     queryset_relatorio_cte,
     queryset_relatorio_nfe,
@@ -2349,6 +2353,39 @@ def fn_api_relatorio_sped(request):
         'page_size': page_size,
         'total_pages': total_pages,
     }, status=200)
+
+
+@login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaXml', redirect_on_deny=False)
+@require_http_methods(["GET"])
+def fn_api_cargaxml_registros_mensais(request):
+    """Agregação mensal (emissão) NF-e, CT-e ou NFS-e — painel Registros no período."""
+    try:
+        params = parse_relatorio_params(request, relatorio_empresas_queryset)
+    except ValidationError:
+        return JsonResponse({'erro': 'Parâmetro de busca inválido'}, status=400)
+    if not params.cod_empresas and not params.cod_cliente:
+        return JsonResponse({'sucesso': True, 'items': []}, status=200)
+    tipo = (request.GET.get('tipo') or 'nfe').strip().lower()
+    if tipo not in ('nfe', 'cte', 'nfse'):
+        return JsonResponse({'erro': 'tipo deve ser nfe, cte ou nfse'}, status=400)
+    items = agregado_mensal_xml(request, params, tipo)
+    return JsonResponse({'sucesso': True, 'items': items}, status=200)
+
+
+@login_required(login_url='Login')
+@requer_acesso_subsolucao('Pro_CargaSped', redirect_on_deny=False)
+@require_http_methods(["GET"])
+def fn_api_cargasped_registros_mensais(request):
+    """Agregação mensal por competência — painel Registros no período (SPED)."""
+    try:
+        params = parse_relatorio_params(request, relatorio_empresas_queryset)
+    except ValidationError:
+        return JsonResponse({'erro': 'Parâmetro de busca inválido'}, status=400)
+    if not params.cod_empresas and not params.cod_cliente:
+        return JsonResponse({'sucesso': True, 'items': []}, status=200)
+    items = agregado_mensal_sped(request, params)
+    return JsonResponse({'sucesso': True, 'items': items}, status=200)
 
 
 @login_required(login_url='Login')

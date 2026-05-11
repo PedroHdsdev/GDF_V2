@@ -545,6 +545,47 @@ tr.aviso-log-ok td {
 .resumo-cargaxml .resumo-card.resumo-divergencias { border-left: 5px solid #fd7e14; }
 .resumo-cargaxml .resumo-card.resumo-andamento { border-left: 5px solid #6f42c1; }
 
+/* Documentos / SPED por período (filtro + totais) */
+.cargaxml-stats-periodo .carga-stats-periodo-title {
+    margin: 0;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: rgba(148, 163, 184, 0.95);
+}
+
+.cargaxml-stats-periodo .carga-stats-periodo-form label {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(148, 163, 184, 0.95);
+    margin-bottom: 0.35rem;
+}
+
+.cargaxml-stats-periodo .carga-stats-periodo-form .form-control {
+    min-width: 11rem;
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: #f8fafc;
+}
+
+.cargaxml-stats-periodo .carga-stats-periodo-form .form-control:focus {
+    background: rgba(15, 23, 42, 0.85);
+    border-color: rgba(56, 189, 248, 0.5);
+    color: #f8fafc;
+    box-shadow: 0 0 0 0.15rem rgba(56, 189, 248, 0.2);
+}
+
+/* Garantir leitura dos totais (evita cor herdada ilegível sobre o painel escuro) */
+.cargaxml-stats-periodo .home-welcome-stat-value {
+    color: #f8fafc;
+}
+
+.cargaxml-stats-periodo .home-welcome-stat-label {
+    color: rgba(148, 163, 184, 0.95);
+}
+
 /* Responsivo */
 @media (max-width: 768px) {
     .card-upload-xml {

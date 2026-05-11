@@ -110,6 +110,8 @@ function relatorioBuildUrl(base, params) {
     if (params.condicao_pagamento_sap) q.set('condicao_pagamento_sap', params.condicao_pagamento_sap);
     if (params.tipo_sped) q.set('tipo_sped', params.tipo_sped);
     if (params.tem_sap) q.set('tem_sap', params.tem_sap);
+    if (params.status) q.set('status', params.status);
+    if (params.tipo) q.set('tipo', params.tipo);
     if (params.order) q.set('order', params.order);
     if (params.dir) q.set('dir', params.dir);
     if (params.excel_tipo && params.excel_tipo !== 'todos') q.set('excel_tipo', params.excel_tipo);

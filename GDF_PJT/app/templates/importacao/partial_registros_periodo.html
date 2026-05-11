@@ -1,0 +1,132 @@
+{# Painel "Registros no período" — filtros próprios, tabela via fetch (APIs /api/relatorio/*). reg_panel_modo: xml | sped #}
+<div class="gdf-carga-secao reg-periodo-secao mt-3 mb-4" id="reg-periodo-root" data-reg-panel-modo="{{ reg_panel_modo|default:'xml' }}">
+    <button type="button" class="gdf-carga-secao-toggle d-flex align-items-center justify-content-between w-100 gap-2 rounded-3 border-0 text-start" data-bs-toggle="collapse" data-bs-target="#reg-periodo-collapse-body" aria-expanded="false" aria-controls="reg-periodo-collapse-body">
+        <span class="gdf-carga-secao-toggle-text flex-grow-1 min-width-0">
+            <span class="gdf-carga-secao-eyebrow">Registros no período</span>
+            <span class="gdf-carga-secao-title">{% if reg_panel_modo == 'sped' %}Arquivos SPED{% else %}NF-e, CT-e e NFS-e{% endif %}</span>
+        </span>
+        <i class="fas fa-chevron-down gdf-carga-secao-chevron flex-shrink-0" aria-hidden="true"></i>
+    </button>
+    <div id="reg-periodo-collapse-body" class="collapse gdf-carga-secao-collapse">
+        <div class="reg-periodo-card layout-card border rounded-3 p-3 bg-white shadow-sm mt-2">
+            {% if reg_panel_modo == 'xml' %}
+            <p class="text-muted small mb-3">Resumo por mês (quantidade de documentos), independente do bloco de relatórios. Use filtros e clique em <strong>Consultar</strong>.</p>
+            <div class="row g-3 align-items-end mb-3">
+                <div class="col-12 col-md-6 col-xl-4">
+                    <label class="form-label" for="reg-periodo-empresa">Empresa</label>
+                    <select id="reg-periodo-empresa" class="form-select form-select-sm">
+                        <option value="">Todas</option>
+                        {% for emp in empresas_usuario %}
+                        <option value="{{ emp.cod_empresa }}">{{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-6 col-xl-4">
+                    <label class="form-label" for="reg-periodo-filial">Filial</label>
+                    <select id="reg-periodo-filial" class="form-select form-select-sm">
+                        <option value="">Todas</option>
+                        {% for f in filiais_usuario %}
+                        <option value="{{ f.id }}" data-cod-empresa="{{ f.empresa.cod_empresa }}">{{ f.empresa.cod_empresa }} — {{ f.cod_filial }}{% if f.nome %}: {{ f.nome }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-3 col-xl-2">
+                    <label class="form-label" for="reg-periodo-data-inicio">Data início</label>
+                    <input type="date" id="reg-periodo-data-inicio" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-md-3 col-xl-2">
+                    <label class="form-label" for="reg-periodo-data-fim">Data fim</label>
+                    <input type="date" id="reg-periodo-data-fim" class="form-control form-control-sm">
+                </div>
+                <div class="col-12 col-md-4 col-xl-3">
+                    <label class="form-label" for="reg-periodo-tipo-doc">Tipo de documento</label>
+                    <select id="reg-periodo-tipo-doc" class="form-select form-select-sm">
+                        <option value="nfe">NF-e</option>
+                        <option value="cte">CT-e</option>
+                        <option value="nfse">NFS-e</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-4 col-xl-3 reg-periodo-wrap-status">
+                    <label class="form-label" for="reg-periodo-status-nfe">Status (NF-e)</label>
+                    <select id="reg-periodo-status-nfe" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        <option value="AUTORIZADA">Autorizada</option>
+                        <option value="CANCELADA">Cancelada</option>
+                        <option value="DENEGADA">Denegada</option>
+                        <option value="REJEITADA">Rejeitada</option>
+                        <option value="DRAFT">Rascunho</option>
+                        <option value="ASSINADA">Assinada</option>
+                        <option value="ENVIADA">Enviada</option>
+                        <option value="CONTINGENCIA">Contingência</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-4 col-xl-3">
+                    <label class="form-label" for="reg-periodo-tem-sap">Chave no SAP</label>
+                    <select id="reg-periodo-tem-sap" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        <option value="sim">Tem</option>
+                        <option value="nao">Não tem</option>
+                    </select>
+                </div>
+                <div class="col-12 col-lg flex-grow-1 min-width-0">
+                    <label class="form-label" for="reg-periodo-busca">Busca</label>
+                    <input type="search" id="reg-periodo-busca" class="form-control form-control-sm" placeholder="Chave, número, série…" autocomplete="off">
+                </div>
+                <div class="col-12 col-sm-auto">
+                    <button type="button" class="btn btn-primary btn-sm w-100" id="reg-periodo-btn-consultar">
+                        <i class="fas fa-search"></i> Consultar
+                    </button>
+                </div>
+            </div>
+            {% else %}
+            <p class="text-muted small mb-3">Resumo por mês de competência (quantidade de arquivos SPED), com filtros próprios.</p>
+            <div class="row g-3 align-items-end mb-3">
+                <div class="col-12 col-md-6 col-xl-4">
+                    <label class="form-label" for="reg-periodo-sped-empresa">Empresa</label>
+                    <select id="reg-periodo-sped-empresa" class="form-select form-select-sm">
+                        <option value="">Todas</option>
+                        {% for emp in empresas_usuario %}
+                        <option value="{{ emp.cod_empresa }}">{{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label" for="reg-periodo-sped-data-inicio">Data início</label>
+                    <input type="date" id="reg-periodo-sped-data-inicio" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label" for="reg-periodo-sped-data-fim">Data fim</label>
+                    <input type="date" id="reg-periodo-sped-data-fim" class="form-control form-control-sm">
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label" for="reg-periodo-sped-tipo">Tipo SPED</label>
+                    <select id="reg-periodo-sped-tipo" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        <option value="F">Fiscal (ICMS/IPI)</option>
+                        <option value="C">Contribuição</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md flex-grow-1 min-width-0">
+                    <label class="form-label" for="reg-periodo-sped-busca">Busca</label>
+                    <input type="search" id="reg-periodo-sped-busca" class="form-control form-control-sm" placeholder="Nome do arquivo…" autocomplete="off">
+                </div>
+                <div class="col-12 col-sm-auto">
+                    <button type="button" class="btn btn-primary btn-sm w-100" id="reg-periodo-sped-btn-consultar">
+                        <i class="fas fa-search"></i> Consultar
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
+            <p id="reg-periodo-contador" class="mb-2 text-muted small"><span id="reg-periodo-contador-num">—</span></p>
+            <div class="table-responsive">
+                <table class="table table-hover layout-table table-sm mb-0" id="reg-periodo-tabela">
+                    <thead class="table-light" id="reg-periodo-thead"></thead>
+                    <tbody id="reg-periodo-tbody">
+                        <tr><td colspan="2" class="text-center text-muted py-4">Defina filtros e clique em Consultar</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
