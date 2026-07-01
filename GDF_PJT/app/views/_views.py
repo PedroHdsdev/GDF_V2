@@ -45,6 +45,7 @@ from app.db_GDF.Public.models import (
     ClienteGdf,
     ConexaoSap,
     Empresa,
+    Empresas,
     Filial,
     JobCargaSped,
     JobCargaXml,
@@ -1216,8 +1217,8 @@ def fn_view_atualizar_certificado(request):
     cert_file = request.FILES.get('m_file')
     
     # ✅ Validar extensão só se arquivo foi enviado
-    if cert_file and not cert_file.name.endswith(('.crt', '.txt')):
-        messages.error(request, "Formato inválido. Use .crt ou .txt", extra_tags='MODAL_UPD')
+    if cert_file and not cert_file.name.lower().endswith(('.crt', '.txt', '.pfx', '.p12')):
+        messages.error(request, "Formato inválido. Use .crt, .txt, .pfx ou .p12", extra_tags='MODAL_UPD')
         return redirect('Dm_Empresas')
     
     # ✅ Extrair dados adicionais do certificado
@@ -1225,10 +1226,10 @@ def fn_view_atualizar_certificado(request):
     cnpj = request.POST.get('m_cnpj', '').strip()
     dt_inicial = request.POST.get('m_dt_inicial', '').strip()
     dt_fim = request.POST.get('m_dt_fim', '').strip()
-    senha_certificado = request.POST.get('m_senha_certificado', '').strip()
+    senha_certificado = request.POST.get('m_senha_certificado', '')
     
     # ✅ Se nenhum dado foi enviado, erro
-    if not cert_file and not (emissor or cnpj or dt_inicial or dt_fim):
+    if not cert_file and not (emissor or cnpj or dt_inicial or dt_fim or senha_certificado):
         messages.error(request, "Selecione um arquivo ou preencha os dados do certificado", extra_tags='MODAL_UPD')
         return redirect('Dm_Empresas')
     

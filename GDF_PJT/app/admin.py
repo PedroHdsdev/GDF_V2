@@ -1,6 +1,6 @@
 from django.contrib             import admin
 from app.db_GDF.Public.models   import (
-    CertificadoDigital, ClienteGdf, Empresa, Filial, PermissaoGrupoCliente,
+    Cert, ClienteGdf, Empresas, Filial, PermissaoGrupoCliente,
     Solucao, Subsolucao, AcessoSolucaoCliente, AcessoSubsolucaoGrupo, UsuarioEmpresa,
 )
 
@@ -26,8 +26,8 @@ class ClienteGdfAdmin(admin.ModelAdmin):
 # ============================================================================
 # CERTIFICADOS DIGITAIS
 # ============================================================================
-@admin.register(CertificadoDigital)
-class CertificadoDigitalAdmin(admin.ModelAdmin):
+@admin.register(Cert)
+class CertAdmin(admin.ModelAdmin):
     list_display = ('raiz_cnpj', 'proprietario', 'cpf_cnpj', 'ini_validade', 'fim_validade')
     list_filter = ('ini_validade', 'fim_validade')
     search_fields = ('raiz_cnpj', 'proprietario', 'cpf_cnpj', 'emissor')
@@ -138,8 +138,8 @@ class UsuarioEmpresaInline(admin.TabularInline):
     raw_id_fields = ('user',)
 
 
-@admin.register(Empresa)
-class EmpresaAdmin(admin.ModelAdmin):
+@admin.register(Empresas)
+class EmpresasAdmin(admin.ModelAdmin):
     list_display = ('cod_empresa', 'razao', 'fantasia', 'cnpj', 'gdfcliente')
     list_filter = ('gdfcliente', 'tipo', 'matriz')
     search_fields = ('cod_empresa', 'razao', 'fantasia', 'cnpj')

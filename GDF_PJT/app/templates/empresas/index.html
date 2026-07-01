@@ -51,7 +51,6 @@
               <th class="text-center">Status</th>
               <th>Código</th>
               <th class="text-center">Certificado</th>
-              <th class="text-center">Senha</th>
               <th>Empresa</th>
               <th>CNPJ</th>
               <th>Validade Cert.</th>
@@ -79,13 +78,6 @@
                   <img src="{% static 'img/icon_x.png' %}" alt="Sem certificado" width="20" height="20">
                 {% endif %}
               </td>
-              <td class="text-center text-muted">
-                {% if emp.cert_emp and emp.cert_emp.tem_senha %}
-                  ••••••
-                {% else %}
-                  —
-                {% endif %}
-              </td>
               <td>{{ emp.razao }}</td>
               <td>{{ emp.cnpj }}</td>
               <td>
@@ -95,9 +87,10 @@
                   -
                 {% endif %}
               </td>
+            </tr>
             {% empty %}
             <tr class="admin-empty-state">
-              <td colspan="7" class="text-center py-4">
+              <td colspan="6" class="text-center py-4">
                 <span class="d-block">Nenhuma empresa cadastrada.</span>
                 <span class="admin-empty-cta d-block">Clique em <strong>Cadastrar empresa</strong> para começar.</span>
               </td>

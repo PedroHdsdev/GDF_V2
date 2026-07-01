@@ -529,24 +529,14 @@ function fn_validar_certificado(event) {
   event.preventDefault();
   
   const fileInput = document.getElementById('upd_cert_file');
+  const senha = document.getElementById('upd_senha_certificado').value.trim();
   const emissor = document.getElementById('upd_emissor').value.trim();
   const dtInicial = document.getElementById('upd_dt_inicial').value.trim();
   const dtFim = document.getElementById('upd_dt_fim').value.trim();
   
   // Validar se algo foi enviado
-  if (!fileInput.files.length && !emissor && !dtInicial && !dtFim) {
+  if (!fileInput.files.length && !senha && !emissor && !dtInicial && !dtFim) {
     Notificacoes.modal('Selecione um arquivo ou preencha os dados do certificado', 'warning', 'modalEmpresaUpdAlerts');
-    return false;
-  }
-  
-  // Se há datas, validar formato
-  if (dtInicial && !fn_validar_data(dtInicial)) {
-    Notificacoes.modal('Formato de data inválido para Data Início. Use DD/MM/YYYY ou YYYY-MM-DD', 'warning', 'modalEmpresaUpdAlerts');
-    return false;
-  }
-  
-  if (dtFim && !fn_validar_data(dtFim)) {
-    Notificacoes.modal('Formato de data inválido para Data Fim. Use DD/MM/YYYY ou YYYY-MM-DD', 'warning', 'modalEmpresaUpdAlerts');
     return false;
   }
   

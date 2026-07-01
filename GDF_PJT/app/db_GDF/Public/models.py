@@ -10,7 +10,7 @@ from django.contrib.auth.models import User, Group
 # ---------------------------------------------------------------------------
 # Certificado digital
 # ---------------------------------------------------------------------------
-class CertificadoDigital(models.Model):
+class Cert(models.Model):
     """Certificado digital (.pfx) por raiz do CNPJ."""
     raiz_cnpj = models.CharField(primary_key=True, max_length=8)
     nm_arquivo_pfx = models.CharField(max_length=100, blank=True, null=True)
@@ -20,11 +20,11 @@ class CertificadoDigital(models.Model):
     proprietario = models.CharField(max_length=100, blank=True, null=True)
     cpf_cnpj = models.CharField(max_length=14, blank=True, null=True)
     arquivo_cert = models.BinaryField(blank=True, null=True)
-    senha_certificado = models.CharField(max_length=255, blank=True, null=True)
+    senha_cert = models.CharField(max_length=1024, blank=True, null=True)
 
     class Meta:
         managed = True
-        db_table = 'certificado_digital'
+        db_table = 'cert'
         verbose_name = 'Certificado digital'
         verbose_name_plural = 'Certificados digitais'
         indexes = [models.Index(fields=['cpf_cnpj'])]
@@ -57,8 +57,23 @@ class ClienteGdf(models.Model):
     def __str__(self):
         return f"{self.cod_cliente} - {self.razao}"
 
+# ---------------------------------------------------------------------------
+# Grupo de empresas
+# ---------------------------------------------------------------------------
+class GrpEmpresas(models.Model):
+    grp_empresa = models.CharField(primary_key=True, max_length=5)
+    nome = models.CharField(max_length=80, blank=True, null=True)
+    cliente = models.ForeignKey(
+        ClienteGdf, models.CASCADE, blank=True, null=True, db_column='gdfcliente_id'
+    )
 
-class Empresa(models.Model):
+    class Meta:
+        managed = True
+        db_table = 'grp_empresas'
+        verbose_name = 'Grupo de empresas'
+        verbose_name_plural = 'Grupos de empresas'
+
+class Empresas(models.Model):
     """Empresa (estabelecimento) vinculada a um cliente GDF."""
     cod_empresa = models.CharField(primary_key=True, max_length=10)
     cnpj = models.CharField(unique=True, max_length=14)
@@ -72,9 +87,14 @@ class Empresa(models.Model):
     cnae = models.CharField(max_length=7, blank=True, null=True)
     iest = models.CharField(max_length=18, blank=True, null=True)
     suframa = models.CharField(max_length=10, blank=True, null=True)
+
+    grp_empresa = models.ForeignKey(
+        GrpEmpresas, models.DO_NOTHING, blank=True, null=True, db_column='grp_empresa'
+    )
+
     chave_acesso = models.CharField(max_length=40, blank=True, null=True)
     cert = models.ForeignKey(
-        CertificadoDigital, models.DO_NOTHING, blank=True, null=True
+        Cert, models.DO_NOTHING, blank=True, null=True, db_column='cert'
     )
     gdfcliente = models.ForeignKey(
         ClienteGdf, models.CASCADE, blank=True, null=True, db_column='gdfcliente_id'
@@ -82,7 +102,7 @@ class Empresa(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'empresa'
+        db_table = 'empresas'
         verbose_name = 'Empresa'
         verbose_name_plural = 'Empresas'
         indexes = [models.Index(fields=['cnpj', 'razao', 'fantasia'])]
@@ -96,7 +116,7 @@ class Filial(models.Model):
     id = models.BigAutoField(primary_key=True)
     cod_filial = models.CharField(max_length=10, db_index=True)
     empresa = models.ForeignKey(
-        Empresa, models.CASCADE, related_name='filiais', db_index=True
+        Empresas, models.CASCADE, related_name='filiais', db_index=True
     )
     nome = models.CharField(max_length=120, blank=True, null=True)
     cnpj = models.CharField(max_length=14, blank=True, null=True)
@@ -136,7 +156,7 @@ class PermissaoGrupoCliente(models.Model):
 class UsuarioEmpresa(models.Model):
     """Vínculo entre usuário (Django auth) e empresa."""
     id = models.BigAutoField(primary_key=True)
-    empresa = models.ForeignKey(Empresa, models.CASCADE)
+    empresa = models.ForeignKey(Empresas, models.CASCADE)
     user = models.ForeignKey(User, models.CASCADE)
 
     class Meta:
@@ -313,3 +333,8 @@ class ConexaoSap(models.Model):
         db_table = 'conexao_sap'
         verbose_name = 'Conexão SAP'
         verbose_name_plural = 'Conexões SAP'
+
+
+# Aliases legados (imports antigos no código)
+Empresa = Empresas
+CertificadoDigital = Cert

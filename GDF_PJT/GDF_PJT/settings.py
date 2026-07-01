@@ -34,6 +34,7 @@ if _NWRFC_PATH.exists():
 import environ
 from csp.constants import NONCE
 from django.urls import reverse_lazy
+from cryptography.fernet import Fernet
 
 env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
@@ -463,4 +464,18 @@ CONTENT_SECURITY_POLICY = {
 # Chave para autenticar requisições do SAP. Header: X-API-Key ou Authorization: Bearer <chave>
 # Defina no .env: SAP_RELATORIO_CUSTO_API_KEY=chave_secreta
 SAP_RELATORIO_CUSTO_API_KEY = env('SAP_RELATORIO_CUSTO_API_KEY', default='')
+
+# Chave compartilhada para criptografia reversivel de senha de certificado (Django + Flask).
+# Deve ser uma chave Fernet valida (base64 urlsafe de 32 bytes).
+# Ex.: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+CERT_PASSWORD_FERNET_KEY = env('CERT_PASSWORD_FERNET_KEY', default='')
+
+# Fail-fast: sem chave Fernet explicita não é permitido operar criptografia de senha de certificado.
+if not CERT_PASSWORD_FERNET_KEY:
+    raise RuntimeError('CERT_PASSWORD_FERNET_KEY obrigatoria no .env para criptografia de senha de certificado')
+
+try:
+    Fernet(CERT_PASSWORD_FERNET_KEY.encode('utf-8'))
+except Exception as exc:
+    raise RuntimeError('CERT_PASSWORD_FERNET_KEY invalida no .env') from exc
 

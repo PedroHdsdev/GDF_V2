@@ -3,11 +3,13 @@ from django.utils.timezone          import now
 from psycopg2                       import IntegrityError
 from django.conf                    import settings
 from django.contrib.auth.models     import User, Group
-from app.db_GDF.Public.models       import Empresa, ClienteGdf, CertificadoDigital, UsuarioEmpresa
+from app.db_GDF.Public.models       import Empresa, Empresas, ClienteGdf, Cert, UsuarioEmpresa
 from app.db_GDF.Public.models       import PermissaoGrupoCliente
 from app.db_GDF.Public.models       import Solucao, Subsolucao, AcessoSolucaoCliente, AcessoSubsolucaoGrupo
 from app.db_GDF.Public.models       import ConexaoSap
 from app.utils.view_helpers         import COD_CLIENTE_PROJETO
+from app.utils.certificate_parser   import load_certificate_metadata
+from app.security.cert_password_crypto import encrypt_cert_password
 from datetime                       import datetime
 from django.db.utils                import OperationalError
 from django.contrib.auth.hashers    import make_password
@@ -563,11 +565,15 @@ class ClGdf:
                 gdfcliente_id=i_v_cod_cliente
             ).select_related('cert', 'gdfcliente').distinct()
             
-            l_v_data_atual = datetime.today().date()
-            
             for l_v_empresa in l_v_queryset_empresas:
-                # ✅ Certificado é FK direto (objeto único, não queryset)
+                # Certificado preferencialmente via FK; fallback por raiz CNPJ (legado)
                 l_v_cert = l_v_empresa.cert
+
+                if l_v_cert is None and l_v_empresa.cnpj:
+                    l_v_cnpj_digitos = ''.join(ch for ch in str(l_v_empresa.cnpj) if ch.isdigit())
+                    l_v_raiz_cnpj = l_v_cnpj_digitos[:8]
+                    if l_v_raiz_cnpj:
+                        l_v_cert = Cert.objects.filter(raiz_cnpj=l_v_raiz_cnpj).first()
                 
                 # Montar dados do certificado se existir
                 l_v_cert_data = None
@@ -576,11 +582,12 @@ class ClGdf:
                         "raiz": l_v_cert.raiz_cnpj,
                         "ini_validade": l_v_cert.ini_validade.strftime("%d/%m/%Y") if l_v_cert.ini_validade else None,
                         "fim_validade": l_v_cert.fim_validade.strftime("%d/%m/%Y") if l_v_cert.fim_validade else None,
-                        "emissor": l_v_cert.proprietario,
+                        "emissor": l_v_cert.emissor,
                         "cpf_cnpj": l_v_cert.cpf_cnpj,
-                        "cert_file": bool(l_v_cert.arquivo_cert),
+                        # Considera certificado presente quando há arquivo físico OU nome de arquivo salvo
+                        "cert_file": bool(l_v_cert.nm_arquivo_pfx) or bool(l_v_cert.arquivo_cert),
                         "status": ClGdf.calcular_status_certificado(l_v_cert.fim_validade),
-                        "tem_senha": bool(l_v_cert.senha_certificado),
+                        "tem_senha": bool(l_v_cert.senha_cert),
                     }
 
                 lsl_dados_empresas.append({
@@ -605,7 +612,7 @@ class ClGdf:
          
         except Empresa.DoesNotExist as e:
             print(f"[ERROR] Empresas nao encontradas: {str(e)}")
-        except CertificadoDigital.DoesNotExist as e:
+        except Cert.DoesNotExist as e:
             print(f"[ERROR] Certificados nao encontrados: {str(e)}")
         except IntegrityError as e:
             print(f"[ERROR] Erro de integridade: {str(e)}")
@@ -641,6 +648,14 @@ class ClGdf:
                 cod_empresa=i_v_cod_empresa,
                 gdfcliente__cod_cliente=i_v_cod_cliente
             )
+
+            # Certificado preferencialmente via FK; fallback por raiz do CNPJ (legado).
+            l_v_cert = l_v_empresa.cert
+            if l_v_cert is None and l_v_empresa.cnpj:
+                l_v_cnpj_digitos = ''.join(ch for ch in str(l_v_empresa.cnpj) if ch.isdigit())
+                l_v_raiz_cnpj = l_v_cnpj_digitos[:8]
+                if l_v_raiz_cnpj:
+                    l_v_cert = Cert.objects.filter(raiz_cnpj=l_v_raiz_cnpj).first()
             
             # ✅ Retornar dados completos da empresa
             return {
@@ -658,12 +673,12 @@ class ClGdf:
                 "chave_acesso": l_v_empresa.chave_acesso or "",
                 "matriz": l_v_empresa.matriz or False,
                 "cert_empresa": {
-                    "raiz": l_v_empresa.cert.raiz_cnpj if l_v_empresa.cert else None,
-                    "ini_validade": l_v_empresa.cert.ini_validade.strftime("%d/%m/%Y") if l_v_empresa.cert and l_v_empresa.cert.ini_validade else None,
-                    "fim_validade": l_v_empresa.cert.fim_validade.strftime("%d/%m/%Y") if l_v_empresa.cert and l_v_empresa.cert.fim_validade else None,
-                    "emissor": l_v_empresa.cert.proprietario if l_v_empresa.cert else None,
-                    "cpf_cnpj": l_v_empresa.cert.cpf_cnpj if l_v_empresa.cert else None,
-                } if l_v_empresa.cert else None
+                    "raiz": l_v_cert.raiz_cnpj if l_v_cert else None,
+                    "ini_validade": l_v_cert.ini_validade.strftime("%d/%m/%Y") if l_v_cert and l_v_cert.ini_validade else None,
+                    "fim_validade": l_v_cert.fim_validade.strftime("%d/%m/%Y") if l_v_cert and l_v_cert.fim_validade else None,
+                    "emissor": l_v_cert.emissor if l_v_cert else None,
+                    "cpf_cnpj": l_v_cert.cpf_cnpj if l_v_cert else None,
+                } if l_v_cert else None
             }
             
         except Empresa.DoesNotExist:
@@ -704,7 +719,7 @@ class ClGdf:
             # ✅ Transação atômica: certificado + empresa
             with transaction.atomic():
                 # Buscar ou criar certificado (baseado nos 8 primeiros dígitos do CNPJ)
-                cert_obj, created = CertificadoDigital.objects.get_or_create(
+                cert_obj, created = Cert.objects.get_or_create(
                     raiz_cnpj=i_v_cnpj[:8],
                     defaults={
                         'cpf_cnpj': i_v_cnpj,
@@ -832,12 +847,25 @@ class ClGdf:
             )
             
             # ✅ Se nenhum dado foi fornecido, erro
-            if not i_v_arquivo_cert and not (i_v_emissor or i_v_cpf_cnpj or i_v_ini_validade or i_v_fim_validade):
+            if not i_v_arquivo_cert and not (i_v_emissor or i_v_cpf_cnpj or i_v_ini_validade or i_v_fim_validade or i_v_senha_certificado):
                 raise ValueError("Nenhum dado para atualizar")
             
-            # ✅ Empresa deve ter certificado (criado junto com a empresa)
-            if not empresa.cert:
-                raise ValueError("Empresa não possui certificado vinculado")
+            # ✅ Garante certificado vinculado (legado pode vir sem FK preenchida)
+            certificado = empresa.cert
+            if not certificado:
+                cnpj_digitos = ''.join(ch for ch in str(empresa.cnpj or '') if ch.isdigit())
+                raiz_cnpj = cnpj_digitos[:8]
+                if not raiz_cnpj:
+                    raise ValueError("Empresa não possui CNPJ válido para vincular certificado")
+
+                certificado, _created = Cert.objects.get_or_create(
+                    raiz_cnpj=raiz_cnpj,
+                    defaults={
+                        'cpf_cnpj': cnpj_digitos[:14] if cnpj_digitos else None,
+                    },
+                )
+                empresa.cert = certificado
+                empresa.save(update_fields=['cert'])
             
             # ✅ Preparar dados para atualizar
             l_v_defaults = {}
@@ -847,17 +875,31 @@ class ClGdf:
                 l_v_cert_content = i_v_arquivo_cert.read()
                 l_v_file_name = i_v_arquivo_cert.name
                 print(f"[DEBUG] Processando certificado: {l_v_file_name}, tamanho: {len(l_v_cert_content)} bytes")
+
+                # Datas passam a ser obtidas do proprio certificado X.509.
+                l_v_cert_metadata = load_certificate_metadata(
+                    l_v_cert_content,
+                    file_name=l_v_file_name,
+                    password=i_v_senha_certificado,
+                )
+
                 l_v_defaults['nm_arquivo_pfx'] = l_v_file_name
                 l_v_defaults['arquivo_cert'] = l_v_cert_content
+                l_v_defaults['ini_validade'] = l_v_cert_metadata.not_valid_before
+                l_v_defaults['fim_validade'] = l_v_cert_metadata.not_valid_after
+                l_v_defaults['emissor'] = (l_v_cert_metadata.issuer or '')[:100] or None
+                l_v_defaults['proprietario'] = (l_v_cert_metadata.subject or '')[:100] or None
+                if l_v_cert_metadata.document:
+                    l_v_defaults['cpf_cnpj'] = l_v_cert_metadata.document
             
             # ✅ Adicionar campos opcionais se fornecidos
-            if i_v_emissor:
+            if i_v_emissor and not i_v_arquivo_cert:
                 l_v_defaults['emissor'] = i_v_emissor
-            if i_v_cpf_cnpj:
+            if i_v_cpf_cnpj and not i_v_arquivo_cert:
                 l_v_defaults['cpf_cnpj'] = i_v_cpf_cnpj
             
             # ✅ Converter datas se fornecidas
-            if i_v_ini_validade:
+            if i_v_ini_validade and not i_v_arquivo_cert:
                 try:
                     # Tentar formato DD/MM/YYYY primeiro
                     if "/" in i_v_ini_validade:
@@ -869,7 +911,7 @@ class ClGdf:
                 except Exception as e:
                     print(f"[WARN] Data início inválida: {i_v_ini_validade} - {str(e)}")
             
-            if i_v_fim_validade:
+            if i_v_fim_validade and not i_v_arquivo_cert:
                 try:
                     # Tentar formato DD/MM/YYYY primeiro
                     if "/" in i_v_fim_validade:
@@ -883,16 +925,18 @@ class ClGdf:
             
             # ✅ Senha do certificado (só atualiza se informada; não expor em logs)
             if i_v_senha_certificado is not None:
-                l_v_defaults['senha_certificado'] = i_v_senha_certificado if i_v_senha_certificado else None
+                if i_v_senha_certificado:
+                    l_v_defaults['senha_cert'] = encrypt_cert_password(i_v_senha_certificado)
+                else:
+                    l_v_defaults['senha_cert'] = None
             
             # ✅ Atualizar APENAS o certificado existente da empresa
-            certificado = empresa.cert
             for campo, valor in l_v_defaults.items():
                 setattr(certificado, campo, valor)
             certificado.save()
             
             print(f"[OK] Certificado atualizado: raiz_cnpj={certificado.raiz_cnpj}")
-            print(f"[OK] Dados salvos - Emissor: {i_v_emissor}, CNPJ: {i_v_cpf_cnpj}, Datas: {i_v_ini_validade} a {i_v_fim_validade}")
+            print(f"[OK] Dados salvos - Emissor: {certificado.emissor}, CNPJ: {certificado.cpf_cnpj}, Datas: {certificado.ini_validade} a {certificado.fim_validade}")
             
             return {"success": True, "message": "Certificado atualizado com sucesso"}
         
