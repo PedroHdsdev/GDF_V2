@@ -12,7 +12,6 @@ from .widgets.charts import (
 from charts import graficos_custo as tv
 from charts.lists_custo import NOME_METRICA_MARGEM
 
-
 class DashboardCusto(BaseDashboard):
     """Dashboard de Custo: dados de sap.relatorio_custo com evolução temporal."""
 
