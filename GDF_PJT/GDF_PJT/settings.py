@@ -417,7 +417,10 @@ _CSP_FRAME_SRC = ("'self'",) + tuple(
     env.list("CSP_FRAME_SRC_EXTRA", default=_CSP_FRAME_DEFAULTS)
 )
 
-_CSP_CONNECT_EXTRA = env.list("CSP_CONNECT_SRC_EXTRA", default=[])
+_CSP_CONNECT_DEFAULTS = [
+    "https://cdn.jsdelivr.net",
+]
+_CSP_CONNECT_EXTRA = env.list("CSP_CONNECT_SRC_EXTRA", default=_CSP_CONNECT_DEFAULTS)
 # Produção: só same-origin + lista explícita. DEBUG: inclui https: amplo para não quebrar ferramentas locais.
 if DEBUG:
     _CSP_CONNECT = ("'self'", "https:") + tuple(_CSP_CONNECT_EXTRA)

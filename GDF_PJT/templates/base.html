@@ -156,7 +156,7 @@
 <!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" nonce="{{ request.csp_nonce }}"></script>
 <!-- Padrão de notificações (página e modal) — antes de Script_Base (mensagens iniciais usam Notificacoes) -->
-<script src="{% static 'js/Script_NotificacoesPadrao.js' %}" nonce="{{ request.csp_nonce }}"></script>
+<script src="{% static 'js/NotificacoesPadrao.js' %}" nonce="{{ request.csp_nonce }}"></script>
 {% if messages %}
 <div id="gdf-page-messages" class="d-none" hidden aria-hidden="true">
   {% for message in messages %}
