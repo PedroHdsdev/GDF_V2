@@ -80,11 +80,11 @@ class Command(BaseCommand):
             ('GET', '/api/relatorio/sped/', 'API Relatório SPED', True),
             ('GET', '/api/cargaxml/jobs/', 'API CargaXml Jobs', True),
             ('GET', '/api/cargaxml/resumo/', 'API CargaXml Resumo', True),
-            ('GET', '/api/reprocessamento/lotes/', 'API Reprocessamento Lotes', True),
+            ('GET', '/api/reprocessamento/lotes/', 'API Confronto SPED x XML Lotes', True),
             ('GET', '/usuarios/', 'View Listar Usuários', True),
             ('GET', '/empresas/', 'View Listar Empresas', True),
             ('GET', '/CargaXml/', 'View Carga XML (incl. relat. NFe/CTe/NFS)', True),
-            ('GET', '/Reprocessamento/Painel/', 'View Painel Reprocessamento', True),
+            ('GET', '/Confronto-SPED-XML/Painel/', 'View Painel Confronto SPED x XML', True),
         ]
 
         results = []

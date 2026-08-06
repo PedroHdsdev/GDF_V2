@@ -49,9 +49,9 @@ class ClienteGdf(models.Model):
 
     class Meta:
         managed = True
-        db_table = 'cliente_gdf'
-        verbose_name = 'Cliente GDF'
-        verbose_name_plural = 'Clientes GDF'
+        db_table = 'mandante'
+        verbose_name = 'Mandante'
+        verbose_name_plural = 'Mandantes'
         indexes = [models.Index(fields=['cnpj', 'razao'])]
 
     def __str__(self):

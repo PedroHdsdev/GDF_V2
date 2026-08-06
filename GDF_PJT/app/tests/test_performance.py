@@ -165,10 +165,10 @@ class PerformanceTestCase(TestCase):
         self.client.logout()
         self.result_view_carga_xml = result
 
-    def test_view_reprocessamento_painel(self):
-        """View painel reprocessamento."""
+    def test_view_confronto_sped_xml_painel(self):
+        """View painel Confronto SPED x XML."""
         self.client.force_login(self.user)
-        path = self._url('Reproc_Painel')
+        path = self._url('Confronto_Sped_Xml')
         result = self._measure_n('GET', path, n=3)
         self.client.logout()
-        self.result_view_reprocessamento = result
+        self.result_view_confronto_sped_xml = result

@@ -1,0 +1,498 @@
+{% extends 'base.html' %}
+{% load static security csp %}
+
+{% block title %}Ferramentas – Confronto SPED x XML{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/pages/Style_Reprocessamento.css' %}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+
+{% block titlepage %}Ferramentas – Confronto SPED x XML{% endblock %}
+
+{% block container %}
+<div class="layout-page" data-url-prefix="{{ url_prefix|default:'' }}">
+    <section class="layout-hero">
+        <div class="layout-hero-content">
+            <p class="layout-eyebrow">Ferramentas</p>
+            <h1 class="layout-title">Confronto SPED x XML</h1>
+            <p class="layout-subtitle">Identifique inconsistências entre o SPED e o XML e trate a correção com rastreabilidade.</p>
+        </div>
+        <div class="layout-hero-actions">
+            <button type="button" class="btn btn-light layout-btn" id="btn-novo-confronto">
+                <i class="fas fa-sync-alt"></i> Novo confronto
+            </button>
+            <button type="button" class="btn btn-outline-light layout-btn" id="btn-abrir-condicao-param-painel" title="Editar tabela de parâmetros (depara condição NFe → SAP)">
+                <i class="fas fa-table-columns"></i> Parâmetros
+            </button>
+            <button type="button" class="btn btn-outline-light layout-btn" id="btn-atualizar-lotes">
+                <i class="fas fa-sync"></i> Atualizar
+            </button>
+        </div>
+    </section>
+
+    <section class="layout-panel">
+        <div class="layout-card">
+            <div id="alertas-container"></div>
+            <div class="layout-card-head">
+                <div>
+                    <h2 class="layout-card-title">Lotes de confronto SPED x XML</h2>
+                    <p class="layout-card-subtitle">Filtre por empresa, competência e status. Clique em um lote para ver as divergências.</p>
+                </div>
+            </div>
+
+            <div class="layout-subcard filtros-reprocessamento">
+                <div class="d-flex flex-wrap align-items-end gap-2 mb-2">
+                    <span class="fw-semibold text-secondary me-2"><i class="fas fa-filter"></i> Filtros</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-limpar-filtros" title="Limpar todos os filtros">
+                        <i class="fas fa-eraser"></i> Limpar
+                    </button>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-2 col-lg-2">
+                        <label for="filtro-empresa" class="form-label small mb-0">Empresa</label>
+                        <select id="filtro-empresa" class="form-select form-select-sm">
+                            <option value="">Todas</option>
+                            {% for emp in empresas %}
+                            <option value="{{ emp.cod_empresa }}">{{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2 col-lg-2">
+                        <label for="filtro-mes" class="form-label small mb-0">Competência (mês/ano)</label>
+                        <div class="d-flex gap-1">
+                            <select id="filtro-mes" class="form-select form-select-sm">
+                                <option value="">Mês</option>
+                                <option value="01">Jan</option>
+                                <option value="02">Fev</option>
+                                <option value="03">Mar</option>
+                                <option value="04">Abr</option>
+                                <option value="05">Mai</option>
+                                <option value="06">Jun</option>
+                                <option value="07">Jul</option>
+                                <option value="08">Ago</option>
+                                <option value="09">Set</option>
+                                <option value="10">Out</option>
+                                <option value="11">Nov</option>
+                                <option value="12">Dez</option>
+                            </select>
+                            <select id="filtro-ano" class="form-select form-select-sm" style="min-width: 5rem;">
+                                <option value="">Ano</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-2 col-lg-2">
+                        <label for="filtro-status" class="form-label small mb-0">Status</label>
+                        <select id="filtro-status" class="form-select form-select-sm">
+                            <option value="">Todos</option>
+                            <option value="PENDENTE">Pendente</option>
+                            <option value="EM_CONFRONTO">Em confronto</option>
+                            <option value="CONCLUIDO">Concluído</option>
+                            <option value="ERRO">Erro</option>
+                            <option value="CANCELADO">Cancelado</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 col-lg-2">
+                        <label for="filtro-criado-de" class="form-label small mb-0">Criado de</label>
+                        <input type="date" id="filtro-criado-de" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-2 col-lg-2">
+                        <label for="filtro-criado-ate" class="form-label small mb-0">Criado até</label>
+                        <input type="date" id="filtro-criado-ate" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-2 col-lg-2 d-flex align-items-end gap-1">
+                        <button type="button" class="btn btn-primary btn-sm" id="btn-aplicar-filtros">
+                            <i class="fas fa-search"></i> Aplicar
+                        </button>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <span class="small text-muted">Atalhos:</span>
+                    <button type="button" class="btn btn-link btn-sm p-0 ms-1 link-secondary btn-atalho" data-mes="" data-ano="">Todos</button>
+                    <span class="text-muted">|</span>
+                    <button type="button" class="btn btn-link btn-sm p-0 ms-1 link-secondary btn-atalho" data-mes="este" data-ano="este">Este mês</button>
+                    <span class="text-muted">|</span>
+                    <button type="button" class="btn btn-link btn-sm p-0 ms-1 link-secondary btn-atalho" data-mes="passado" data-ano="passado">Mês passado</button>
+                </div>
+            </div>
+
+            <!-- Resumo (exibido após carregar os dados) -->
+            <div id="resumo-lotes" class="layout-subcard resumo-reprocessamento d-none">
+                <div class="row g-2 g-md-3">
+                    <div class="col-6 col-md-3">
+                        <div class="resumo-card resumo-total">
+                            <span class="resumo-numero" id="resumo-total">0</span>
+                            <span class="resumo-label">Total de lotes</span>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="resumo-card resumo-concluido">
+                            <span class="resumo-numero" id="resumo-concluidos">0</span>
+                            <span class="resumo-label">Concluídos</span>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="resumo-card resumo-divergencias">
+                            <span class="resumo-numero" id="resumo-com-divergencias">0</span>
+                            <span class="resumo-label">Com divergências</span>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="resumo-card resumo-andamento">
+                            <span class="resumo-numero" id="resumo-em-andamento">0</span>
+                            <span class="resumo-label">Em andamento</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="layout-subcard table-reprocessamento">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                    <span id="texto-exibindo" class="small text-muted d-none">Exibindo <strong id="count-exibindo">0</strong> lote(s)</span>
+                </div>
+                <div class="table-responsive">
+                    <table id="tabela-lotes" class="table table-hover mb-0 layout-table table-reprocessamento-lotes">
+                        <thead>
+                            <tr>
+                                <th class="text-center" style="width: 4rem;">ID</th>
+                                <th>Empresa</th>
+                                <th class="text-center">Competência</th>
+                                <th class="text-end">NFe esp.</th>
+                                <th class="text-end">NFe enc.</th>
+                                <th class="text-end">Diverg.</th>
+                                <th class="text-center">Status</th>
+                                <th>Criação</th>
+                                <th class="text-center" style="width: 12rem;">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr id="tr-carregando">
+                                <td colspan="9" class="text-center text-muted py-5">
+                                    <span class="spinner-reprocessamento"></span><br>
+                                    <span class="small">Carregando lotes...</span>
+                                </td>
+                            </tr>
+                            <tr id="tr-vazio" class="d-none">
+                                <td colspan="9" class="text-center py-5">
+                                    <i class="fas fa-folder-open text-muted" style="font-size: 2.5rem; opacity: 0.6;"></i>
+                                    <p class="mt-2 mb-1 fw-medium text-secondary">Nenhum lote encontrado</p>
+                                    <p class="small text-muted mb-0">Ajuste os filtros ou execute um <strong>Novo confronto</strong> para gerar lotes.</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- Modal: Novo confronto -->
+<div id="modal-novo-confronto" class="modal-reprocessamento" style="display: none;">
+    <div class="modal-reprocessamento-content" style="max-width: 520px;">
+        <div class="modal-reprocessamento-header modal-reprocessamento-header-close">
+            <h5>Novo confronto SPED x XML</h5>
+            <button type="button" class="btn btn-sm btn-outline-secondary close-modal" id="btn-fechar-modal-confronto" title="Fechar" aria-label="Fechar"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-reprocessamento-body">
+            <p class="text-muted small mb-3">Escolha a empresa e o mês/ano de competência para executar o confronto.</p>
+
+            <div class="mb-3">
+                <label for="confronto-empresa" class="form-label">Empresa</label>
+                <select id="confronto-empresa" class="form-select" required>
+                    <option value="">Selecione a empresa</option>
+                    {% for emp in empresas %}
+                    <option value="{{ emp.cod_empresa }}">{{ emp.fantasia|default:emp.razao }} ({{ emp.cod_empresa }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label for="confronto-mes" class="form-label">Competência (mês/ano)</label>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <select id="confronto-mes" class="form-select" required>
+                            <option value="01">Janeiro</option>
+                            <option value="02">Fevereiro</option>
+                            <option value="03">Março</option>
+                            <option value="04">Abril</option>
+                            <option value="05">Maio</option>
+                            <option value="06">Junho</option>
+                            <option value="07">Julho</option>
+                            <option value="08">Agosto</option>
+                            <option value="09">Setembro</option>
+                            <option value="10">Outubro</option>
+                            <option value="11">Novembro</option>
+                            <option value="12">Dezembro</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <select id="confronto-ano" class="form-select" required></select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-secondary" id="btn-cancelar-confronto">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-executar-confronto">
+                    <i class="fas fa-play"></i> Executar confronto
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Divergências do lote -->
+<div id="modal-divergencias" class="modal-reprocessamento modal-divergencias" style="display: none;">
+    <div class="modal-reprocessamento-content modal-divergencias-content">
+        <div class="modal-reprocessamento-header modal-divergencias-header modal-reprocessamento-header-close">
+            <div>
+                <h5 class="mb-0"><i class="fas fa-balance-scale-right text-primary me-2"></i>Divergências — Lote <span id="modal-divergencias-lote-id"></span></h5>
+                <p id="divergencias-subtitulo" class="small text-muted mb-0 mt-1 d-none">Exibindo <span id="divergencias-count">0</span> de <span id="divergencias-total">0</span> divergências</p>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary close-modal" id="btn-fechar-modal-divergencias" title="Fechar" aria-label="Fechar"><i class="fas fa-times"></i></button>
+        </div>
+        <!-- Abas -->
+        <ul class="nav nav-tabs modal-divergencias-tabs d-none" id="divergencias-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tab-por-tipo-btn" type="button" role="tab"><i class="fas fa-list me-1"></i>Resumo</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-detalhe-btn" type="button" role="tab" style="display: none;"><i class="fas fa-info-circle me-1"></i>Detalhe</button>
+            </li>
+        </ul>
+
+        <div class="modal-reprocessamento-body modal-divergencias-body tab-content" id="divergencias-tab-content">
+            <div id="divergencias-carregando" class="text-center py-5 text-muted">
+                <div class="spinner-reprocessamento mb-2"></div>
+                <p class="small mb-0">Carregando divergências...</p>
+            </div>
+
+            <!-- Aba Resumo -->
+            <div class="tab-pane fade show active" id="tab-por-tipo" role="tabpanel">
+                <div id="divergencias-por-tipo" class="d-none">
+                    <div class="por-tipo-lista-wrap" id="wrap-lista-divergencias">
+                        <table class="table table-sm table-hover por-tipo-lista mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="col-chave">Chave</th>
+                                    <th class="col-documento">Documento</th>
+                                    <th class="col-status">Status</th>
+                                    <th class="col-acoes text-end">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-divergencias-todas"></tbody>
+                        </table>
+                    </div>
+                    <div class="por-tipo-vazio text-muted small py-4 text-center d-none" id="lista-divergencias-vazio">Nenhuma divergência</div>
+                </div>
+            </div>
+
+            <!-- Aba Detalhe (com sub-abas) -->
+            <div class="tab-pane fade" id="tab-detalhe" role="tabpanel">
+                <div id="divergencia-detalhe-panel" class="d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                        <h6 class="mb-0 text-secondary">Detalhe da divergência</h6>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-success btn-sm btn-resolver-detalhe" id="btn-resolver-detalhe" style="display: none;"><i class="fas fa-check me-1"></i>Marcar como resolvida</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-voltar-lista"><i class="fas fa-arrow-left me-1"></i>Voltar à lista</button>
+                        </div>
+                    </div>
+                    <!-- Sub-abas do detalhe -->
+                    <ul class="nav nav-pills nav-fill mb-3 divergencia-detalhe-subtabs" id="detalhe-subtabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="subtab-resumo-btn" type="button" role="tab"><i class="fas fa-info-circle me-1"></i>Resumo</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="subtab-cabecalho-btn" type="button" role="tab"><i class="fas fa-file-alt me-1"></i>Cabeçalho</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="subtab-itens-btn" type="button" role="tab"><i class="fas fa-boxes me-1"></i>Itens</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="subtab-impostos-btn" type="button" role="tab"><i class="fas fa-percent me-1"></i>Impostos</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="subtab-confrontos-btn" type="button" role="tab"><i class="fas fa-balance-scale me-1"></i>Confrontos</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content divergencia-detalhe-subcontent" id="detalhe-subcontent">
+                        <!-- Sub-aba Resumo -->
+                        <div class="tab-pane fade show active" id="subtab-resumo" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <table class="table table-sm table-borderless tabela-detalhe">
+                                        <tbody id="detalhe-campos"></tbody>
+                                    </table>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-2">
+                                        <label class="small fw-semibold text-muted">Descrição</label>
+                                        <p id="detalhe-descricao" class="small mb-0 text-break"></p>
+                                    </div>
+                                    <div id="detalhe-json-wrap" class="d-none">
+                                        <label class="small fw-semibold text-muted">Dados adicionais (JSON)</label>
+                                        <pre id="detalhe-json" class="small bg-light p-2 rounded mb-0" style="max-height: 180px; overflow: auto;"></pre>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Sub-aba Cabeçalho -->
+                        <div class="tab-pane fade" id="subtab-cabecalho" role="tabpanel">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <div class="card h-100">
+                                        <div class="card-header py-2 bg-primary bg-opacity-10"><strong>NF-e</strong></div>
+                                        <div class="card-body py-2">
+                                            <div id="detalhe-cabecalho-nfe" class="small">Carregando...</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card h-100">
+                                        <div class="card-header py-2 bg-info bg-opacity-10"><strong>SPED</strong></div>
+                                        <div class="card-body py-2">
+                                            <div id="detalhe-cabecalho-sped" class="small">Carregando...</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Sub-aba Itens -->
+                        <div class="tab-pane fade" id="subtab-itens" role="tabpanel">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-header py-2 bg-primary bg-opacity-10"><strong>Itens NF-e</strong></div>
+                                        <div class="card-body p-0">
+                                            <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                                                <table class="table table-sm table-hover mb-0" id="table-itens-nfe">
+                                                    <thead class="table-light sticky-top"><tr><th>#</th><th>Descrição</th><th>CFOP</th><th>Un</th><th>Qtd</th><th>Valor</th><th>ICMS</th><th>PIS</th><th>COFINS</th></tr></thead>
+                                                    <tbody id="detalhe-itens-nfe"></tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-header py-2 bg-info bg-opacity-10"><strong>Itens SPED (C170)</strong></div>
+                                        <div class="card-body p-0">
+                                            <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                                                <table class="table table-sm table-hover mb-0" id="table-itens-sped">
+                                                    <thead class="table-light sticky-top"><tr><th>#</th><th>Descrição</th><th>CFOP</th><th>Un</th><th>Qtd</th><th>Valor</th><th>ICMS</th><th>PIS</th><th>COFINS</th></tr></thead>
+                                                    <tbody id="detalhe-itens-sped"></tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Sub-aba Impostos -->
+                        <div class="tab-pane fade" id="subtab-impostos" role="tabpanel">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-header py-2 bg-primary bg-opacity-10"><strong>Impostos NF-e</strong></div>
+                                        <div class="card-body py-2">
+                                            <div id="detalhe-impostos-nfe" class="small">Carregando...</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-header py-2 bg-info bg-opacity-10"><strong>Impostos SPED (C100)</strong></div>
+                                        <div class="card-body py-2">
+                                            <div id="detalhe-impostos-sped" class="small">Carregando...</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Sub-aba Confrontos -->
+                        <div class="tab-pane fade" id="subtab-confrontos" role="tabpanel">
+                            <div class="card">
+                                <div class="card-header py-2"><strong>Confrontos realizados e status</strong></div>
+                                <div class="card-body py-2">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-hover mb-0">
+                                            <thead><tr><th>Tipo</th><th>Descrição</th><th>Status</th><th>Detalhe</th></tr></thead>
+                                            <tbody id="detalhe-confrontos"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="divergencias-vazio" class="text-center py-5 d-none">
+                <i class="fas fa-check-circle text-success" style="font-size: 2.5rem;"></i>
+                <p class="text-muted mt-2 mb-0">Nenhuma divergência neste lote.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Condições de pagamento (lote → SAP) -->
+<div id="modal-condicoes-pagamento" class="modal-reprocessamento modal-condicoes-pagamento" style="display: none;">
+    <div class="modal-reprocessamento-content modal-condicoes-content">
+        <div class="modal-reprocessamento-header modal-divergencias-header modal-reprocessamento-header-close">
+            <div>
+                <h5 class="mb-0"><i class="fas fa-file-invoice-dollar text-primary me-2"></i>Condições de pagamento — Lote <span id="modal-condicoes-lote-id"></span></h5>
+                <p class="small text-muted mb-0 mt-1">Chaves NF-e (44), condição da NFe e condição SAP. Use para ajustar pedido de compra no SAP via RFC e depois atualizar com o retorno.</p>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary close-modal" id="btn-fechar-modal-condicoes" title="Fechar" aria-label="Fechar"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-reprocessamento-body modal-condicoes-body">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <button type="button" class="btn btn-primary btn-sm" id="btn-gerar-condicoes" title="Gerar tabela a partir das NF-e do lote">
+                    <i class="fas fa-cogs me-1"></i>Gerar tabela
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-abrir-condicao-param" title="Editar tabela de parâmetros (depara condição NFe → SAP)">
+                    <i class="fas fa-table-columns me-1"></i>Parâmetros (depara)
+                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btn-enviar-sap" title="Chamar RFC e enviar condições ao SAP">
+                    <i class="fas fa-paper-plane me-1"></i>Enviar ao SAP
+                </button>
+                <span id="condicoes-resumo" class="small text-muted ms-2"></span>
+            </div>
+            <div id="condicoes-carregando" class="text-center py-4 text-muted d-none">
+                <div class="spinner-reprocessamento mb-2"></div>
+                <p class="small mb-0">Carregando...</p>
+            </div>
+            <div id="condicoes-vazio" class="text-center py-4 d-none">
+                <i class="fas fa-table text-muted" style="font-size: 2rem;"></i>
+                <p class="text-muted mt-2 mb-1">Nenhum registro de condição de pagamento.</p>
+                <p class="small text-muted mb-0">Clique em <strong>Gerar tabela</strong> para preencher a partir das NF-e do lote.</p>
+            </div>
+            <div id="condicoes-tabela-wrap" class="d-none">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0" id="tabela-condicoes-pagamento">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="text-center">Chave (44)</th>
+                                <th>Condição NFe</th>
+                                <th class="text-center">Tipo</th>
+                                <th>Condição SAP</th>
+                                <th class="text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-condicoes-pagamento"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% include "Ferramentas/modal_painel.html" %}
+
+{% json_script_nonce tipo_pagamento_desc "tipo-pagamento-desc" %}
+{% script %}
+(function(){ var el = document.getElementById('tipo-pagamento-desc'); window.TIPO_PAGAMENTO_DESC = el ? JSON.parse(el.textContent) : {}; })();
+{% endscript %}
+<script src="{% static 'js/Script_ReprocessamentoPainel.js' %}" nonce="{{ request.csp_nonce }}"></script>
+{% endblock %}

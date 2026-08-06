@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% load static security %}
+
+{% block title %}Manifesto{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/pages/Style_Manifesto.css' %}">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block titlepage %}Manifesto{% endblock %}
+
+{% block container %}
+<div class="manifesto-page">
+  <section class="manifesto-hero">
+    <div class="manifesto-hero-content">
+      <h1 class="manifesto-title">Painel Manifesto</h1>
+      <p class="manifesto-subtitle">
+        Gerencie Notas de Entrada com agilidade. Acesse os detalhes e gere os documentos necessários em poucos cliques. 
+      </p>
+      <div class="manifesto-hero-actions">  
+        <div class="dropdown">
+          <button class="btn btn-light manifesto-btn dropdown-toggle" type="button" data-bs-toggle="dropdown">Parametros</button>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="#">NFe</a></li>
+            <li><a class="dropdown-item" href="#">CTe</a></li>
+            <li><a class="dropdown-item" href="#">NFSe</a></li>
+            <li><a class="dropdown-item" href="#">Writer</a></li>
+          </ul>
+        </div>
+        <button class="btn btn-outline-light manifesto-btn" type="button">Ferramentas</button>
+      </div>
+    </div>
+  </section>  
+  <section class="manifesto-panel">
+    <div class="manifesto-table-card">
+      <div class="manifesto-table-head">
+        <div class="manifesto-filters">
+          <button class="manifesto-chip is-active" data-filter="ALL" type="button">Todos</button>
+          <button class="manifesto-chip" data-filter="NFe" type="button">NFe</button>
+          <button class="manifesto-chip" data-filter="CTe" type="button">CTe</button>
+          <button class="manifesto-chip" data-filter="NFSe" type="button">NFSe</button>
+        </div>
+        <div class="manifesto-search">
+          <input id="manifesto-search" type="text" class="form-control" placeholder="Buscar por numero, emitente, destinatario">
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table manifesto-table align-middle">
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Numero</th>
+              <th>Serie</th>
+              <th>Emissao</th>
+              <th>Emitente</th>
+              <th>Destinatario</th>
+              <th class="text-end">Valor</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="manifesto-notas-body"></tbody>
+        </table>
+      </div>
+      <div class="manifesto-table-footer">
+        <nav id="manifesto-pagination"></nav>
+      </div>
+    </div>
+  </section>
+</div>
+
+{% include 'manifesto/modal_manifesto.html' %}
+
+{% json_script_nonce manifesto_data "manifesto-data" %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/Script_Manifesto.js' %}" nonce="{{ request.csp_nonce }}"></script>
+{% endblock %}

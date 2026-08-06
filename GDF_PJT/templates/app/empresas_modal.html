@@ -1,0 +1,577 @@
+<!-- Modal: Cadastrar Empresa -->
+<div class="modal fade admin-modal" id="modalEmpresaIns" tabindex="-1" aria-labelledby="modalEmpresaInsLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <form method="post" action="{% if url_prefix %}{{ url_prefix }}/empresa/inserir/{% else %}/empresa/inserir/{% endif %}" onsubmit="fn_validar_formulario_ins(event)">
+        {% csrf_token %}
+
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalEmpresaInsLabel">
+            <span class="modal-title-icon"><i class="fas fa-building"></i></span>
+            Cadastrar Empresa
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body">
+          <div id="modalEmpresaInsAlerts" class="admin-modal-alerts"></div>
+          <p class="admin-step-hint text-muted small mb-3">
+            <i class="fas fa-info-circle me-1"></i> Preencha os dados obrigatórios (código, CNPJ, razão e nome fantasia). Certificado pode ser enviado depois.
+          </p>
+
+          {% if is_superuser and lista_clientes %}
+          <div class="admin-modal-cliente-wrap">
+            <label for="ins_cod_cliente" class="form-label">* Mandante</label>
+            <select id="ins_cod_cliente" name="m_cod_cliente" class="form-select" required>
+              <option value="">-- Selecione o mandante --</option>
+              {% for c in lista_clientes %}
+              <option value="{{ c.cod_cliente }}" {% if cod_cliente == c.cod_cliente %}selected{% endif %}>{{ c.cod_cliente }} – {{ c.razao|default:"" }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endif %}
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="ins_codempresa" class="form-label">* Código da Empresa</label>
+              <input
+                type="text"
+                id="ins_codempresa"
+                name="m_codempresa"
+                class="form-control"
+                placeholder="Ex: 001"
+                required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="ins_cnpj" class="form-label">* CNPJ</label>
+              <input
+                type="text"
+                id="ins_cnpj"
+                name="m_cnpj"
+                class="form-control"
+                placeholder="00.000.000/0000-00"
+                required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="ins_razao" class="form-label">* Razão Social</label>
+              <input
+                type="text"
+                id="ins_razao"
+                name="m_razao"
+                class="form-control"
+                placeholder="Razão social"
+                required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="ins_fantasia" class="form-label">* Nome Fantasia</label>
+              <input
+                type="text"
+                id="ins_fantasia"
+                name="m_fantasia"
+                class="form-control"
+                placeholder="Nome fantasia"
+                required>
+            </div>
+
+
+            <div class="col-md-6">
+              <label class="form-label">Matriz</label>
+              <div class="form-check form-switch mt-1">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="ins_matriz"
+                  name="m_matriz">
+                <label class="form-check-label" for="ins_matriz">Empresa é matriz</label>
+              </div>
+            </div>
+
+            <div class="col-12 admin-form-section">
+              <div class="admin-form-section-title">Dados opcionais</div>
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_ie" class="form-label">Inscrição Estadual</label>
+              <input
+                type="text"
+                id="ins_ie"
+                name="m_ie"
+                class="form-control"
+                placeholder="IE">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_im" class="form-label">Inscrição Municipal</label>
+              <input
+                type="text"
+                id="ins_im"
+                name="m_im"
+                class="form-control"
+                placeholder="IM">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_iest" class="form-label">IE Substituto Tributário</label>
+              <input
+                type="text"
+                id="ins_iest"
+                name="m_iest"
+                class="form-control"
+                placeholder="IE ST">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_crt" class="form-label">CRT</label>
+              <input
+                type="text"
+                id="ins_crt"
+                name="m_crt"
+                class="form-control"
+                placeholder="CRT">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_cnae" class="form-label">CNAE</label>
+              <input
+                type="text"
+                id="ins_cnae"
+                name="m_cnae"
+                class="form-control"
+                placeholder="CNAE">
+            </div>
+
+            <div class="col-md-4">
+              <label for="ins_suframa" class="form-label">SUFRAMA</label>
+              <input
+                type="text"
+                id="ins_suframa"
+                name="m_suframa"
+                class="form-control"
+                placeholder="SUFRAMA">
+            </div>
+
+            <div class="col-md-12">
+              <label for="ins_chave_acesso" class="form-label">Chave de Acesso</label>
+              <input
+                type="text"
+                id="ins_chave_acesso"
+                name="m_chave_acesso"
+                class="form-control"
+                placeholder="Chave de acesso">
+            </div>
+
+            {% if messages %}
+              {% for message in messages %}
+                {% if message.extra_tags == 'MODAL_INS' %}
+                  <div class="col-12">
+                    <div class="alert alert-{{ message.level_tag }} alert-dismissible fade show" role="alert">
+                      {{ message }}
+                      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success"><i class="fas fa-check me-1"></i> Cadastrar</button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar Empresa -->
+<div class="modal fade admin-modal" id="modalEmpresaUpd" tabindex="-1" aria-labelledby="modalEmpresaUpdLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalEmpresaUpdLabel">
+          <span class="modal-title-icon"><i class="fas fa-building"></i></span>
+          Editar Empresa
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+
+      <div class="modal-body">
+        <div id="modalEmpresaUpdAlerts" class="admin-modal-alerts"></div>
+
+        <ul class="nav nav-tabs" id="empresaTabs" role="tablist">
+          <li class="nav-item">
+            <button type="button" class="nav-link active" id="tab-empresa-btn" data-bs-toggle="tab" data-bs-target="#tab-empresa" role="tab"><i class="fas fa-edit"></i> Dados da Empresa</button>
+          </li>
+          <li class="nav-item">
+            <button type="button" class="nav-link" id="tab-certificado-btn" data-bs-toggle="tab" data-bs-target="#tab-certificado" role="tab"><i class="fas fa-certificate"></i> Certificado Digital</button>
+          </li>
+          {% if pode_gerir_filiais %}
+          <li class="nav-item">
+            <button type="button" class="nav-link" id="tab-filiais-emp-btn" data-bs-toggle="tab" data-bs-target="#tab-filiais-emp" role="tab"><i class="fas fa-sitemap"></i> Filiais</button>
+          </li>
+          {% endif %}
+        </ul>
+
+        <!-- REMOVER MENSAGENS ANTIGAS DO DJANGO -->
+        {% if messages %}
+          {% for message in messages %}
+            {% if message.extra_tags == 'MODAL_UPD' %}
+              <!-- Mensagens serão renderizadas pelo JavaScript -->
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+
+        <!-- TAB CONTENT -->
+        <div class="tab-content">
+
+          <!-- TAB 1: DADOS DA EMPRESA -->
+          <div class="tab-pane fade show active" id="tab-empresa" role="tabpanel">
+            <form method="post" id="formEmpresaUpd" action="" onsubmit="fn_validar_formulario_upd(event)">
+              {% csrf_token %}
+              <input type="hidden" id="upd_empresa_id_hidden" name="m_empresa_id" value="">
+
+              <div class="row g-3">
+                
+                <div class="col-md-4">
+                  <label for="upd_empresa_id" class="form-label">Código Empresa</label>
+                  <input
+                    type="text"
+                    id="upd_empresa_id"
+                    name="m_empresa_id"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-4">
+                  <label for="upd_emp_cnpj" class="form-label">CNPJ</label>
+                  <input
+                    type="text"
+                    id="upd_emp_cnpj"
+                    name="m_emp_cnpj"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-4">
+                  <label for="upd_tipo" class="form-label">Tipo</label>
+                  <input
+                    type="text"
+                    id="upd_tipo"
+                    name="m_tipo"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_razao" class="form-label">Razão Social</label>
+                  <input
+                    type="text"
+                    id="upd_razao"
+                    name="m_razao"
+                    class="form-control">
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_fantasia" class="form-label">Nome Fantasia</label>
+                  <input
+                    type="text"
+                    id="upd_fantasia"
+                    name="m_fantasia"
+                    class="form-control">
+                </div>
+
+                <div class="col-md-4">
+                  <label for="upd_ie" class="form-label">Inscrição Estadual</label>
+                  <input
+                    type="text"
+                    id="upd_ie"
+                    name="m_ie"
+                    class="form-control">
+                </div>
+
+                <div class="col-md-4">
+                  <label for="upd_im" class="form-label">Inscrição Municipal</label>
+                  <input
+                    type="text"
+                    id="upd_im"
+                    name="m_im"
+                    class="form-control">
+                </div>
+
+                <div class="col-md-4">
+                  <label for="upd_iest" class="form-label">IE Substituto Tributário</label>
+                  <input
+                    type="text"
+                    id="upd_iest"
+                    name="m_iest"
+                    class="form-control">
+                </div>
+
+                <div class="col-md-3">
+                  <label for="upd_crt" class="form-label">CRT</label>
+                  <input
+                    type="text"
+                    id="upd_crt"
+                    name="m_crt"
+                    class="form-control">
+                </div>
+
+                <div class="col-md-3">
+                  <label for="upd_cnae" class="form-label">CNAE</label>
+                  <input
+                    type="text"
+                    id="upd_cnae"
+                    name="m_cnae"
+                    class="form-control">
+                </div>
+
+                <div class="col-md-3">
+                  <label for="upd_suframa" class="form-label">SUFRAMA</label>
+                  <input
+                    type="text"
+                    id="upd_suframa"
+                    name="m_suframa"
+                    class="form-control">
+                </div>
+
+                <div class="col-md-3">
+                  <label class="form-label">Matriz</label>
+                  <div class="form-check form-switch mt-2">
+                    <input
+                      type="checkbox"
+                      id="upd_matriz"
+                      name="m_matriz"
+                      class="form-check-input">
+                    <label class="form-check-label" for="upd_matriz">É Matriz</label>
+                  </div>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_cliente_id" class="form-label">Mandante</label>
+                  <input
+                    type="text"
+                    id="upd_cliente_id"
+                    name="m_cliente_id"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-12">
+                  <label for="upd_chave_acesso" class="form-label">Chave de Acesso</label>
+                  <input
+                    type="text"
+                    id="upd_chave_acesso"
+                    name="m_chave_acesso"
+                    class="form-control">
+                </div>
+
+              </div>
+
+              <div class="d-flex gap-2 mt-4">
+                <button
+                  type="submit"
+                  id="btn-save-empresa"
+                  class="btn btn-success">
+                  Salvar
+                </button>
+                <button
+                  type="button"
+                  id="btn-cancel-empresa"
+                  class="btn btn-secondary"
+                  data-bs-dismiss="modal">
+                  Cancelar
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+          <!-- TAB 2: CERTIFICADO DIGITAL -->
+          <div class="tab-pane fade" id="tab-certificado" role="tabpanel">
+            <form method="post" id="formCertUpd" action="{% if url_prefix %}{{ url_prefix }}/empresa/Cert/{% else %}/empresa/Cert/{% endif %}" enctype="multipart/form-data" onsubmit="fn_validar_certificado(event)">
+              {% csrf_token %}
+              <input type="hidden" id="upd_cert_codempresa" name="m_codempresa">
+
+              <div class="row g-3">
+
+                <div class="col-12">
+                  <p class="text-muted small mb-0">
+                    <i class="fas fa-info-circle me-1"></i> Emissor e datas de validade sao preenchidos automaticamente ao enviar o certificado.
+                  </p>
+                </div>
+                
+                <div class="col-md-12">
+                  <label for="upd_cert_file" class="form-label">Arquivo do Certificado (.crt, .txt, .pfx, .p12)</label>
+                  <input
+                    type="file"
+                    id="upd_cert_file"
+                    name="m_file"
+                    class="form-control"
+                    accept=".crt,.txt,.pfx,.p12">
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_senha_certificado" class="form-label">Senha do certificado</label>
+                  <input
+                    type="password"
+                    id="upd_senha_certificado"
+                    name="m_senha_certificado"
+                    class="form-control"
+                    placeholder="Senha do certificado"
+                    autocomplete="off">
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_emissor" class="form-label">Emissor</label>
+                  <input
+                    type="text"
+                    id="upd_emissor"
+                    name="m_emissor"
+                    class="form-control">
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_cert_cnpj" class="form-label">CNPJ do Certificado</label>
+                  <input
+                    type="text"
+                    id="upd_cert_cnpj"
+                    name="m_cnpj"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_dt_inicial" class="form-label">Data Início Validade</label>
+                  <input
+                    type="text"
+                    id="upd_dt_inicial"
+                    name="m_dt_inicial"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_dt_fim" class="form-label">Data Fim Validade</label>
+                  <input
+                    type="text"
+                    id="upd_dt_fim"
+                    name="m_dt_fim"
+                    class="form-control"
+                    readonly>
+                </div>
+
+              </div>
+
+              <div class="d-flex gap-2 mt-4">
+                <button
+                  type="submit"
+                  id="btn-save-cert"
+                  class="btn btn-success">
+                  Salvar
+                </button>
+                <button
+                  type="button"
+                  id="btn-cancel-cert"
+                  class="btn btn-secondary"
+                  data-bs-dismiss="modal">
+                  Cancelar
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+          {% if pode_gerir_filiais %}
+          <!-- TAB: Filiais (mesma empresa do modal) — cadastro/edição no modal secundário -->
+          <div class="tab-pane fade" id="tab-filiais-emp" role="tabpanel" aria-labelledby="tab-filiais-emp-btn">
+            <div id="empTabFilialAlerts" class="admin-modal-alerts mb-2"></div>
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <p class="text-muted small mb-0">
+                <i class="fas fa-info-circle me-1"></i> Filiais vinculadas a esta empresa (Cadastros — Empresas).
+              </p>
+              <button type="button" class="btn btn-sm btn-primary" id="btn_emp_tab_fil_abrir_modal" title="Abrir cadastro de filial">
+                <i class="fas fa-plus me-1"></i> Cadastrar filial
+              </button>
+            </div>
+
+            <div class="table-responsive border rounded">
+              <table class="table table-sm table-hover align-middle mb-0 emp-tab-filiais-table">
+                <thead class="table-light">
+                  <tr>
+                    <th>Código</th>
+                    <th>Nome</th>
+                    <th>CNPJ</th>
+                    <th class="text-center">Ativo</th>
+                    <th class="text-end" style="width:1%">Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="empTabFiliaisTbody">
+                  <tr>
+                    <td colspan="5" class="text-center text-muted py-3">Abra a aba com uma empresa selecionada para carregar as filiais.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Nova / Editar Filial (sobre o modal Editar Empresa) -->
+{% if pode_gerir_filiais %}
+<div class="modal fade admin-modal" id="modalFilialEmpForm" tabindex="-1" aria-labelledby="modalFilialEmpFormLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="formModalFilialEmp" novalidate>
+        {% csrf_token %}
+        <input type="hidden" id="modal_emp_tab_fil_empresa" name="m_empresa" value="" autocomplete="off">
+        <input type="hidden" id="modal_emp_tab_fil_id" value="" autocomplete="off">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalFilialEmpFormLabel">Nova filial</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="modalFilialEmpFormAlerts" class="admin-modal-alerts mb-2"></div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label for="modal_emp_tab_fil_cod" class="form-label">* Código da filial</label>
+              <input type="text" class="form-control" id="modal_emp_tab_fil_cod" name="m_cod_filial" maxlength="10" required placeholder="Ex.: 01">
+            </div>
+            <div class="col-md-8">
+              <label for="modal_emp_tab_fil_nome" class="form-label">Nome</label>
+              <input type="text" class="form-control" id="modal_emp_tab_fil_nome" name="m_nome" maxlength="120" placeholder="Nome ou descrição">
+            </div>
+            <div class="col-md-6">
+              <label for="modal_emp_tab_fil_cnpj" class="form-label">CNPJ</label>
+              <input type="text" class="form-control" id="modal_emp_tab_fil_cnpj" name="m_cnpj" maxlength="18" placeholder="Apenas números ou formatado">
+            </div>
+            <div class="col-md-6 d-flex align-items-end">
+              <div class="form-check form-switch mb-2 w-100">
+                <input class="form-check-input" type="checkbox" id="modal_emp_tab_fil_ativo" name="m_ativo" checked>
+                <label class="form-check-label" for="modal_emp_tab_fil_ativo">Filial ativa</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn_modal_emp_tab_fil_salvar">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}

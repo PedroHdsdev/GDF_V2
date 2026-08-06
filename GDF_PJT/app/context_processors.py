@@ -34,6 +34,23 @@ def _rotular_dm_clientes_mandante(t_subs_admin, t_solucoes):
                 s["descricao"] = _DESC_MANDANTE
 
 
+COD_SUB_CONFRONTO_SPED_XML = "Confronto_Sped_Xml"
+_DESC_CONFRONTO_SPED_XML = "Confronto SPED x XML"
+
+
+def _rotular_confronto_sped_xml(t_subs_admin, t_solucoes):
+    """Força a descrição do painel de confronto no menu; a sessão pode conter o nome legado."""
+    for sub in t_subs_admin or []:
+        if str((sub or {}).get("cod_subsolucao", "")) in ("Reproc_Painel", COD_SUB_CONFRONTO_SPED_XML) and isinstance(sub, dict):
+            sub["cod_subsolucao"] = COD_SUB_CONFRONTO_SPED_XML
+            sub["descricao"] = _DESC_CONFRONTO_SPED_XML
+    for sol in t_solucoes or []:
+        for s in (sol or {}).get("sub_solucoes") or []:
+            if str((s or {}).get("cod_subsolucao", "")) in ("Reproc_Painel", COD_SUB_CONFRONTO_SPED_XML) and isinstance(s, dict):
+                s["cod_subsolucao"] = COD_SUB_CONFRONTO_SPED_XML
+                s["descricao"] = _DESC_CONFRONTO_SPED_XML
+
+
 def _sem_sub_filiais(sol):
     """Remove a subsolução filiais (cadastro fica em Empresas)."""
     subs = sol.get("sub_solucoes") or []
@@ -64,6 +81,7 @@ def solucoes_context(request):
     raw = request.session.get("t_solucoes", [])
     t_subs_admin, t_solucoes = _separar_solucao_menu_admin(raw)
     _rotular_dm_clientes_mandante(t_subs_admin, t_solucoes)
+    _rotular_confronto_sped_xml(t_subs_admin, t_solucoes)
     ctx = {
         "t_solucoes": t_solucoes,
         "t_subsolucoes_admin": t_subs_admin,

@@ -115,7 +115,7 @@ def requer_acesso_um_de(*cod_subsolucoes, redirect_on_deny=True):
     """
     Acesso se o usuário tiver qualquer uma das subsoluções listadas
     (ex.: duas soluções que abrem a mesma API compartilhada).
-    Uso: @requer_acesso_um_de('Reproc_Painel', 'OutroCod', redirect_on_deny=False)
+    Uso: @requer_acesso_um_de('Confronto_Sped_Xml', 'OutroCod', redirect_on_deny=False)
     """
     from app.utils.view_helpers import get_subsolucoes_usuario
 

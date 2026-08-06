@@ -1,0 +1,171 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Home{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/pages/Style_Home.css' %}">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block titlepage %}Início{% endblock %}
+
+{% block container %}
+<div class="home-page">
+    <section class="home-welcome">
+        <div class="home-welcome-main">
+            <h2 class="home-welcome-title">Olá, {{ nome_usuario }}</h2>
+            <p class="home-welcome-meta">
+                {% if cliente_nome %}
+                <span class="home-welcome-badge">{{ cliente_nome }}</span>
+                <span>{{ qtd_empresas }} empresa(s)</span>
+                <span>•</span>
+                {% endif %}
+                <span>Competência: {{ competencia }}</span>
+            </p>
+        </div>
+        {% if stats_docs %}
+        <div class="home-welcome-stats">
+            <div class="home-welcome-stats-row">
+                <div class="home-welcome-stat">
+                    <span class="home-welcome-stat-value">{{ stats_docs.nfe|default:0 }}</span>
+                    <span class="home-welcome-stat-label">NF-e</span>
+                </div>
+                <div class="home-welcome-stat">
+                    <span class="home-welcome-stat-value">{{ stats_docs.cte|default:0 }}</span>
+                    <span class="home-welcome-stat-label">CT-e</span>
+                </div>
+                <div class="home-welcome-stat">
+                    <span class="home-welcome-stat-value">{{ stats_docs.nfse|default:0 }}</span>
+                    <span class="home-welcome-stat-label">NFSe</span>
+                </div>
+            </div>
+            <small class="home-welcome-stats-note">Documentos Totais</small> <!--Documentos no mês-->
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="home-grid">
+        <article class="home-card home-alerts">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Agora</p>
+                    <h3>Alertas e avisos</h3>
+                </div>
+            </div>
+            <ul class="home-alert-list">
+                {% for a in alertas %}
+                <li class="home-alert is-{{ a.tipo }}" {% if a.ids %}data-job-ids="{% for id in a.ids %}{{ id }}{% if not forloop.last %},{% endif %}{% endfor %}" data-fonte="{{ a.fonte }}"{% endif %}>
+                    <span class="home-alert-dot"></span>
+                    <div>
+                        <p class="home-alert-title">{{ a.titulo }}</p>
+                        <p class="home-alert-meta">{{ a.meta }}</p>
+                    </div>
+                    {% if a.url %}
+                    <a href="{% url a.url %}" class="home-alert-tag">{{ a.tag }}</a>
+                    {% else %}
+                    <span class="home-alert-tag">{{ a.tag }}</span>
+                    {% endif %}
+                </li>
+                {% empty %}
+                <li class="home-alert is-info">
+                    <span class="home-alert-dot"></span>
+                    <div>
+                        <p class="home-alert-title">Nenhum alerta no momento</p>
+                        <p class="home-alert-meta">Tudo em dia</p>
+                    </div>
+                    <span class="home-alert-tag">OK</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </article>
+
+        <article class="home-card home-quick">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Atalhos</p>
+                    <h3>Acesso rapido</h3>
+                </div>
+            </div>
+            <div class="home-quick-grid">
+                {% for at in atalhos %}
+                <a class="home-quick-item" href="{% url at.url %}">
+                    <span>{{ at.titulo }}</span>
+                    <small>{{ at.desc }}</small>
+                </a>
+                {% empty %}
+                <p class="text-muted small mb-0" style="grid-column: 1 / -1;">Nenhum atalho disponível para seu perfil.</p>
+                {% endfor %}
+            </div>
+        </article>
+
+        <article class="home-card home-metrics">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Resumo</p>
+                    <h3>Indicadores chave</h3>
+                </div>
+            </div>
+            <div class="home-metric-grid">
+                <div class="home-metric">
+                    <span class="home-metric-label">Certificados expirando</span>
+                    <span class="home-metric-value">{{ metricas.cert_expirando|default:0 }}</span>
+                    <span class="home-metric-note">Próximos 30 dias</span>
+                </div>
+                <div class="home-metric">
+                    <span class="home-metric-label">Carga XML concluída</span>
+                    <span class="home-metric-value">{{ metricas.carga_xml_24h|default:0 }}</span>
+                    <span class="home-metric-note">Últimas 24h</span>
+                </div>
+                <div class="home-metric">
+                    <span class="home-metric-label">Carga SPED concluída</span>
+                    <span class="home-metric-value">{{ metricas.carga_sped_24h|default:0 }}</span>
+                    <span class="home-metric-note">Últimas 24h</span>
+                </div>
+                <div class="home-metric">
+                    <span class="home-metric-label">Cargas em andamento</span>
+                    <span class="home-metric-value">{{ metricas.carga_em_andamento|default:0 }}</span>
+                    <span class="home-metric-note">XML e SPED</span>
+                </div>
+            </div>
+        </article>
+    </section>
+
+    {% if ultima_atividade %}
+    <section class="home-activity">
+        <article class="home-card home-activity-card">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Atividade</p>
+                    <h3>Últimas cargas</h3>
+                </div>
+            </div>
+            <ul class="home-activity-list">
+                {% for a in ultima_atividade %}
+                <li class="home-activity-item">
+                    <span class="home-activity-type home-activity-type-{{ a.tipo|lower }}">{{ a.tipo }}</span>
+                    <div class="home-activity-detail">
+                        <span class="home-activity-status home-activity-status-{{ a.status|lower }}">{{ a.status }}</span>
+                        <span class="home-activity-meta">
+                            {% if a.total %}{{ a.sucesso|default:0 }}/{{ a.total }} arquivo(s){% if a.erro %} • {{ a.erro }} erro(s){% endif %}{% endif %}
+                        </span>
+                    </div>
+                    <div class="home-activity-time">
+                        {% if a.data %}
+                        <time datetime="{{ a.data|date:'c' }}">{{ a.data|timesince }} atrás</time>
+                        {% else %}—{% endif %}
+                    </div>
+                    <a href="{% url a.url %}" class="home-activity-link" title="Ver detalhes">→</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </article>
+    </section>
+    {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/Script_Home.js' %}" nonce="{{ request.csp_nonce }}"></script>
+{% endblock %}

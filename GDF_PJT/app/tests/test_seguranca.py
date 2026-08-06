@@ -81,6 +81,11 @@ class SegurancaTestCase(TestCase):
         r = self.client.get('/api/reprocessamento/lotes/')
         self.assertEqual(r.status_code, 403)
 
+    def test_confronto_sped_xml_sem_login_redireciona(self):
+        """GET /Confronto-SPED-XML/Painel/ sem autenticação deve redirecionar."""
+        r = self.client.get('/Confronto-SPED-XML/Painel/')
+        self.assertIn(r.status_code, (302, 301))
+
     # --- IDOR: acesso a recurso de outro cliente (empresa)
     def test_empresa_idor_cod_inexistente_ou_outro_cliente_403(self):
         """GET /empresa/<cod>/ sem acesso à subsolução ou com cod_empresa inválido deve retornar 403 ou 302."""

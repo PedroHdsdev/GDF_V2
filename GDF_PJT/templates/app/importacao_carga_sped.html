@@ -1,0 +1,122 @@
+{% extends 'base.html' %}
+{% load static security csp %}
+
+{% block title %}Carga SPED{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/pages/Style_Home.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/pagina_carga.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/relatorio_fiscal.css' %}">
+<link rel="stylesheet" href="{% static 'css/pages/carga_painel_secoes.css' %}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+
+{% block titlepage %}Carga SPED{% endblock %}
+
+{% block container %}
+<div class="cargaxml-page layout-page" data-url-prefix="{{ url_prefix|default:'' }}">
+    {% csrf_token %}
+
+    <!-- Hero / Ações -->
+    <section class="home-welcome cargaxml-welcome">
+        <div class="home-welcome-main">
+            <h2 class="home-welcome-title">Carga SPED</h2>
+            <p class="home-welcome-meta">Importe arquivos SPED (EFD ICMS/IPI, EFD Contribuições) no mesmo fluxo da Carga XML.</p>
+        </div>
+        <div class="home-hero-actions d-flex gap-2 align-items-center flex-wrap">
+            <button type="button" class="btn btn-outline-light position-relative" id="btn-avisos-cargasped" data-bs-toggle="modal" data-bs-target="#modalAvisosCargaSped" title="Logs de cargas com erros">
+                <i class="fas fa-bell"></i> Avisos
+                <span class="badge rounded-pill bg-danger position-absolute top-0 end-0 translate-middle" id="avisos-badge-cargasped" style="display: none; font-size: 0.7rem;">0</span>
+            </button>
+            <button class="btn btn-light" data-bs-toggle="modal" data-bs-target="#modalCargaSped">
+                <i class="fas fa-file-alt"></i> Carregar SPED
+            </button>
+            <button type="button" class="btn btn-outline-light" id="relatorio-btn-excel" title="Exportar relatório em Excel (filtros atuais)">
+                <i class="fas fa-file-excel"></i> Baixar Excel
+            </button>
+        </div>
+    </section>
+
+    <!-- Grid de containers (estilo Home) -->
+    <section class="home-grid cargaxml-grid">
+        <!-- Card 1: Resumo -->
+        <article class="home-card cargaxml-card cargaxml-card-resumo">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Visão geral</p>
+                    <h3>Resumo dos jobs</h3>
+                </div>
+            </div>
+            <div class="cargaxml-resumo-grid">
+                <div class="cargaxml-resumo-item resumo-total">
+                    <span class="cargaxml-resumo-numero" id="resumo-sped-total">0</span>
+                    <span class="cargaxml-resumo-label">Total</span>
+                </div>
+                <div class="cargaxml-resumo-item resumo-concluido">
+                    <span class="cargaxml-resumo-numero" id="resumo-sped-concluidos">0</span>
+                    <span class="cargaxml-resumo-label">Concluídos</span>
+                </div>
+                <div class="cargaxml-resumo-item resumo-divergencias">
+                    <span class="cargaxml-resumo-numero" id="resumo-sped-com-erros">0</span>
+                    <span class="cargaxml-resumo-label">Com erros</span>
+                </div>
+                <div class="cargaxml-resumo-item resumo-andamento">
+                    <span class="cargaxml-resumo-numero" id="resumo-sped-em-andamento">0</span>
+                    <span class="cargaxml-resumo-label">Em andamento</span>
+                </div>
+            </div>
+        </article>
+
+        <!-- Card 2: Em execução -->
+        <article class="home-card cargaxml-card cargaxml-card-em-execucao">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Agora</p>
+                    <h3>Em execução</h3>
+                </div>
+            </div>
+            <div id="alertas-container-sped"></div>
+            <ul id="lista-em-execucao-sped" class="home-activity-list cargaxml-lista-jobs">
+                <li class="cargaxml-lista-empty text-muted py-3 text-center">
+                    <i class="fas fa-check-circle fa-2x mb-2 d-block opacity-50"></i>
+                    Nenhum job em execução no momento.
+                </li>
+            </ul>
+        </article>
+
+        <!-- Card 3: Já executado -->
+        <article class="home-card cargaxml-card cargaxml-card-ja-executado">
+            <div class="home-card-head">
+                <div>
+                    <p class="home-card-eyebrow">Histórico</p>
+                    <h3>Já executado</h3>
+                </div>
+            </div>
+            <ul id="lista-ja-executado-sped" class="home-activity-list cargaxml-lista-jobs">
+                <li class="cargaxml-lista-empty text-muted py-3 text-center">
+                    <i class="fas fa-inbox fa-2x mb-2 d-block opacity-50"></i>
+                    Nenhuma execução recente.
+                </li>
+            </ul>
+        </article>
+    </section>
+
+    {% include "app/importacao_partial_registros_periodo.html" with reg_panel_modo="sped" %}
+    {% include "app/importacao_partial_relatorio_fiscal.html" with relatorio_painel="sped" %}
+</div>
+
+<!-- MODAL -->
+{% include "app/importacao_modal_carga_sped.html" %}
+{% include "app/importacao_modal_relatorio_fiscal.html" with relatorio_painel="sped" %}
+
+{% json_script_nonce tipo_pagamento_desc "tipo-pagamento-desc" %}
+{% script %}
+(function(){
+  var el = document.getElementById('tipo-pagamento-desc');
+  window.TIPO_PAGAMENTO_DESC = el ? JSON.parse(el.textContent) : {};
+})();
+{% endscript %}
+<script src="{% static 'js/relatorio_fiscal.js' %}" nonce="{{ request.csp_nonce }}"></script>
+<script src="{% static 'js/carga_registros_periodo.js' %}" nonce="{{ request.csp_nonce }}"></script>
+<script src="{% static 'js/carga_sped.js' %}" nonce="{{ request.csp_nonce }}"></script>
+{% endblock %}

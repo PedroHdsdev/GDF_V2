@@ -48,7 +48,7 @@ class Command(BaseCommand):
             ('/empresas/', 'Empresas'),
             ('/CargaXml/', 'Carga XML (incl. relatórios)'),
             ('/api/relatorio/nfe/', 'API Relatório NFe'),
-            ('/Reprocessamento/Painel/', 'Painel Reprocessamento'),
+            ('/Confronto-SPED-XML/Painel/', 'Painel Confronto SPED x XML'),
         ]
         for path, label in protected_paths:
             r = client_anon.get(path)
@@ -79,7 +79,7 @@ class Command(BaseCommand):
         apis_sessao = [
             ('/api/cargaxml/jobs/', 'API CargaXml Jobs'),
             ('/api/cargaxml/resumo/', 'API CargaXml Resumo'),
-            ('/api/reprocessamento/lotes/', 'API Reprocessamento Lotes'),
+            ('/api/reprocessamento/lotes/', 'API Confronto SPED x XML Lotes'),
         ]
         for path, label in apis_sessao:
             r = client_auth.get(path)

@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/pages/Style_Dashboard.css' %}">
+{% endblock %}
+
+{% block titlepage %}Dashboard{% endblock %}
+
+{% block container %}
+<div id="iframeWrapper" class="iframe-container">
+    <iframe src="{{ streamlit_iframe_url }}/?token={{ token }}" title="Dashboard Compras"></iframe>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/Script_Dashboard.js' %}" nonce="{{ request.csp_nonce }}"></script>
+{% endblock %}

@@ -33,8 +33,12 @@ urlpatterns = [
     path('CargaSped/', views.fn_view_CargaSped, name='Pro_CargaSped'),
     path('Relatorio/', views.fn_view_Relatorio_Fiscal, name='Pro_Relatorio'),
 
-    # FERRAMENTAS (subsolução Reproc_Painel: painel de reprocessamento, confronto SPED x NFe)
-    path('Reprocessamento/Painel/', views.fn_view_Reprocessamento_Painel, name='Reproc_Painel'),
+    # FERRAMENTAS (subsolução Confronto_Sped_Xml: painel de confronto SPED x XML)
+    path('Confronto-SPED-XML/Painel/', views.fn_view_Reprocessamento_Painel, name='Confronto_Sped_Xml'),
+    path(
+        'Reprocessamento/Painel/',
+        RedirectView.as_view(pattern_name='Confronto_Sped_Xml', permanent=False),
+    ),
 
     #Dashboard
     path('dashboard/vendas/', views.fn_view_dashboard_vendas, name='Db_Vendas'),

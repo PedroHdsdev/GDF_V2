@@ -1,7 +1,7 @@
 """
 Views do app GDF – ponto único: telas e APIs.
-- Telas (fn_view_*): login, home, CRUD usuários/empresas/clientes, importação (Carga XML, Carga SPED), Reprocessamento.
-- APIs (fn_api_*): CargaXml, CargaSped, Relatórios, Reprocessamento, SAP, Sessão.
+- Telas (fn_view_*): login, home, CRUD usuários/empresas/clientes, importação (Carga XML, Carga SPED), Confronto SPED x XML.
+- APIs (fn_api_*): CargaXml, CargaSped, Relatórios, Confronto SPED x XML, SAP, Sessão.
 - Usa app.classes (ClGdf, CargaXml, CargaSped) e app.utils.view_helpers. Jobs em app.api.jobs.
 """
 import json
@@ -150,7 +150,7 @@ def fn_view_login(request):
         if user is not None:
             if not getattr(user, 'is_active', True):
                 SecurityLogger.log_login_attempt(request, False, reason='Usuário inativo')
-                return render(request, 'comum/login.html', {'error_message': 'Usuário inativo.'})
+                return render(request, 'login.html', {'error_message': 'Usuário inativo.'})
             login(request, user)
             SecurityLogger.log_login_attempt(request, True)
             cl_gdf_instance = ClGdf()
@@ -190,7 +190,7 @@ def fn_view_login(request):
                     request.session['cod_cliente'] = cod_cliente
                     return redirect('Home')
                 SecurityLogger.log_login_attempt(request, False, reason='Problema de Acesso (sem cliente/subsoluções)')
-                return render(request, 'comum/login.html', {
+                return render(request, 'login.html', {
                     'error_message': 'Problema de Acesso. Garanta que: (1) as empresas do usuário tenham um cliente vinculado (campo Cliente na empresa) ou que os grupos do usuário estejam vinculados a um cliente (Permissão grupo-cliente); (2) o cliente tenha soluções ativas (AcessoSolucaoCliente); (3) os grupos tenham subsoluções (AcessoSubsolucaoGrupo) no Admin.'
                 })
             # Redirecionamento sem solucoes (ex.: Retorn True): manter cliente dono do projeto (PRCIT) como padrão
@@ -199,9 +199,9 @@ def fn_view_login(request):
             return redirect('Home')
         else:
             SecurityLogger.log_login_attempt(request, False, reason='Usuário ou senha inválidos')
-            return render(request, 'comum/login.html', {'error_message': 'Usuário ou senha inválidos.'})
+            return render(request, 'login.html', {'error_message': 'Usuário ou senha inválidos.'})
 
-    return render(request, 'comum/login.html')
+    return render(request, 'login.html')
 
 
 def fn_view_csrf_failure(request, reason=''):
@@ -228,7 +228,7 @@ def fn_view_obter_subsolucao(request, cod_sub):
         for sub in sol.get('sub_solucoes', []):
             if str(sub.get('cod_subsolucao')) == str(cod_sub):
                 return redirect(sub.get('cod_subsolucao'))
-    return render(request, 'home/inicio.html')
+    return render(request, 'app/home_index.html')
 
 @login_required(login_url='Login')
 def fn_view_home(request):
@@ -329,8 +329,8 @@ def fn_view_home(request):
                     'fonte': 'cargasped',
                 })
 
-        # 4. Divergências abertas no painel de reprocessamento (requer Reproc_Painel)
-        if _tem_acesso('Reproc_Painel'):
+        # 4. Divergências abertas no painel de confronto SPED x XML (requer Confronto_Sped_Xml)
+        if _tem_acesso('Confronto_Sped_Xml'):
             divergencias = Divergencia.objects.filter(
                 lote__empresa__gdfcliente_id=cod_cliente,
                 status='ABERTA',
@@ -341,7 +341,7 @@ def fn_view_home(request):
                     'titulo': f'{divergencias} divergência(s) aberta(s) no confronto SPED x NFe',
                     'meta': 'Ferramentas',
                     'tag': 'Revisar',
-                    'url': 'Reproc_Painel',
+                    'url': 'Confronto_Sped_Xml',
                 })
 
         # 5. Atalhos informativos (apenas um por área, para quem tem acesso)
@@ -361,13 +361,13 @@ def fn_view_home(request):
                 'tag': 'Acessar',
                 'url': 'Mnf_Painel',
             })
-        if _tem_acesso('Reproc_Painel'):
+        if _tem_acesso('Confronto_Sped_Xml'):
             context['alertas'].append({
                 'tipo': 'info',
                 'titulo': 'Confronto SPED x NFe',
                 'meta': 'Ferramentas',
                 'tag': 'Acessar',
-                'url': 'Reproc_Painel',
+                'url': 'Confronto_Sped_Xml',
             })
 
         # Métricas (apenas para quem tem acesso às cargas)
@@ -438,8 +438,8 @@ def fn_view_home(request):
             context['cliente_nome'] = cliente_obj.razao or cod_cliente
         context['qtd_empresas'] = Empresa.objects.filter(gdfcliente__cod_cliente=cod_cliente).count()
 
-        # Documentos no mês atual (importação XML/SPED ou reprocessamento)
-        if _tem_acesso('Pro_CargaXml') or _tem_acesso('Pro_CargaSped') or _tem_acesso('Reproc_Painel'):
+        # Documentos no mês atual (importação XML/SPED ou confronto SPED x XML)
+        if _tem_acesso('Pro_CargaXml') or _tem_acesso('Pro_CargaSped') or _tem_acesso('Confronto_Sped_Xml'):
             hoje = timezone.now()
             nfe_mes = NFe.objects.filter(
                 gdfcliente__cod_cliente=cod_cliente,
@@ -495,7 +495,7 @@ def fn_view_home(request):
             atividades.sort(key=lambda x: x['data'] or _epoch, reverse=True)
             context['ultima_atividade'] = atividades[:5]
 
-    return render(request, "home/inicio.html", context)
+    return render(request, "app/home_index.html", context)
 
 @login_required
 def fn_view_sair(request):   
@@ -515,7 +515,7 @@ def fn_view_listar_usuarios(request):
         if is_superuser:
             messages.info(request, 'Selecione um cliente na Home para gerenciar usuários.')
             return redirect('Home')
-        return render(request, 'comum/login.html', {'error_message': 'Acesso negado: cliente não identificado'})
+        return render(request, 'login.html', {'error_message': 'Acesso negado: cliente não identificado'})
     
     cl_gdf = ClGdf()
     t_user = cl_gdf.get_usuarios(i_v_cod_cliente=cod_cliente)
@@ -527,7 +527,7 @@ def fn_view_listar_usuarios(request):
     }
     if is_superuser and superuser_acesso_total_painel(request):
         context['lista_clientes'] = cl_gdf.get_clientes()
-    return render(request, 'usuarios/index.html', context)
+    return render(request, 'app/usuarios_list.html', context)
 
 # Empresas
 @login_required(login_url='Login')
@@ -552,7 +552,7 @@ def fn_view_listar_empresas(request):
     }
     if is_superuser and superuser_acesso_total_painel(request):
         context['lista_clientes'] = cl_gdf.get_clientes()
-    return render(request, 'empresas/index.html', context)
+    return render(request, 'app/empresas_list.html', context)
 
 # Clientes
 @login_required(login_url='Login')
@@ -566,7 +566,7 @@ def fn_view_listar_clientes(request):
     context = {'t_clientes': t_clientes, 'cod_cliente': cod_cliente}
     if usuario_acesso_total_painel(request):
         context['is_superuser'] = request.session.get('is_superuser', False)
-    return render(request, 'mandantes/index.html', context)
+    return render(request, 'app/mandantes_list.html', context)
 
 
 # Rota Dm_Filiais mantida por compat.; filiais passam a ser gestas só no modal de Empresas
@@ -779,7 +779,7 @@ def fn_view_inserir_usuario(request):
             ctx = {'t_user': t_user, 'error_message': ' | '.join(errors), 'cod_cliente': cod_cliente, 'is_superuser': is_superuser}
             if is_superuser and superuser_acesso_total_painel(request):
                 ctx['lista_clientes'] = cl_gdf.get_clientes()
-            return render(request, 'usuarios/index.html', ctx)
+            return render(request, 'app/usuarios_list.html', ctx)
 
         resultado = cl_gdf.set_usuario(
             i_v_username=username,
@@ -796,7 +796,7 @@ def fn_view_inserir_usuario(request):
             ctx = {'t_user': t_user, 'error_message': resultado.get("message", "Erro ao criar usuário"), 'cod_cliente': cod_cliente, 'is_superuser': is_superuser}
             if is_superuser and superuser_acesso_total_painel(request):
                 ctx['lista_clientes'] = cl_gdf.get_clientes()
-            return render(request, 'usuarios/index.html', ctx)
+            return render(request, 'app/usuarios_list.html', ctx)
         return redirect('Dm_Usuarios')
 
 @login_required(login_url='Login')
@@ -909,18 +909,18 @@ def _streamlit_iframe_url(request):
 def fn_view_dashboard_vendas(request):
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Vendas')
     if not token:
-        return render(request, 'comum/login.html', {'error_message': 'Erro ao gerar token de acesso'})
+        return render(request, 'login.html', {'error_message': 'Erro ao gerar token de acesso'})
     streamlit_url = _streamlit_iframe_url(request)
-    return render(request, "dashboard/vendas.html", {"token": token, "streamlit_iframe_url": streamlit_url})
+    return render(request, "app/dashboard_vendas.html", {"token": token, "streamlit_iframe_url": streamlit_url})
 
 @login_required(login_url='Login')
 @requer_acesso_subsolucao('Db_Compras')
 def fn_view_dashboard_compras(request):
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Compras')
     if not token:
-        return render(request, 'comum/login.html', {'error_message': 'Erro ao gerar token de acesso'})
+        return render(request, 'login.html', {'error_message': 'Erro ao gerar token de acesso'})
     streamlit_url = _streamlit_iframe_url(request)
-    return render(request, "dashboard/compras.html", {"token": token, "streamlit_iframe_url": streamlit_url})
+    return render(request, "app/dashboard_compras.html", {"token": token, "streamlit_iframe_url": streamlit_url})
 
 
 @login_required(login_url='Login')
@@ -928,9 +928,9 @@ def fn_view_dashboard_compras(request):
 def fn_view_dashboard_custo(request):
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='Custo')
     if not token:
-        return render(request, 'comum/login.html', {'error_message': 'Erro ao gerar token de acesso'})
+        return render(request, 'login.html', {'error_message': 'Erro ao gerar token de acesso'})
     streamlit_url = _streamlit_iframe_url(request)
-    return render(request, "dashboard/custo.html", {"token": token, "streamlit_iframe_url": streamlit_url})
+    return render(request, "app/dashboard_custo.html", {"token": token, "streamlit_iframe_url": streamlit_url})
 
 
 @login_required(login_url='Login')
@@ -939,14 +939,14 @@ def fn_view_dashboard_demonstrativos_contabeis(request):
     """Dashboard Demonstrativos contábeis (Streamlit); token tipo_relatorio DemonstrativosContabeis."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
-        return render(request, 'comum/login.html', {'error_message': 'Cliente não identificado'})
+        return render(request, 'login.html', {'error_message': 'Cliente não identificado'})
     token = ClGdf.gerar_token(request, request.user, tipo_relatorio='DemonstrativosContabeis')
     if not token:
-        return render(request, 'comum/login.html', {'error_message': 'Erro ao gerar token de acesso'})
+        return render(request, 'login.html', {'error_message': 'Erro ao gerar token de acesso'})
     streamlit_url = _streamlit_iframe_url(request)
     return render(
         request,
-        "dashboard/demonstrativos_contabeis.html",
+        "app/dashboard_demonstrativos_contabeis.html",
         {"token": token, "streamlit_iframe_url": streamlit_url},
     )
 
@@ -1039,7 +1039,7 @@ def fn_view_manifesto_painel(request):
         ]
     }
 
-    return render(request, "manifesto/index.html", {"manifesto_data": manifesto_data})
+    return render(request, "app/manifesto_list.html", {"manifesto_data": manifesto_data})
 
 #--------------------------------------------------------------------
 #       Empresas - Modais
@@ -1588,7 +1588,7 @@ def fn_view_CargaXml(request):
     cod_cliente = request.session.get('cod_cliente', None)
     
     if not cod_cliente:
-        return render(request, 'comum/login.html', {'error_message': 'Cliente não identificado'})
+        return render(request, 'login.html', {'error_message': 'Cliente não identificado'})
     
     # Buscar jobs do cliente (todos os registros)
     try:
@@ -1613,7 +1613,7 @@ def fn_view_CargaXml(request):
         "relatorio_painel": "xml",
     }
     context.update(_contexto_painel_relatorio_fiscal(request))
-    return render(request, "importacao/index_carga_xml.html", context)
+    return render(request, "app/importacao_carga_xml.html", context)
 
 
 @login_required(login_url='Login')
@@ -2165,7 +2165,7 @@ def fn_view_CargaSped(request):
     """View para carregamento de arquivos SPED (mesma linha de raciocínio da Carga XML)."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
-        return render(request, 'comum/login.html', {'error_message': 'Cliente não identificado'})
+        return render(request, 'login.html', {'error_message': 'Cliente não identificado'})
     try:
         cliente = ClienteGdf.objects.get(cod_cliente=cod_cliente)
         jobs = (
@@ -2187,7 +2187,7 @@ def fn_view_CargaSped(request):
         "relatorio_painel": "sped",
     }
     context.update(_contexto_painel_relatorio_fiscal(request))
-    return render(request, "importacao/index_carga_sped.html", context)
+    return render(request, "app/importacao_carga_sped.html", context)
 
 
 # ========== APIs Relatório Fiscal (NFe, CTe, NFS, SPED nível cabeçalho) ==========
@@ -2978,23 +2978,23 @@ def fn_view_Relatorio_Fiscal(request):
 
 
 # -------------------------------------------------------------------------
-# Ferramentas – subsolução Reproc_Painel (painel de reprocessamento, confronto SPED x NFe)
+# Ferramentas – subsolução Confronto_Sped_Xml (painel de confronto SPED x XML)
 # -------------------------------------------------------------------------
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel')
+@requer_acesso_subsolucao('Confronto_Sped_Xml')
 def fn_view_Reprocessamento(request):
     """Legado: redireciona para o Painel."""
-    return redirect('Reproc_Painel')
+    return redirect('Confronto_Sped_Xml')
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel')
+@requer_acesso_subsolucao('Confronto_Sped_Xml')
 def fn_view_Reprocessamento_Painel(request):
-    """Painel de Reprocessamento: confronto SPED x NFe por empresa, divergências e reprocessamento controlado."""
+    """Painel de Confronto SPED x XML: divergências por empresa e reprocessamento controlado."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
         context = {'cod_cliente': None, 'empresas': [], 'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC}
-        return render(request, 'Ferramentas/painel.html', context)
+        return render(request, 'app/ferramentas_confronto.html', context)
     empresas = list(
         Empresa.objects.filter(gdfcliente_id=cod_cliente).values('cod_empresa', 'razao', 'fantasia').order_by('razao')
     )
@@ -3003,14 +3003,14 @@ def fn_view_Reprocessamento_Painel(request):
         'empresas': empresas,
         'tipo_pagamento_desc': TIPO_PAGAMENTO_DESC,
     }
-    return render(request, 'Ferramentas/painel.html', context)
+    return render(request, 'app/ferramentas_confronto.html', context)
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@requer_acesso_subsolucao('Confronto_Sped_Xml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_reprocessamento_lotes(request):
-    """Lista lotes de reprocessamento do cliente (filtros: empresa, competência, status)."""
+    """Lista lotes do confronto do cliente (filtros: empresa, competência, status)."""
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
@@ -3082,10 +3082,10 @@ def fn_api_reprocessamento_lotes(request):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@requer_acesso_subsolucao('Confronto_Sped_Xml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_reprocessamento_divergencias(request, id_lote):
-    """Lista divergências de um lote."""
+    """Lista divergências de um lote do confronto."""
     cod_cliente = request.session.get('cod_cliente')
     if not cod_cliente:
         return JsonResponse({'sucesso': False, 'mensagem': 'Cliente não identificado'}, status=403)
@@ -3125,7 +3125,7 @@ def fn_api_reprocessamento_divergencias(request, id_lote):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@requer_acesso_subsolucao('Confronto_Sped_Xml', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_confronto(request):
     """Dispara confronto SPED x NFe para uma empresa e competência (mês)."""
@@ -3201,7 +3201,7 @@ def fn_api_reprocessamento_confronto(request):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@requer_acesso_subsolucao('Confronto_Sped_Xml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_reprocessamento_divergencia_detalhe(request, id_divergencia):
     """Retorna detalhe completo da divergência: resumo, cabeçalho NFe/SPED, itens, impostos e confrontos realizados."""
@@ -3391,7 +3391,7 @@ def fn_api_reprocessamento_divergencia_detalhe(request, id_divergencia):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@requer_acesso_subsolucao('Confronto_Sped_Xml', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_reprocessar_divergencia(request, id_divergencia):
     """Marca divergência como resolvida após reprocessamento."""
@@ -3411,7 +3411,7 @@ def fn_api_reprocessamento_reprocessar_divergencia(request, id_divergencia):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@requer_acesso_subsolucao('Confronto_Sped_Xml', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_condicoes_gerar(request, id_lote):
     """Gera/atualiza registros de condição de pagamento para o lote (chaves 44 + condição NFe)."""
@@ -3434,7 +3434,7 @@ def fn_api_reprocessamento_condicoes_gerar(request, id_lote):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@requer_acesso_subsolucao('Confronto_Sped_Xml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_reprocessamento_condicoes_listar(request, id_lote):
     """Lista condições de pagamento do lote (chave, condição NFe, SAP, retorno SAP, status)."""
@@ -3464,7 +3464,7 @@ def fn_api_reprocessamento_condicoes_listar(request, id_lote):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@requer_acesso_subsolucao('Confronto_Sped_Xml', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_condicoes_atualizar_retorno(request, id_lote):
     """
@@ -3498,7 +3498,7 @@ def fn_api_reprocessamento_condicoes_atualizar_retorno(request, id_lote):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@requer_acesso_subsolucao('Confronto_Sped_Xml', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_condicoes_enviar_sap(request, id_lote):
     """
@@ -3548,7 +3548,7 @@ def fn_api_reprocessamento_condicoes_enviar_sap(request, id_lote):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@requer_acesso_subsolucao('Confronto_Sped_Xml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_reprocessamento_condicao_param_listar(request):
     """Lista registros da tabela condicao_param (depara condição NFe → SAP) do cliente."""
@@ -3569,7 +3569,7 @@ def fn_api_reprocessamento_condicao_param_listar(request):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@requer_acesso_subsolucao('Confronto_Sped_Xml', redirect_on_deny=False)
 @require_http_methods(["GET"])
 def fn_api_reprocessamento_condicao_param_exportar_excel(request):
     """Exporta todos os registros de condicao_param do cliente em planilha .xlsx."""
@@ -3700,7 +3700,7 @@ def _condicao_param_row_str(val):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@requer_acesso_subsolucao('Confronto_Sped_Xml', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_condicao_param_importar_excel(request):
     """
@@ -3852,7 +3852,7 @@ def fn_api_reprocessamento_condicao_param_importar_excel(request):
 
 
 @login_required(login_url='Login')
-@requer_acesso_subsolucao('Reproc_Painel', redirect_on_deny=False)
+@requer_acesso_subsolucao('Confronto_Sped_Xml', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_reprocessamento_condicao_param_atualizar(request):
     """
@@ -3938,7 +3938,7 @@ def fn_view_Integracao_Rfc(request):
     """View da subsolução Int_Rfc: executa RFCs que alimentam tabelas do schema sap."""
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
-        return render(request, 'comum/login.html', {'error_message': 'Cliente não identificado'})
+        return render(request, 'login.html', {'error_message': 'Cliente não identificado'})
 
     from app.integracao_sap import get_rfc_registry
     registry = get_rfc_registry()
@@ -3996,7 +3996,7 @@ def fn_view_Integracao_Rfc(request):
         'empresas': empresas,
         'filiais_por_empresa': filiais_por_empresa,
     }
-    return render(request, 'Ferramentas/rfc.html', context)
+    return render(request, 'app/ferramentas_rfc.html', context)
 
 @login_required(login_url='Login')
 @ensure_csrf_cookie 
