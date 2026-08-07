@@ -468,6 +468,21 @@ CONTENT_SECURITY_POLICY = {
 # Defina no .env: SAP_RELATORIO_CUSTO_API_KEY=chave_secreta
 SAP_RELATORIO_CUSTO_API_KEY = env('SAP_RELATORIO_CUSTO_API_KEY', default='')
 
+# API SAP – Consulta Fiscal Material (SICF REST)
+# Endpoint do Web Service REST SAP; quando vazio a funcionalidade responde com "não configurada".
+SAP_CONSULTA_FISCAL_MATERIAL_URL = env('SAP_CONSULTA_FISCAL_MATERIAL_URL', default='')
+# Método HTTP esperado pelo endpoint (GET ou POST).
+SAP_CONSULTA_FISCAL_MATERIAL_HTTP_METHOD = env('SAP_CONSULTA_FISCAL_MATERIAL_HTTP_METHOD', default='POST')
+# Timeout (segundos) para comunicação com SAP.
+SAP_CONSULTA_FISCAL_MATERIAL_TIMEOUT = env.float('SAP_CONSULTA_FISCAL_MATERIAL_TIMEOUT', default=25.0)
+# Modo de autenticação: none | basic | bearer | api_key
+SAP_CONSULTA_FISCAL_MATERIAL_AUTH_MODE = env('SAP_CONSULTA_FISCAL_MATERIAL_AUTH_MODE', default='none')
+SAP_CONSULTA_FISCAL_MATERIAL_BASIC_USER = env('SAP_CONSULTA_FISCAL_MATERIAL_BASIC_USER', default='')
+SAP_CONSULTA_FISCAL_MATERIAL_BASIC_PASS = env('SAP_CONSULTA_FISCAL_MATERIAL_BASIC_PASS', default='')
+SAP_CONSULTA_FISCAL_MATERIAL_BEARER_TOKEN = env('SAP_CONSULTA_FISCAL_MATERIAL_BEARER_TOKEN', default='')
+SAP_CONSULTA_FISCAL_MATERIAL_API_KEY = env('SAP_CONSULTA_FISCAL_MATERIAL_API_KEY', default='')
+SAP_CONSULTA_FISCAL_MATERIAL_API_KEY_HEADER = env('SAP_CONSULTA_FISCAL_MATERIAL_API_KEY_HEADER', default='X-API-Key')
+
 # Chave compartilhada para criptografia reversivel de senha de certificado (Django + Flask).
 # Deve ser uma chave Fernet valida (base64 urlsafe de 32 bytes).
 # Ex.: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

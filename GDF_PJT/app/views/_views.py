@@ -5,6 +5,7 @@ Views do app GDF – ponto único: telas e APIs.
 - Usa app.classes (ClGdf, CargaXml, CargaSped) e app.utils.view_helpers. Jobs em app.api.jobs.
 """
 import json
+import logging
 import math
 import os
 import re
@@ -413,6 +414,7 @@ def fn_view_home(request):
     _atalhos_config = [
         ('Pro_CargaXml', 'Importar XML', 'Carga e relatórios NFe, CT-e, NFS'),
         ('Pro_CargaSped', 'Carga SPED', 'Arquivos e relatório SPED'),
+        ('Con_Fiscal_Material', 'Consulta Fiscal Material', 'Ferramentas · consulta de tributação por material'),
         ('Int_Rfc', 'RFC SAP', 'Ferramentas · integração schema SAP'),
         ('Dm_Empresas', 'Empresas (e filiais)', 'Cadastros'),
         ('Dm_Usuarios', 'Usuários', 'Acessos'),
@@ -1444,7 +1446,7 @@ def fn_view_atualizar_grupos_cliente(request):
 @requer_acesso_subsolucao('Dm_Clientes')
 @require_http_methods(["POST"])
 def fn_view_cliente_sap(request, cod_cliente):
-    """Cria ou atualiza a conexão SAP do cliente (uma por cliente)."""
+    """Cria ou atualiza conexões SAP do cliente (múltiplas por cliente)."""
     cod_cliente_sessao = request.session.get('cod_cliente', None)
     if not cod_cliente_sessao and not usuario_acesso_total_painel(request):
         return JsonResponse({"erro": "Cliente não identificado"}, status=403)
@@ -1456,7 +1458,6 @@ def fn_view_cliente_sap(request, cod_cliente):
     except ClienteGdf.DoesNotExist:
         return JsonResponse({"erro": "Cliente não encontrado"}, status=404)
 
-    sap = ConexaoSap.objects.filter(gdfcliente=cliente).first()
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
     if request.method == "POST":
@@ -1467,10 +1468,21 @@ def fn_view_cliente_sap(request, cod_cliente):
         passwd = (request.POST.get("sap_passwd") or "").strip()
         lang = (request.POST.get("sap_lang") or "").strip()
         active = request.POST.get("sap_active") == "on"
+        tipo_conexao = (request.POST.get("sap_tipo_conexao") or "RFC").strip().upper()
+        if tipo_conexao not in ("RFC", "REST"):
+            tipo_conexao = "RFC"
+        sap_id = (request.POST.get("sap_id") or "").strip()
+
+        sap = None
+        if sap_id:
+            sap = ConexaoSap.objects.filter(id=sap_id, gdfcliente=cliente).first()
+            if not sap:
+                return JsonResponse({"erro": "Conexão SAP não encontrada para este mandante."}, status=404)
 
         if not sap:
             sap = ConexaoSap.objects.create(
                 gdfcliente=cliente,
+                tipo_conexao=tipo_conexao,
                 ashost=ashost,
                 sysnr=sysnr,
                 client=client,
@@ -1479,8 +1491,9 @@ def fn_view_cliente_sap(request, cod_cliente):
                 lang=lang,
                 active=active,
             )
-            message = "Conexão SAP criada. Preencha os dados e salve novamente."
+            message = "Conexão SAP criada com sucesso."
         else:
+            sap.tipo_conexao = tipo_conexao
             sap.ashost = ashost
             sap.sysnr = sysnr
             sap.client = client
@@ -1492,21 +1505,31 @@ def fn_view_cliente_sap(request, cod_cliente):
             sap.save()
             message = "Conexão SAP atualizada com sucesso."
 
-        sap_data = {
-            "id": sap.id,
-            "ashost": sap.ashost or "",
-            "sysnr": sap.sysnr or "",
-            "client": sap.client or "",
-            "username": sap.username or "",
-            "passwd": sap.passwd or "",
-            "lang": sap.lang or "",
-            "active": sap.active,
-        }
+        sap_connections = list(
+            ConexaoSap.objects.filter(gdfcliente=cliente).order_by('id')
+        )
+        sap_connections_data = [
+            {
+                "id": conn.id,
+                "tipo_conexao": (conn.tipo_conexao or "RFC").upper(),
+                "ashost": conn.ashost or "",
+                "sysnr": conn.sysnr or "",
+                "client": conn.client or "",
+                "username": conn.username or "",
+                "passwd": conn.passwd or "",
+                "lang": conn.lang or "",
+                "active": conn.active,
+            }
+            for conn in sap_connections
+        ]
+        sap_data = next((d for d in sap_connections_data if d["id"] == sap.id), None)
+
         if is_ajax:
             return JsonResponse({
                 "success": True,
                 "message": message,
                 "sap_connection": sap_data,
+                "sap_connections": sap_connections_data,
             }, status=200)
         messages.success(request, message, extra_tags='MODAL_UPD')
         return redirect('Dm_Clientes')
@@ -3897,34 +3920,302 @@ def fn_api_sap_testar_conexao(request):
     if not usuario_acesso_total_painel(request) and str(cod_cliente) != str(cod_cliente_sessao):
         return JsonResponse({'sucesso': False, 'mensagem': 'Acesso negado.'}, status=403)
 
+    sap_id = (str(data.get('sap_id') or '')).strip()
+
     try:
         from app.classes.SapRfc import SapRfc
-        if not SapRfc.is_available():
-            return JsonResponse({
-                'sucesso': False,
-                'mensagem': 'PyRFC não disponível. Instale o SAP NetWeaver RFC SDK e o pacote pyrfc. Ver documentacao_md/',
-            }, status=503)
-        conn = SapRfc.get_connection(cod_cliente)
+
+        conn = None
+        if sap_id:
+            conn = ConexaoSap.objects.filter(id=sap_id, gdfcliente_id=cod_cliente).first()
+            if not conn:
+                return JsonResponse({
+                    'sucesso': False,
+                    'mensagem': 'Conexão SAP não encontrada para o mandante informado.',
+                }, status=404)
+        else:
+            conn = SapRfc.get_connection(cod_cliente)
+
         if not conn:
             return JsonResponse({
                 'sucesso': False,
                 'mensagem': f'Nenhuma conexão SAP ativa para o cliente "{cod_cliente}". Configure na aba Conexão SAP do cliente.',
             }, status=404)
+
+        tipo_conexao = (getattr(conn, 'tipo_conexao', 'RFC') or 'RFC').upper()
+        if tipo_conexao == 'REST':
+            return JsonResponse({
+                'sucesso': True,
+                'mensagem': 'Conexão REST selecionada. Teste HTTP real será habilitado em etapa de integração do endpoint REST.',
+                'cliente': cod_cliente,
+                'sap_id': conn.id,
+                'tipo_conexao': tipo_conexao,
+            }, status=200)
+
+        if not SapRfc.is_available():
+            return JsonResponse({
+                'sucesso': False,
+                'mensagem': 'PyRFC não disponível. Instale o SAP NetWeaver RFC SDK e o pacote pyrfc. Ver documentacao_md/',
+            }, status=503)
+
         # Testa conexão chamando RFC de ping (RFC_PING é padrão SAP)
-        success, result = SapRfc.call(cod_cliente, 'RFC_PING')
+        success, result = SapRfc.call(conn, 'RFC_PING')
         if success:
             return JsonResponse({
                 'sucesso': True,
                 'mensagem': 'Conexão SAP OK.',
                 'cliente': cod_cliente,
+                'sap_id': conn.id,
+                'tipo_conexao': tipo_conexao,
             })
         return JsonResponse({
             'sucesso': False,
             'mensagem': result or 'Falha ao conectar ao SAP.',
             'cliente': cod_cliente,
+            'sap_id': conn.id,
+            'tipo_conexao': tipo_conexao,
         }, status=502)
     except Exception as e:
         return JsonResponse({'sucesso': False, 'mensagem': str(e)[:500]}, status=500)
+
+
+# -------------------------------------------------------------------------
+# Ferramentas - Consulta Fiscal Material (subsolucao Con_Fiscal_Material)
+# -------------------------------------------------------------------------
+@login_required(login_url='Login')
+@ensure_csrf_cookie
+@requer_acesso_subsolucao('Con_Fiscal_Material')
+@require_http_methods(["GET"])
+def fn_view_Consulta_Fiscal_Material(request):
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return render(request, 'login.html', {'error_message': 'Cliente nao identificado'})
+
+    url_prefix = (request.META.get("SCRIPT_NAME") or getattr(settings, "FORCE_SCRIPT_NAME", "") or "").strip()
+    if url_prefix and not url_prefix.startswith("/"):
+        url_prefix = "/" + url_prefix
+    url_prefix = url_prefix.rstrip("/")
+
+    context = {
+        'cod_cliente': cod_cliente,
+        'url_prefix': url_prefix,
+    }
+    return render(request, 'app/ferramentas_consulta_fiscal_material.html', context)
+
+
+def _cfm_to_float(value):
+    if value in (None, ""):
+        return None
+    try:
+        return float(str(value).replace(',', '.'))
+    except (TypeError, ValueError):
+        return None
+
+
+def _cfm_sort_value(item, field, numeric_fields):
+    if field in numeric_fields:
+        n = _cfm_to_float((item or {}).get(field))
+        return n if n is not None else float('-inf')
+    return str((item or {}).get(field) or '').strip().lower()
+
+
+@login_required(login_url='Login')
+@requer_acesso_subsolucao('Con_Fiscal_Material', redirect_on_deny=False)
+@require_http_methods(["GET"])
+def fn_api_consulta_fiscal_material(request):
+    cod_cliente = request.session.get('cod_cliente', None)
+    if not cod_cliente:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Cliente nao identificado'}, status=403)
+
+    logger = logging.getLogger('gdf')
+
+    try:
+        chave_acesso = InputValidator.validate_search_query(
+            (request.GET.get('chave_acesso') or '').strip(),
+            max_length=64,
+        )
+        cod_material = InputValidator.validate_search_query(
+            (request.GET.get('cod_material') or '').strip(),
+            max_length=64,
+        )
+        cod_fornecedor = InputValidator.validate_search_query(
+            (request.GET.get('cod_fornecedor') or '').strip(),
+            max_length=64,
+        )
+    except ValidationError:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Filtro informado com formato invalido.'}, status=400)
+
+    data_inicio_raw = (request.GET.get('data_inicio') or '').strip()
+    data_fim_raw = (request.GET.get('data_fim') or '').strip()
+    if not data_inicio_raw or not data_fim_raw:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Periodo obrigatorio: informe Data Inicial e Data Final.'}, status=400)
+
+    data_inicio = parse_date_safe(data_inicio_raw)
+    data_fim = parse_date_safe(data_fim_raw)
+    if not data_inicio or not data_fim:
+        return JsonResponse({'sucesso': False, 'mensagem': 'Periodo invalido. Use o formato de data YYYY-MM-DD.'}, status=400)
+
+    if data_inicio > data_fim:
+        return JsonResponse({'sucesso': False, 'mensagem': 'A Data Inicial nao pode ser maior que a Data Final.'}, status=400)
+
+    try:
+        page_size = min(max(int(request.GET.get('page_size', 30)), 1), 200)
+    except (TypeError, ValueError):
+        page_size = 30
+    try:
+        page = max(1, int(request.GET.get('page', 1)))
+    except (TypeError, ValueError):
+        page = 1
+
+    allowed_order = {
+        'chave_acesso': 'chave_acesso',
+        'cod_material': 'cod_material',
+        'desc_material': 'desc_material',
+        'cod_fornecedor': 'cod_fornecedor',
+        'aliquota_icms': 'aliquota_icms',
+        'aliquota_st': 'aliquota_st',
+        'aliquota_cofins': 'aliquota_cofins',
+        'aliquota_ipi': 'aliquota_ipi',
+        'aliquota_pis': 'aliquota_pis',
+        'fcp': 'fcp',
+    }
+    order = (request.GET.get('order') or 'chave_acesso').strip()
+    order_field = allowed_order.get(order, 'chave_acesso')
+    direction = (request.GET.get('dir') or 'asc').strip().lower()
+    reverse = direction == 'desc'
+    numeric_fields = {
+        'aliquota_icms',
+        'aliquota_st',
+        'aliquota_cofins',
+        'aliquota_ipi',
+        'aliquota_pis',
+        'fcp',
+    }
+
+    filtros = {
+        'chave_acesso': chave_acesso,
+        'cod_material': cod_material,
+        'cod_fornecedor': cod_fornecedor,
+        'data_inicio': data_inicio.isoformat(),
+        'data_fim': data_fim.isoformat(),
+    }
+
+    try:
+        from app.integracao_sap import (
+            SapFiscalMaterialError,
+            SapFiscalMaterialHttpError,
+            SapFiscalMaterialInvalidResponseError,
+            SapFiscalMaterialNotConfiguredError,
+            SapFiscalMaterialTimeoutError,
+            consultar_fiscal_material,
+        )
+
+        result = consultar_fiscal_material(filtros)
+        items = result.items or []
+        items.sort(key=lambda row: _cfm_sort_value(row, order_field, numeric_fields), reverse=reverse)
+
+        total = len(items)
+        total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
+        page = min(page, total_pages)
+        start = (page - 1) * page_size
+        paged_items = items[start : start + page_size]
+
+        mensagem = (result.mensagem or '').strip()
+        if not paged_items and not mensagem:
+            mensagem = 'Nenhum registro encontrado para os filtros informados.'
+
+        return JsonResponse(
+            {
+                'sucesso': True,
+                'items': paged_items,
+                'total': total,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': total_pages,
+                'mensagem': mensagem,
+            },
+            status=200,
+        )
+
+    except SapFiscalMaterialNotConfiguredError as exc:
+        logger.warning(
+            'CFM SAP nao configurado cliente=%s filtros=%s detalhe=%s',
+            cod_cliente,
+            filtros,
+            str(exc),
+        )
+        return JsonResponse(
+            {
+                'sucesso': False,
+                'mensagem': 'Integracao SAP da Consulta Fiscal Material ainda nao configurada.',
+            },
+            status=503,
+        )
+    except SapFiscalMaterialTimeoutError as exc:
+        logger.warning(
+            'CFM timeout cliente=%s filtros=%s detalhe=%s',
+            cod_cliente,
+            filtros,
+            str(exc),
+        )
+        return JsonResponse(
+            {
+                'sucesso': False,
+                'mensagem': 'Timeout na comunicacao com o SAP. Tente novamente em instantes.',
+            },
+            status=504,
+        )
+    except SapFiscalMaterialHttpError as exc:
+        logger.warning(
+            'CFM HTTP erro cliente=%s status=%s body=%s',
+            cod_cliente,
+            exc.status_code,
+            (exc.body or '')[:1200],
+        )
+        return JsonResponse(
+            {
+                'sucesso': False,
+                'mensagem': 'Retorno HTTP diferente de sucesso no servico SAP.',
+            },
+            status=502,
+        )
+    except SapFiscalMaterialInvalidResponseError as exc:
+        logger.warning(
+            'CFM resposta invalida cliente=%s filtros=%s detalhe=%s',
+            cod_cliente,
+            filtros,
+            str(exc),
+        )
+        return JsonResponse(
+            {
+                'sucesso': False,
+                'mensagem': 'Resposta invalida do Web Service SAP.',
+            },
+            status=502,
+        )
+    except SapFiscalMaterialError as exc:
+        logger.warning(
+            'CFM erro de comunicacao cliente=%s filtros=%s detalhe=%s',
+            cod_cliente,
+            filtros,
+            str(exc),
+        )
+        return JsonResponse(
+            {
+                'sucesso': False,
+                'mensagem': 'Erro de comunicacao com o SAP durante a consulta fiscal.',
+            },
+            status=502,
+        )
+    except Exception:
+        logger.exception('CFM erro inesperado cliente=%s filtros=%s', cod_cliente, filtros)
+        return JsonResponse(
+            {
+                'sucesso': False,
+                'mensagem': 'Erro interno ao processar a consulta fiscal de material.',
+            },
+            status=500,
+        )
 
 
 # -------------------------------------------------------------------------

@@ -35,6 +35,7 @@ urlpatterns = [
 
     # FERRAMENTAS (subsolução Confronto_Sped_Xml: painel de confronto SPED x XML)
     path('Confronto-SPED-XML/Painel/', views.fn_view_Reprocessamento_Painel, name='Confronto_Sped_Xml'),
+    path('ferramentas/consulta-fiscal-material/', views.fn_view_Consulta_Fiscal_Material, name='Con_Fiscal_Material'),
     path(
         'Reprocessamento/Painel/',
         RedirectView.as_view(pattern_name='Confronto_Sped_Xml', permanent=False),
@@ -114,6 +115,11 @@ urlpatterns = [
     path('api/sap/relatorio-custo/', views.fn_api_sap_relatorio_custo_receber, name='API_SapRelatorioCustoReceber'),
     path('integracao/rfc/', views.fn_view_Integracao_Rfc, name='Int_Rfc'),
     path('api/rfc/executar/', views.fn_api_rfc_executar, name='API_RfcExecutar'),
+    path(
+        'api/ferramentas/consulta-fiscal-material/',
+        views.fn_api_consulta_fiscal_material,
+        name='API_Con_Fiscal_Material',
+    ),
     path(
         'api/sap/demonstrativos-contabeis/',
         views.fn_api_sap_demonstrativos_contabeis,

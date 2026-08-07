@@ -354,20 +354,26 @@ class ClGdf:
                 cod_solucao__in=l_v_query_solucoes_acesso.values_list('solucao__cod_solucao', flat=True)
             )
             
-            # Conexão SAP do cliente (no máximo uma por cliente)
-            sap_conn = ConexaoSap.objects.filter(gdfcliente=l_v_cliente).first()
-            sap_connection_data = None
-            if sap_conn:
-                sap_connection_data = {
-                    "id": sap_conn.id,
-                    "ashost": sap_conn.ashost or "",
-                    "sysnr": sap_conn.sysnr or "",
-                    "client": sap_conn.client or "",
-                    "username": sap_conn.username or "",
-                    "passwd": sap_conn.passwd or "",
-                    "lang": sap_conn.lang or "",
-                    "active": sap_conn.active,
+            # Conexões SAP do cliente (múltiplas por mandante)
+            sap_conns = list(
+                ConexaoSap.objects.filter(gdfcliente=l_v_cliente).order_by('id')
+            )
+            sap_connections_data = [
+                {
+                    "id": conn.id,
+                    "tipo_conexao": (conn.tipo_conexao or 'RFC').upper(),
+                    "ashost": conn.ashost or "",
+                    "sysnr": conn.sysnr or "",
+                    "client": conn.client or "",
+                    "username": conn.username or "",
+                    "passwd": conn.passwd or "",
+                    "lang": conn.lang or "",
+                    "active": conn.active,
                 }
+                for conn in sap_conns
+            ]
+            # Compatibilidade temporária com payload legado
+            sap_connection_data = sap_connections_data[0] if sap_connections_data else None
 
             # Grupos de usuários vinculados ao cliente (GrupoCliente)
             grupos_vinculados = list(
@@ -397,6 +403,7 @@ class ClGdf:
                 "solucoes_disponiveis": list(l_v_queryset_solucoes_disponiveis.values('cod_solucao', 'descricao')),
                 "grupos_vinculados": grupos_vinculados,
                 "grupos_disponiveis": grupos_disponiveis,
+                "sap_connections": sap_connections_data,
                 "sap_connection": sap_connection_data,
             }
 

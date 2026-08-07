@@ -756,14 +756,18 @@ class SapRfc:
     @staticmethod
     def get_connection(cod_cliente):
         """
-        Retorna a primeira conexão SAP ativa para o cliente, ou None.
+        Retorna a primeira conexão SAP ativa do tipo RFC para o cliente, ou None.
         Parâmetro obrigatório: cod_cliente (código do cliente para filtrar na tabela SapConnection).
         """
         if not cod_cliente:
             print("[SapRfc] get_connection: cod_cliente vazio, retornando None")
             return None
         SapConnection = _get_sap_connection_model()
-        conn = SapConnection.objects.filter(gdfcliente_id=cod_cliente, active=True).first()
+        conn = SapConnection.objects.filter(
+            gdfcliente_id=cod_cliente,
+            active=True,
+            tipo_conexao='RFC',
+        ).first()
         if conn:
             print(f"[SapRfc] get_connection: conexão encontrada para cliente '{cod_cliente}' (id={conn.id}, ashost={getattr(conn, 'ashost', '?')})")
         else:

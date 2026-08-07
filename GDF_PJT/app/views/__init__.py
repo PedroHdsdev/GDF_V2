@@ -77,6 +77,8 @@ from app.views._views import (
     fn_view_Integracao_Rfc,
     fn_api_rfc_executar,
     fn_api_sap_demonstrativos_contabeis,
+    fn_view_Consulta_Fiscal_Material,
+    fn_api_consulta_fiscal_material,
 )
 
 __all__ = [
@@ -153,4 +155,6 @@ __all__ = [
     'fn_view_Integracao_Rfc',
     'fn_api_rfc_executar',
     'fn_api_sap_demonstrativos_contabeis',
+    'fn_view_Consulta_Fiscal_Material',
+    'fn_api_consulta_fiscal_material',
 ]

@@ -316,7 +316,13 @@ class JobCargaSped(models.Model):
 # ---------------------------------------------------------------------------
 class ConexaoSap(models.Model):
     """Conexão SAP por cliente GDF."""
+    TIPO_CONEXAO_CHOICES = [
+        ('RFC', 'RFC'),
+        ('REST', 'REST'),
+    ]
+
     id = models.AutoField(primary_key=True)
+    tipo_conexao = models.CharField(max_length=4, choices=TIPO_CONEXAO_CHOICES, default='RFC')
     ashost = models.CharField(max_length=100)
     sysnr = models.CharField(max_length=10)
     client = models.CharField(max_length=10)
@@ -333,6 +339,9 @@ class ConexaoSap(models.Model):
         db_table = 'conexao_sap'
         verbose_name = 'Conexão SAP'
         verbose_name_plural = 'Conexões SAP'
+        indexes = [
+            models.Index(fields=['gdfcliente', 'tipo_conexao', 'active']),
+        ]
 
 
 # Aliases legados (imports antigos no código)
