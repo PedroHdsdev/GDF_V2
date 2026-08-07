@@ -426,15 +426,26 @@ class CargaXml:
                     break
             if icms_tipo is not None:
                 cst_val = (self._get_text(icms_tipo, 'CST') or self._get_text(icms_tipo, 'CSOSN', '00'))[:3]
+                p_icms = self._to_decimal(self._get_text(icms_tipo, 'pICMS') or self._get_text(icms_tipo, 'pCredSN'))
+                p_icms_st = self._to_decimal(self._get_text(icms_tipo, 'pICMSST') or self._get_text(icms_tipo, 'pST'))
+                p_red_bc = self._to_decimal(
+                    self._get_text(icms_tipo, 'pRedBC')
+                    or self._get_text(icms_tipo, 'pRedBCEf')
+                    or self._get_text(icms_tipo, 'pRedBCST')
+                )
                 NFe_ICMS.objects.create(
                     produto=produto,
                     origem=self._get_text(icms_tipo, 'orig', '0'),
                     cst=cst_val or '00',
                     valor_base_calculo=self._to_decimal(self._get_text(icms_tipo, 'vBC')),
-                    aliquota=self._to_decimal(self._get_text(icms_tipo, 'pICMS')),
+                    aliquota=p_icms,
+                    aliquota_st=p_icms_st,
                     valor_icms=self._to_decimal(self._get_text(icms_tipo, 'vICMS')),
+                    percentual_reducao=p_red_bc,
                     valor_base_st=self._to_decimal(self._get_text(icms_tipo, 'vBCST')),
                     valor_icms_st=self._to_decimal(self._get_text(icms_tipo, 'vICMSST')),
+                    valor_base_st_dest=self._to_decimal(self._get_text(icms_tipo, 'vBCSTDest') or self._get_text(icms_tipo, 'vBCSTRet')),
+                    valor_icms_st_dest=self._to_decimal(self._get_text(icms_tipo, 'vICMSSTDest') or self._get_text(icms_tipo, 'vICMSSTRet')),
                 )
         # IPI
         ipi_node = imposto_node.find('.//nfe:IPI', self.ns) or imposto_node.find('.//IPI')
@@ -468,7 +479,7 @@ class CargaXml:
             if pis_el is not None:
                 cst = self._get_text(pis_el, 'CST', '99')
                 vbc = self._to_decimal(self._get_text(pis_el, 'vBC') or self._get_text(pis_el, 'qBCProd'))
-                pct = self._to_decimal(self._get_text(pis_el, 'pPIS') or self._get_text(pis_el, 'vAliqProd'))
+                pct = self._to_decimal(self._get_text(pis_el, 'pPIS'))
                 vpis = self._to_decimal(self._get_text(pis_el, 'vPIS'))
                 qtd = self._to_decimal(self._get_text(pis_el, 'qBCProd'))
                 aliq_qtd = self._to_decimal(self._get_text(pis_el, 'vAliqProd'))
@@ -490,7 +501,7 @@ class CargaXml:
             if cofins_el is not None:
                 cst = self._get_text(cofins_el, 'CST', '99')
                 vbc = self._to_decimal(self._get_text(cofins_el, 'vBC') or self._get_text(cofins_el, 'qBCProd'))
-                pct = self._to_decimal(self._get_text(cofins_el, 'pCOFINS') or self._get_text(cofins_el, 'vAliqProd'))
+                pct = self._to_decimal(self._get_text(cofins_el, 'pCOFINS'))
                 vcof = self._to_decimal(self._get_text(cofins_el, 'vCOFINS'))
                 qtd = self._to_decimal(self._get_text(cofins_el, 'qBCProd'))
                 aliq_qtd = self._to_decimal(self._get_text(cofins_el, 'vAliqProd'))
@@ -1401,6 +1412,15 @@ class CargaXml:
                 icms_wrapper = imp.find('.//cte:ICMS', self.ns) or imp.find('.//ICMS')
                 icms = _find_first_child(icms_wrapper, ['ICMS00', 'ICMS45', 'ICMS90', 'ICMS20', 'ICMS60', 'ICMS10', 'ICMS30'], self.ns) if icms_wrapper is not None else None
                 icms = icms or icms_wrapper
+
+                pis_wrapper = imp.find('.//cte:PIS', self.ns) or imp.find('.//PIS') or self._find_local(imp, 'PIS')
+                pis_tipo = _find_first_child(pis_wrapper, ['PISAliq', 'PISQtde', 'PISOutr', 'PISNT', 'PISST'], self.ns) if pis_wrapper is not None else None
+                pis_src = pis_tipo or pis_wrapper
+
+                cofins_wrapper = imp.find('.//cte:COFINS', self.ns) or imp.find('.//COFINS') or self._find_local(imp, 'COFINS')
+                cofins_tipo = _find_first_child(cofins_wrapper, ['COFINSAliq', 'COFINSQtde', 'COFINSOutr', 'COFINSNT', 'COFINSST'], self.ns) if cofins_wrapper is not None else None
+                cofins_src = cofins_tipo or cofins_wrapper
+
                 cte_fiscal, _ = CTe_Fiscal.objects.update_or_create(
                     cte_identificacao=identificacao,
                     defaults={
@@ -1408,12 +1428,26 @@ class CargaXml:
                         'valor_base_icms': self._to_decimal(self._get_text(icms, 'vBC') if icms else None),
                         'aliquota_icms': self._to_decimal(self._get_text(icms, 'pICMS') if icms else None),
                         'valor_icms': self._to_decimal(self._get_text(icms, 'vICMS') if icms else None),
-                        'valor_base_pis': self._to_decimal(self._get_text(imp, 'vBCPIS') or self._get_text(imp, 'vBC')),
-                        'aliquota_pis': self._to_decimal(self._get_text(imp, 'pPIS')),
-                        'valor_pis': self._to_decimal(self._get_text(imp, 'vPIS')),
-                        'valor_base_cofins': self._to_decimal(self._get_text(imp, 'vBCCOFINS') or self._get_text(imp, 'vBC')),
-                        'aliquota_cofins': self._to_decimal(self._get_text(imp, 'pCOFINS')),
-                        'valor_cofins': self._to_decimal(self._get_text(imp, 'vCOFINS')),
+                        'valor_base_pis': self._to_decimal(
+                            (self._get_text(pis_src, 'vBC') if pis_src is not None else '')
+                            or self._get_text(imp, 'vBCPIS')
+                            or self._get_text(imp, 'vBC')
+                        ),
+                        'aliquota_pis': self._to_decimal(self._get_text(pis_src, 'pPIS') if pis_src is not None else ''),
+                        'valor_pis': self._to_decimal(
+                            (self._get_text(pis_src, 'vPIS') if pis_src is not None else '')
+                            or self._get_text(imp, 'vPIS')
+                        ),
+                        'valor_base_cofins': self._to_decimal(
+                            (self._get_text(cofins_src, 'vBC') if cofins_src is not None else '')
+                            or self._get_text(imp, 'vBCCOFINS')
+                            or self._get_text(imp, 'vBC')
+                        ),
+                        'aliquota_cofins': self._to_decimal(self._get_text(cofins_src, 'pCOFINS') if cofins_src is not None else ''),
+                        'valor_cofins': self._to_decimal(
+                            (self._get_text(cofins_src, 'vCOFINS') if cofins_src is not None else '')
+                            or self._get_text(imp, 'vCOFINS')
+                        ),
                         'valor_irrf': self._to_decimal(self._get_text(imp, 'vIRRF')),
                         'cst_icms': self._get_text(icms, 'CST') if icms else None,
                         'data_criacao': timezone.now()
@@ -1615,6 +1649,21 @@ class CargaXml:
             valor_cofins = _get_retencao(inf, 'ValorCOFINSRetido', 'ValorRetidoCOFINS', 'valor_cofins_retido')
             valor_pis = _get_retencao(inf, 'ValorPISRetido', 'ValorRetidoPIS', 'valor_pis_retido')
             valor_csll = _get_retencao(inf, 'ValorCSLLRetido', 'ValorRetidoCSLL', 'valor_csll_retido')
+
+            base_ir = _get_retencao(inf, 'BaseCalculoIR', 'BaseIR', 'ValorBaseIR')
+            base_issqn = _get_retencao(inf, 'BaseCalculoISS', 'BaseCalculoISSQN', 'BaseISS', 'ValorBaseISS')
+            base_inss = _get_retencao(inf, 'BaseCalculoINSS', 'BaseINSS', 'ValorBaseINSS')
+            base_cofins = _get_retencao(inf, 'BaseCalculoCOFINS', 'BaseCOFINS', 'ValorBaseCOFINS')
+            base_pis = _get_retencao(inf, 'BaseCalculoPIS', 'BasePIS', 'ValorBasePIS')
+            base_csll = _get_retencao(inf, 'BaseCalculoCSLL', 'BaseCSLL', 'ValorBaseCSLL')
+
+            aliquota_ir = _get_retencao(inf, 'AliquotaIR', 'AliquotaIRRetido', 'PercentualIR')
+            aliquota_issqn = _get_retencao(inf, 'AliquotaISS', 'AliquotaISSQN', 'AliquotaIssqn')
+            aliquota_inss = _get_retencao(inf, 'AliquotaINSS', 'AliquotaINSSRetido')
+            aliquota_cofins = _get_retencao(inf, 'AliquotaCOFINS', 'AliquotaCOFINSRetido')
+            aliquota_pis = _get_retencao(inf, 'AliquotaPIS', 'AliquotaPISRetido')
+            aliquota_csll = _get_retencao(inf, 'AliquotaCSLL', 'AliquotaCSLLRetido')
+
             retencao_parent = find_local(inf, 'Retencoes', 'RetencaoDados', 'Deducoes', 'ImpostosRetidos')
             if retencao_parent is not None:
                 for ded in list(retencao_parent):
@@ -1637,11 +1686,23 @@ class CargaXml:
                 NFSe_Retencao.objects.update_or_create(
                     nfse_identificacao=identificacao,
                     defaults={
+                        'base_calculo_ir': base_ir,
+                        'aliquota_ir': aliquota_ir,
                         'valor_ir': valor_ir,
+                        'base_calculo_issqn': base_issqn,
+                        'aliquota_issqn': aliquota_issqn,
                         'valor_issqn': valor_issqn,
+                        'base_calculo_inss': base_inss,
+                        'aliquota_inss': aliquota_inss,
                         'valor_inss': valor_inss,
+                        'base_calculo_cofins': base_cofins,
+                        'aliquota_cofins': aliquota_cofins,
                         'valor_cofins': valor_cofins,
+                        'base_calculo_pis': base_pis,
+                        'aliquota_pis': aliquota_pis,
                         'valor_pis': valor_pis,
+                        'base_calculo_csll': base_csll,
+                        'aliquota_csll': aliquota_csll,
                         'valor_csll': valor_csll,
                         'valor_total_retencoes': total_ret,
                         'data_criacao': timezone.now()
