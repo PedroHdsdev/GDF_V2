@@ -14,12 +14,14 @@
     class="layout-page cfm-page"
     data-url-prefix="{{ url_prefix|default:'' }}"
     data-api-url="{% url 'API_Con_Fiscal_Material' %}"
+    data-default-start="{{ data_inicio_padrao|default:'' }}"
+    data-default-end="{{ data_fim_padrao|default:'' }}"
 >
     <section class="layout-hero">
         <div class="layout-hero-content">
             <p class="layout-eyebrow">Ferramentas</p>
             <h1 class="layout-title">Consulta Fiscal Material</h1>
-            <p class="layout-subtitle">Consulte aliquotas e dados fiscais de material por periodo com integracao SAP.</p>
+            <p class="layout-subtitle">Consulte os dados fiscais de materiais diretamente no banco, com filtros automaticos e atualizacao instantanea.</p>
         </div>
     </section>
 
@@ -28,7 +30,7 @@
             <div class="layout-card-head">
                 <div>
                     <h2 class="layout-card-title">Filtros da consulta</h2>
-                    <p class="layout-card-subtitle">O periodo e obrigatorio. A consulta so e executada ao clicar em Buscar.</p>
+                    <p class="layout-card-subtitle">A consulta carrega automaticamente ao abrir a tela e reaplica os filtros sempre que eles forem alterados.</p>
                 </div>
             </div>
 
@@ -49,8 +51,8 @@
                         <input type="text" id="cfm-cod-material" class="form-control form-control-sm" maxlength="64" placeholder="Informe o codigo do material">
                     </div>
                     <div class="col-12 col-md-6 col-xl-4">
-                        <label for="cfm-cod-fornecedor" class="form-label small mb-0">Codigo do Fornecedor</label>
-                        <input type="text" id="cfm-cod-fornecedor" class="form-control form-control-sm" maxlength="64" placeholder="Informe o codigo do fornecedor">
+                        <label for="cfm-fornecedor" class="form-label small mb-0">Fornecedor</label>
+                        <input type="text" id="cfm-fornecedor" class="form-control form-control-sm" maxlength="64" placeholder="Informe o fornecedor">
                     </div>
                     <div class="col-6 col-md-3 col-xl-2">
                         <label for="cfm-data-inicial" class="form-label small mb-0">Data Inicial *</label>
@@ -61,8 +63,8 @@
                         <input type="date" id="cfm-data-final" class="form-control form-control-sm" required>
                     </div>
                     <div class="col-12 col-md-6 col-xl-4 d-flex align-items-end gap-2">
-                        <button type="button" class="btn btn-primary btn-sm" id="cfm-btn-buscar">
-                            <i class="fas fa-search"></i> Buscar
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="cfm-btn-limpar">
+                            <i class="fas fa-eraser"></i> Limpar filtros
                         </button>
                     </div>
                 </div>
@@ -70,27 +72,26 @@
 
             <div class="layout-subcard">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                    <p id="cfm-resumo" class="small text-muted mb-0">Defina os filtros e clique em Buscar.</p>
+                    <p id="cfm-resumo" class="small text-muted mb-0">Aguarde o carregamento inicial da consulta.</p>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover mb-0 layout-table table-sm" id="cfm-tabela">
                         <thead class="table-light">
                             <tr>
-                                <th class="cfm-sort" data-sort="chave_acesso" title="Ordenar">Chave de Acesso</th>
-                                <th class="cfm-sort" data-sort="cod_material" title="Ordenar">Codigo do Material</th>
-                                <th class="cfm-sort" data-sort="desc_material" title="Ordenar">Descricao do Material</th>
-                                <th class="cfm-sort" data-sort="cod_fornecedor" title="Ordenar">Codigo do Fornecedor</th>
+                                <th class="cfm-sort" data-sort="material" title="Ordenar">Material (MATNR)</th>
+                                <th class="cfm-sort" data-sort="descricao_material" title="Ordenar">Descricao do Material</th>
+                                <th class="cfm-sort" data-sort="fornecedor" title="Ordenar">Fornecedor</th>
                                 <th class="cfm-sort text-end" data-sort="aliquota_icms" title="Ordenar">Aliquota ICMS</th>
                                 <th class="cfm-sort text-end" data-sort="aliquota_st" title="Ordenar">Aliquota ST</th>
                                 <th class="cfm-sort text-end" data-sort="aliquota_cofins" title="Ordenar">Aliquota COFINS</th>
                                 <th class="cfm-sort text-end" data-sort="aliquota_ipi" title="Ordenar">Aliquota IPI</th>
                                 <th class="cfm-sort text-end" data-sort="aliquota_pis" title="Ordenar">Aliquota PIS</th>
-                                <th class="cfm-sort text-end" data-sort="fcp" title="Ordenar">Fundo de Combate a Pobreza</th>
+                                <th class="cfm-sort text-end" data-sort="reducao_base" title="Ordenar">Reducao da Base</th>
                             </tr>
                         </thead>
                         <tbody id="cfm-tbody">
                             <tr>
-                                <td colspan="10" class="text-center text-muted py-4">Defina os filtros e clique em Buscar.</td>
+                                <td colspan="9" class="text-center text-muted py-4">Aguarde o carregamento inicial da consulta.</td>
                             </tr>
                         </tbody>
                     </table>

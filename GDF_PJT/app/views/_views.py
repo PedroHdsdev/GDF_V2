@@ -123,6 +123,7 @@ from app.utils.view_helpers import (
     usuario_acesso_total_painel,
     usuario_vinculado_cliente_1000,
 )
+from app.utils.consulta_fiscal_material_db import consultar_fiscal_material_db
 from app.utils.relatorio_params import (
     paginate_queryset,
     parse_date_safe,
@@ -3991,6 +3992,10 @@ def fn_view_Consulta_Fiscal_Material(request):
     if not cod_cliente:
         return render(request, 'login.html', {'error_message': 'Cliente nao identificado'})
 
+    hoje = timezone.localdate()
+    data_inicio_padrao = hoje.replace(day=1)
+    data_fim_padrao = hoje.replace(day=monthrange(hoje.year, hoje.month)[1])
+
     url_prefix = (request.META.get("SCRIPT_NAME") or getattr(settings, "FORCE_SCRIPT_NAME", "") or "").strip()
     if url_prefix and not url_prefix.startswith("/"):
         url_prefix = "/" + url_prefix
@@ -3999,24 +4004,10 @@ def fn_view_Consulta_Fiscal_Material(request):
     context = {
         'cod_cliente': cod_cliente,
         'url_prefix': url_prefix,
+        'data_inicio_padrao': data_inicio_padrao.isoformat(),
+        'data_fim_padrao': data_fim_padrao.isoformat(),
     }
     return render(request, 'app/ferramentas_consulta_fiscal_material.html', context)
-
-
-def _cfm_to_float(value):
-    if value in (None, ""):
-        return None
-    try:
-        return float(str(value).replace(',', '.'))
-    except (TypeError, ValueError):
-        return None
-
-
-def _cfm_sort_value(item, field, numeric_fields):
-    if field in numeric_fields:
-        n = _cfm_to_float((item or {}).get(field))
-        return n if n is not None else float('-inf')
-    return str((item or {}).get(field) or '').strip().lower()
 
 
 @login_required(login_url='Login')
@@ -4038,8 +4029,8 @@ def fn_api_consulta_fiscal_material(request):
             (request.GET.get('cod_material') or '').strip(),
             max_length=64,
         )
-        cod_fornecedor = InputValidator.validate_search_query(
-            (request.GET.get('cod_fornecedor') or '').strip(),
+        fornecedor = InputValidator.validate_search_query(
+            (request.GET.get('fornecedor') or request.GET.get('cod_fornecedor') or '').strip(),
             max_length=64,
         )
     except ValidationError:
@@ -4067,58 +4058,32 @@ def fn_api_consulta_fiscal_material(request):
     except (TypeError, ValueError):
         page = 1
 
-    allowed_order = {
-        'chave_acesso': 'chave_acesso',
-        'cod_material': 'cod_material',
-        'desc_material': 'desc_material',
-        'cod_fornecedor': 'cod_fornecedor',
-        'aliquota_icms': 'aliquota_icms',
-        'aliquota_st': 'aliquota_st',
-        'aliquota_cofins': 'aliquota_cofins',
-        'aliquota_ipi': 'aliquota_ipi',
-        'aliquota_pis': 'aliquota_pis',
-        'fcp': 'fcp',
-    }
-    order = (request.GET.get('order') or 'chave_acesso').strip()
-    order_field = allowed_order.get(order, 'chave_acesso')
+    order = (request.GET.get('order') or 'material').strip()
     direction = (request.GET.get('dir') or 'asc').strip().lower()
-    reverse = direction == 'desc'
-    numeric_fields = {
-        'aliquota_icms',
-        'aliquota_st',
-        'aliquota_cofins',
-        'aliquota_ipi',
-        'aliquota_pis',
-        'fcp',
-    }
 
     filtros = {
         'chave_acesso': chave_acesso,
         'cod_material': cod_material,
-        'cod_fornecedor': cod_fornecedor,
+        'fornecedor': fornecedor,
         'data_inicio': data_inicio.isoformat(),
         'data_fim': data_fim.isoformat(),
     }
 
     try:
-        from app.integracao_sap import (
-            SapFiscalMaterialError,
-            SapFiscalMaterialHttpError,
-            SapFiscalMaterialInvalidResponseError,
-            SapFiscalMaterialNotConfiguredError,
-            SapFiscalMaterialTimeoutError,
-            consultar_fiscal_material,
+        result = consultar_fiscal_material_db(
+            cod_cliente=cod_cliente,
+            filtros=filtros,
+            page=page,
+            page_size=page_size,
+            order=order,
+            direction=direction,
         )
 
-        result = consultar_fiscal_material(filtros)
         items = result.items or []
-        items.sort(key=lambda row: _cfm_sort_value(row, order_field, numeric_fields), reverse=reverse)
-
-        total = len(items)
-        total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
-        page = min(page, total_pages)
-        start = (page - 1) * page_size
-        paged_items = items[start : start + page_size]
+        total = int(result.total or 0)
+        total_pages = int(result.total_pages or 1)
+        page = int(result.page or 1)
+        paged_items = items
 
         mensagem = (result.mensagem or '').strip()
         if not paged_items and not mensagem:
@@ -4135,77 +4100,6 @@ def fn_api_consulta_fiscal_material(request):
                 'mensagem': mensagem,
             },
             status=200,
-        )
-
-    except SapFiscalMaterialNotConfiguredError as exc:
-        logger.warning(
-            'CFM SAP nao configurado cliente=%s filtros=%s detalhe=%s',
-            cod_cliente,
-            filtros,
-            str(exc),
-        )
-        return JsonResponse(
-            {
-                'sucesso': False,
-                'mensagem': 'Integracao SAP da Consulta Fiscal Material ainda nao configurada.',
-            },
-            status=503,
-        )
-    except SapFiscalMaterialTimeoutError as exc:
-        logger.warning(
-            'CFM timeout cliente=%s filtros=%s detalhe=%s',
-            cod_cliente,
-            filtros,
-            str(exc),
-        )
-        return JsonResponse(
-            {
-                'sucesso': False,
-                'mensagem': 'Timeout na comunicacao com o SAP. Tente novamente em instantes.',
-            },
-            status=504,
-        )
-    except SapFiscalMaterialHttpError as exc:
-        logger.warning(
-            'CFM HTTP erro cliente=%s status=%s body=%s',
-            cod_cliente,
-            exc.status_code,
-            (exc.body or '')[:1200],
-        )
-        return JsonResponse(
-            {
-                'sucesso': False,
-                'mensagem': 'Retorno HTTP diferente de sucesso no servico SAP.',
-            },
-            status=502,
-        )
-    except SapFiscalMaterialInvalidResponseError as exc:
-        logger.warning(
-            'CFM resposta invalida cliente=%s filtros=%s detalhe=%s',
-            cod_cliente,
-            filtros,
-            str(exc),
-        )
-        return JsonResponse(
-            {
-                'sucesso': False,
-                'mensagem': 'Resposta invalida do Web Service SAP.',
-            },
-            status=502,
-        )
-    except SapFiscalMaterialError as exc:
-        logger.warning(
-            'CFM erro de comunicacao cliente=%s filtros=%s detalhe=%s',
-            cod_cliente,
-            filtros,
-            str(exc),
-        )
-        return JsonResponse(
-            {
-                'sucesso': False,
-                'mensagem': 'Erro de comunicacao com o SAP durante a consulta fiscal.',
-            },
-            status=502,
         )
     except Exception:
         logger.exception('CFM erro inesperado cliente=%s filtros=%s', cod_cliente, filtros)
@@ -4289,17 +4183,17 @@ def fn_view_Integracao_Rfc(request):
     }
     return render(request, 'app/ferramentas_rfc.html', context)
 
+
 @login_required(login_url='Login')
-@ensure_csrf_cookie 
+@ensure_csrf_cookie
 @requer_acesso_subsolucao('Int_Rfc', redirect_on_deny=False)
 @require_http_methods(["POST"])
 def fn_api_rfc_executar(request):
     """
     Executa um RFC registrado.
-    Body (JSON): { "cod_rfc": "RFC_...", "params": { ... } } — ex.: RFC_RELATORIO_CUSTO, RFC_GDF_RFC_CONSULTA (chaves multilinha).
+    Body (JSON): { "cod_rfc": "RFC_...", "params": { ... } }.
 
-    Nota: não usar @login_required aqui — ele redireciona para página HTML de login e o fetch
-    quebra com JSON.parse (Unexpected token '<'). Autenticação fica em requer_acesso_subsolucao (JSON 403).
+    Nota: autenticação de acesso é feita por requer_acesso_subsolucao (JSON 403).
     """
     cod_cliente = request.session.get('cod_cliente', None)
     if not cod_cliente:
