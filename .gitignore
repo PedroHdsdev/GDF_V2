@@ -27,6 +27,10 @@ env/
 .env
 .env.local
 .env.*.local
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.qas.example
 
 # Logs e arquivos de execução
 *.log
@@ -35,12 +39,9 @@ logs/
 run/*.pid
 
 # Django
-db.sqlite3
-*.sqlite3
 staticfiles/
 media/
 local_static/
-GDF_PJT/static/
 
 # Relatórios gerados (podem ser recriados com os comandos manage.py)
 RELATORIO_PERFORMANCE.md

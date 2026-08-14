@@ -1,0 +1,344 @@
+<!-- Modal: Cadastrar Mandante -->
+<div class="modal fade admin-modal" id="modalClienteIns" tabindex="-1" aria-labelledby="modalClienteInsLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <form method="post" action="{% if url_prefix %}{{ url_prefix }}/cliente/inserir/{% else %}/cliente/inserir/{% endif %}" onsubmit="fn_validar_formulario_ins(event)">
+        {% csrf_token %}
+
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalClienteInsLabel">
+            <span class="modal-title-icon"><i class="fas fa-handshake"></i></span>
+            Cadastrar Mandante
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body">
+          <div id="modalClienteInsAlerts" class="admin-modal-alerts"></div>
+          <p class="admin-step-hint text-muted small mb-3">
+            <i class="fas fa-info-circle me-1"></i> Preencha código, CNPJ e razão social para cadastrar o mandante.
+          </p>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="ins_codigo" class="form-label">* Código do Mandante</label>
+              <input
+                type="text"
+                id="ins_codigo"
+                name="m_cliente_id"
+                class="form-control"
+                placeholder="Ex: 001"
+                required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="ins_cnpj" class="form-label">* CNPJ</label>
+              <input
+                type="text"
+                id="ins_cnpj"
+                name="m_cnpj"
+                class="form-control"
+                placeholder="00.000.000/0000-00"
+                required>
+            </div>
+
+            <div class="col-md-12">
+              <label for="ins_razao" class="form-label">* Razão Social</label>
+              <input
+                type="text"
+                id="ins_razao"
+                name="m_razao"
+                class="form-control"
+                placeholder="Nome do mandante"
+                required>
+            </div>
+
+            {% if messages %}
+              {% for message in messages %}
+                {% if message.extra_tags == 'MODAL_INS' %}
+                  <div class="col-12">
+                    <div class="alert alert-{{ message.level_tag }} alert-dismissible fade show" role="alert">
+                      {{ message }}
+                      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success"><i class="fas fa-check me-1"></i> Cadastrar</button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar Mandante -->
+<div class="modal fade admin-modal" id="modalClienteUpd" tabindex="-1" aria-labelledby="modalClienteUpdLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalClienteUpdLabel">
+          <span class="modal-title-icon"><i class="fas fa-handshake"></i></span>
+          Editar Mandante
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+
+      <div class="modal-body">
+        <div id="modalClienteUpdAlerts" class="admin-modal-alerts"></div>
+
+        <ul class="nav nav-tabs" id="clienteTabs" role="tablist">
+          <li class="nav-item">
+            <button type="button" class="nav-link active" id="tab-cliente-btn" data-bs-toggle="tab" data-bs-target="#tab-cliente" role="tab"><i class="fas fa-user"></i> Dados</button>
+          </li>
+          <li class="nav-item">
+            <button type="button" class="nav-link" id="tab-acesso-btn" data-bs-toggle="tab" data-bs-target="#tab-acesso" role="tab"><i class="fas fa-key"></i> Acesso</button>
+          </li>
+          <li class="nav-item">
+            <button type="button" class="nav-link" id="tab-grupos-btn" data-bs-toggle="tab" data-bs-target="#tab-grupos" role="tab"><i class="fas fa-users"></i> Grupos</button>
+          </li>
+          <li class="nav-item">
+            <button type="button" class="nav-link" id="tab-sap-btn" data-bs-toggle="tab" data-bs-target="#tab-sap" role="tab"><i class="fas fa-plug"></i> Conexão SAP</button>
+          </li>
+        </ul>
+
+        <!-- REMOVER MENSAGENS ANTIGAS DO DJANGO -->
+        {% if messages %}
+          {% for message in messages %}
+            {% if message.extra_tags == 'MODAL_UPD' %}
+              <!-- Mensagens serão renderizadas pelo JavaScript -->
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+
+        <!-- TAB CONTENT -->
+        <div class="tab-content">
+
+          <!-- TAB 1: DADOS DO MANDANTE -->
+          <div class="tab-pane fade show active" id="tab-cliente" role="tabpanel">
+            <form method="post" id="formClienteUpd" action="{% if url_prefix %}{{ url_prefix }}/cliente/__ID__/{% else %}/cliente/__ID__/{% endif %}" onsubmit="fn_validar_formulario_upd(event)">
+              {% csrf_token %}
+              <input type="hidden" id="upd_cliente_id" name="upd_cliente_id" value="">
+              <div class="row g-3">
+                
+                <div class="col-md-6">
+                  <label for="upd_codigo" class="form-label">Código do Mandante</label>
+                  <input
+                    type="text"
+                    id="upd_codigo"
+                    class="form-control"
+                    readonly>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="upd_cnpj" class="form-label">CNPJ</label>
+                  <input
+                    type="text"
+                    id="upd_cnpj"
+                    name="upd_cnpj"
+                    class="form-control">
+                </div>
+
+                <div class="col-md-12">
+                  <label for="upd_razao" class="form-label">Razão Social</label>
+                  <input
+                    type="text"
+                    id="upd_razao"
+                    name="upd_razao"
+                    class="form-control">
+                </div>
+
+                <div class="col-md-12">
+                  <label class="form-label">Ativo</label>
+                  <div class="form-check form-switch">
+                    <input
+                      type="checkbox"
+                      id="upd_clie_active"
+                      name="upd_is_active"
+                      class="form-check-input">
+                    <label class="form-check-label" for="upd_clie_active">Mandante ativo no sistema</label>
+                  </div>
+                </div>
+
+              </div>
+
+              <div class="d-flex gap-2 mt-4">
+                <button
+                  type="submit"
+                  class="btn btn-primary">
+                  Salvar Alterações
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  data-bs-dismiss="modal">
+                  Cancelar
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+          <!-- TAB 2: DIREITOS DE ACESSO -->
+          <div class="tab-pane fade" id="tab-acesso" role="tabpanel">
+            <form method="post" id="formAcessoUpd" action="{% if url_prefix %}{{ url_prefix }}/cliente/Acesso/{% else %}/cliente/Acesso/{% endif %}">
+              {% csrf_token %}
+              <input type="hidden" id="Acesso_cliente_id" name="Acesso_cliente_id" value="">
+              <div class="mb-3">
+                <label class="form-label">Adicionar Solução</label>
+                <div class="input-group">
+                  <select id="upd_solucoes_select" class="form-select">
+                    <option value="">-- Selecione uma solução --</option>
+                  </select>
+                  <button type="button" class="btn btn-success" id="btn-adicionar-solucao">
+                    <i class="bi bi-plus-lg"></i> Adicionar
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Tabela de Soluções Selecionadas -->
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Código</th>
+                      <th>Descrição</th>
+                      <th class="text-center" style="width: 100px;">Status</th>
+                      <th class="text-center" style="width: 80px;">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody id="upd_solucoes_tbody">
+                    <!-- Preenchido por JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+              
+              <!-- Hidden input para enviar valores ao servidor -->
+              <input type="hidden" name="ls_solucoes" id="upd_solucoes_hidden" value="">
+
+              <div class="d-flex gap-2 mt-4">
+                <button
+                  type="submit"
+                  class="btn btn-primary">
+                  Salvar Acessos
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- TAB 3: GRUPO DE USUÁRIOS -->
+          <div class="tab-pane fade" id="tab-grupos" role="tabpanel">
+            <form method="post" id="formGruposUpd" action="{% if url_prefix %}{{ url_prefix }}/cliente/Grupos/{% else %}/cliente/Grupos/{% endif %}">
+              {% csrf_token %}
+              <input type="hidden" id="Grupos_cliente_id" name="Grupos_cliente_id" value="">
+              <div class="mb-3">
+                <label class="form-label">Adicionar grupo</label>
+                <div class="input-group">
+                  <select id="upd_grupos_cliente_select" class="form-select">
+                    <option value="">-- Selecione um grupo --</option>
+                  </select>
+                  <button type="button" class="btn btn-success" id="btn-adicionar-grupo-cliente">
+                    <i class="bi bi-plus-lg"></i> Adicionar
+                  </button>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Grupo</th>
+                      <th class="text-center" style="width: 80px;">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody id="upd_grupos_cliente_tbody">
+                    <!-- Preenchido por JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+              <input type="hidden" name="ls_grupos" id="upd_grupos_cliente_hidden" value="">
+              <div class="d-flex gap-2 mt-4">
+                <button type="submit" class="btn btn-primary">Salvar grupos</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- TAB 4: CONEXÃO SAP -->
+          <div class="tab-pane fade" id="tab-sap" role="tabpanel">
+            <input type="hidden" id="sap_cliente_id" value="">
+            <div id="sap-sem-registro" class="d-none"></div>
+            <div id="sap-form-container" class="d-none">
+              <div id="sap-connections-select-container" class="mb-3 d-none">
+                <label for="sap_connections_select" class="form-label">Conexões cadastradas</label>
+                <div class="input-group">
+                  <select id="sap_connections_select" class="form-select"></select>
+                  <button type="button" class="btn btn-outline-secondary" id="btn-nova-conexao-sap">
+                    <i class="bi bi-plus-circle"></i> Nova conexão
+                  </button>
+                </div>
+              </div>
+              <form method="post" id="formSapUpd" action="">
+                {% csrf_token %}
+                <input type="hidden" name="sap_id" id="sap_id" value="">
+                <div class="row g-3">
+                  <div class="col-md-4">
+                    <label for="sap_tipo_conexao" class="form-label">Tipo de conexão</label>
+                    <select id="sap_tipo_conexao" name="sap_tipo_conexao" class="form-select">
+                      <option value="RFC">RFC</option>
+                      <option value="REST">Web Service (REST)</option>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="sap_ashost" class="form-label">Host (ashost)</label>
+                    <input type="text" id="sap_ashost" name="sap_ashost" class="form-control" maxlength="100">
+                  </div>
+                  <div class="col-md-2">
+                    <label for="sap_sysnr" class="form-label">Nº do sistema (sysnr)</label>
+                    <input type="text" id="sap_sysnr" name="sap_sysnr" class="form-control" maxlength="10">
+                  </div>
+                  <div class="col-md-4">
+                    <label for="sap_client" class="form-label">Mandante</label>
+                    <input type="text" id="sap_client" name="sap_client" class="form-control" maxlength="10">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="sap_username" class="form-label">Usuário</label>
+                    <input type="text" id="sap_username" name="sap_username" class="form-control" maxlength="50">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="sap_passwd" class="form-label">Senha</label>
+                    <input type="password" id="sap_passwd" name="sap_passwd" class="form-control" maxlength="50" autocomplete="off">
+                  </div>
+                  <div class="col-md-4">
+                    <label for="sap_lang" class="form-label">Idioma (lang)</label>
+                    <input type="text" id="sap_lang" name="sap_lang" class="form-control" maxlength="5">
+                  </div>
+                  <div class="col-md-8 d-flex align-items-end">
+                    <div class="form-check form-switch mb-2">
+                      <input type="checkbox" id="sap_active" name="sap_active" class="form-check-input" checked>
+                      <label class="form-check-label" for="sap_active">Conexão ativa</label>
+                    </div>
+                  </div>
+                </div>
+                <div class="d-flex gap-2 mt-4">
+                  <button type="submit" class="btn btn-primary">Salvar conexão SAP</button>
+                  <button type="button" class="btn btn-outline-secondary" id="btn-testar-sap" title="Testar conexão com o SAP">
+                    <i class="bi bi-plug"></i> Testar conexão
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+

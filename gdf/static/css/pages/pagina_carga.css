@@ -1,0 +1,610 @@
+/* ===============================
+   Importação (solução) — layout partilhado: Carga XML e Carga SPED
+   Templates: importacao/index_carga_*.html
+================================ */
+
+/* Página (classes .cargaxml-page legadas) — layout tipo Home */
+.cargaxml-page {
+    min-height: calc(100vh - 56px);
+    padding: 2.5rem 2.2rem 3rem;
+    background: radial-gradient(circle at 15% 15%, rgba(20, 184, 166, 0.2), transparent 45%),
+        radial-gradient(circle at 85% 10%, rgba(249, 115, 22, 0.16), transparent 45%),
+        radial-gradient(circle at 80% 80%, rgba(56, 189, 248, 0.18), transparent 50%),
+        linear-gradient(125deg, #0f172a 0%, #111827 45%, #1f2937 100%);
+    color: #f8fafc;
+    font-family: "Sora", "Poppins", sans-serif;
+}
+
+.cargaxml-welcome .home-welcome-meta {
+    color: rgba(226, 232, 240, 0.85);
+}
+
+.cargaxml-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 1.6rem;
+    margin-bottom: 2.2rem;
+}
+
+.cargaxml-card {
+    animation: home-fade 0.5s ease-out both;
+}
+
+.cargaxml-card-resumo {
+    grid-column: span 4;
+    min-width: 0;
+    animation-delay: 0.05s;
+}
+
+.cargaxml-card-em-execucao {
+    grid-column: span 4;
+    min-width: 0;
+    animation-delay: 0.1s;
+}
+
+.cargaxml-card-ja-executado {
+    grid-column: span 4;
+    min-width: 0;
+    animation-delay: 0.15s;
+}
+
+.cargaxml-card-parametros {
+    grid-column: span 12;
+    animation-delay: 0.2s;
+}
+
+.cargaxml-card-logs {
+    grid-column: span 12;
+    animation-delay: 0.25s;
+}
+
+/* Resumo numérico dentro do card */
+.cargaxml-resumo-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+}
+
+.cargaxml-resumo-item {
+    background: rgba(15, 23, 42, 0.04);
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    text-align: center;
+}
+
+.cargaxml-resumo-numero {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.cargaxml-resumo-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #64748b;
+}
+
+.cargaxml-resumo-item.resumo-total { border-left: 3px solid #0d6efd; }
+.cargaxml-resumo-item.resumo-concluido { border-left: 3px solid #198754; }
+.cargaxml-resumo-item.resumo-divergencias { border-left: 3px solid #fd7e14; }
+.cargaxml-resumo-item.resumo-andamento { border-left: 3px solid #6f42c1; }
+
+/* Listas Em execução / Já executado */
+.cargaxml-lista-jobs {
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.cargaxml-lista-empty {
+    list-style: none;
+}
+
+.cargaxml-job-item .home-activity-link {
+    flex-shrink: 0;
+}
+
+/* Card Logs – linhas de log na página */
+.cargaxml-logs-resumo {
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.cargaxml-log-lines .cargaxml-log-line {
+    font-family: ui-monospace, monospace;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    padding: 0.35rem 0.6rem;
+    border-radius: 6px;
+    border-left: 3px solid transparent;
+    margin-bottom: 2px;
+}
+
+.cargaxml-log-lines .cargaxml-log-line.aviso-log-erro {
+    background-color: #fef2f2;
+    color: #991b1b;
+    border-left-color: #dc2626;
+}
+
+.cargaxml-log-lines .cargaxml-log-line.aviso-log-pendente {
+    background-color: #fefce8;
+    color: #854d0e;
+    border-left-color: #ca8a04;
+}
+
+.cargaxml-log-lines .cargaxml-log-line.aviso-log-ok {
+    background-color: #f0fdf4;
+    color: #166534;
+    border-left-color: #16a34a;
+}
+
+.cargaxml-filtros-param .form-control-sm {
+    max-width: 100%;
+}
+
+.cargaxml-card-parametros .table th {
+    white-space: nowrap;
+}
+
+.cargaxml-card-parametros .table td {
+    word-break: break-word;
+}
+
+@media (max-width: 1100px) {
+    .cargaxml-card-resumo,
+    .cargaxml-card-em-execucao,
+    .cargaxml-card-ja-executado {
+        grid-column: span 12;
+    }
+}
+
+@media (max-width: 768px) {
+    .cargaxml-page {
+        padding: 1.6rem 1.2rem 2.4rem;
+    }
+
+    .cargaxml-resumo-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Container principal (mantido para compatibilidade) */
+.container-carga-xml {
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    margin-top: 0;
+}
+
+/* Card de upload */
+.card-upload-xml {
+    border: 2px dashed #007bff;
+    border-radius: 8px;
+    padding: 0px;
+    background: #f0f7ff;
+    transition: all 0.3s ease;
+}
+
+.card-upload-xml:hover {
+    border-color: #0056b3;
+    background: #e7f3ff;
+}
+
+/* Zona de drag & drop */
+.drop-zone {
+    cursor: pointer;
+    text-align: center;
+    min-height: 150px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    transition: all 0.3s ease;
+}
+
+.drop-zone.active {
+    background: #e7f3ff;
+    border-color: #0056b3;
+}
+
+/* Input sobreposto na drop-zone (label): garante que o clique abra o seletor de arquivos/pasta */
+.overlay-file-input {
+    pointer-events: auto;
+}
+
+/* Ícone e texto do drop */
+.drop-zone-icon {
+    font-size: 48px;
+    color: #007bff;
+    margin-bottom: 15px;
+}
+
+.drop-zone-text {
+    font-size: 18px;
+    color: #333;
+    font-weight: 500;
+    margin-bottom: 10px;
+}
+
+.drop-zone-subtext {
+    font-size: 14px;
+    color: #666;
+}
+
+/* Botão de upload */
+.btn-upload-xml {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    border: none;
+    color: white;
+    padding: 12px 30px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    margin-top: 15px;
+}
+
+.btn-upload-xml:hover {
+    background: linear-gradient(135deg, #0056b3 0%, #003f87 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 86, 179, 0.4);
+}
+
+/* Tabela de uploads */
+.table-uploads {
+    margin-top: 0;
+}
+
+.table-uploads thead {
+    background-color: #f1f3f5;
+}
+
+.table-uploads th {
+    font-weight: 600;
+    color: #333;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.table-uploads td {
+    vertical-align: middle;
+    padding: 12px;
+}
+
+/* Status badge */
+.badge-status {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.badge-success {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.badge-warning {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.badge-danger {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.badge-info {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+
+/* Spinner de carregamento */
+.spinner-carga {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(0, 123, 255, 0.1);
+    border-radius: 50%;
+    border-top-color: #007bff;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Alerta de sucesso/erro */
+.alert-upload {
+    margin-top: 20px;
+    border-radius: 6px;
+    padding: 15px;
+    border-left: 4px solid;
+}
+
+.alert-upload.success {
+    background-color: #d4edda;
+    border-left-color: #28a745;
+    color: #155724;
+}
+
+.alert-upload.error {
+    background-color: #f8d7da;
+    border-left-color: #dc3545;
+    color: #721c24;
+}
+
+/* Input file oculto */
+#file-input-xml {
+    display: none;
+}
+
+/* Seção de informações */
+.info-section {
+    background: white;
+    border-radius: 6px;
+    padding: 15px;
+    margin-top: 20px;
+    border-left: 4px solid #007bff;
+}
+
+.info-section h5 {
+    color: #007bff;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.info-section ul {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 14px;
+    color: #666;
+}
+
+/* Parametros */
+.param-form .form-label {
+    font-weight: 600;
+}
+
+#tabela-parametros td {
+    vertical-align: middle;
+}
+
+/* ===============================
+   MODAL AVISOS – Layout e linhas (OK verde / ERRO vermelho)
+   Carga XML e Carga SPED
+================================ */
+.modal-avisos-cargaxml .modal-content,
+.modal-avisos-cargasped .modal-content {
+    border-radius: 16px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 24px 45px rgba(15, 23, 42, 0.15);
+}
+.modal-avisos-cargaxml .modal-body,
+.modal-avisos-cargasped .modal-body {
+    background: #f8fafc;
+    color: var(--gdf-ink, #0f172a);
+}
+.modal-avisos-cargaxml .modal-header,
+.modal-avisos-cargasped .modal-header {
+    background: #fff;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 16px 16px 0 0;
+}
+.modal-avisos-empty {
+    color: var(--gdf-slate, #475569);
+}
+
+/* Item de aviso (job) – alinhado ao layout-subcard do projeto */
+.modal-avisos-list .aviso-item {
+    margin-bottom: 1rem;
+    padding: 1rem 1.2rem;
+    cursor: default;
+}
+.modal-avisos-list .aviso-item-header {
+    cursor: pointer;
+    padding: 0.25rem 0;
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+.modal-avisos-list .aviso-item-header:hover {
+    background: rgba(15, 23, 42, 0.04);
+}
+.modal-avisos-list .aviso-item-body {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+.aviso-item-info {
+    font-size: 0.95rem;
+}
+.aviso-chevron {
+    transition: transform 0.2s;
+    color: var(--gdf-slate, #475569);
+}
+
+/* Badges no cabeçalho do job */
+.aviso-badge-ok {
+    background-color: #dcfce7;
+    color: #166534;
+    font-weight: 600;
+}
+.aviso-badge-erro {
+    background-color: #fee2e2;
+    color: #b91c1c;
+    font-weight: 600;
+}
+
+/* Bloco "Dados adicionais" */
+.aviso-dados-adicionais {
+    background: #fff;
+    border-radius: 12px;
+    padding: 0.9rem 1rem;
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    max-height: 280px;
+    overflow-y: auto;
+}
+.aviso-dados-titulo {
+    letter-spacing: 0.05em;
+}
+.aviso-log-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.aviso-log-line {
+    font-family: ui-monospace, monospace;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    border-left: 3px solid transparent;
+}
+/* Linha OK – verde */
+.aviso-log-line.aviso-log-ok {
+    background-color: #f0fdf4;
+    color: #166534;
+    border-left-color: #16a34a;
+}
+/* Linha ERRO – vermelho */
+.aviso-log-line.aviso-log-erro {
+    background-color: #fef2f2;
+    color: #991b1b;
+    border-left-color: #dc2626;
+}
+/* Linha PENDENTES – amarelo/laranja */
+.aviso-log-line.aviso-log-pendente {
+    background-color: #fefce8;
+    color: #854d0e;
+    border-left-color: #ca8a04;
+}
+.aviso-log-line.aviso-log-outro {
+    background-color: #f8fafc;
+    color: var(--gdf-slate, #475569);
+    border-left-color: #e2e8f0;
+}
+/* Mesmas cores para linhas da tabela de log no modal Detalhes do Job */
+tr.aviso-log-erro td {
+    background-color: #fef2f2;
+    color: #991b1b;
+}
+tr.aviso-log-pendente td {
+    background-color: #fefce8;
+    color: #854d0e;
+}
+tr.aviso-log-ok td {
+    background-color: #f0fdf4;
+    color: #166534;
+}
+
+/* Resumo Carga SPED – cards Total / Concluídos / Com erros / Em andamento */
+.resumo-cargasped .resumo-card {
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    border: 1px solid #e9ecef;
+    background: #fff;
+}
+.resumo-cargasped .resumo-card .resumo-numero {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+.resumo-cargasped .resumo-card .resumo-label {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 500;
+}
+.resumo-cargasped .resumo-card.resumo-total { border-left: 5px solid #0d6efd; }
+.resumo-cargasped .resumo-card.resumo-concluido { border-left: 5px solid #198754; }
+.resumo-cargasped .resumo-card.resumo-divergencias { border-left: 5px solid #fd7e14; }
+.resumo-cargasped .resumo-card.resumo-andamento { border-left: 5px solid #6f42c1; }
+
+/* Resumo Carga XML – mesmo estilo */
+.resumo-cargaxml .resumo-card {
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    border: 1px solid #e9ecef;
+    background: #fff;
+}
+.resumo-cargaxml .resumo-card .resumo-numero {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+.resumo-cargaxml .resumo-card .resumo-label {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 500;
+}
+.resumo-cargaxml .resumo-card.resumo-total { border-left: 5px solid #0d6efd; }
+.resumo-cargaxml .resumo-card.resumo-concluido { border-left: 5px solid #198754; }
+.resumo-cargaxml .resumo-card.resumo-divergencias { border-left: 5px solid #fd7e14; }
+.resumo-cargaxml .resumo-card.resumo-andamento { border-left: 5px solid #6f42c1; }
+
+/* Documentos / SPED por período (filtro + totais) */
+.cargaxml-stats-periodo .carga-stats-periodo-title {
+    margin: 0;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: rgba(148, 163, 184, 0.95);
+}
+
+.cargaxml-stats-periodo .carga-stats-periodo-form label {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(148, 163, 184, 0.95);
+    margin-bottom: 0.35rem;
+}
+
+.cargaxml-stats-periodo .carga-stats-periodo-form .form-control {
+    min-width: 11rem;
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: #f8fafc;
+}
+
+.cargaxml-stats-periodo .carga-stats-periodo-form .form-control:focus {
+    background: rgba(15, 23, 42, 0.85);
+    border-color: rgba(56, 189, 248, 0.5);
+    color: #f8fafc;
+    box-shadow: 0 0 0 0.15rem rgba(56, 189, 248, 0.2);
+}
+
+/* Garantir leitura dos totais (evita cor herdada ilegível sobre o painel escuro) */
+.cargaxml-stats-periodo .home-welcome-stat-value {
+    color: #f8fafc;
+}
+
+.cargaxml-stats-periodo .home-welcome-stat-label {
+    color: rgba(148, 163, 184, 0.95);
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    .card-upload-xml {
+        padding: 20px;
+    }
+
+    .drop-zone {
+        min-height: 120px;
+    }
+
+    .drop-zone-icon {
+        font-size: 36px;
+    }
+
+    .drop-zone-text {
+        font-size: 16px;
+    }
+
+    .btn-upload-xml {
+        width: 100%;
+    }
+}

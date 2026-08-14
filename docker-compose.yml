@@ -1,0 +1,247 @@
+services:
+
+  # --------------------------------------------------------------------------
+  # Redis
+  # --------------------------------------------------------------------------
+  redis:
+    image: redis:7.2-alpine
+    container_name: gdf_redis
+    restart: unless-stopped
+
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    volumes:
+      - redis_data:/data
+
+    networks:
+      - gdf_network
+
+
+  # --------------------------------------------------------------------------
+  # Django / Gunicorn
+  # --------------------------------------------------------------------------
+  django:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: gdf_django
+    restart: unless-stopped
+
+    working_dir: /app/gdf
+
+    command:
+      - gunicorn
+      - -c
+      - /app/gdf/etc/gunicorn_config.py
+      - config.wsgi:application
+
+    env_file:
+      - ./gdf/.env
+
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      GUNICORN_BIND: 0.0.0.0:8500
+      GUNICORN_ACCESS_LOG: "-"
+      GUNICORN_ERROR_LOG: "-"
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      LD_LIBRARY_PATH: /app/nwrfcsdk/lib
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8500/gdf/Login/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+    ports:
+      - "127.0.0.1:8500:8500"
+
+    volumes:
+      - ./gdf/logs:/app/gdf/logs
+      - ./gdf/empresas_xmls:/app/gdf/empresas_xmls
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+    networks:
+      - gdf_network
+
+
+  # --------------------------------------------------------------------------
+  # Streamlit
+  # --------------------------------------------------------------------------
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: gdf_streamlit
+    restart: unless-stopped
+
+    working_dir: /app/gdf
+
+    command:
+      - streamlit
+      - run
+      - /app/gdf/streamlit/main.py
+      - --server.address=0.0.0.0
+      - --server.port=8600
+      - --server.headless=true
+      - --browser.gatherUsageStats=false
+
+    env_file:
+      - ./gdf/.env
+
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      STREAMLIT_PORT: 8600
+      STREAMLIT_DJANGO_API_BASE_URL: http://django:8500
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      LD_LIBRARY_PATH: /app/nwrfcsdk/lib
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8600/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+    ports:
+      - "127.0.0.1:8600:8600"
+
+    volumes:
+      - ./gdf/logs:/app/gdf/logs
+      - ./gdf/empresas_xmls:/app/gdf/empresas_xmls
+
+    depends_on:
+      redis:
+        condition: service_healthy
+      django:
+        condition: service_healthy
+
+    networks:
+      - gdf_network
+
+
+  # --------------------------------------------------------------------------
+  # Celery Worker
+  # --------------------------------------------------------------------------
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: gdf_celery_worker
+    restart: unless-stopped
+
+    working_dir: /app/gdf
+
+    command:
+      - celery
+      - -A
+      - config.celery
+      - worker
+      - --loglevel=info
+      - --concurrency=2
+
+    env_file:
+      - ./gdf/.env
+
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      LD_LIBRARY_PATH: /app/nwrfcsdk/lib
+
+    volumes:
+      - ./gdf/logs:/app/gdf/logs
+      - ./gdf/empresas_xmls:/app/gdf/empresas_xmls
+
+    depends_on:
+      redis:
+        condition: service_healthy
+      django:
+        condition: service_healthy
+
+    networks:
+      - gdf_network
+
+
+  # --------------------------------------------------------------------------
+  # Celery Beat
+  # --------------------------------------------------------------------------
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: gdf_celery_beat
+    restart: unless-stopped
+
+    working_dir: /app/gdf
+
+    command:
+      - celery
+      - -A
+      - config.celery
+      - beat
+      - --loglevel=info
+      - --schedule=/var/lib/gdf/celerybeat-schedule
+
+    env_file:
+      - ./gdf/.env
+
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      LD_LIBRARY_PATH: /app/nwrfcsdk/lib
+
+    volumes:
+      - celery_beat_data:/var/lib/gdf
+      - ./gdf/logs:/app/gdf/logs
+      - ./gdf/empresas_xmls:/app/gdf/empresas_xmls
+
+    depends_on:
+      redis:
+        condition: service_healthy
+      django:
+        condition: service_healthy
+
+    networks:
+      - gdf_network
+
+
+# ----------------------------------------------------------------------------
+# Volumes
+# ----------------------------------------------------------------------------
+
+volumes:
+  redis_data:
+  celery_beat_data:
+
+
+# ----------------------------------------------------------------------------
+# Network
+# ----------------------------------------------------------------------------
+
+networks:
+  gdf_network:
+    driver: bridge

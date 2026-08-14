@@ -4,7 +4,7 @@
 
 GDF_V2 is a Django web application with multi-database support and Streamlit analytics dashboards. The system has three core components:
 
-1. **Django Web App** (`GDF_PJT/`): Multi-tenant ERP for managing customers, companies, and solutions with role-based access
+1. **Django Web App** (`gdf/`): Multi-tenant ERP for managing customers, companies, and solutions with role-based access
 2. **PostgreSQL Multi-Database** (`GDF_DEV` + `REPROCESSAMENTO_DEV`): Separated via `DATABASE_ROUTERS` in `routers.py`
 3. **Streamlit Dashboards** (`streamlit/Compras/` & `streamlit/Vendas/`): Analytics for purchases and sales
 
@@ -30,14 +30,14 @@ After login, `Cl_Gdf().get_dados(user)` populates session; views check `request.
 
 ### Local Development
 ```bash
-cd GDF_PJT
+cd gdf
 python manage.py runserver  # Starts on port 8000
 ```
 
 ### Database Management
 - Migrations stored in `app/migrations/`
 - PostgreSQL credentials in `settings.py` (currently hardcoded; migrate to env vars)
-- Toggle between PostgreSQL and SQLite in `settings.py` database config (lines 75-110)
+- PostgreSQL is the only supported database; configure it through `DB_*` variables in `.env`.
 
 ### Streamlit Dashboards
 - Located in `streamlit/Compras/` and `streamlit/Vendas/`
@@ -53,7 +53,7 @@ python manage.py runserver  # Starts on port 8000
 
 ## URL Structure
 
-Main routes defined in [GDF_PJT/urls.py](GDF_PJT/urls.py):
+Main routes defined in [gdf/config/urls.py](gdf/config/urls.py):
 - `/Login/` - Authentication entry point
 - `/Home/` - Main dashboard (authenticated)
 - `/Usuarios/`, `/Empresas/`, `/Clientes/` - Data management modules
@@ -98,3 +98,7 @@ Key packages: Django 6.0.1, PostgreSQL driver (psycopg2-binary), Streamlit 1.52.
 - **Credentials**: Database password exposed in settings.py—move to environment variables for production
 - **Streamlit Django setup**: Must call `django.setup()` after adding project path in `@st.cache_resource`; always import models after setup
 - **Redirect loops**: Modal update endpoints return JsonResponse on GET but redirect on POST—client must handle both
+
+## Test Code
+
+- Do not create, modify, or scaffold automated test code, including files named `test_*.py`, unless the user explicitly requests tests.

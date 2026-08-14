@@ -1,0 +1,1223 @@
+/* ===============================
+   GERENCIAR CARGA XML
+================================ */
+
+const estadoCargaXml = {
+    arquivos: [],
+    uploadEmProgresso: false,
+    totalArquivos: 0,
+    uploadosRealizados: 0,
+    todasCargas: [],
+    cargasFiltradas: [],
+    filtros: {
+        busca: ''
+    },
+    currentPage: 1,
+    itemsPerPage: 10,
+    modoDiretorio: false,
+    nomePasta: '',
+    avisosAtuaisIds: [],
+    modalJobPollInterval: null,
+    modalJobIdAberto: null
+};
+
+
+/** API envia datas em ISO com offset UTC; exibe no fuso do navegador (ex.: America/Sao_Paulo). */
+function formatJobDateTimeLocal(iso, detailed) {
+    if (!iso) return '-';
+    try {
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        return d.toLocaleString('pt-BR', detailed
+            ? { dateStyle: 'short', timeStyle: 'medium' }
+            : { dateStyle: 'short', timeStyle: 'short' });
+    } catch (e) {
+        return iso;
+    }
+}
+
+/** Data e hora locais para colunas separadas (evita usar substring do ISO em UTC). */
+function partesDataLocalDeIso(iso) {
+    if (!iso) return { data: '', hora: '' };
+    try {
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return { data: '', hora: '' };
+        var pad = function (n) { return String(n).padStart(2, '0'); };
+        return {
+            data: pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear(),
+            hora: pad(d.getHours()) + ':' + pad(d.getMinutes())
+        };
+    } catch (e) {
+        return { data: '', hora: '' };
+    }
+}
+
+function cargaXmlBadgeDefinirConteudo(statusCell, badgeClass, statusTexto, iconHtml, tituloOpt) {
+    if (!statusCell) return;
+    var span = document.createElement('span');
+    span.className = 'badge-status ' + badgeClass;
+    if (tituloOpt != null && tituloOpt !== '') {
+        span.setAttribute('title', String(tituloOpt));
+    }
+    if (iconHtml) {
+        var w = document.createElement('span');
+        w.innerHTML = iconHtml;
+        while (w.firstChild) {
+            span.appendChild(w.firstChild);
+        }
+    }
+    span.appendChild(document.createTextNode(String(statusTexto)));
+    statusCell.textContent = '';
+    statusCell.appendChild(span);
+}
+
+function cargaXmlEscHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+}
+
+/* ===============================
+   INICIALIZAR ELEMENTOS
+================================ */
+var intervaloResumoCargaXml = null;
+
+document.addEventListener('DOMContentLoaded', function () {
+    inicializarDragDropInputFiles();
+    inicializarEventosJobsRenderizados();
+    carregarAvisosCargaXml();
+    carregarResumoCargaXml();
+    carregarTodasAsCargas();
+
+    // Modal Avisos: ao abrir, recarrega lista de logs
+    const modalAvisos = document.getElementById('modalAvisosCargaXml');
+    if (modalAvisos) {
+        modalAvisos.addEventListener('show.bs.modal', function () {
+            carregarAvisosCargaXml(true);
+        });
+    }
+    // Botão "Já lido" no modal de avisos: marca os avisos exibidos como lidos e esconde o badge
+    var btnAvisosJaLido = document.getElementById('btn-avisos-ja-lido');
+    if (btnAvisosJaLido) {
+        btnAvisosJaLido.addEventListener('click', function () {
+            var ids = estadoCargaXml.avisosAtuaisIds || [];
+            if (ids.length === 0) return;
+            marcarAvisosCargaXmlComoVistos(ids);
+            var badge = document.getElementById('avisos-badge-cargaxml');
+            if (badge) {
+                badge.style.display = 'none';
+                badge.textContent = '0';
+            }
+            if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                Notificacoes.pagina('Avisos marcados como lidos.', 'success');
+            }
+        });
+    }
+
+    var modalCargaEl = document.getElementById('modalCargaXml');
+    if (modalCargaEl) {
+        modalCargaEl.addEventListener('show.bs.modal', function () {
+            if (typeof Notificacoes !== 'undefined') Notificacoes.limparModal('modalCargaXmlAlerts');
+        });
+    }
+});
+
+function obterCsrfToken() {
+    const token = document.querySelector('[name=csrfmiddlewaretoken]');
+    return token ? token.value : '';
+}
+
+/** Prefixo da aplicação (ex: '' ou '/gdf') para chamadas à API quando o app está em subpath. */
+function getApiBase() {
+    var el = document.querySelector('.layout-page[data-url-prefix], [data-url-prefix]');
+    var prefix = (el && el.getAttribute('data-url-prefix')) || '';
+    if (!prefix && typeof getUrlPrefix === 'function') prefix = getUrlPrefix();
+    return prefix || '';
+}
+
+/* ===============================
+   RESUMO DOS JOBS (Total, Concluídos, Com erros, Em andamento)
+================================ */
+function carregarResumoCargaXml() {
+    fetch(getApiBase() + '/api/cargaxml/resumo/', { method: 'GET', headers: { 'X-CSRFToken': obterCsrfToken() } })
+        .then(function (r) {
+            if (r.status === 429) return { _rateLimit: true };
+            return r.text().then(function (text) {
+                try { return JSON.parse(text); } catch (e) { return { sucesso: false }; }
+            });
+        })
+        .then(function (data) {
+            if (data._rateLimit) return;
+            if (!data.sucesso) return;
+            var elTotal = document.getElementById('resumo-cargaxml-total');
+            var elConcluidos = document.getElementById('resumo-cargaxml-concluidos');
+            var elErros = document.getElementById('resumo-cargaxml-com-erros');
+            var elAndamento = document.getElementById('resumo-cargaxml-em-andamento');
+            if (elTotal) elTotal.textContent = data.total || 0;
+            if (elConcluidos) elConcluidos.textContent = data.concluidos || 0;
+            if (elErros) elErros.textContent = data.com_erros || 0;
+            if (elAndamento) elAndamento.textContent = data.em_andamento || 0;
+            if (data.em_andamento > 0 && !intervaloResumoCargaXml) {
+                intervaloResumoCargaXml = setInterval(function () {
+                    carregarResumoCargaXml();
+                    carregarTodasAsCargas();
+                }, 3000);
+            } else if (data.em_andamento === 0 && intervaloResumoCargaXml) {
+                clearInterval(intervaloResumoCargaXml);
+                intervaloResumoCargaXml = null;
+            }
+        })
+        .catch(function () {});
+}
+
+/* ===============================
+   AVISOS – LOGS DE CARGAS COM ERROS (badge só para avisos não vistos)
+================================ */
+var AVISOS_CARGAXML_VISTOS_KEY = 'gdf_cargaxml_avisos_vistos';
+var AVISOS_CARGAXML_VISTOS_MAX = 500;
+
+function getAvisosCargaXmlVistos() {
+    try {
+        var raw = localStorage.getItem(AVISOS_CARGAXML_VISTOS_KEY);
+        var arr = raw ? JSON.parse(raw) : [];
+        return new Set((arr || []).map(Number).filter(Boolean));
+    } catch (e) { return new Set(); }
+}
+
+function marcarAvisosCargaXmlComoVistos(ids) {
+    if (!ids || ids.length === 0) return;
+    try {
+        var arr = [];
+        try {
+            var raw = localStorage.getItem(AVISOS_CARGAXML_VISTOS_KEY);
+            if (raw) arr = JSON.parse(raw);
+        } catch (e) {}
+        ids.forEach(function (id) { arr.push(Number(id)); });
+        arr = Array.from(new Set(arr)).slice(-AVISOS_CARGAXML_VISTOS_MAX);
+        localStorage.setItem(AVISOS_CARGAXML_VISTOS_KEY, JSON.stringify(arr));
+    } catch (e) {}
+}
+
+function carregarAvisosCargaXml(preencherModal) {
+    fetch(getApiBase() + '/api/cargaxml/avisos/', {
+        method: 'GET',
+        headers: { 'X-CSRFToken': obterCsrfToken() },
+    })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            var items = (data.sucesso && data.items) ? data.items : [];
+            var vistos = getAvisosCargaXmlVistos();
+            var naoVistos = items.filter(function (j) { return !vistos.has(Number(j.id)); });
+            var totalNaoVistos = naoVistos.length;
+
+            var badge = document.getElementById('avisos-badge-cargaxml');
+            if (badge) {
+                if (totalNaoVistos > 0) {
+                    badge.textContent = totalNaoVistos > 99 ? '99+' : totalNaoVistos;
+                    badge.style.display = 'inline-block';
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+            if (preencherModal) {
+                preencherModalAvisosCargaXml(items);
+                marcarAvisosCargaXmlComoVistos(items.map(function (j) { return j.id; }));
+            }
+            if (items.length > 0) {
+                renderizarLogsResumo(items);
+            } else {
+                renderizarLogsResumo([]);
+            }
+        })
+        .catch(function () {
+            var badge = document.getElementById('avisos-badge-cargaxml');
+            if (badge) badge.style.display = 'none';
+        });
+}
+
+function preencherModalAvisosCargaXml(items) {
+    var emptyEl = document.getElementById('modal-avisos-cargaxml-empty');
+    var listEl = document.getElementById('modal-avisos-cargaxml-list');
+    if (!emptyEl || !listEl) return;
+    estadoCargaXml.avisosAtuaisIds = items.map(function (j) { return j.id; });
+    if (items.length === 0) {
+        emptyEl.style.display = 'block';
+        listEl.style.display = 'none';
+        listEl.innerHTML = '';
+        var btnJaLido = document.getElementById('btn-avisos-ja-lido');
+        if (btnJaLido) { btnJaLido.disabled = true; btnJaLido.style.visibility = 'hidden'; }
+        return;
+    }
+    emptyEl.style.display = 'none';
+    listEl.style.display = 'block';
+    function escapeHtml(s) {
+        return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function classForLogLine(line) {
+        var t = (line || '').trim();
+        if (t.indexOf('ERRO:') === 0) return 'aviso-log-erro';
+        if (t.indexOf('PENDENTES') === 0) return 'aviso-log-pendente';
+        if (t.indexOf('OK:') === 0) return 'aviso-log-ok';
+        return 'aviso-log-outro';
+    }
+    function ordemPrioridadeLog(line) {
+        var t = (line || '').trim();
+        if (t.indexOf('ERRO:') === 0) return 0;
+        if (t.indexOf('PENDENTES') === 0) return 1;
+        if (t.indexOf('OK:') === 0) return 2;
+        return 3;
+    }
+    var html = '';
+    items.forEach(function (job) {
+        var totalErro = job.total_erro || 0;
+        var totalOk = job.total_sucesso || 0;
+        var logLines = (job.log && job.log.length) ? job.log.slice() : [];
+        if (logLines.length) {
+            logLines.sort(function (a, b) {
+                var pa = ordemPrioridadeLog(a);
+                var pb = ordemPrioridadeLog(b);
+                return pa - pb;
+            });
+            // Nos detalhes do aviso mostrar só erros e pendentes (não mostrar OK)
+            logLines = logLines.filter(function (l) {
+                var t = (l || '').trim();
+                return t.indexOf('OK:') !== 0;
+            });
+        }
+        var logHtml = '';
+        if (logLines.length) {
+            logHtml = '<div class="aviso-dados-adicionais">';
+            logHtml += '<div class="aviso-dados-titulo small fw-600 text-uppercase text-muted mb-2">Erros e pendentes</div>';
+            logHtml += '<div class="aviso-log-lines">';
+            logLines.forEach(function (l) {
+                var cssClass = classForLogLine(l);
+                logHtml += '<div class="aviso-log-line ' + cssClass + '">' + escapeHtml(l) + '</div>';
+            });
+            logHtml += '</div></div>';
+        } else {
+            logHtml = '<div class="aviso-dados-adicionais"><div class="text-muted small">Sem log</div></div>';
+        }
+        html += '<div class="aviso-item layout-subcard">';
+        html += '  <div class="aviso-item-header d-flex justify-content-between align-items-center" role="button" tabindex="0">';
+        html += '    <span class="aviso-item-info"><strong>Job #' + job.id + '</strong> &middot; ' + formatJobDateTimeLocal(job.started_at, false) + ' <span class="text-muted small ms-1">(clique para detalhes)</span></span>';
+        html += '    <span class="d-flex align-items-center gap-2">';
+        if (totalOk > 0) html += '<span class="badge aviso-badge-ok">' + totalOk + ' OK</span>';
+        html += '<span class="badge aviso-badge-erro">' + totalErro + ' erro(s)</span> <i class="fas fa-chevron-right aviso-chevron small"></i></span>';
+        html += '  </div>';
+        html += '  <div class="aviso-item-body d-none">' + logHtml + '</div>';
+        html += '</div>';
+    });
+    listEl.innerHTML = html;
+    var btnJaLido = document.getElementById('btn-avisos-ja-lido');
+    if (btnJaLido) {
+        btnJaLido.disabled = false;
+        btnJaLido.style.visibility = 'visible';
+    }
+    listEl.querySelectorAll('.aviso-item-header').forEach(function (header) {
+        header.addEventListener('click', function () {
+            var card = header.closest('.aviso-item');
+            var body = card.querySelector('.aviso-item-body');
+            var chevron = header.querySelector('.aviso-chevron');
+            body.classList.toggle('d-none');
+            chevron.classList.toggle('fa-chevron-right');
+            chevron.classList.toggle('fa-chevron-down');
+        });
+        header.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                header.click();
+            }
+        });
+    });
+}
+
+/* ===============================
+   INICIALIZAR DRAG & DROP E INPUT FILES
+================================ */
+function inicializarDragDropInputFiles() {
+    var dropZoneArquivo = document.getElementById('drop-zone-xml-arquivo');
+    var dropZonePasta = document.getElementById('drop-zone-xml-pasta');
+    var fileInputArquivo = document.getElementById('file-input-xml');
+    var fileInputPasta = document.getElementById('file-input-diretorio');
+
+    if (dropZoneArquivo && fileInputArquivo) {
+        dropZoneArquivo.addEventListener('click', function () { fileInputArquivo.value = ''; fileInputArquivo.click(); });
+        dropZoneArquivo.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputArquivo.click(); } });
+    }
+    if (dropZonePasta && fileInputPasta) {
+        dropZonePasta.addEventListener('click', function () { fileInputPasta.value = ''; fileInputPasta.click(); });
+        dropZonePasta.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputPasta.click(); } });
+    }
+    if (fileInputArquivo) {
+        fileInputArquivo.addEventListener('change', function () {
+            if (this.files && this.files.length > 0) {
+                estadoCargaXml.modoDiretorio = false;
+                estadoCargaXml.nomePasta = '';
+                processarArquivos(this.files);
+            }
+        });
+    }
+    if (fileInputPasta) {
+        fileInputPasta.addEventListener('change', function () {
+            if (this.files && this.files.length > 0) {
+                estadoCargaXml.modoDiretorio = true;
+                estadoCargaXml.nomePasta = extrairNomePasta(this.files);
+                processarArquivos(this.files);
+            }
+            this.value = '';
+        });
+    }
+
+    const btnEnviar = document.getElementById('btn-enviar-xml');
+    if (btnEnviar) {
+        btnEnviar.addEventListener('click', function () { iniciarUpload(); });
+    }
+}
+
+/* ===============================
+   INICIALIZAR EVENTOS DOS JOBS RENDERIZADOS
+================================ */
+function inicializarEventosJobsRenderizados() {
+    // Adicionar listeners aos jobs renderizados pelo Django
+    const jobRows = document.querySelectorAll('.job-row');
+    jobRows.forEach(row => {
+        const jobId = row.getAttribute('data-job-id');
+        if (jobId) {
+            row.addEventListener('click', function() {
+                abrirModalJob(jobId);
+            });
+        }
+    });
+}
+
+/* ===============================
+   CARREGAR TODAS AS CARGAS
+================================ */
+function carregarTodasAsCargas() {
+    fetch(getApiBase() + '/api/cargaxml/jobs/')
+        .then(function (resp) {
+            return resp.text().then(function (text) {
+                var data;
+                try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
+                return { status: resp.status, data: data };
+            });
+        })
+        .then(function (result) {
+            var status = result.status;
+            var data = result.data;
+            if (status === 429) {
+                if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                    Notificacoes.pagina('Muitas requisições. Aguarde um minuto e atualize a página.', 'warning');
+                }
+                return;
+            }
+            if (status === 403) {
+                console.error('Erro 403: Cliente não identificado');
+                Notificacoes.pagina('Erro ao carregar jobs: Cliente não identificado', 'error');
+                estadoCargaXml.todasCargas = [];
+                renderizarEmExecucao();
+                renderizarJaExecutado();
+            } else if (data.sucesso && data.items && data.items.length > 0) {
+                // mapear para formato compatível (inclui mensagem de progresso para monitoramento)
+                estadoCargaXml.todasCargas = data.items.map(j => {
+                    const totalArq = j.total_arquivos || 0;
+                    const sucesso = j.total_sucesso || 0;
+                    const erro = j.total_erro || 0;
+                    const emExecucao = (j.status || '').toUpperCase() === 'RUNNING' || (j.status || '').toUpperCase() === 'PENDING';
+                    const resumoNumeros = totalArq > 0 ? `${sucesso}✓/${erro}✗` : '-';
+                    const resumo = emExecucao && (j.mensagem || '').trim()
+                        ? (j.mensagem || '').trim().split('\n')[0]
+                        : `${totalArq} arquivo(s) - ${resumoNumeros}`;
+
+                    var locJH = partesDataLocalDeIso(j.started_at);
+                    return {
+                        id: j.id,
+                        arquivo: `Job #${j.id}`,
+                        resumo: resumo,
+                        tipo: 'Manual',
+                        numero: '',
+                        empresa: '',
+                        data: locJH.data,
+                        hora: locJH.hora,
+                        status: j.status,
+                        detalhes: Object.assign({}, j, { mensagem: j.mensagem }),
+                    };
+                });
+            } else if (data.sucesso && (!data.items || data.items.length === 0)) {
+                console.log('Nenhum job encontrado');
+                estadoCargaXml.todasCargas = [];
+            } else {
+                console.error('Erro ao carregar jobs:', data.mensagem);
+                Notificacoes.pagina(data.mensagem || 'Erro ao carregar jobs', 'error');
+                estadoCargaXml.todasCargas = [];
+            }
+            aplicarFiltrosCarga();
+            renderizarEmExecucao();
+            renderizarJaExecutado();
+        })
+        .catch(function (erro) {
+            console.error('Erro na requisição:', erro);
+            Notificacoes.pagina('Erro ao conectar na API: ' + (erro.message || 'tente novamente'), 'error');
+            estadoCargaXml.todasCargas = [];
+            aplicarFiltrosCarga();
+            renderizarEmExecucao();
+            renderizarJaExecutado();
+        });
+}
+
+/* ===============================
+   EM EXECUÇÃO / JÁ EXECUTADO (containers tipo Home)
+================================ */
+function renderizarEmExecucao() {
+    const lista = document.getElementById('lista-em-execucao');
+    if (!lista) return;
+
+    const emExecucao = estadoCargaXml.todasCargas.filter(function (c) {
+        var s = (c.status || '').toUpperCase();
+        return s === 'RUNNING' || s === 'PENDING';
+    });
+
+    lista.innerHTML = '';
+    if (emExecucao.length === 0) {
+        lista.innerHTML = '<li class="cargaxml-lista-empty text-muted py-3 text-center"><i class="fas fa-check-circle fa-2x mb-2 d-block opacity-50"></i>Nenhum job em execução no momento.</li>';
+        return;
+    }
+
+    emExecucao.forEach(function (carga) {
+        var li = document.createElement('li');
+        li.className = 'home-activity-item cargaxml-job-item';
+        li.style.cursor = 'pointer';
+        li.setAttribute('data-job-id', carga.id);
+        var isoEm = (carga.detalhes && carga.detalhes.started_at) ? carga.detalhes.started_at : null;
+        var dataStr = isoEm ? formatJobDateTimeLocal(isoEm, false) : ((carga.data && carga.hora) ? (carga.data + ' ' + carga.hora) : '-');
+        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + cargaXmlEscHtml(carga.tipo || 'XML') + '</span>' +
+            '<div class="home-activity-detail">' +
+            '<span class="home-activity-status home-activity-status-running">Em execução</span>' +
+            '<span class="home-activity-meta">' + cargaXmlEscHtml(carga.resumo || '') + '</span></div>' +
+            '<div class="home-activity-time">' + cargaXmlEscHtml(dataStr) + '</div>' +
+            '<a href="#" class="home-activity-link" data-job-id="' + cargaXmlEscHtml(carga.id) + '" title="Ver detalhes">→</a>';
+        li.addEventListener('click', function (e) {
+            e.preventDefault();
+            abrirModalJob(carga.id);
+        });
+        var link = li.querySelector('a.home-activity-link');
+        if (link) link.addEventListener('click', function (e) { e.preventDefault(); abrirModalJob(carga.id); });
+        lista.appendChild(li);
+    });
+}
+
+function renderizarJaExecutado() {
+    const lista = document.getElementById('lista-ja-executado');
+    if (!lista) return;
+
+    const jaExecutado = estadoCargaXml.todasCargas.filter(function (c) {
+        var s = (c.status || '').toUpperCase();
+        return s === 'SUCCESS' || s === 'ERROR';
+    }).slice(0, 25);
+
+    lista.innerHTML = '';
+    if (jaExecutado.length === 0) {
+        lista.innerHTML = '<li class="cargaxml-lista-empty text-muted py-3 text-center"><i class="fas fa-inbox fa-2x mb-2 d-block opacity-50"></i>Nenhuma execução recente.</li>';
+        return;
+    }
+
+    jaExecutado.forEach(function (carga) {
+        var li = document.createElement('li');
+        li.className = 'home-activity-item cargaxml-job-item';
+        li.style.cursor = 'pointer';
+        var statusClass = (carga.status || '').toUpperCase() === 'ERROR' ? 'home-activity-status-error' : 'home-activity-status-success';
+        var isoJa = (carga.detalhes && carga.detalhes.started_at) ? carga.detalhes.started_at : null;
+        var dataStr = isoJa ? formatJobDateTimeLocal(isoJa, false) : ((carga.data && carga.hora) ? (carga.data + ' ' + carga.hora) : '-');
+        li.innerHTML = '<span class="home-activity-type home-activity-type-xml">' + cargaXmlEscHtml(carga.tipo || 'XML') + '</span>' +
+            '<div class="home-activity-detail">' +
+            '<span class="home-activity-status ' + statusClass + '">' + (carga.status === 'SUCCESS' ? 'Concluído' : 'Erro') + '</span>' +
+            '<span class="home-activity-meta">' + cargaXmlEscHtml(carga.resumo || '') + '</span></div>' +
+            '<div class="home-activity-time">' + cargaXmlEscHtml(dataStr) + '</div>' +
+            '<a href="#" class="home-activity-link" data-job-id="' + cargaXmlEscHtml(carga.id) + '" title="Ver log">→</a>';
+        li.addEventListener('click', function (e) {
+            e.preventDefault();
+            abrirModalJob(carga.id);
+        });
+        var linkJa = li.querySelector('a.home-activity-link');
+        if (linkJa) linkJa.addEventListener('click', function (e) { e.preventDefault(); abrirModalJob(carga.id); });
+        lista.appendChild(li);
+    });
+}
+
+/* ===============================
+   LOGS RESUMO (card na página)
+================================ */
+function renderizarLogsResumo(items) {
+    var emptyEl = document.getElementById('logs-resumo-empty');
+    var contentEl = document.getElementById('logs-resumo-content');
+    if (!emptyEl || !contentEl) return;
+
+    if (!items || items.length === 0) {
+        emptyEl.style.display = 'block';
+        contentEl.style.display = 'none';
+        contentEl.innerHTML = '';
+        return;
+    }
+
+    emptyEl.style.display = 'none';
+    contentEl.style.display = 'block';
+
+    function escapeHtml(s) {
+        return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function classLog(line) {
+        var t = (line || '').trim();
+        if (t.indexOf('ERRO:') === 0) return 'aviso-log-erro';
+        if (t.indexOf('PENDENTES') === 0) return 'aviso-log-pendente';
+        if (t.indexOf('OK:') === 0) return 'aviso-log-ok';
+        return 'aviso-log-outro';
+    }
+
+    var html = '';
+    items.slice(0, 3).forEach(function (job) {
+        var logLines = (job.log && job.log.length) ? job.log.filter(function (l) {
+            var t = (l || '').trim();
+            return t.indexOf('ERRO:') === 0 || t.indexOf('PENDENTES') === 0;
+        }).slice(0, 5) : [];
+        html += '<div class="cargaxml-log-job mb-3">';
+        html += '<div class="small fw-600 text-secondary mb-1">Job #' + job.id + ' &middot; ' + formatJobDateTimeLocal(job.started_at, false) + '</div>';
+        if (logLines.length === 0) {
+            html += '<div class="small text-muted">Sem linhas de log</div>';
+        } else {
+            logLines.forEach(function (l) {
+                html += '<div class="cargaxml-log-line ' + classLog(l) + '">' + escapeHtml(l) + '</div>';
+            });
+        }
+        html += '</div>';
+    });
+    contentEl.innerHTML = html;
+}
+
+function atualizarConteudoModalJob(data, expectedJobId) {
+    if (!data || !data.sucesso || !data.job) return;
+    if (expectedJobId != null && Number(data.job.id) !== Number(expectedJobId)) {
+        return;
+    }
+    const job = data.job;
+    const log = data.log || [];
+    const modalRoot = document.getElementById('modalJobDetails');
+    if (!modalRoot) return;
+    const elId = modalRoot.querySelector('#modal-job-id');
+    const elStatus = modalRoot.querySelector('#modal-job-status');
+    const elStarted = modalRoot.querySelector('#modal-job-started');
+    const elFinished = modalRoot.querySelector('#modal-job-finished');
+    if (elId) elId.textContent = job.id;
+    if (elStatus) elStatus.textContent = job.status;
+    if (elStarted) {
+        elStarted.textContent = formatJobDateTimeLocal(job.started_at, true);
+        elStarted.title = job.started_at ? ('Registro em UTC (API): ' + job.started_at) : '';
+    }
+    if (elFinished) {
+        elFinished.textContent = formatJobDateTimeLocal(job.finished_at, true);
+        elFinished.title = job.finished_at ? ('Registro em UTC (API): ' + job.finished_at) : '';
+    }
+    const tbodyLog = modalRoot.querySelector('#tabela-log tbody');
+    if (tbodyLog) {
+        tbodyLog.innerHTML = '';
+        if (log.length === 0) {
+            tbodyLog.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Sem registros (aguardando...)</td></tr>';
+        } else {
+            var logOrdenado = log.slice();
+            logOrdenado.sort(function (a, b) {
+                var pa = (function (line) {
+                    var t = (line || '').trim();
+                    if (t.indexOf('ERRO:') === 0) return 0;
+                    if (t.indexOf('PENDENTES') === 0) return 1;
+                    if (t.indexOf('OK:') === 0) return 2;
+                    return 3;
+                })(a);
+                var pb = (function (line) {
+                    var t = (line || '').trim();
+                    if (t.indexOf('ERRO:') === 0) return 0;
+                    if (t.indexOf('PENDENTES') === 0) return 1;
+                    if (t.indexOf('OK:') === 0) return 2;
+                    return 3;
+                })(b);
+                return pa - pb;
+            });
+            logOrdenado.forEach(function (line, idx) {
+                var tr = document.createElement('tr');
+                var t = (line || '').trim();
+                var rowClass = '';
+                if (t.indexOf('ERRO:') === 0) rowClass = 'aviso-log-erro';
+                else if (t.indexOf('PENDENTES') === 0) rowClass = 'aviso-log-pendente';
+                else if (t.indexOf('OK:') === 0) rowClass = 'aviso-log-ok';
+                if (rowClass) tr.className = rowClass;
+                var text = cargaXmlEscHtml(line || '');
+                tr.innerHTML = '<td>' + (idx + 1) + '</td><td>' + text + '</td>';
+                tbodyLog.appendChild(tr);
+            });
+        }
+    }
+}
+
+function abrirModalJob(jobId) {
+    if (estadoCargaXml.modalJobPollInterval) {
+        clearInterval(estadoCargaXml.modalJobPollInterval);
+        estadoCargaXml.modalJobPollInterval = null;
+    }
+    estadoCargaXml.modalJobIdAberto = jobId;
+
+    function pollJobDetails() {
+        if (estadoCargaXml.modalJobIdAberto !== jobId) return;
+        fetch(getApiBase() + `/api/cargaxml/jobs/${jobId}/`)
+            .then(resp => resp.json())
+            .then(data => {
+                atualizarConteudoModalJob(data, jobId);
+                var status = (data.job && data.job.status) ? data.job.status.toUpperCase() : '';
+                if (status === 'SUCCESS' || status === 'ERROR') {
+                    if (estadoCargaXml.modalJobPollInterval) {
+                        clearInterval(estadoCargaXml.modalJobPollInterval);
+                        estadoCargaXml.modalJobPollInterval = null;
+                    }
+                    estadoCargaXml.modalJobIdAberto = null;
+                    carregarTodasAsCargas();
+                    carregarResumoCargaXml();
+                }
+            })
+            .catch(function () {});
+    }
+
+    fetch(getApiBase() + `/api/cargaxml/jobs/${jobId}/`)
+        .then(resp => resp.json())
+        .then(data => {
+            if (!data.sucesso) {
+                Notificacoes.pagina('❌ Não foi possível carregar detalhes do job', 'error');
+                return;
+            }
+            atualizarConteudoModalJob(data, jobId);
+            var modalEl = document.getElementById('modalJobDetails');
+            var modal = new bootstrap.Modal(modalEl);
+            modal.show();
+
+            var status = (data.job && data.job.status) ? data.job.status.toUpperCase() : '';
+            if (status === 'RUNNING' || status === 'PENDING') {
+                estadoCargaXml.modalJobPollInterval = setInterval(pollJobDetails, 2500);
+            }
+
+            modalEl.addEventListener('hidden.bs.modal', function onHidden() {
+                if (estadoCargaXml.modalJobPollInterval) {
+                    clearInterval(estadoCargaXml.modalJobPollInterval);
+                    estadoCargaXml.modalJobPollInterval = null;
+                }
+                estadoCargaXml.modalJobIdAberto = null;
+                modalEl.removeEventListener('hidden.bs.modal', onHidden);
+            }, { once: true });
+        })
+        .catch(() => {
+            Notificacoes.pagina('❌ Falha ao carregar detalhes do job', 'error');
+        });
+}
+
+/* ===============================
+   APLICAR FILTROS
+================================ */
+function aplicarFiltrosCarga() {
+    estadoCargaXml.cargasFiltradas = estadoCargaXml.todasCargas.filter(function (carga) {
+        if (estadoCargaXml.filtros.busca) {
+            var busca = estadoCargaXml.filtros.busca;
+            if (!carga.arquivo.toLowerCase().includes(busca)) {
+                return false;
+            }
+        }
+        return true;
+    });
+}
+
+/* ===============================
+   RENDERIZAR TABELA CARGAS
+================================ */
+function renderizarTabelaCargas() {
+    const tbody = document.querySelector('#tabela-cargas tbody');
+    if (!tbody) return;
+
+    const inicio = (estadoCargaXml.currentPage - 1) * estadoCargaXml.itemsPerPage;
+    const fim = inicio + estadoCargaXml.itemsPerPage;
+    const paginados = estadoCargaXml.cargasFiltradas.slice(inicio, fim);
+
+    tbody.innerHTML = '';
+
+    if (paginados.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="text-center text-muted py-4">
+                    <i class="fas fa-inbox" style="font-size: 24px; margin-bottom: 10px; display: block; opacity: 0.5;"></i>
+                    Nenhum arquivo encontrado
+                </td>
+            </tr>
+        `;
+        renderizarPaginacaoCarga(0);
+        return;
+    }
+
+    paginados.forEach(carga => {
+        const iconeTipo = obterIconeTipo(carga.tipo);
+        const badgeStatus = obterBadgeStatusCarga(carga.status);
+
+        const linha = document.createElement('tr');
+        linha.style.cursor = 'pointer';
+        linha.onclick = () => abrirModalJob(carga.id);
+        linha.innerHTML = `
+            <td>
+                ${iconeTipo}
+                <div>
+                    <strong>${carga.arquivo}</strong>
+                    <br>
+                    <small class="text-muted">${carga.resumo}</small>
+                </div>
+            </td>
+            <td>
+                <span class="badge" style="background-color: ${obterCorTipo(carga.tipo)}; color: white;">
+                    ${carga.tipo}
+                </span>
+            </td>
+            <td>
+                <div>${carga.data}</div>
+                <small class="text-muted">${carga.hora || ''}</small>
+            </td>
+            <td>${badgeStatus}</td>
+        `;
+        tbody.appendChild(linha);
+    });
+
+    renderizarPaginacaoCarga(estadoCargaXml.cargasFiltradas.length);
+}
+
+/* ===============================
+   RENDERIZAR PAGINAÇÃO
+================================ */
+function renderizarPaginacaoCarga(totalItems) {
+    const container = document.getElementById('paginacao-cargas');
+    if (!container) return;
+
+    const totalPages = Math.ceil(totalItems / estadoCargaXml.itemsPerPage);
+    container.innerHTML = '';
+
+    if (totalPages <= 1) return;
+
+    for (let i = 1; i <= totalPages; i++) {
+        const link = document.createElement('li');
+        link.className = 'page-item' + (i === estadoCargaXml.currentPage ? ' active' : '');
+
+        const btn = document.createElement('button');
+        btn.className = 'page-link';
+        btn.textContent = i;
+        btn.onclick = () => {
+            estadoCargaXml.currentPage = i;
+            renderizarTabelaCargas();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+        link.appendChild(btn);
+        container.appendChild(link);
+    }
+}
+
+/* ===============================
+   DRAG & DROP
+================================ */
+function prevenirPadraoEventos(e) {
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+/* ===============================
+   INPUT FILE
+================================ */
+function inicializarInputFile() {
+    const fileInput = document.getElementById('file-input-xml');
+
+    if (!fileInput) return;
+
+    fileInput.addEventListener('change', function (e) {
+        processarArquivos(e.target.files);
+    });
+}
+
+/* ===============================
+   PROCESSAR ARQUIVOS SELECIONADOS
+   Aceita pasta (webkitdirectory) com .xml e .zip; ignora outros tipos.
+================================ */
+function processarArquivos(files) {
+    var arquivosValidos = [];
+    var list = Array.from(files || []);
+
+    for (var i = 0; i < list.length; i++) {
+        var file = list[i];
+        var nome = (file.name || '').toLowerCase();
+        if (!nome.endsWith('.xml') && !nome.endsWith('.zip')) {
+            continue;
+        }
+        if (file.size > 50 * 1024 * 1024) {
+            continue;
+        }
+        arquivosValidos.push(file);
+    }
+
+    estadoCargaXml.arquivos = arquivosValidos;
+    estadoCargaXml.totalArquivos = arquivosValidos.length;
+    exibirPreviewArquivos();
+}
+
+/* ===============================
+   EXIBIR PREVIEW DOS ARQUIVOS (apenas contador)
+================================ */
+function exibirPreviewArquivos(files) {
+    if (files) {
+        processarArquivos(files);
+        return;
+    }
+    var contador = document.getElementById('contador-arquivos');
+    if (contador) {
+        contador.textContent = estadoCargaXml.arquivos.length;
+    }
+}
+
+/* ===============================
+   INICIAR UPLOAD
+================================ */
+function iniciarUpload() {
+    if (estadoCargaXml.uploadEmProgresso || estadoCargaXml.arquivos.length === 0) {
+        Notificacoes.modal('Selecione pelo menos um arquivo XML ou ZIP', 'warning', 'modalCargaXmlAlerts');
+        return;
+    }
+
+    var tipoDocumento = (document.getElementById('select-tipo-documento') && document.getElementById('select-tipo-documento').value) || 'NFe';
+
+    estadoCargaXml.uploadEmProgresso = true;
+    var btn = document.getElementById('btn-enviar-xml');
+    if (btn) btn.disabled = true;
+    uploadArquivosLote(estadoCargaXml.arquivos, tipoDocumento);
+}
+
+/* ===============================
+   UPLOAD (envio único: todos os arquivos em uma requisição)
+================================ */
+function enviarXmlUnico(arquivos, tipoDocumento, apiUrl, csrfToken) {
+    var formData = new FormData();
+    arquivos.forEach(function (f) { formData.append('arquivo', f); });
+    formData.append('type_xml', tipoDocumento);
+    return fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken },
+        body: formData
+    }).then(function (response) {
+        var status = response.status;
+        if (status === 413) {
+            return { status: 413, data: { sucesso: false, mensagem: 'Arquivo(s) muito grande (413). Configure Nginx: client_max_body_size 100M; ou envie menos arquivos.' } };
+        }
+        return response.text().then(function (text) {
+            var data;
+            try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
+            if (!data.mensagem && data.sucesso === undefined) data = { sucesso: false, mensagem: 'Resposta inválida (status ' + status + ')' };
+            if (status >= 400) {
+                var corpo = (text && String(text).length > 500) ? String(text).substring(0, 500) + '…' : (text || '');
+                console.error('[GDF Carga XML] processar-xml HTTP ' + status + ':', data.mensagem || '(resposta sem campo mensagem)', corpo ? '| resposta bruta: ' + corpo : '');
+            }
+            return { status: status, data: data };
+        });
+    });
+}
+
+function finalizarUploadCargaXml(erroMsg, opts) {
+    opts = opts || {};
+    estadoCargaXml.uploadEmProgresso = false;
+    var btn = document.getElementById('btn-enviar-xml');
+    if (btn) btn.disabled = false;
+    if (opts.skipResumoModal) {
+        carregarTodasAsCargas();
+    } else {
+        finalizarCargas();
+    }
+    if (erroMsg) {
+        fecharModalCargaXml();
+        if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+            Notificacoes.pagina(erroMsg, 'danger');
+        } else { alert(erroMsg); }
+    }
+}
+
+function uploadArquivosLote(arquivos, tipoDocumento) {
+    var apiUrl = (document.querySelector('.layout-page') && document.querySelector('.layout-page').getAttribute('data-api-processar-xml')) || '/api/processar-xml/';
+    var csrfToken = (document.querySelector('[name=csrfmiddlewaretoken]') && document.querySelector('[name=csrfmiddlewaretoken]').value) || (typeof window.getCsrfToken === 'function' ? window.getCsrfToken() : '');
+    var total = arquivos.length;
+
+    atualizarStatusUpload(0, 'processing', 'Enviando arquivos...');
+
+    enviarXmlUnico(arquivos, tipoDocumento, apiUrl, csrfToken)
+        .then(function (result) {
+            var status = result.status;
+            var data = result.data;
+
+            if (status === 413) {
+                finalizarUploadCargaXml(data.mensagem || 'Erro 413: arquivo(s) muito grande.', { skipResumoModal: true });
+                return;
+            }
+            if (status === 400) {
+                var msg = (data && data.mensagem) ? data.mensagem : 'Requisição inválida (400). Envie apenas .xml ou .zip.';
+                arquivos.forEach(function (file, index) { atualizarStatusUpload(index, 'error', '✗ ' + (data.mensagem || 'Erro 400')); });
+                finalizarUploadCargaXml(msg, { skipResumoModal: true });
+                return;
+            }
+            if (status === 202) {
+                fecharModalCargaXml();
+                if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                    Notificacoes.pagina(data.mensagem || 'Job criado e em execução. Atualize o painel para acompanhar.', 'success');
+                } else { alert(data.mensagem || 'Job criado e em execução.'); }
+                carregarResumoCargaXml();
+                carregarTodasAsCargas();
+                finalizarUploadCargaXml();
+                if (data && data.job_id) setTimeout(function () { abrirModalJob(data.job_id); }, 400);
+                return;
+            }
+            if (data.sucesso) {
+                if (estadoCargaXml.modoDiretorio) {
+                    var totalSucesso = (data.detalhes && data.detalhes.success) ? data.detalhes.success.length : 0;
+                    var totalErro = (data.detalhes && data.detalhes.errors) ? data.detalhes.errors.length : 0;
+                    var mensagemStatus = totalSucesso + ' processado(s), ' + totalErro + ' erro(s)';
+                    atualizarStatusUpload(arquivos.length - 1, totalErro === 0 ? 'success' : 'error', (totalErro === 0 ? '✓ ' : '⚠️ ') + mensagemStatus);
+                } else {
+                    if (data.detalhes && data.detalhes.success) {
+                        data.detalhes.success.forEach(function (fileName) {
+                            var idx = arquivos.findIndex(function (f) { return f.name === fileName; });
+                            if (idx !== -1) atualizarStatusUpload(idx, 'success', '✓ Processado');
+                        });
+                    }
+                    if (data.detalhes && data.detalhes.errors) {
+                        data.detalhes.errors.forEach(function (erro) {
+                            var idx = arquivos.findIndex(function (f) { return f.name === erro.file; });
+                            if (idx !== -1) atualizarStatusUpload(idx, 'error', '✗ ' + (erro.error || ''));
+                        });
+                    }
+                }
+                fecharModalCargaXml();
+                if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                    Notificacoes.pagina(data.mensagem, 'success');
+                } else { alert(data.mensagem); }
+            } else {
+                fecharModalCargaXml();
+                if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                    Notificacoes.pagina(data.mensagem || 'Erro ao processar XMLs', 'danger');
+                } else { alert(data.mensagem || 'Erro ao processar XMLs'); }
+                arquivos.forEach(function (file, index) { atualizarStatusUpload(index, 'error', '✗ Erro no processamento'); });
+            }
+            finalizarUploadCargaXml();
+        })
+        .catch(function (error) {
+            console.error('Erro ao fazer upload:', error);
+            var msg = 'Erro ao enviar arquivos: ' + (error.message || 'Erro de conexão');
+            if (error.message && (String(error.message).indexOf('fetch') !== -1 || String(error.message).indexOf('Failed') !== -1)) {
+                msg = 'Conexão falhou (rede ou proxy). Tente novamente ou compacte em .zip e envie o ZIP.';
+            }
+            fecharModalCargaXml();
+            if (typeof Notificacoes !== 'undefined' && Notificacoes.pagina) {
+                Notificacoes.pagina(msg, 'danger');
+            } else { alert(msg); }
+            arquivos.forEach(function (file, index) { atualizarStatusUpload(index, 'error', '✗ Erro de conexão'); });
+            finalizarUploadCargaXml(null, { skipResumoModal: true });
+        });
+}
+
+/* ===============================
+   ATUALIZAR STATUS
+================================ */
+function atualizarStatusUpload(index, status, mensagem) {
+    try {
+    if (estadoCargaXml.modoDiretorio) {
+        var linhaDiretorio = document.getElementById('linha-diretorio');
+        if (linhaDiretorio) {
+            var statusCell = linhaDiretorio.querySelector('td:nth-child(3)');
+            
+            let badgeClass = 'badge-info';
+            let statusTexto = 'Aguardando';
+            let iconHtml = '<span class="spinner-carga" style="margin-right: 5px;"></span>';
+
+            if (status === 'processing') {
+                badgeClass = 'badge-warning';
+                statusTexto = `Processando... (${index + 1}/${estadoCargaXml.arquivos.length})`;
+                iconHtml = '<span class="spinner-carga" style="margin-right: 5px;"></span>';
+            } else if (status === 'success') {
+                badgeClass = 'badge-success';
+                statusTexto = mensagem != null && mensagem !== '' ? mensagem : '✓ Concluído';
+                iconHtml = '';
+            } else if (status === 'error') {
+                badgeClass = 'badge-danger';
+                statusTexto = mensagem != null && mensagem !== '' ? mensagem : '✗ Concluído com erros';
+                iconHtml = '';
+            }
+
+            cargaXmlBadgeDefinirConteudo(
+                statusCell,
+                badgeClass,
+                statusTexto,
+                iconHtml,
+                mensagem != null && mensagem !== '' ? mensagem : statusTexto
+            );
+        }
+        return;
+    }
+
+    var linhas = document.querySelectorAll('#tabela-uploads tbody tr');
+    if (linhas[index]) {
+        var statusCell = linhas[index].querySelector('td:nth-child(3)');
+
+        let badgeClass = 'badge-info';
+        let statusTexto = 'Aguardando';
+        let iconHtml = '<span class="spinner-carga" style="margin-right: 5px;"></span>';
+
+        if (status === 'processing') {
+            badgeClass = 'badge-warning';
+            statusTexto = mensagem != null && mensagem !== '' ? mensagem : 'Processando...';
+            iconHtml = '<span class="spinner-carga" style="margin-right: 5px;"></span>';
+        } else if (status === 'success') {
+            badgeClass = 'badge-success';
+            statusTexto = mensagem != null && mensagem !== '' ? mensagem : '✓ Sucesso';
+            iconHtml = '';
+        } else if (status === 'error') {
+            badgeClass = 'badge-danger';
+            statusTexto = mensagem != null && mensagem !== '' ? mensagem : '✗ Erro';
+            iconHtml = '';
+        }
+
+        cargaXmlBadgeDefinirConteudo(
+            statusCell,
+            badgeClass,
+            statusTexto,
+            iconHtml,
+            mensagem != null && mensagem !== '' ? mensagem : statusTexto
+        );
+    }
+    } catch (e) { console.warn('atualizarStatusUpload:', e); }
+}
+
+function fecharModalCargaXml() {
+    var modal = document.getElementById('modalCargaXml');
+    if (!modal) return;
+    try {
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            var inst = bootstrap.Modal.getInstance(modal) || bootstrap.Modal.getOrCreateInstance(modal);
+            if (inst) inst.hide();
+        } else {
+            modal.classList.remove('show');
+            modal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+            var backdrop = document.querySelector('.modal-backdrop');
+            if (backdrop) backdrop.remove();
+        }
+    } catch (e) {
+        console.warn('fecharModalCargaXml:', e);
+    }
+}
+
+/* ===============================
+   FINALIZAR CARGAS
+================================ */
+function finalizarCargas() {
+    var tabela = document.querySelector('#tabela-uploads');
+    if (tabela) {
+        var sucessos = tabela.querySelectorAll('.badge-success').length;
+        var erros = tabela.querySelectorAll('.badge-danger').length;
+        var mensagem = 'Upload finalizado: ' + sucessos + ' sucesso(s) e ' + erros + ' erro(s)';
+        Notificacoes.modal(mensagem, erros === 0 ? 'success' : 'warning', 'modalCargaXmlAlerts');
+    }
+    carregarTodasAsCargas();
+    setTimeout(function () { limparSelecao(); }, 3000);
+}
+
+/* ===============================
+   LIMPAR SELEÇÃO
+================================ */
+function limparSelecao() {
+    var inputDiretorio = document.getElementById('file-input-diretorio');
+    var inputArquivo = document.getElementById('file-input-xml');
+    if (inputDiretorio) inputDiretorio.value = '';
+    if (inputArquivo) inputArquivo.value = '';
+    estadoCargaXml.arquivos = [];
+    estadoCargaXml.modoDiretorio = false;
+    estadoCargaXml.nomePasta = '';
+    exibirPreviewArquivos();
+}
+
+/* ===============================
+   EXTRAIR NOME DA PASTA
+================================ */
+function extrairNomePasta(files) {
+    if (!files || files.length === 0) return '';
+    var primeiroArquivo = files[0];
+    if (primeiroArquivo.webkitRelativePath) {
+        var partes = primeiroArquivo.webkitRelativePath.split('/');
+        return partes[0] || 'Pasta selecionada';
+    }
+    return 'Arquivos selecionados';
+}
+
+/* ===============================
+   REMOVER ARQUIVO
+================================ */
+function removerArquivo(index) {
+    estadoCargaXml.arquivos.splice(index, 1);
+    exibirPreviewArquivos();
+
+    if (estadoCargaXml.arquivos.length === 0) {
+        document.querySelector('#tabela-uploads tbody').innerHTML = `
+            <tr>
+                <td colspan="4" class="text-center text-muted">
+                    Nenhum arquivo selecionado
+                </td>
+            </tr>
+        `;
+    }
+}
+
+/* ===============================
+   ALERTAS: usar Notificacoes.pagina(mensagem, tipo) - ver PADRAO_ALERTAS.md
+================================ */
+
+/* ===============================
+   UTILITÁRIOS
+================================ */
+function formatarTamanhoArquivo(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
+
+function obterIconeTipo(tipo) {
+    const ícones = {
+        'NFe': '<i class="fas fa-file-invoice" style="color: #007bff; margin-right: 8px;"></i>',
+        'CTe': '<i class="fas fa-truck" style="color: #28a745; margin-right: 8px;"></i>',
+        'NFSe': '<i class="fas fa-receipt" style="color: #fd7e14; margin-right: 8px;"></i>',
+        'Manual': '<i class="fas fa-hand-paper" style="color: #6c757d; margin-right: 8px;"></i>'
+    };
+    return ícones[tipo] || '<i class="fas fa-file-code" style="margin-right: 8px;"></i>';
+}
+
+function obterCorTipo(tipo) {
+    const cores = {
+        'NFe': '#007bff',
+        'CTe': '#28a745',
+        'NFSe': '#fd7e14'
+    };
+    return cores[tipo] || '#6c757d';
+}
+
+function obterBadgeStatusCarga(status) {
+    const badges = {
+        'Sucesso': '<span class="badge-status badge-success">✓ Sucesso</span>',
+        'Processando': '<span class="badge-status badge-info"><span class="spinner-carga" style="margin-right: 5px;"></span>Processando</span>',
+        'Erro': '<span class="badge-status badge-danger">✗ Erro</span>',
+        'Pendente': '<span class="badge-status badge-warning">⏳ Pendente</span>',
+        'SUCCESS': '<span class="badge-status badge-success">✓ Success</span>',
+        'ERROR': '<span class="badge-status badge-danger">✗ Error</span>',
+        'RUNNING': '<span class="badge-status badge-info">⏳ Running</span>',
+        'PENDING': '<span class="badge-status badge-warning">⏳ Pending</span>'
+    };
+    return badges[status] || '<span class="badge-status">' + status + '</span>';
+}

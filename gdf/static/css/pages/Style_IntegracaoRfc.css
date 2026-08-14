@@ -1,0 +1,164 @@
+/**
+ * Integração SAP / RFC — mesmo fio condutor que as outras áreas: .layout-page (Style_Base) + painel.
+ */
+.layout-page.rfc-sap .rfc-sap-hero code {
+    background: rgba(20, 184, 166, 0.2);
+    color: #5eead4;
+    padding: 0.15rem 0.4rem;
+    border-radius: 6px;
+    font-size: 0.88em;
+}
+
+.rfc-sap-hero .rfc-sap-vpn-hint {
+    color: rgba(226, 232, 240, 0.75);
+    font-size: 0.9rem;
+}
+
+/* Grade de cards RFC (equivalente ao antigo .rfc-grid) */
+.rfc-sap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 1.6rem;
+    margin-bottom: 0;
+}
+
+.rfc-sap-card {
+    grid-column: span 1;
+    min-width: 0;
+    animation: layout-fade 0.5s ease-out both;
+}
+
+.rfc-sap-card:nth-child(1) { animation-delay: 0.05s; }
+.rfc-sap-card:nth-child(2) { animation-delay: 0.1s; }
+.rfc-sap-card:nth-child(3) { animation-delay: 0.15s; }
+.rfc-sap-card:nth-child(4) { animation-delay: 0.2s; }
+.rfc-sap-card:nth-child(5) { animation-delay: 0.25s; }
+
+.rfc-sap-grid > .rfc-sap-card:only-child,
+.rfc-sap-card--empty {
+    grid-column: 1 / -1;
+}
+
+.rfc-sap-card-head {
+    margin-bottom: 0.75rem;
+}
+
+.rfc-sap-eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #64748b;
+    margin-bottom: 0.35rem;
+}
+
+.rfc-sap-card-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin: 0;
+    color: var(--gdf-ink, #0f172a);
+}
+
+.rfc-sap-card .rfc-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.rfc-sap-card .form-label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+.rfc-sap-card .form-control,
+.rfc-sap-card .form-select {
+    width: 100%;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 10px;
+    font-size: 0.9rem;
+}
+
+.rfc-sap-card .form-control:focus,
+.rfc-sap-card .form-select:focus {
+    border-color: #14b8a6;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.15);
+    outline: none;
+}
+
+.rfc-sap-card .form-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0;
+}
+
+.rfc-sap-card .form-check-input {
+    width: 1.1em;
+    height: 1.1em;
+    margin: 0;
+    cursor: pointer;
+}
+
+.rfc-sap-card .form-check-label {
+    margin: 0;
+    cursor: pointer;
+}
+
+.rfc-sap-card .rfc-result {
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    font-size: 0.9rem;
+}
+
+.rfc-sap-card .rfc-result .alert {
+    padding: 0.6rem 0.9rem;
+    border-radius: 10px;
+}
+
+.rfc-sap-card .rfc-result .alert-success {
+    background: rgba(20, 184, 166, 0.12);
+    border: 1px solid rgba(20, 184, 166, 0.3);
+    color: #0d9488;
+}
+
+.rfc-sap-card .rfc-result .alert-danger {
+    background: rgba(251, 113, 133, 0.12);
+    border: 1px solid rgba(251, 113, 133, 0.3);
+    color: #be123c;
+}
+
+.rfc-sap-card .btn-primary {
+    align-self: flex-start;
+    font-weight: 600;
+    padding: 0.5rem 1.2rem;
+    border-radius: 10px;
+}
+
+.rfc-sap-card .mb-2 small.text-muted {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.8rem;
+}
+
+.rfc-sap-hint {
+    color: #475569;
+}
+
+/* Modal consulta SAP (markup: IntegracaoSap/modal_Rfc.html) */
+.rfc-sap-modal .modal-content {
+    border-radius: 0.75rem;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(15, 23, 42, 0.2);
+}
+#modalRfcConsultaSap .rfc-sap-modal-table-wrap,
+.rfc-sap-modal .rfc-sap-modal-table-wrap {
+    max-height: min(70vh, 720px);
+}
+
+@media (max-width: 768px) {
+    .rfc-sap-grid {
+        grid-template-columns: 1fr;
+    }
+}

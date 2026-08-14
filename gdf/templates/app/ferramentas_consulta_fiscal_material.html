@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Ferramentas - Consulta Fiscal Material{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{% static 'css/pages/Style_ConsultaFiscalMaterial.css' %}">
+{% endblock %}
+
+{% block titlepage %}Ferramentas - Consulta Fiscal Material{% endblock %}
+
+{% block container %}
+<div
+    class="layout-page cfm-page"
+    data-url-prefix="{{ url_prefix|default:'' }}"
+    data-api-url="{% url 'API_Con_Fiscal_Material' %}"
+    data-sap-api-url="{% url 'API_Con_Sap_Fiscal_Material' %}"
+    data-default-start="{{ data_inicio_padrao|default:'' }}"
+    data-default-end="{{ data_fim_padrao|default:'' }}"
+>
+    <section class="layout-hero">
+        <div class="layout-hero-content">
+            <p class="layout-eyebrow">Ferramentas</p>
+            <h1 class="layout-title">Consulta Fiscal Material</h1>
+            <p class="layout-subtitle">Consulte os dados fiscais de materiais diretamente no banco, com filtros automaticos e atualizacao instantanea.</p>
+        </div>
+    </section>
+
+    <section class="layout-panel">
+        <div class="layout-card">
+            <div class="layout-card-head">
+                <div>
+                    <h2 class="layout-card-title">Filtros da consulta</h2>
+                    <p class="layout-card-subtitle">A consulta carrega automaticamente ao abrir a tela e reaplica os filtros sempre que eles forem alterados.</p>
+                </div>
+            </div>
+
+            <div class="layout-subcard cfm-filtros">
+                <div class="d-flex flex-wrap align-items-end gap-2 mb-2">
+                    <span class="fw-semibold text-secondary me-2"><i class="fas fa-filter"></i> Filtros</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="cfm-btn-limpar">
+                        <i class="fas fa-eraser"></i> Limpar
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="cfm-btn-consulta-sap">
+                        <i class="fas fa-cloud-arrow-down"></i> Consulta SAP
+                    </button>
+                </div>
+                <div class="row g-3">
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <label for="cfm-chave-acesso" class="form-label small mb-0">Chave de Acesso</label>
+                        <input type="text" id="cfm-chave-acesso" class="form-control form-control-sm" maxlength="64" placeholder="Informe a chave de acesso">
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <label for="cfm-cod-material" class="form-label small mb-0">Codigo do Material</label>
+                        <input type="text" id="cfm-cod-material" class="form-control form-control-sm" maxlength="64" placeholder="Informe o codigo do material">
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <label for="cfm-fornecedor" class="form-label small mb-0">Fornecedor</label>
+                        <input type="text" id="cfm-fornecedor" class="form-control form-control-sm" maxlength="64" placeholder="Informe o fornecedor">
+                    </div>
+                    <div class="col-6 col-md-3 col-xl-2">
+                        <label for="cfm-data-inicial" class="form-label small mb-0">Data Inicial *</label>
+                        <input type="date" id="cfm-data-inicial" class="form-control form-control-sm" required>
+                    </div>
+                    <div class="col-6 col-md-3 col-xl-2">
+                        <label for="cfm-data-final" class="form-label small mb-0">Data Final *</label>
+                        <input type="date" id="cfm-data-final" class="form-control form-control-sm" required>
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4 d-flex align-items-end gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="cfm-btn-limpar">
+                            <i class="fas fa-eraser"></i> Limpar filtros
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="layout-subcard">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                    <p id="cfm-resumo" class="small text-muted mb-0">Aguarde o carregamento inicial da consulta.</p>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 layout-table table-sm" id="cfm-tabela">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="cfm-sort" data-sort="material" title="Ordenar">Material (MATNR)</th>
+                                <th class="cfm-sort" data-sort="descricao_material" title="Ordenar">Descricao do Material</th>
+                                <th class="cfm-sort" data-sort="fornecedor" title="Ordenar">Fornecedor</th>
+                                <th class="cfm-sort text-end" data-sort="aliquota_icms" title="Ordenar">Aliquota ICMS</th>
+                                <th class="cfm-sort text-end" data-sort="aliquota_st" title="Ordenar">Aliquota ST</th>
+                                <th class="cfm-sort text-end" data-sort="aliquota_cofins" title="Ordenar">Aliquota COFINS</th>
+                                <th class="cfm-sort text-end" data-sort="aliquota_ipi" title="Ordenar">Aliquota IPI</th>
+                                <th class="cfm-sort text-end" data-sort="aliquota_pis" title="Ordenar">Aliquota PIS</th>
+                                <th class="cfm-sort text-end" data-sort="reducao_base" title="Ordenar">Reducao da Base</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cfm-tbody">
+                            <tr>
+                                <td colspan="9" class="text-center text-muted py-4">Aguarde o carregamento inicial da consulta.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <nav class="mt-3 d-none" id="cfm-paginacao" aria-label="Paginacao Consulta Fiscal Material">
+                    <ul class="pagination pagination-sm mb-0 flex-wrap"></ul>
+                </nav>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/Script_ConsultaFiscalMaterial.js' %}" nonce="{{ request.csp_nonce }}"></script>
+{% endblock %}

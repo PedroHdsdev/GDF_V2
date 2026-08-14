@@ -1,0 +1,172 @@
+{% load static %}
+{% load tz %}
+{% load security %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{% csrf_token_value %}">
+    <link rel="icon" type="image/png" href="{% static 'img/logo.png' %}" />
+    <title>{% block title %}Meu Site{% endblock %}</title>
+
+    <!-- CSS BASE -->
+    <link rel="stylesheet" href="{% static 'css/base/Style_Base.css' %}">
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Montserrat:wght@700&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome (ícones nos alertas padronizados) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    {% block styles %}{% endblock %}
+</head>
+
+<body class="bg-light" data-gdf-api-sessao-cliente="{% url 'API_SessaoCliente' %}">
+
+<!-- NAVBAR -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+    <div class="container-fluid">
+        <!-- Sidebar: abre ao passar o mouse (Script_Base.js); clique alterna em qualquer dispositivo -->
+        <button class="btn btn-outline-light me-2 sidebar-toggle-btn d-inline-flex align-items-center justify-content-center"
+                type="button"
+                aria-controls="sidebar"
+                aria-label="Abrir ou fechar menu lateral com soluções">
+            <i class="fa-solid fa-bars" aria-hidden="true"></i>
+        </button>
+        <!-- Title -->
+        <a class="navbar-brand fw-bold" href="{% url 'Home' %}">
+            {% block titlepage %}Page{% endblock %}
+        </a>
+        <div class="d-flex align-items-center gap-2 ms-auto">
+            {% if user.is_authenticated %}
+            {% if pode_trocar_cliente and lista_clientes %}
+            <div class="navbar-cliente-selector">
+                <label for="navbarSelectCliente" class="visually-hidden">Mandante ativo</label>
+                <select
+                    name="cod_cliente"
+                    id="navbarSelectCliente"
+                    class="form-select form-select-sm"
+                    aria-label="Mandante ativo">
+                    {% for c in lista_clientes %}
+                    <option value="{{ c.cod_cliente }}" {% if cod_cliente == c.cod_cliente %}selected{% endif %}>{{ c.cod_cliente }} - {{ c.razao|default:""|truncatechars:25 }}</option>
+                    {% endfor %}
+                </select>
+                <span id="navbarClienteMsg" class="visually-hidden" role="status" aria-live="polite"></span>
+            </div>
+            {% endif %}
+            <div class="dropdown navbar-menu-admin">
+                <button type="button"
+                        id="navbarMenuAdmin"
+                        class="navbar-gear-btn d-inline-flex align-items-center justify-content-center"
+                        data-bs-toggle="dropdown"
+                        data-bs-offset="0,6"
+                        aria-expanded="false"
+                        aria-haspopup="true"
+                        aria-label="Configuração e sair"
+                        title="Configuração">
+                    <i class="fa-solid fa-gear" aria-hidden="true"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark border-secondary shadow" aria-labelledby="navbarMenuAdmin">
+                    {% for sub in t_subsolucoes_admin %}
+                    <li>
+                        <a class="dropdown-item" href="{% url 'get_subsolucao' sub.cod_subsolucao %}">
+                            {{ sub.descricao }}
+                        </a>
+                    </li>
+                    {% endfor %}
+                    {% if t_subsolucoes_admin %}
+                    <li><hr class="dropdown-divider border-secondary m-0"></li>
+                    {% endif %}
+                    <li>
+                        <a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'Logout' %}">
+                            <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+                            <span>Sair</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            {% endif %}
+            <a class="navbar-brand p-0 m-0" href="{% url 'Home' %}">
+                <img src="{% static 'img/logo.png' %}" alt="logo" height="40">
+            </a>
+        </div>
+    </div>
+</nav>
+<!-- SIDEBAR (Offcanvas): sem backdrop para o ponteiro ir do botão ao painel no hover -->
+<div class="offcanvas offcanvas-start sidebar" tabindex="-1" id="sidebar"
+     data-bs-scroll="true" data-bs-backdrop="false">
+    <div class="offcanvas-header sidebar-header">
+        <h5 class="offcanvas-title fw-bold">Menu</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Fechar menu"></button>
+    </div>
+
+    <div class="offcanvas-body p-0">
+        <ul class="list-group list-group-flush sidebar-list">
+            {% for solucoes in t_solucoes %}
+                <li class="list-group-item sidebar-item{% if solucoes.sub_solucoes %} sidebar-item--expandable{% endif %}">
+                    <a class="sidebar-link d-flex justify-content-between align-items-center fw-semibold text-decoration-none"
+                       {% if solucoes.sub_solucoes %}
+                       href="#"
+                       role="button"
+                       aria-expanded="false"
+                       aria-controls="submenu{{ forloop.counter }}"
+                       {% else %}
+                       href="#submenu{{ forloop.counter }}"
+                       {% endif %}>
+                        <span>{{ solucoes.descricao }}</span>
+                        {% if solucoes.sub_solucoes %}
+                        <span class="sidebar-badge" aria-hidden="true"><i class="fa-solid fa-chevron-down"></i></span>
+                        {% endif %}
+                    </a>
+
+                    {% if solucoes.sub_solucoes %}
+                        <div class="collapse sidebar-submenu mt-2" id="submenu{{ forloop.counter }}">
+                            <ul class="list-group list-group-flush">
+                                {% for sub in solucoes.sub_solucoes %}
+                                    <li class="list-group-item sidebar-subitem">
+                                        <a href="{% url 'get_subsolucao' sub.cod_subsolucao %}"
+                                           class="sidebar-sublink d-block text-decoration-none">
+                                            {{ sub.descricao }}
+                                        </a>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<!-- Toasts globais (pagina + modal) — Bootstrap Toast, topo central -->
+<div id="notificacoes-toast-stack" class="toast-container position-fixed top-0 start-50 translate-middle-x p-3 gdf-toast-stack" role="region" aria-live="polite" aria-label="Notificações"></div>
+
+<!-- CONTEÚDO -->
+<main class="container-fluid p-0 m-0 ">
+    {% block container %}{% endblock %}
+</main>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" nonce="{{ request.csp_nonce }}"></script>
+<!-- Padrão de notificações (página e modal) — antes de Script_Base (mensagens iniciais usam Notificacoes) -->
+<script src="{% static 'js/NotificacoesPadrao.js' %}" nonce="{{ request.csp_nonce }}"></script>
+{% if messages %}
+<div id="gdf-page-messages" class="d-none" hidden aria-hidden="true">
+  {% for message in messages %}
+  <span class="gdf-initial-message" data-tags="{{ message.tags|default:''|escape }}">{{ message|escape }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+<!-- CSRF para AJAX (getCsrfToken) — antes de Script_Base -->
+<script src="{% static 'js/csrf_protection.js' %}" nonce="{{ request.csp_nonce }}"></script>
+<!-- utilitários: getUrlPrefix, sidebar, modais, mensagens Django, troca de cliente (static/js/Script_Base.js) -->
+<script src="{% static 'js/Script_Base.js' %}" nonce="{{ request.csp_nonce }}"></script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>
